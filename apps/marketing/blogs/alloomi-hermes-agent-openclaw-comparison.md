@@ -13,7 +13,7 @@ _Written by OpenLoomi AI_
 
 | Project          | Positioning              | Core Philosophy                                                                                                                |
 | ---------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
-| **OpenLoomi**      | Proactive AI Workspace   | Building a proactive AI workspace with "95% noise filtering" - actively monitoring, remembering, and acting                    |
+| **OpenLoomi**    | Proactive AI Workspace   | Building a proactive AI workspace with "95% noise filtering" - actively monitoring, remembering, and acting                    |
 | **Hermes-Agent** | Self-Improving AI Agent  | "The only Agent with a built-in learning loop" - creating and improving skills from experience, modeling users across sessions |
 | **OpenClaw**     | Multi-Channel AI Gateway | AI that "runs on your device, in your channels, by your rules" - privacy-first                                                 |
 
@@ -23,7 +23,7 @@ _Written by OpenLoomi AI_
 
 ### 2.1 Runtime & Languages
 
-| Dimension              | OpenLoomi                     | Hermes-Agent        | OpenClaw                                |
+| Dimension              | OpenLoomi                   | Hermes-Agent        | OpenClaw                                |
 | ---------------------- | --------------------------- | ------------------- | --------------------------------------- |
 | **Primary Language**   | TypeScript + Rust           | Python 3.11+        | TypeScript                              |
 | **Frontend Framework** | Next.js 16.2 (React 19)     | Ink (React for CLI) | Vite + Lit (Web UI)                     |
@@ -33,7 +33,7 @@ _Written by OpenLoomi AI_
 
 ### 2.2 AI/LLM Integration
 
-| Dimension           | OpenLoomi                                 | Hermes-Agent                                                                              | OpenClaw                                                |
+| Dimension           | OpenLoomi                               | Hermes-Agent                                                                              | OpenClaw                                                |
 | ------------------- | --------------------------------------- | ----------------------------------------------------------------------------------------- | ------------------------------------------------------- |
 | **SDK**             | Vercel AI SDK, LangChain, Anthropic SDK | OpenAI SDK, Anthropic SDK                                                                 | `@agentclientprotocol/sdk`, `@modelcontextprotocol/sdk` |
 | **Model Support**   | OpenAI, Anthropic (Claude)              | OpenAI, Anthropic, OpenRouter (200+), NVIDIA NIM, HuggingFace, Xiaomi MiMo, Kimi, MiniMax | 100+ extension providers                                |
@@ -42,7 +42,7 @@ _Written by OpenLoomi AI_
 
 ### 2.3 Database & Storage
 
-| Dimension            | OpenLoomi                               | Hermes-Agent           | OpenClaw   |
+| Dimension            | OpenLoomi                             | Hermes-Agent           | OpenClaw   |
 | -------------------- | ------------------------------------- | ---------------------- | ---------- |
 | **Primary Database** | SQLite (better-sqlite3) + Drizzle ORM | SQLite + FTS5          | SQLite     |
 | **Vector Store**     | pgvector, sqlite-vec                  | None built-in          | sqlite-vec |
@@ -51,7 +51,7 @@ _Written by OpenLoomi AI_
 
 ### 2.4 Messaging Platform Integration
 
-| Platform    |   OpenLoomi    | Hermes-Agent |     OpenClaw     |
+| Platform    |  OpenLoomi   | Hermes-Agent |     OpenClaw     |
 | ----------- | :----------: | :----------: | :--------------: |
 | Telegram    |      ✅      |      ✅      |        ✅        |
 | WhatsApp    | ✅ (Baileys) |      ✅      |        ✅        |
@@ -112,16 +112,16 @@ Channels → Gateway (single control plane)
 ### 3.2 Skill System
 
 | Dimension             | OpenLoomi                                                      | Hermes-Agent                                  | OpenClaw                                     |
-| --------------------- | ------------------------------------------------------------ | --------------------------------------------- | -------------------------------------------- |
-| **Skill Format**      | Skill packages under `/skills/`                              | `skills/` + `optional-skills/` Python modules | `/skills/` directory + ClawHub marketplace   |
-| **Creation Method**   | Predefined, triggered via MCP tools                          | Agent autonomously creates from experience    | Predefined, publishable to ClawHub           |
-| **Trigger Mechanism** | Skill descriptions and MCP tool definitions                  | Slash commands + Skill commands               | Slash commands                               |
+| --------------------- | -------------------------------------------------------------- | --------------------------------------------- | -------------------------------------------- |
+| **Skill Format**      | Skill packages under `/skills/`                                | `skills/` + `optional-skills/` Python modules | `/skills/` directory + ClawHub marketplace   |
+| **Creation Method**   | Predefined, triggered via MCP tools                            | Agent autonomously creates from experience    | Predefined, publishable to ClawHub           |
+| **Trigger Mechanism** | Skill descriptions and MCP tool definitions                    | Slash commands + Skill commands               | Slash commands                               |
 | **Quantity**          | 4 built-in (Brave Search, X API, OpenLoomi API, Feature Guide) | 25+ categories, multiple skills per category  | 8 built-in (1Password, GitHub, Notion, etc.) |
-| **Extensibility**     | Developers can add new skill packages                        | Agent can autonomously create new skills      | Plugin extension                             |
+| **Extensibility**     | Developers can add new skill packages                          | Agent can autonomously create new skills      | Plugin extension                             |
 
 ### 3.3 Tool System
 
-| Dimension              | OpenLoomi            | Hermes-Agent        | OpenClaw             |
+| Dimension              | OpenLoomi          | Hermes-Agent        | OpenClaw             |
 | ---------------------- | ------------------ | ------------------- | -------------------- |
 | **Tool Count**         | ~30+ MCP tools     | ~40+ built-in tools | 100+ extensions      |
 | **Browser Automation** | ✅                 | ✅ (browser_tool)   | ✅                   |
@@ -137,7 +137,7 @@ Channels → Gateway (single control plane)
 
 ### 4.1 Deployment Modes
 
-| Dimension           | OpenLoomi                                 | Hermes-Agent          | OpenClaw                      |
+| Dimension           | OpenLoomi                               | Hermes-Agent          | OpenClaw                      |
 | ------------------- | --------------------------------------- | --------------------- | ----------------------------- |
 | **Local-First**     | ✅ (SQLite local + optional cloud sync) | ✅ (~$5 VPS feasible) | ✅ (Self-hosted)              |
 | **Desktop App**     | ✅                                      | ❌ (CLI only)         | ✅ (macOS/iOS/Android native) |
@@ -146,7 +146,7 @@ Channels → Gateway (single control plane)
 
 ### 4.2 Multi-Instance & Isolation
 
-| Dimension               | OpenLoomi                      | Hermes-Agent             | OpenClaw                     |
+| Dimension               | OpenLoomi                    | Hermes-Agent             | OpenClaw                     |
 | ----------------------- | ---------------------------- | ------------------------ | ---------------------------- |
 | **Multi-Instance**      | ✅ (multi-process isolation) | ✅ (Profile/HERMES_HOME) | ✅ (multi-agent routing)     |
 | **Isolation Mechanism** | Multiple Sandbox extensions  | Tool Approval system     | Docker/SSH sandbox           |
@@ -157,7 +157,7 @@ Channels → Gateway (single control plane)
 
 ## 5. Security & Privacy Comparison
 
-| Dimension        | OpenLoomi                            | Hermes-Agent  | OpenClaw      |
+| Dimension        | OpenLoomi                          | Hermes-Agent  | OpenClaw      |
 | ---------------- | ---------------------------------- | ------------- | ------------- |
 | **Data Storage** | Local SQLite + optional cloud sync | Local SQLite  | Local SQLite  |
 | **Encryption**   | AES-256 encryption                 | None built-in | None built-in |
@@ -168,7 +168,7 @@ Channels → Gateway (single control plane)
 
 ### 6.1 Debugging & Testing
 
-| Dimension          | OpenLoomi            | Hermes-Agent         | OpenClaw          |
+| Dimension          | OpenLoomi          | Hermes-Agent         | OpenClaw          |
 | ------------------ | ------------------ | -------------------- | ----------------- |
 | **Test Framework** | Vitest, Playwright | Pytest (~3000 tests) | Vitest            |
 | **E2E Testing**    | Playwright         | Docker-based         | Docker-based      |
@@ -177,7 +177,7 @@ Channels → Gateway (single control plane)
 
 ### 6.2 Documentation & Extensibility
 
-| Dimension             | OpenLoomi                        | Hermes-Agent       | OpenClaw                  |
+| Dimension             | OpenLoomi                      | Hermes-Agent       | OpenClaw                  |
 | --------------------- | ------------------------------ | ------------------ | ------------------------- |
 | **API Documentation** | 129+ API routes (skill format) | Slash command help | Plugin SDK (200+ modules) |
 | **Extension Method**  | Package + Skill                | Skill + Tool       | Plugin extension          |
@@ -190,7 +190,7 @@ Channels → Gateway (single control plane)
 
 ### 7.1 Positioning Differences
 
-| Dimension           | OpenLoomi                                           | Hermes-Agent                                        | OpenClaw                               |
+| Dimension           | OpenLoomi                                         | Hermes-Agent                                        | OpenClaw                               |
 | ------------------- | ------------------------------------------------- | --------------------------------------------------- | -------------------------------------- |
 | **Core Difference** | Proactive AI                                      | Self-improving                                      | Multi-channel Gateway                  |
 | **Usage Mode**      | AI proactively monitors and pushes, task closure  | Conversation-driven Agent                           | Message routing + AI processing        |
@@ -199,19 +199,19 @@ Channels → Gateway (single control plane)
 ### 7.2 Feature Matrix
 
 | Feature              | OpenLoomi | Hermes-Agent |     OpenClaw      |
-| -------------------- | :-----: | :----------: | :---------------: |
-| Desktop App          |   ✅    |      ❌      |        ✅         |
-| Mobile App           |   ❌    |      ❌      |        ✅         |
-| Web UI               |   ✅    |      ❌      |        ✅         |
-| CLI                  |   ❌    |      ✅      |        ✅         |
-| Message Aggregation  |   ✅    |      ✅      |        ✅         |
-| Self-Creating Skills |   ❌    |      ✅      |        ❌         |
-| RAG/Vector Search    |   ✅    |      ❌      |        ✅         |
-| IDE Integration      |   ❌    |   ✅ (Zed)   | ✅ (Zed, VS Code) |
+| -------------------- | :-------: | :----------: | :---------------: |
+| Desktop App          |    ✅     |      ❌      |        ✅         |
+| Mobile App           |    ❌     |      ❌      |        ✅         |
+| Web UI               |    ✅     |      ❌      |        ✅         |
+| CLI                  |    ❌     |      ✅      |        ✅         |
+| Message Aggregation  |    ✅     |      ✅      |        ✅         |
+| Self-Creating Skills |    ❌     |      ✅      |        ❌         |
+| RAG/Vector Search    |    ✅     |      ❌      |        ✅         |
+| IDE Integration      |    ❌     |   ✅ (Zed)   | ✅ (Zed, VS Code) |
 
 ### 7.3 Complexity Comparison
 
-| Metric                 | OpenLoomi                                    | Hermes-Agent                  | OpenClaw                             |
+| Metric                 | OpenLoomi                                  | Hermes-Agent                  | OpenClaw                             |
 | ---------------------- | ------------------------------------------ | ----------------------------- | ------------------------------------ |
 | **Code Scale**         | ~164+ React components, 129+ API endpoints | ~60+ Python tool files        | ~508 subdirectories, 100+ extensions |
 | **Dependency Count**   | Medium                                     | Medium                        | Large (100+ extensions)              |

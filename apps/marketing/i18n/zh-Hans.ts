@@ -94,8 +94,7 @@ export const zhHans = {
       },
       {
         title: "200+ 专业技能",
-        description:
-          "从起草合同到编写代码——每个关键时刻都有正确的专业能力。",
+        description: "从起草合同到编写代码——每个关键时刻都有正确的专业能力。",
       },
       {
         title: "你批准，它执行",
@@ -104,8 +103,7 @@ export const zhHans = {
       },
       {
         title: "持续跟进",
-        description:
-          "不会在第一步就停下。它追踪承诺、持续跟进、把事情做到底。",
+        description: "不会在第一步就停下。它追踪承诺、持续跟进、把事情做到底。",
       },
     ],
   },
