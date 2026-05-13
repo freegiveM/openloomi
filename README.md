@@ -61,21 +61,6 @@ pnpm tauri:dev
 
 Requires Node.js 22+ and pnpm 9+.
 
-## Project Structure
-
-```
-openloomi/
-├── apps/web/          # Desktop app (Tauri + Next.js)
-├── packages/
-│   ├── ai/            # Agent, memory, RAG, model routing
-│   ├── integrations/  # 18 platform connectors
-│   ├── insights/      # EventRank scoring, focus classification
-│   ├── agent/         # Multi-provider agent SDK
-│   ├── storage/       # Local + cloud storage
-│   └── search/        # Brave Search integration
-└── skills/            # PDF, DOCX, XLSX, PPTX, browser automation, web search
-```
-
 ## Screenshots
 
 <table>
