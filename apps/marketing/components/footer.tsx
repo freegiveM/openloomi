@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 
-import Link from "next/link";
-import Image from "next/image";
 import { RemixIcon } from "@/components/remix-icon";
+import Image from "next/image";
+import Link from "next/link";
 import { useTranslation } from "react-i18next";
 
 /**
@@ -244,10 +244,10 @@ export function Footer({
               <div>
                 <Link href="/" className="flex items-center gap-2 mb-3">
                   <Image
-                    src="/img/Logo-full-dark.svg"
+                    src="/img/logo-full-dark.png"
                     alt="OpenLoomi"
                     className="hidden md:block h-7 w-auto object-contain"
-                    width={266}
+                    width={127}
                     height={28}
                     priority
                   />

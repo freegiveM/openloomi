@@ -1,7 +1,7 @@
 <div align="center">
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="apps/web/public/images/logo-dark-light.svg">
-  <img src="apps/web/public/images/logo-full-light.svg" alt="OpenLoomi Logo" width="400">
+  <source media="(prefers-color-scheme: dark)" srcset="apps/web/public/images/logo-dark-light.png">
+  <img src="apps/web/public/images/logo-text.png" alt="OpenLoomi Logo" width="400">
 </picture>
 
 <br>
@@ -33,11 +33,11 @@ OpenLoomi is an open-source AI workspace that runs on your desktop. It connects 
 
 |     | Capability                 | What it does                                                                                                                                                                                                                                                                     |
 | --- | -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 🔌  | **18 Platform Connectors** | Telegram, WhatsApp, WeChat, DingTalk, Feishu, Gmail, Google Calendar, Outlook, Google Docs, X/Twitter, Instagram, LinkedIn, Facebook Messenger, Jira, HubSpot, Asana, iMessage, QQ, RSS — messages, emails, calendar events, documents, and project updates flow in continuously |
-| 🧠  | **Working Memory**         | Short → mid → long-term memory with a progressive forgetting engine — scores by access frequency, recency, and importance, summarizes and archives over time, recalls context from months ago                                                                                    |
-| 📄  | **Document Skills**        | Create and edit DOCX, XLSX, PPTX, PDF — with formulas, formatting, tracked changes, OCR, and merge/split                                                                                                                                                                         |
-| ⏰  | **Automation**             | Scheduled jobs with cron expressions, intervals, or one-time triggers — agent-driven execution with timeout recovery and history                                                                                                                                                 |
-| 🖥️  | **Desktop App**            | Native app for Windows, macOS, Linux via Tauri — local-first storage with IndexedDB + SQLite, AES-256 encryption, no data leaves your machine                                                                                                                                    |
+| 🔌   | **18 Platform Connectors** | Telegram, WhatsApp, WeChat, DingTalk, Feishu, Gmail, Google Calendar, Outlook, Google Docs, X/Twitter, Instagram, LinkedIn, Facebook Messenger, Jira, HubSpot, Asana, iMessage, QQ, RSS — messages, emails, calendar events, documents, and project updates flow in continuously |
+| 🧠   | **Working Memory**         | Short → mid → long-term memory with a progressive forgetting engine — scores by access frequency, recency, and importance, summarizes and archives over time, recalls context from months ago                                                                                    |
+| 📄   | **Document Skills**        | Create and edit DOCX, XLSX, PPTX, PDF — with formulas, formatting, tracked changes, OCR, and merge/split                                                                                                                                                                         |
+| ⏰   | **Automation**             | Scheduled jobs with cron expressions, intervals, or one-time triggers — agent-driven execution with timeout recovery and history                                                                                                                                                 |
+| 🖥️   | **Desktop App**            | Native app for Windows, macOS, Linux via Tauri — local-first storage with IndexedDB + SQLite, AES-256 encryption, no data leaves your machine                                                                                                                                    |
 
 <p align="center">
   <img src="screenshots/components.png" alt="Architecture" width="100%">

@@ -1,41 +1,41 @@
 "use client";
 
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import Image from "next/image";
-import { signOut, useSession } from "next-auth/react";
-import { Badge, Button } from "@openloomi/ui";
 import { RemixIcon } from "@/components/remix-icon";
-import Link from "next/link";
-import { useTranslation } from "react-i18next";
+import { useMobileDetection } from "@/hooks/use-mobile-detection";
+import { generateUUID } from "@/lib/utils";
+import { useCustomEvent } from "@openloomi/hooks/use-custom-event";
+import { Badge, Button } from "@openloomi/ui";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@openloomi/ui";
+import { signOut, useSession } from "next-auth/react";
+import Image from "next/image";
+import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
-  useState,
-  useEffect,
-  useMemo,
   startTransition,
   useDeferredValue,
+  useEffect,
+  useMemo,
+  useState,
 } from "react";
-import { generateUUID } from "@/lib/utils";
-import { useMobileDetection } from "@/hooks/use-mobile-detection";
-import { useCustomEvent } from "@openloomi/hooks/use-custom-event";
+import { useTranslation } from "react-i18next";
 import "../i18n";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@openloomi/ui";
-import { toast } from "./toast";
-import { isTauri } from "@/lib/tauri";
-import useSWR from "swr";
-import { fetcher, cn, getHomePath } from "@/lib/utils";
-import { UserMenuDropdown } from "@/components/user-menu-dropdown";
 import { LanguageSettingsMenu } from "@/components/language-settings-menu";
-import { saveLanguage } from "@/i18n";
-import dynamic from "next/dynamic";
-import { useLocalStorage } from "usehooks-ts";
+import { UserMenuDropdown } from "@/components/user-menu-dropdown";
 import { useUserProfile } from "@/hooks/use-user-profile";
+import { saveLanguage } from "@/i18n";
 import { guestRegex } from "@/lib/env/constants";
+import { isTauri } from "@/lib/tauri";
+import { cn, fetcher, getHomePath } from "@/lib/utils";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@openloomi/ui";
+import dynamic from "next/dynamic";
+import useSWR from "swr";
+import { useLocalStorage } from "usehooks-ts";
+import { toast } from "./toast";
 
 /**
  * Stub hook for onboarding state - returns default values since onboarding was removed
@@ -600,7 +600,7 @@ export function AppSidebar() {
                       <div className="flex flex-row">
                         <div className="flex items-center gap-2">
                           <Image
-                            src="/images/logo-full-light.svg"
+                            src="/images/logo-full-light.png"
                             alt="openloomi Logo"
                             width={96}
                             height={24}
@@ -1198,7 +1198,7 @@ export function AppSidebar() {
               >
                 {isSidebarMinimal ? (
                   /* Minimized sidebar: logo + avatar only, avatar can still open account menu */
-                  <div className="flex w-full justify-center">
+                  (<div className="flex w-full justify-center">
                     {!mounted ? (
                       <div className="w-full h-12 animate-pulse bg-muted/50 rounded-md" />
                     ) : isMobile ? (
@@ -1273,7 +1273,7 @@ export function AppSidebar() {
                         </DropdownMenuTrigger>
                       </UserMenuDropdown>
                     )}
-                  </div>
+                  </div>)
                 ) : !mounted ? (
                   <div className="w-full h-12 animate-pulse bg-muted/50 rounded-md" />
                 ) : isMobile ? (

@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect } from "react";
-import Link from "next/link";
-import Image from "next/image";
 import { RemixIcon } from "@/components/remix-icon";
 import { AnimatePresence, motion } from "framer-motion";
-import { LanguageSwitch } from "./language-switch";
+import Image from "next/image";
+import Link from "next/link";
+import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
+import { LanguageSwitch } from "./language-switch";
 
 interface NavLink {
   name: string;
@@ -134,7 +134,7 @@ export function MobileDrawerMenu({
                 style={{ display: "flex", alignItems: "center" }}
               >
                 <Image
-                  src="/img/Logo-full-light.svg"
+                  src="/img/logo-full-light.png"
                   alt="OpenLoomi"
                   className="h-5 w-auto object-contain"
                   width={100}

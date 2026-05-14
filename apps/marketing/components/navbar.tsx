@@ -1,13 +1,13 @@
 "use client";
 
-import { useState } from "react";
-import Link from "next/link";
-import Image from "next/image";
 import { RemixIcon } from "@/components/remix-icon";
+import Image from "next/image";
+import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { MobileDrawerMenu } from "./mobile-drawer-menu";
-import { LanguageSwitch } from "./language-switch";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { LanguageSwitch } from "./language-switch";
+import { MobileDrawerMenu } from "./mobile-drawer-menu";
 
 interface NavLink {
   name: string;
@@ -86,7 +86,7 @@ export function Navbar({
   const githubUrl = "https://github.com/melandlabs/openloomi";
 
   // Nav padding tuned to match the design preview.
-  // Move: <md shows Logo.svg only; Desktop: shows Logo-full-light.
+  // Move: <md shows Logo.svg only; Desktop: shows logo-text.
   return (
     <nav
       style={{
@@ -121,19 +121,19 @@ export function Navbar({
         >
           <Image
             // Desktop shows full logo; mobile uses monochrome logo for visibility.
-            src="/img/Logo-full-light.svg"
+            src="/img/logo-full-light.png"
             alt="OpenLoomi"
-            className="hidden md:block h-5 w-auto object-contain"
-            width={108}
-            height={30}
+            className="hidden md:block h-7 w-auto object-contain"
+            width={127}
+            height={28}
             priority
           />
           <Image
-            src="/img/Logo-full-light.svg"
+            src="/img/logo-full-light.png"
             alt="OpenLoomi"
-            className="block md:hidden h-5 w-auto object-contain"
-            width={20}
-            height={20}
+            className="block md:hidden h-6 w-auto object-contain"
+            width={109}
+            height={24}
             priority
           />
         </Link>
