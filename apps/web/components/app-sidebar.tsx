@@ -596,7 +596,7 @@ export function AppSidebar() {
                   </Button>
                 ) : !effectiveCollapsed ? (
                   <>
-                    <div className="pl-2 size-8 flex items-center justify-center bg-transparent border-0 cursor-pointer hover:bg-sidebar-hover rounded-md">
+                    <div className="pl-3 size-8 flex items-center justify-center bg-transparent border-0 cursor-pointer hover:bg-sidebar-hover rounded-md">
                       <Image
                         src="/images/logo_web.png"
                         alt="openloomi Logo"
