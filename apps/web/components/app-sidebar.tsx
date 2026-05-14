@@ -1189,7 +1189,7 @@ export function AppSidebar() {
               >
                 {isSidebarMinimal ? (
                   /* Minimized sidebar: logo + avatar only, avatar can still open account menu */
-                  (<div className="flex w-full justify-center">
+                  <div className="flex w-full justify-center">
                     {!mounted ? (
                       <div className="w-full h-12 animate-pulse bg-muted/50 rounded-md" />
                     ) : isMobile ? (
@@ -1264,7 +1264,7 @@ export function AppSidebar() {
                         </DropdownMenuTrigger>
                       </UserMenuDropdown>
                     )}
-                  </div>)
+                  </div>
                 ) : !mounted ? (
                   <div className="w-full h-12 animate-pulse bg-muted/50 rounded-md" />
                 ) : isMobile ? (
