@@ -596,25 +596,16 @@ export function AppSidebar() {
                   </Button>
                 ) : !effectiveCollapsed ? (
                   <>
-                    <div className="flex items-center justify-start gap-1 w-full">
-                      <div className="flex flex-row">
-                        <div className="flex items-center gap-2">
-                          <Image
-                            src="/images/logo-full-light.png"
-                            alt="openloomi Logo"
-                            width={96}
-                            height={24}
-                            className="h-5 w-auto object-contain shrink-0"
-                          />
-                          <Badge
-                            variant="outline"
-                            className="border border-accent-700 bg-[linear-gradient(90deg,#FDF6EF_0%,#F1F5F9_100%)] text-accent-brand text-[10px] font-bold uppercase tracking-[0.12em] px-2 py-0.5 rounded-lg"
-                          >
-                            Alpha
-                          </Badge>
-                        </div>
-                      </div>
+                    <div className="pl-2 size-8 flex items-center justify-center bg-transparent border-0 cursor-pointer hover:bg-sidebar-hover rounded-md">
+                      <Image
+                        src="/images/logo_web.png"
+                        alt="openloomi Logo"
+                        width={24}
+                        height={24}
+                        className="object-contain"
+                      />
                     </div>
+                    <div className="flex-1" />
                     <Button
                       type="button"
                       variant="ghost"

@@ -61,39 +61,6 @@ pnpm tauri:dev
 
 Requires Node.js 22+ and pnpm 9+.
 
-## Screenshots
-
-<table>
-<tr>
-<td><img src="screenshots/connector-01.png" alt="Connector" width="100%"></td>
-<td><img src="screenshots/connector-02.png" alt="Connector" width="100%"></td>
-</tr>
-<tr>
-<td><img src="screenshots/connector-03.png" alt="Connector" width="100%"></td>
-<td><img src="screenshots/connector-04.png" alt="Connector" width="100%"></td>
-</tr>
-<tr>
-<td><img src="screenshots/connector-05.png" alt="Connector" width="100%"></td>
-<td><img src="screenshots/connector-06.png" alt="Connector" width="100%"></td>
-</tr>
-<tr>
-<td><img src="screenshots/connector-07.png" alt="Connector" width="100%"></td>
-<td><img src="screenshots/connector-08.png" alt="Connector" width="100%"></td>
-</tr>
-<tr>
-<td><img src="screenshots/connector-09.png" alt="Connector" width="100%"></td>
-<td><img src="screenshots/connector-10.png" alt="Connector" width="100%"></td>
-</tr>
-<tr>
-<td><img src="screenshots/connector-11.png" alt="Connector" width="100%"></td>
-<td><img src="screenshots/connector-12.png" alt="Connector" width="100%"></td>
-</tr>
-<tr>
-<td><img src="screenshots/connector-13.png" alt="Connector" width="100%"></td>
-<td><img src="screenshots/index-loop.png" alt="Intelligence Loop" width="100%"></td>
-</tr>
-</table>
-
 ## App Screenshots
 
 <table>
