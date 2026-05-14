@@ -654,7 +654,6 @@ A: It's simple!
 A:
 1. Click **[Connect Telegram]**
 2. Choose phone verification or QR code login
-3. After completion, use @openloomiChatBot to access features
 
 ### Q: What are Insights?
 
