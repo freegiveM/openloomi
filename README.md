@@ -21,7 +21,7 @@
 
 ## What is OpenLoomi?
 
-OpenLoomi is an open-source AI workspace that runs on your desktop. It connects to the tools you already use — messaging apps, email, calendar, documents, project trackers — and builds a working memory of your people, projects, and decisions.
+OpenLoomi is an open-source AI workspace that runs on your desktop. It connects to the tools you already use — messaging apps, email, calendar, documents, project trackers — and builds a Self-Evolving Memory of your people, projects, and decisions.
 
  <a href="https://openloomi.ai/docs/getting-started">
     <img src="https://img.shields.io/github/v/tag/melandlabs/openloomi?logo=github&label=Download&color=24C8D5" alt="Download to Try" height="30" style="transform:scale(1);">
@@ -32,7 +32,7 @@ OpenLoomi is an open-source AI workspace that runs on your desktop. It connects 
 |     | Capability                 | What it does                                                                                                                                                                                                                                                                     |
 | --- | -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 🔌  | **18 Platform Connectors** | Telegram, WhatsApp, WeChat, DingTalk, Feishu, Gmail, Google Calendar, Outlook, Google Docs, X/Twitter, Instagram, LinkedIn, Facebook Messenger, Jira, HubSpot, Asana, iMessage, QQ, RSS — messages, emails, calendar events, documents, and project updates flow in continuously |
-| 🧠  | **Working Memory**         | Short → mid → long-term memory with a progressive forgetting engine — scores by access frequency, recency, and importance, summarizes and archives over time, recalls context from months ago                                                                                    |
+| 🧠  | **Self-Evolving Memory**         | Short → mid → long-term memory with a progressive forgetting engine — scores by access frequency, recency, and importance, summarizes and archives over time, recalls context from months ago                                                                                    |
 | 📄  | **Document Skills**        | Create and edit DOCX, XLSX, PPTX, PDF — with formulas, formatting, tracked changes, OCR, and merge/split                                                                                                                                                                         |
 | ⏰  | **Automation**             | Scheduled jobs with cron expressions, intervals, or one-time triggers — agent-driven execution with timeout recovery and history                                                                                                                                                 |
 | 🖥️  | **Desktop App**            | Native app for Windows, macOS, Linux via Tauri — local-first storage with IndexedDB + SQLite, AES-256 encryption, no data leaves your machine                                                                                                                                    |
