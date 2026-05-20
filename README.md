@@ -39,28 +39,7 @@ OpenLoomi is an open-source AI workspace that runs on your desktop. It connects 
 
 ## Quick Start
 
-**Download directly** (for end users):
- <a href="https://openloomi.ai/docs/getting-started">
-    <img src="https://img.shields.io/github/v/tag/melandlabs/openloomi?logo=github&label=Download&color=24C8D5" alt="Download to Try" height="36" style="transform:scale(1.2);">
-  </a>
-
-**Develop locally** (for developers):
-
-```bash
-git clone https://github.com/melandlabs/openloomi.git
-cd openloomi
-
-cp apps/web/.env.example apps/web/.env
-
-# Set your AI provider keys in .env:
-#   ANTHROPIC_API_KEY=sk-ant-...
-#   LLM_API_KEY=sk-...
-
-pnpm install
-pnpm tauri:dev
-```
-
-Requires Node.js 22+ and pnpm 9+.
+| [Releases](https://github.com/melandlabs/openloomi/releases) | [Source Code](https://github.com/melandlabs/openloomi) | [Clone/Fork](https://github.com/melandlabs/openloomi/fork) | [Issues](https://github.com/melandlabs/openloomi/issues) | [Discussions](https://github.com/melandlabs/openloomi/discussions) |
 
 ## App Screenshots
 
