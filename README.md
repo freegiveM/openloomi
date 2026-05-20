@@ -45,9 +45,7 @@ OpenLoomi is an open-source AI workspace that runs on your desktop. It connects 
 | ---------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
 | [.dmg](https://github.com/melandlabs/openloomi/releases/download/v0.5.0/openloomi_0.5.0_macOS_aarch64.dmg) | [.dmg](https://github.com/melandlabs/openloomi/releases/download/v0.5.0/openloomi_0.5.0_macOS_amd64.dmg) | [.deb](https://github.com/melandlabs/openloomi/releases/download/v0.5.0/openloomi_0.5.0_linux_amd64.deb) | [.deb](https://github.com/melandlabs/openloomi/releases/download/v0.5.0/openloomi_0.5.0_linux_aarch64.deb) | [.exe](https://github.com/melandlabs/openloomi/releases/download/v0.5.0/openloomi_0.5.0_windows_amd64.exe) |
 
-## Documentation
-
-Full documentation is available at [https://openloomi.ai/docs](https://openloomi.ai/docs).
+Full documentation is available at [here](https://openloomi.ai/docs).
 
 **Develop locally** (for developers):
 
