@@ -63,7 +63,7 @@ pnpm install
 pnpm tauri:dev
 ```
 
-Requires Node.js 22+ and pnpm 9+.
+Requires Node.js 22+, pnpm 9+, and Rust 1.75+.
 
 ## App Screenshots
 
