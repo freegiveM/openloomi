@@ -23,10 +23,6 @@
 
 OpenLoomi is an open-source AI workspace that runs on your desktop. It connects to the tools you already use — messaging apps, email, calendar, documents, project trackers — and builds a Self-Evolving Memory of your people, projects, and decisions.
 
- <a href="https://openloomi.ai/docs/getting-started">
-    <img src="https://img.shields.io/github/v/tag/melandlabs/openloomi?logo=github&label=Download&color=24C8D5" alt="Download to Try" height="30" style="transform:scale(1);">
-  </a>
-
 ## Features
 
 |     | Capability                                                      | What it does                                                                                                                                                                                                                                                                     |
@@ -42,6 +38,13 @@ OpenLoomi is an open-source AI workspace that runs on your desktop. It connects 
 </p>
 
 ## Quick Start
+
+**Download directly** (for end users):
+ <a href="https://openloomi.ai/docs/getting-started">
+    <img src="https://img.shields.io/github/v/tag/melandlabs/openloomi?logo=github&label=Download&color=24C8D5" alt="Download to Try" height="36" style="transform:scale(1.2);">
+  </a>
+
+**Develop locally** (for developers):
 
 ```bash
 git clone https://github.com/melandlabs/openloomi.git
