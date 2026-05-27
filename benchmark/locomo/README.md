@@ -17,20 +17,20 @@ The LoCoMo dataset contains conversation sessions with multiple question-answer 
 
 ### Question Categories
 
-| Category | Name | Description |
-|----------|------|-------------|
-| 1 | single_hop | Simple factual recall from a single memory |
-| 2 | temporal | Questions requiring date/time reasoning |
-| 3 | multi_hop | Multi-step inference across sessions |
-| 4 | open_domain | Open-ended questions requiring synthesis |
+| Category | Name        | Description                                |
+| -------- | ----------- | ------------------------------------------ |
+| 1        | single_hop  | Simple factual recall from a single memory |
+| 2        | temporal    | Questions requiring date/time reasoning    |
+| 3        | multi_hop   | Multi-step inference across sessions       |
+| 4        | open_domain | Open-ended questions requiring synthesis   |
 
 ## Retrieval Modes
 
-| Mode | Description |
-|------|-------------|
-| `dialog` | Raw conversation history |
-| `observation` | Summarized observations with dialog references |
-| `session_summary` | Session-level summaries only |
+| Mode              | Description                                    |
+| ----------------- | ---------------------------------------------- |
+| `dialog`          | Raw conversation history                       |
+| `observation`     | Summarized observations with dialog references |
+| `session_summary` | Session-level summaries only                   |
 
 ## Setup
 
@@ -66,15 +66,15 @@ pnpm benchmark -- --dataset dataset/locomo10.json --mode observation --output re
 
 ### CLI Options
 
-| Flag | Short | Description | Default |
-|------|-------|-------------|---------|
-| `--dataset` | `-d` | Path to LoCoMo JSON dataset | Required |
-| `--mode` | `-m` | Retrieval mode (dialog/observation/session_summary) | observation |
-| `--samples` | `-s` | Comma-separated sample IDs to run | All |
-| `--quick` | `-q` | Limit to first 5 questions per sample | false |
-| `--output` | `-o` | Save results JSON to path | None |
-| `--port` | `-p` | API port for agent | Auto-discover |
-| `--token` | `-t` | Path to auth token | ~/.openloomi/token |
+| Flag        | Short | Description                                         | Default            |
+| ----------- | ----- | --------------------------------------------------- | ------------------ |
+| `--dataset` | `-d`  | Path to LoCoMo JSON dataset                         | Required           |
+| `--mode`    | `-m`  | Retrieval mode (dialog/observation/session_summary) | observation        |
+| `--samples` | `-s`  | Comma-separated sample IDs to run                   | All                |
+| `--quick`   | `-q`  | Limit to first 5 questions per sample               | false              |
+| `--output`  | `-o`  | Save results JSON to path                           | None               |
+| `--port`    | `-p`  | API port for agent                                  | Auto-discover      |
+| `--token`   | `-t`  | Path to auth token                                  | ~/.openloomi/token |
 
 ## Output
 
