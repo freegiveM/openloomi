@@ -1,8 +1,7 @@
 ---
 title: "OpenClaw Memory System: File-First Agent Memory and Search"
-date: 2026-05-28
+date: 2026-05-27
 description: A technical deep dive into OpenClaw memory, from Markdown source-of-truth files to plugin-backed search and recall.
-image: /img/blogs/19.png
 ---
 
 # OpenClaw Memory System

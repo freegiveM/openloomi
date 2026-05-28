@@ -1,8 +1,7 @@
 ---
 title: "OpenLoomi Memory System: Raw Messages, Insights, and RAG Recall"
-date: 2026-05-28
+date: 2026-05-26
 description: A technical deep dive into OpenLoomi Memory, including raw message lifecycle, insight tracking, and unified RAG recall.
-image: /img/blogs/19.png
 ---
 
 # Internal Memory Implementation Mechanism

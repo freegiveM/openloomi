@@ -1,8 +1,7 @@
 ---
 title: "Memory Capabilities Comparison: OpenClaw vs. Hermes Agent vs. Claude Code vs. OpenLoomi"
-date: 2026-05-28
+date: 2026-05-27
 description: A focused comparison of memory and knowledge retrieval across OpenClaw, Hermes Agent, Claude Code, and OpenLoomi Memory.
-image: /img/blogs/19.png
 ---
 
 # Memory Capabilities Comparison
@@ -543,24 +542,3 @@ single end-to-end encryption implementation for all memory stores.
 - All comparisons describe the code/documentation inspected here, not every
   possible plugin/provider users might add later. Plugins can make any tidy
   comparison table start sweating.
-
-## Implementation References
-
-| System      | File / doc                                                                                                                       | Purpose                                                                                                                            |
-| ----------- | -------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| OpenClaw    | `D:\openclaw-main\extensions\memory-core\src\tools.ts`                                                                           | `memory_search` and `memory_get` tool entry points.                                                                                |
-| OpenClaw    | `D:\openclaw-main\extensions\memory-core\src\memory\manager-search.ts`                                                           | Vector, FTS, LIKE, and fallback memory search.                                                                                     |
-| OpenClaw    | `D:\openclaw-main\extensions\memory-core\src\memory\hybrid.ts`                                                                   | Hybrid vector/text score merge.                                                                                                    |
-| OpenClaw    | `D:\openclaw-main\docs\concepts\memory-search.md`                                                                                | Public explanation of memory search, embeddings, hybrid retrieval, temporal decay, and MMR.                                        |
-| Hermes      | `D:\hermes-agent-main\tools\memory_tool.py`                                                                                      | Built-in curated memory store and tool.                                                                                            |
-| Hermes      | `D:\hermes-agent-main\tools\session_search_tool.py`                                                                              | Session browse/search/scroll recall tool.                                                                                          |
-| Hermes      | `D:\hermes-agent-main\hermes_state.py`                                                                                           | SQLite session DB and FTS5 tables.                                                                                                 |
-| Hermes      | `D:\hermes-agent-main\agent\memory_manager.py`                                                                                   | External provider orchestration and `<memory-context>` fencing.                                                                    |
-| Claude Code | `D:\claude-code-rev-main\src\utils\claudemd.ts`                                                                                  | Instruction memory discovery, `@include`, rules, auto-memory entrypoint loading, and `getClaudeMds()`.                             |
-| Claude Code | `D:\claude-code-rev-main\src\memdir\*.ts`                                                                                        | Auto-memory path resolution, prompt construction, entrypoint truncation, memory taxonomy, and LLM-based relevant-memory selection. |
-| Claude Code | `D:\claude-code-rev-main\src\utils\attachments.ts`                                                                               | Nested memory attachments and relevant-memory prefetch/injection.                                                                  |
-| Claude Code | `D:\claude-code-rev-main\src\services\extractMemories\*.ts`                                                                      | Background memory extraction agent and write constraints.                                                                          |
-| Claude Code | `D:\claude-code-rev-main\src\commands\memory\memory.tsx`, `D:\claude-code-rev-main\src\components\memory\MemoryFileSelector.tsx` | `/memory` command, editor flow, toggles, and memory folder access.                                                                 |
-| OpenLoomi   | `docs/internal/memory-system.md`                                                                                                 | Internal memory implementation mechanism.                                                                                          |
-| OpenLoomi   | `apps/web/lib/memory/unified-search.ts`                                                                                          | Final unified search merger.                                                                                                       |
-| OpenLoomi   | `packages/ai/src/memory/*`                                                                                                       | Raw memory lifecycle contracts, policy, scoring, summarization, engine, and query API.                                             |

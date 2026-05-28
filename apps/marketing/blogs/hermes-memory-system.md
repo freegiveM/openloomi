@@ -1,8 +1,7 @@
 ---
 title: "Hermes Agent Memory System: Curated Memory, Session Search, and Self-Improvement"
-date: 2026-05-28
+date: 2026-05-27
 description: A technical deep dive into Hermes Agent memory, including curated memory files, session search, and self-improving skills.
-image: /img/blogs/19.png
 ---
 
 # Hermes Memory System
