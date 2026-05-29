@@ -149,6 +149,14 @@ The rest is up to you.
 
 ---
 
+## Check Out the Code
+
+**[→ View OpenLoomi on GitHub](https://github.com/melandlabs/openloomi)**
+
+Star the repo, read the source, open issues, or fork it — everything lives there.
+
+---
+
 ## Try It Out
 
 | Platform            | Download                                                                                                   |
