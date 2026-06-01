@@ -502,20 +502,35 @@ export class LoCoMoEvaluator {
 
     // Load checkpoint for resume support
     const checkpoint = (await this.loadCheckpoint(sample.sample_id)) || {};
-    const completedIndices = new Set(Object.keys(checkpoint).map(Number));
-    const skippedCount = completedIndices.size;
+
+    // Separate passed vs failed questions - only re-evaluate failed ones
+    const passedIndices = new Set<number>();
+    const failedIndices = new Set<number>();
+
+    for (const [idx, pred] of Object.entries(checkpoint)) {
+      const i = Number(idx);
+      if (pred.correct) {
+        passedIndices.add(i);
+      } else {
+        failedIndices.add(i);
+      }
+    }
+
+    const skippedCount = passedIndices.size;
+    const retriedCount = failedIndices.size;
 
     const predictions: Prediction[] = [];
     let correct = 0;
 
-    // If we have checkpoint data, restore predictions
+    // If we have checkpoint data, restore predictions for passed questions
     if (skippedCount > 0) {
-      for (const [idx, pred] of Object.entries(checkpoint)) {
+      for (const i of passedIndices) {
+        const pred = checkpoint[i];
         predictions.push(pred);
-        if (pred.correct) correct++;
+        correct++;
       }
       console.log(
-        `[LoCoMo] Resuming from checkpoint: ${skippedCount} questions already evaluated`,
+        `[LoCoMo] Resuming from checkpoint: ${skippedCount} passed (skipping), ${retriedCount} failed (retrying)`,
       );
     }
 
@@ -531,8 +546,8 @@ export class LoCoMoEvaluator {
     for (let i = 0; i < questionsToEvaluate.length; i++) {
       const qa = questionsToEvaluate[i];
 
-      // Skip if already evaluated (from checkpoint)
-      if (completedIndices.has(i)) {
+      // Skip if already passed (from checkpoint) - only re-evaluate failed ones
+      if (passedIndices.has(i)) {
         continue;
       }
 
