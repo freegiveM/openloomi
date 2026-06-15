@@ -54,6 +54,19 @@ function httpStatusError(
   return Object.assign(new Error(message), { status });
 }
 
+/**
+ * Detect receive_id_type based on Feishu ID prefixes.
+ * Feishu IDs starting with "ou_" are open_id (user),
+ * "on_" are union_id, "oc_" are chat_id (group/private chat).
+ * Defaults to chat_id for unknown prefixes.
+ */
+function detectReceiveIdType(id: string): string {
+  if (id.startsWith("ou_")) return "open_id";
+  if (id.startsWith("on_")) return "union_id";
+  if (id.startsWith("oc_")) return "chat_id";
+  return "chat_id";
+}
+
 type FeishuMessagePayload = {
   msg_type: "text" | "post";
   content: string;
@@ -457,7 +470,7 @@ export class FeishuAdapter extends MessagePlatformAdapter {
   ): Promise<void> {
     const client = this.getClient();
     const response = await (client.im.v1.message.create as any)({
-      params: { receive_id_type: "chat_id" },
+      params: { receive_id_type: detectReceiveIdType(receiveId) },
       data: {
         receive_id: receiveId,
         msg_type: "image",
@@ -510,7 +523,7 @@ export class FeishuAdapter extends MessagePlatformAdapter {
     for (const payload of payloads) {
       try {
         const response = await (client.im.v1.message.create as any)({
-          params: { receive_id_type: "chat_id" },
+          params: { receive_id_type: detectReceiveIdType(receiveId) },
           data: {
             receive_id: receiveId,
             msg_type: payload.msg_type,
@@ -574,7 +587,7 @@ export class FeishuAdapter extends MessagePlatformAdapter {
 
   /**
    * Feishu uses chat_id as conversation identifier (both private and group chats have chat_id)
-   * Simply use chat_id for receive_id_type
+   * detectReceiveIdType dynamically selects receive_id_type based on ID prefix (ou_ -> open_id, oc_ -> chat_id).
    */
   async sendMessages(
     target: MessageTarget,
