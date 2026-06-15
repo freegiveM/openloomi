@@ -102,6 +102,7 @@ export interface MultipartUploadSession {
 export async function beginMultipartUpload(
   pathname: string,
   contentType: string,
+  signal?: AbortSignal,
 ): Promise<MultipartUploadSession> {
   const resp = await blobApi("/mpu", {
     queryParams: { pathname },
@@ -110,6 +111,7 @@ export async function beginMultipartUpload(
       "x-mpu-action": "create",
       "x-content-type": contentType,
     },
+    signal,
   });
 
   if (!resp.ok) {
@@ -134,6 +136,7 @@ export async function uploadBlobPart(
   partNumber: number,
   body: ArrayBuffer | Buffer,
   contentType: string,
+  signal?: AbortSignal,
 ): Promise<{ etag: string; partNumber: number }> {
   const resp = await blobApi("/mpu", {
     queryParams: { pathname: key },
@@ -146,6 +149,7 @@ export async function uploadBlobPart(
       "x-content-type": contentType,
     },
     body: body instanceof ArrayBuffer ? body : Buffer.from(body as Buffer),
+    signal,
   });
 
   if (!resp.ok) {
@@ -169,6 +173,7 @@ export async function finishMultipartUpload(
   parts: { etag: string; partNumber: number }[],
   contentType: string,
   uploadId: string,
+  signal?: AbortSignal,
 ): Promise<BlobUploadResult> {
   const resp = await blobApi("/mpu", {
     queryParams: { pathname: key },
@@ -179,6 +184,7 @@ export async function finishMultipartUpload(
       "x-mpu-upload-id": uploadId,
     },
     body: JSON.stringify(parts),
+    signal,
   });
 
   if (!resp.ok) {
