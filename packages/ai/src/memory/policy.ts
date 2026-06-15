@@ -40,7 +40,7 @@ export interface MemoryForgettingPolicyOverrides {
 
 export const DEFAULT_MEMORY_FORGETTING_POLICY: MemoryForgettingPolicy = {
   shortMaxAgeMs: 7 * DAY_MS,
-  midMaxAgeMs: 90 * DAY_MS,
+  midMaxAgeMs: 365 * 10 * DAY_MS, // 10 years, effectively unlimited
   scoreThresholds: {
     shortToMid: 0.65,
     midToLong: 0.45,
