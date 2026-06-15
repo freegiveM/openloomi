@@ -28,6 +28,11 @@ import type {
   MessageEvent,
   MessageTarget,
 } from "@openloomi/integrations/channels";
+import {
+  calculateChunkBoundary,
+  classifyDiscordError,
+  resolveDiscordConnectionState,
+} from "./state";
 
 const DEBUG = process.env.DEBUG_DISCORD === "true";
 
@@ -83,6 +88,7 @@ export class DiscordAdapter extends MessagePlatformAdapter {
   messages: Messages = [];
   private ownerUserId?: string;
   private ownerUserType?: UserType;
+  private processedIds: Set<string> = new Set();
 
   constructor(opts?: {
     token?: string;
@@ -345,7 +351,13 @@ export class DiscordAdapter extends MessagePlatformAdapter {
           });
           channelMessageCount++;
 
-          if (extracted.length >= maxMessageChunkCount) {
+          // Use pure function for chunk boundary calculation
+          const boundary = calculateChunkBoundary(
+            extracted.length,
+            maxMessageChunkCount,
+            channelMessageCount,
+          );
+          if (boundary.shouldStop) {
             return { messages: extracted, hasMore: true };
           }
         }
@@ -387,7 +399,13 @@ export class DiscordAdapter extends MessagePlatformAdapter {
               });
               channelMessageCount++;
 
-              if (extracted.length >= maxMessageChunkCount) {
+              // Use pure function for chunk boundary calculation
+              const boundary = calculateChunkBoundary(
+                extracted.length,
+                maxMessageChunkCount,
+                channelMessageCount,
+              );
+              if (boundary.shouldStop) {
                 return { messages: extracted, hasMore: true };
               }
             }
@@ -397,15 +415,21 @@ export class DiscordAdapter extends MessagePlatformAdapter {
                 `[discord] Fetched ${additionalMessages.length} additional messages for channel ${channel.id}, total: ${channelMessageCount}`,
               );
           } catch (error) {
+            // Use pure function to classify error for better logging
+            const classification = classifyDiscordError(error);
             console.warn(
               `[discord] Failed to fetch additional messages for channel ${channel.id}:`,
+              `[${classification.type}${classification.retryable ? ", retryable" : ""}]`,
               error,
             );
           }
         }
       } catch (error) {
+        // Use pure function to classify error for better logging
+        const classification = classifyDiscordError(error);
         console.warn(
           `[Bot ${this.botId ? ` ${this.botId}` : ""}] [discord] Failed to fetch messages for channel ${channel.id}:`,
+          `[${classification.type}${classification.retryable ? ", retryable" : ""}]`,
           error,
         );
       }
@@ -482,10 +506,15 @@ export class DiscordAdapter extends MessagePlatformAdapter {
 
   async kill(): Promise<boolean> {
     this.dialogsCache = [];
+    const state = resolveDiscordConnectionState(this.client.isReady());
+    if (DEBUG)
+      console.log(`[discord] Killing adapter, current state: ${state}`);
+
     if (this.client.isReady()) {
       await this.client.destroy();
     }
     this.readyPromise = null;
+    this.processedIds.clear();
     return true;
   }
 }
