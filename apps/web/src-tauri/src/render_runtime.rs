@@ -109,9 +109,14 @@ fn get_download_spec() -> Option<RuntimeDownloadSpec> {
 fn find_soffice_binary(root: &Path) -> Option<PathBuf> {
     [
         root.join("soffice"),
-        root.join("LibreOffice.app").join("Contents").join("MacOS").join("soffice"),
+        root.join("LibreOffice.app")
+            .join("Contents")
+            .join("MacOS")
+            .join("soffice"),
         root.join("program").join("soffice"),
-        root.join("libreoffice-msi").join("program").join("soffice.exe"),
+        root.join("libreoffice-msi")
+            .join("program")
+            .join("soffice.exe"),
         root.join("program").join("soffice.exe"),
         root.join("soffice.exe"),
     ]
@@ -189,9 +194,12 @@ fn load_installed_info() -> Option<InstalledRenderEngineInfo> {
 }
 
 fn get_bundled_render_engine_root() -> PathBuf {
-    get_first_existing_resource_path(&format!("render-engine/{}", get_platform_dir())).unwrap_or_else(
-        || get_packaged_resource_base_dir().join("render-engine").join(get_platform_dir()),
-    )
+    get_first_existing_resource_path(&format!("render-engine/{}", get_platform_dir()))
+        .unwrap_or_else(|| {
+            get_packaged_resource_base_dir()
+                .join("render-engine")
+                .join(get_platform_dir())
+        })
 }
 
 fn get_system_render_engine_paths() -> Option<(PathBuf, PathBuf)> {
@@ -259,7 +267,7 @@ fn bundled_status() -> Option<RenderEngineStatus> {
         error_message: None,
         soffice_binary_path: Some(soffice.to_string_lossy().to_string()),
         pdftoppm_binary_path: Some(pdftoppm.to_string_lossy().to_string()),
-            })
+    })
 }
 
 fn system_status() -> Option<RenderEngineStatus> {
@@ -283,7 +291,7 @@ fn system_status() -> Option<RenderEngineStatus> {
         error_message: None,
         soffice_binary_path: Some(soffice.to_string_lossy().to_string()),
         pdftoppm_binary_path: Some(pdftoppm.to_string_lossy().to_string()),
-            })
+    })
 }
 
 pub fn get_render_engine_status() -> RenderEngineStatus {
@@ -341,10 +349,18 @@ fn download_and_install_render_engine() -> Result<(), String> {
     let (soffice, pdftoppm) = find_render_engine_binaries(&install_dir)
         .ok_or("Render engine install completed but required binaries were not found")?;
 
+    // Derive the actual install_dir from the binary paths, not from version_dir.
+    // The archive may have a nested platform subdirectory structure, so the
+    // actual binaries may be in a subdirectory of version_dir.
+    let actual_install_dir = soffice
+        .parent()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or(info.install_dir);
+
     let full_info = InstalledRenderEngineInfo {
         version: info.version,
         installed_at: info.installed_at,
-        install_dir: info.install_dir,
+        install_dir: actual_install_dir,
         soffice_binary_path: soffice.to_string_lossy().to_string(),
         pdftoppm_binary_path: pdftoppm.to_string_lossy().to_string(),
     };
@@ -366,13 +382,30 @@ pub fn ensure_render_engine_download_started() {
     );
 }
 
+fn render_engine_error_status(error: String) -> RenderEngineStatus {
+    RenderEngineStatus {
+        available: false,
+        install_dir: None,
+        installed: false,
+        downloading: false,
+        reason: Some("unexpected-error".to_string()),
+        error_message: Some(error),
+        soffice_binary_path: None,
+        pdftoppm_binary_path: None,
+    }
+}
+
 #[tauri::command]
 pub fn get_render_engine_status_cmd() -> RenderEngineStatus {
-    get_render_engine_status()
+    crate::panic_guard::catch_unwind_str("get_render_engine_status_cmd", get_render_engine_status)
+        .unwrap_or_else(render_engine_error_status)
 }
 
 #[tauri::command]
 pub fn ensure_render_engine_download_started_cmd() -> RenderEngineStatus {
-    ensure_render_engine_download_started();
-    get_render_engine_status()
+    crate::panic_guard::catch_unwind_str("ensure_render_engine_download_started_cmd", || {
+        ensure_render_engine_download_started();
+        get_render_engine_status()
+    })
+    .unwrap_or_else(render_engine_error_status)
 }
