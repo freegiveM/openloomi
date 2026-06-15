@@ -35,9 +35,10 @@ export type ModelType =
   | "minimax/minimax-m2.7"
   | "qwen/qwen3.6-plus"
   | "qwen/qwen3.6-flash"
+  | "qwen/qwen3.7-max"
   | "xiaomi/mimo-v2.5"
   | "xiaomi/mimo-v2.5-pro"
-  | "stepfun/step-3.5-flash"
+  | "stepfun/step-3.7-flash"
   | "openrouter/auto"
   | "openrouter/fusion";
 
@@ -189,7 +190,7 @@ export const MODEL_PRICING: Record<ModelType, ModelPricing> = {
     outputPricePerMillion: 4.5,
     supportsVision: true,
   },
-  "stepfun/step-3.5-flash": {
+  "stepfun/step-3.7-flash": {
     inputPricePerMillion: 0.1,
     outputPricePerMillion: 0.3,
     supportsVision: false,
@@ -216,6 +217,11 @@ export const MODEL_PRICING: Record<ModelType, ModelPricing> = {
   "qwen/qwen3.6-plus": {
     inputPricePerMillion: 0.3,
     outputPricePerMillion: 1,
+    supportsVision: true,
+  },
+  "qwen/qwen3.7-max": {
+    inputPricePerMillion: 2.5,
+    outputPricePerMillion: 7.5,
     supportsVision: true,
   },
   "openrouter/auto": {
@@ -519,6 +525,217 @@ export function getImageModelPricing(
 ): (typeof IMAGE_MODEL_PRICING)[keyof typeof IMAGE_MODEL_PRICING] {
   const canonical = getCanonicalImageModel(model);
   return IMAGE_MODEL_PRICING[canonical] || IMAGE_MODEL_PRICING.default;
+}
+
+// ============================================================
+// Video Model Pricing
+// ============================================================
+
+/**
+ * Video model ID aliases - maps common names to canonical model IDs
+ */
+export const VIDEO_MODEL_ALIASES: Record<string, string> = {
+  "kling-v3.0-pro": "kwaivgi/kling-v3.0-pro",
+  "kling-v3.0-std": "kwaivgi/kling-v3.0-std",
+  "veo-3.1-fast": "google/veo-3.1-fast",
+  "veo-3.1": "google/veo-3.1",
+  "hailuo-2.3": "minimax/hailuo-2.3",
+  "seedance-2.0-fast": "bytedance/seedance-2.0-fast",
+  "wan-2.7": "alibaba/wan-2.7",
+};
+
+/**
+ * Video model pricing configuration
+ * Credits per second of video generated
+ * 1 credit ≈ $0.0000667 (USD) based on CREDIT_VALUE_USD
+ */
+export const VIDEO_MODEL_PRICING: Record<
+  string,
+  { creditsPerSecond: number; description: string }
+> = {
+  // OpenRouter Video Models
+  // Pricing based on OpenRouter market rates (approximate)
+  // 1 credit ≈ $0.0000667 (USD)
+  "kwaivgi/kling-v3.0-pro": {
+    creditsPerSecond: 500,
+    description: "Kling 3.0 Pro (OpenRouter)",
+  },
+  "kwaivgi/kling-v3.0-std": {
+    creditsPerSecond: 300,
+    description: "Kling 3.0 Standard (OpenRouter)",
+  },
+  "google/veo-3.1-fast": {
+    creditsPerSecond: 400,
+    description: "Google Veo 3.1 Fast (OpenRouter)",
+  },
+  "google/veo-3.1": {
+    creditsPerSecond: 800,
+    description: "Google Veo 3.1 (OpenRouter)",
+  },
+
+  // MiniMax Hailuo
+  "minimax/hailuo-2.3": {
+    creditsPerSecond: 200,
+    description: "MiniMax Hailuo 2.3 (OpenRouter)",
+  },
+
+  // ByteDance Seedance
+  "bytedance/seedance-2.0-fast": {
+    creditsPerSecond: 200,
+    description: "ByteDance Seedance 2.0 Fast (OpenRouter)",
+  },
+
+  // Alibaba Wan
+  "alibaba/wan-2.7": {
+    creditsPerSecond: 400,
+    description: "Alibaba Wan 2.7 (OpenRouter)",
+  },
+
+  // Default fallback
+  default: {
+    creditsPerSecond: 300,
+    description: "Default video model",
+  },
+};
+
+/**
+ * Get canonical model name from alias
+ */
+export function getCanonicalVideoModel(model: string): string {
+  const lower = model.toLowerCase();
+  return VIDEO_MODEL_ALIASES[lower] || VIDEO_MODEL_ALIASES[model] || model;
+}
+
+/**
+ * Calculate credits for video generation
+ * @param model Video model name (supports aliases)
+ * @param durationSeconds Duration of video in seconds
+ * @returns Credits required (rounded up)
+ */
+export function calculateVideoCredits(
+  model: string,
+  durationSeconds: number,
+): number {
+  const canonical = getCanonicalVideoModel(model);
+  const pricing = VIDEO_MODEL_PRICING[canonical] || VIDEO_MODEL_PRICING.default;
+  return Math.ceil(durationSeconds * pricing.creditsPerSecond);
+}
+
+/**
+ * Get video model pricing info
+ */
+export function getVideoModelPricing(
+  model: string,
+): (typeof VIDEO_MODEL_PRICING)[keyof typeof VIDEO_MODEL_PRICING] {
+  const canonical = getCanonicalVideoModel(model);
+  return VIDEO_MODEL_PRICING[canonical] || VIDEO_MODEL_PRICING.default;
+}
+
+// ============================================================
+// Prompt Cache Pricing
+// ============================================================
+
+/**
+ * Prompt cache pricing multipliers (Anthropic)
+ * 5m cache writes cost 25% more than normal input tokens
+ * 1h cache writes cost 100% more (2x) than normal input tokens
+ * Cache reads cost 90% less than normal input tokens
+ */
+export const CACHE_WRITE_5M_MULTIPLIER = 1.25;
+export const CACHE_WRITE_1H_MULTIPLIER = 2.0;
+export const CACHE_READ_MULTIPLIER = 0.1;
+
+/**
+ * Statistics for prompt cache usage and cost savings
+ */
+export interface PromptCacheStats {
+  cacheCreationInputTokens: number;
+  cacheReadInputTokens: number;
+  cacheCreation1hTokens: number;
+  cacheCreation5mTokens: number;
+  cacheHitRate: number; // 0-1, ratio of cache_read to total input tokens
+  creditsSaved: number; // credits saved by cache reads vs full price
+  creditsWithoutCache: number; // hypothetical cost if no caching
+  creditsWithCache: number; // actual cost with caching
+}
+
+/**
+ * Calculate prompt cache statistics including cost savings
+ *
+ * Note on inputTokens: The Anthropic SDK reports inputTokens as the count of
+ * non-cached input tokens only. Total input = inputTokens + cacheCreationInputTokens + cacheReadInputTokens.
+ *
+ * @param usage Token usage including cache breakdown
+ * @param model Model type for pricing lookup
+ * @returns PromptCacheStats with hit rate, actual cost, and savings
+ */
+export function calculatePromptCacheStats(
+  usage: {
+    inputTokens: number;
+    outputTokens: number;
+    cacheCreationInputTokens: number;
+    cacheReadInputTokens: number;
+    cacheCreation1hTokens?: number;
+    cacheCreation5mTokens?: number;
+  },
+  model: ModelType = "default",
+): PromptCacheStats {
+  const {
+    inputTokens,
+    outputTokens,
+    cacheCreationInputTokens,
+    cacheReadInputTokens,
+    cacheCreation1hTokens = 0,
+    cacheCreation5mTokens = 0,
+  } = usage;
+
+  // Total input tokens = non-cached + cache write + cache read
+  const totalInputTokens =
+    inputTokens + cacheCreationInputTokens + cacheReadInputTokens;
+
+  // Cache hit rate: proportion of input served from cache
+  const cacheHitRate =
+    totalInputTokens > 0 ? cacheReadInputTokens / totalInputTokens : 0;
+
+  // Hypothetical cost without caching: all input at full price
+  const creditsWithoutCache =
+    calculateInputCredits(totalInputTokens, model) +
+    calculateOutputCredits(outputTokens, model);
+
+  // Separate 1h and 5m cache write costs (different pricing tiers)
+  // Remainder (tokens not accounted for by 1h/5m breakdown) uses the
+  // cheaper 5m rate as a conservative fallback — avoids overreporting
+  // savings when the TTL split is unavailable or a new tier appears.
+  const remainderWriteTokens = Math.max(
+    0,
+    cacheCreationInputTokens - cacheCreation1hTokens - cacheCreation5mTokens,
+  );
+  const cacheWriteCredits =
+    calculateInputCredits(cacheCreation1hTokens, model) *
+      CACHE_WRITE_1H_MULTIPLIER +
+    calculateInputCredits(cacheCreation5mTokens, model) *
+      CACHE_WRITE_5M_MULTIPLIER +
+    calculateInputCredits(remainderWriteTokens, model) *
+      CACHE_WRITE_5M_MULTIPLIER;
+
+  const creditsWithCache =
+    calculateInputCredits(inputTokens, model) +
+    cacheWriteCredits +
+    calculateInputCredits(cacheReadInputTokens, model) * CACHE_READ_MULTIPLIER +
+    calculateOutputCredits(outputTokens, model);
+
+  const creditsSaved = creditsWithoutCache - creditsWithCache;
+
+  return {
+    cacheCreationInputTokens,
+    cacheReadInputTokens,
+    cacheCreation1hTokens,
+    cacheCreation5mTokens,
+    cacheHitRate,
+    creditsSaved,
+    creditsWithoutCache,
+    creditsWithCache,
+  };
 }
 
 /**

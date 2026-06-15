@@ -27,4 +27,9 @@ export {
   calculateTranscriptionCredits,
   calculateTTSCredits,
   getAudioModelPricing,
+  VIDEO_MODEL_PRICING,
+  VIDEO_MODEL_ALIASES,
+  calculateVideoCredits,
+  getCanonicalVideoModel,
+  getVideoModelPricing,
 } from "./model-pricing";

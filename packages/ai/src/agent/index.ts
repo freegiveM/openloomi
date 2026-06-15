@@ -14,6 +14,7 @@ export type {
   AgentQuestion,
   AgentRequest,
   AgentSession,
+  AgentSubagentDefinition,
   ConversationMessage,
   ExecuteOptions,
   FileAttachment,
@@ -72,12 +73,16 @@ export {
 // Base agent
 export {
   BaseAgent,
+  CLAUDE_CODE_READ_TOOL_WORKAROUND_INSTRUCTION,
   PLANNING_INSTRUCTION,
   getWorkspaceInstruction,
   formatPlanForExecution,
   parsePlanningResponse,
   parsePlanFromResponse,
   getLanguageInstructionForBase,
+  getProfessionalOutputStyleInstruction,
+  withClaudeCodeReadToolWorkaroundForSubagents,
+  withClaudeCodeReadToolWorkaround,
   type AgentCapabilities,
   type SandboxOptions,
   type PlanningResponse,
@@ -115,5 +120,18 @@ export * from "./model";
 // Routing
 export * from "./routing";
 
+// Video Generation
+export * from "./video-gen";
+
 // Utils
 export { extractJsonFromMarkdown } from "./utils";
+
+// Language directive (ports + default adapter)
+export type {
+  DirectiveChannel,
+  LanguageDirectiveBuilder,
+} from "./ports/language-directive.port";
+export {
+  DefaultLanguageDirectiveBuilder,
+  defaultLanguageDirectiveBuilder,
+} from "./adapters/default-language-directive-builder";

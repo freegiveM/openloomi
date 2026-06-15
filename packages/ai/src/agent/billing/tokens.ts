@@ -70,7 +70,7 @@ export function getTotalCredits(
 }
 
 // Re-export model pricing types and utilities
-export type { ModelType } from "./model-pricing";
+export type { ModelType, PromptCacheStats } from "./model-pricing";
 export {
   MODEL_PRICING,
   getModelPricing,
@@ -80,4 +80,8 @@ export {
   getImageModelPricing,
   IMAGE_MODEL_PRICING,
   getCanonicalImageModel,
+  CACHE_WRITE_5M_MULTIPLIER,
+  CACHE_WRITE_1H_MULTIPLIER,
+  CACHE_READ_MULTIPLIER,
+  calculatePromptCacheStats,
 } from "./model-pricing";

@@ -10,6 +10,7 @@
 // ============================================================================
 
 import type { SandboxConfig, SandboxProviderType } from "./sandbox/types";
+import type { PromptCacheStats } from "./billing/model-pricing";
 
 // Re-export as types (for external consumers)
 export type { SandboxConfig, SandboxProviderType };
@@ -36,6 +37,19 @@ export interface ModelConfig {
   thinkingLevel?: "disabled" | "low" | "adaptive";
 }
 
+export interface AgentSubagentDefinition {
+  /** Natural-language description of when this subagent should be used. */
+  description: string;
+  /** Dedicated system prompt for the subagent. */
+  prompt: string;
+  /** Tool names the subagent may use. Omit to inherit provider defaults. */
+  tools?: string[];
+  /** Tool names explicitly unavailable to the subagent. */
+  disallowedTools?: string[];
+  /** Model alias or concrete model id. "inherit" uses the parent model. */
+  model?: "inherit" | "haiku" | "sonnet" | "opus" | string;
+}
+
 // ============================================================================
 // Message Types
 // ============================================================================
@@ -51,12 +65,16 @@ export type AgentMessageType =
   | "plan"
   | "direct_answer"
   | "question"
+  | "capabilityRequest"
   | "insightsRefresh"
   | "permission_request"
   | "password_input"
   | "reasoning"
-  | "preferenceUpdate"
-  | "memoryUpdate";
+  | "rulesUpdated"
+  | "memoryUpdate"
+  | "artifact_baseline"
+  | "scheduleNotice"
+  | "retry";
 
 export interface AgentMessage {
   type: AgentMessageType;
@@ -73,21 +91,59 @@ export interface AgentMessage {
   toolUseId?: string;
   output?: string;
   isError?: boolean;
+  /**
+   * Content-addressed snapshots of files this tool result produced, keyed by
+   * the generated-file path as resolved from the tool input/output. Values
+   * are session-relative paths under `.snapshots/`. Attached server-side on
+   * `tool_result` messages so chat message parts can reference the immutable
+   * version that existed when the message was created, even after the live
+   * file is edited in place.
+   */
+  fileSnapshots?: Record<string, string>;
   /** Plan fields */
   plan?: TaskPlan;
   /** Error fields */
   message?: string;
   /** Question fields (for interactive skills) */
   question?: AgentQuestion;
+  /**
+   * Capability authorization request — emitted when the agent calls the
+   * `requestAuthorization` MCP tool because the user is missing a connector or
+   * native permission needed to fulfil the request. The agent loop PARKS until
+   * the client resolves it (the user connects what they want and clicks
+   * Continue), so the model cannot fabricate an empty result in the meantime.
+   * `primaryCapabilityIds` and `secondaryCapabilityIds` preserve the LLM's
+   * priority judgement from the maintained connector capability guide plus the
+   * user's intent. `capabilityIds` is the merged compatibility list (connector
+   * platform ids like "slack" or permission ids like
+   * "macos:screen-recording"); the client resolves them to concrete
+   * capabilities and renders the unified guidance card.
+   */
+  capabilityRequest?: {
+    id: string;
+    capabilityIds: string[];
+    primaryCapabilityIds?: string[];
+    secondaryCapabilityIds?: string[];
+    reason?: string | null;
+    status?: "pending" | "resolved" | "cancelled";
+  };
   /** Insight change fields (for optimistic updates) */
   action?: "create" | "update" | "delete";
   insightId?: string;
   insight?: Record<string, unknown>;
-  /** Preference update fields (for explicit user preference changes) */
-  preferenceUpdate?: {
-    preferenceType: string;
-    value: string;
-    displayLabel: string;
+  /** Scoped assistant behavior rules updated by the agent. */
+  rulesUpdated?: {
+    scopeType: "global" | "task";
+    scopeId: string;
+    rules: Array<{
+      id: string;
+      ruleType: string;
+      ruleKey: string;
+      value: Record<string, unknown>;
+      displayLabel: string;
+      enabled: boolean;
+      source: string;
+    }>;
   };
   /**
    * Memory update fields — fired when the agent writes a user-fact markdown
@@ -103,6 +159,20 @@ export interface AgentMessage {
     description?: string;
     filePath?: string;
   };
+  /**
+   * Task schedule notice — fired during the first task turn when the async
+   * bootstrap could not apply the recurring schedule the user asked for
+   * (e.g. an interval below the supported minimum). The UI surfaces this as a
+   * warning toast so the user perceives that no automatic schedule was set.
+   */
+  scheduleNotice?: "below_minimum";
+  /** Prompt cache statistics — populated on 'result' messages when cache data is available */
+  cacheStats?: PromptCacheStats;
+  /** Raw token usage from SDK — populated on 'result' messages */
+  usage?: {
+    inputTokens: number;
+    outputTokens: number;
+  };
   /** Permission request fields */
   permissionRequest?: {
     toolName: string;
@@ -116,6 +186,18 @@ export interface AgentMessage {
     toolUseID: string;
     originalCommand: string;
   };
+  /** Workspace artifact attribution baseline timestamp. */
+  artifactBaselineAt?: string;
+  /**
+   * Retry fields — emitted on 'retry' messages when the provider restarts a
+   * query after a transient error (issue #2488). `attempt` is the 1-based
+   * number of the upcoming attempt and `maxAttempts` the total it may run.
+   * The UI uses these to surface a clear, localized retry notice and to drop
+   * the reasoning accumulated in the aborted round (which the restart
+   * re-generates) so duplicate thinking does not stack up.
+   */
+  attempt?: number;
+  maxAttempts?: number;
 }
 
 /**
@@ -144,6 +226,47 @@ export interface ConversationMessage {
   content: string;
   /** Image file paths attached to this message (saved to workspace) */
   imagePaths?: string[];
+}
+
+/**
+ * Delivery semantics for input that arrives while a run is active.
+ *
+ * - "steer": the user wants to redirect the agent NOW. The host interrupts the
+ *   current assistant turn so the input is seen immediately (the only way to
+ *   get the model's attention before the turn boundary with the current SDK).
+ * - "inform": a notification the agent should pick up at the next natural
+ *   boundary (next tool result, or the turn boundary) WITHOUT interrupting —
+ *   e.g. "the user just authorized Gmail". Never aborts in-flight work and
+ *   never produces interrupt markers in the transcript.
+ */
+export type AgentSupplementalInputIntent = "steer" | "inform";
+
+export interface AgentSupplementalInput {
+  id: string;
+  content: string;
+  createdAt: string;
+  /** Defaults to "steer" when absent (legacy producers). */
+  intent?: AgentSupplementalInputIntent;
+}
+
+export interface AgentSupplementalInputSource extends AsyncIterable<AgentSupplementalInput> {
+  /**
+   * Called by provider implementations so the host can interrupt the current
+   * assistant turn when a user sends new input into the active run. Only
+   * "steer" inputs trigger this handler; "inform" inputs wait for a boundary.
+   */
+  setInterruptHandler?: (handler: (() => Promise<void> | void) | null) => void;
+  /** Returns true when user input is queued but not yet yielded to the SDK. */
+  hasPending?: () => boolean;
+  /**
+   * Atomically removes and returns queued "inform" inputs so an adapter can
+   * surface them at a tool boundary (appended to the tool result) instead of
+   * waiting for the turn boundary. Inputs returned here are considered
+   * consumed and will not be yielded by the async iterator.
+   */
+  takePendingInform?: () => AgentSupplementalInput[];
+  /** Closes the input stream once the active run no longer accepts input. */
+  close?: () => void;
 }
 
 /**
@@ -180,6 +303,12 @@ export interface FileAttachment {
   name: string; // Original filename
   data: string; // Base64 encoded file data
   mimeType: string; // e.g. 'image/png', 'application/pdf', 'text/plain'
+  /**
+   * Category of the file attachment.
+   * - "input-image": User-uploaded image that should be saved to __inputs__/ directory
+   * - undefined: Default behavior, saved to workspace root (backward compatible)
+   */
+  category?: "input-image";
 }
 
 // ============================================================================
@@ -260,12 +389,25 @@ export interface AgentOptions {
   authToken?: string;
   /** Conversation history */
   conversation?: ConversationMessage[];
+  /** Additional user inputs delivered to an already-active run. */
+  supplementalInput?: AgentSupplementalInputSource;
   /** Working directory */
   cwd?: string;
   /** Allowed tools */
   allowedTools?: string[];
   /** Tools to exclude from the allowed list */
   excludeTools?: string[];
+  /**
+   * When true, task-config mutation tools (createTask / updateTaskSettings /
+   * bootstrapTaskConfiguration / findReusableExecutors / linkExecutorToTask /
+   * createScheduledExecutorForTask) are NOT registered for the agent. Used on
+   * the async first turn while background bootstrap is the sole writer of the
+   * task config, so the agent cannot race it and create a duplicate scheduled
+   * executor.
+   */
+  suppressTaskConfigMutations?: boolean;
+  /** Provider-level subagents that can be invoked by the main agent. */
+  subagents?: Record<string, AgentSubagentDefinition>;
   /** Task ID for tracking */
   taskId?: string;
   /** Abort controller for cancellation */
@@ -309,6 +451,8 @@ export interface AgentOptions {
     insightId?: string;
     insight?: Record<string, unknown>;
   }) => void;
+  /** Callback invoked after provider-managed user inputs have been materialized. */
+  onInputsMaterialized?: () => void | Promise<void>;
   /**
    * Callback invoked when the MCP-backed `AskUserQuestion` tool needs to ask
    * the user. Presence of this callback gates registration of the
@@ -318,11 +462,19 @@ export interface AgentOptions {
   onAskUserQuestion?: (question: AgentQuestion) => void;
   /** Callback invoked when the MCP Bash tool detects a sudo password prompt. */
   onPasswordRequired?: (request: { id: string; command: string }) => void;
-  /** Callback for user preference updates from saveUserPreference tool */
-  onPreferenceUpdate?: (data: {
-    preferenceType: string;
-    value: string;
-    displayLabel: string;
+  /** Callback for scoped assistant rule updates from upsertAssistantRules. */
+  onRulesUpdated?: (data: {
+    scopeType: "global" | "task";
+    scopeId: string;
+    rules: Array<{
+      id: string;
+      ruleType: string;
+      ruleKey: string;
+      value: Record<string, unknown>;
+      displayLabel: string;
+      enabled: boolean;
+      source: string;
+    }>;
   }) => void;
   /**
    * Called when the agent SDK has fully resolved a tool call's input — i.e.
