@@ -9,6 +9,7 @@
 
 import type { WASocket } from "@whiskeysockets/baileys";
 import type { ClientRegistry } from "@openloomi/integrations/core";
+import { DEBUG_WHATSAPP } from "./debug";
 
 // Module instance ID to detect if the module is being re-imported
 const MODULE_ID = Math.random().toString(36).slice(2, 8);
@@ -24,9 +25,11 @@ class WhatsAppClientRegistry implements ClientRegistry {
   registerClient(sessionKey: string, client: WASocket): void {
     const existing = this.clients.get(sessionKey);
     if (existing && existing !== client) {
-      console.log(
-        `[WhatsAppClientRegistry] SKIP REGISTER: sessionKey=${sessionKey} already has socket (new sock.user=${client.user?.id}, existing sock.user=${existing.user?.id}), not overwriting`,
-      );
+      if (DEBUG_WHATSAPP) {
+        console.log(
+          `[WhatsAppClientRegistry] SKIP REGISTER: sessionKey=${sessionKey} already has socket (new sock.user=${client.user?.id}, existing sock.user=${existing.user?.id}), not overwriting`,
+        );
+      }
       return;
     }
     this.clients.set(sessionKey, client);
@@ -36,9 +39,12 @@ class WhatsAppClientRegistry implements ClientRegistry {
    * Unregister a socket
    */
   unregisterClient(sessionKey: string): void {
-    console.log(
-      `[WhatsAppClientRegistry] UNREGISTER instance=${MODULE_ID} sessionKey=${sessionKey} (before keys=${[...this.clients.keys()]})`,
-    );
+    if (!this.clients.has(sessionKey)) return;
+    if (DEBUG_WHATSAPP) {
+      console.log(
+        `[WhatsAppClientRegistry] UNREGISTER instance=${MODULE_ID} sessionKey=${sessionKey} (before keys=${[...this.clients.keys()]})`,
+      );
+    }
     this.clients.delete(sessionKey);
   }
 

@@ -11,41 +11,66 @@
 import { Buffer } from "node:buffer";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
-import {
-  proto,
-  type WAMessage,
-  type WASocket,
-  fetchLatestBaileysVersion,
-  makeWASocket,
-  type ConnectionState,
-  DisconnectReason,
-} from "@whiskeysockets/baileys";
-import { downloadMediaMessage } from "@whiskeysockets/baileys/lib/Utils/messages";
-import pino from "pino";
 import { MessagePlatformAdapter } from "@openloomi/integrations/channels";
 import type {
   MessageEvent,
   MessageTarget,
 } from "@openloomi/integrations/channels";
 import type {
+  File as openloomiFile,
   Image as openloomiImage,
   Message as openloomiMessage,
-  File as openloomiFile,
   Messages,
 } from "@openloomi/integrations/channels";
 import type { ExtractedMessageInfo } from "@openloomi/integrations/channels/sources/types";
 import type {
   BaileysAuthStateProvider,
   ClientRegistry,
-  FileIngester,
   ConfigProvider,
+  FileIngester,
 } from "@openloomi/integrations/core";
-
-const DEBUG = process.env.DEBUG_WHATSAPP === "true";
+import {
+  type ConnectionState,
+  DisconnectReason,
+  type WAMessage,
+  type WASocket,
+  fetchLatestBaileysVersion,
+  makeWASocket,
+  proto,
+} from "@whiskeysockets/baileys";
+import { downloadMediaMessage } from "@whiskeysockets/baileys/lib/Utils/messages";
+import pino from "pino";
+import { DEBUG_WHATSAPP as DEBUG } from "./debug";
+import {
+  MAX_PERSISTED_MESSAGES_PER_CHAT,
+  WhatsAppMessageHistoryStore,
+} from "./message-history-store";
+import { parseQrCodeState, routeMessageType } from "./state";
 
 const maxDialogCount = 100;
-const maxMessageCount = 200;
+// Read window per chat — must match the store's per-chat cap, otherwise the
+// backfill anchor (oldest STORED message) lies outside the read slice and
+// stored in-window messages get silently hidden from insights.
+const maxMessageCount = MAX_PERSISTED_MESSAGES_PER_CHAT;
 const DEFAULT_MAX_MESSAGE_CHUNK_COUNT = 40;
+// How long getChatsByChunk waits for the phone-pushed initial history sync
+// (messaging-history.set) to populate this.chats before giving up.
+const HISTORY_SYNC_WAIT_TIMEOUT_MS = 30_000;
+const HISTORY_SYNC_POLL_INTERVAL_MS = 500;
+// On-demand history backfill (sock.fetchMessageHistory) limits. The phone
+// answers each request asynchronously via an ON_DEMAND messaging-history.set;
+// requests are bounded per chat and per iteration cycle to respect WhatsApp's
+// throttling of peer data operations.
+const BACKFILL_PAGE_SIZE = 50;
+const MAX_BACKFILL_REQUESTS_PER_CHAT = 3;
+const MAX_BACKFILL_REQUESTS_PER_CYCLE = 10;
+const MAX_CONSECUTIVE_BACKFILL_TIMEOUTS = 2;
+// After the breaker trips (phone looks offline), pause backfill on this
+// socket for a while instead of re-paying the timeouts on every refresh.
+const BACKFILL_OFFLINE_BACKOFF_MS = 10 * 60_000;
+const BACKFILL_RESPONSE_TIMEOUT_MS = 15_000;
+const BACKFILL_POLL_INTERVAL_MS = 250;
+const BACKFILL_THROTTLE_MS = 1_000;
 const WHATSAPP_MAX_ATTACHMENT_BYTES = 100 * 1024 * 1024;
 
 export type WhatsAppDialogInfo = {
@@ -79,12 +104,24 @@ type LoginDeferred = {
 function isImageMessage(message: openloomiMessage): message is openloomiImage {
   if (typeof message !== "object" || message === null) return false;
   if (!("url" in message) && !("base64" in message)) return false;
+  if ("length" in message) return false;
   return !isFileMessage(message);
 }
 
 function isFileMessage(message: openloomiMessage): message is openloomiFile {
   if (typeof message !== "object" || message === null) return false;
   return "url" in message && "name" in message;
+}
+
+function describeUnsupportedMessage(message: openloomiMessage): string {
+  if (!message || typeof message !== "object") return typeof message;
+  if ("length" in message && "url" in message) return "voice";
+  if ("origin" in message) return "quote";
+  if ("target" in message) return "mention";
+  if ("time" in message && "id" in message) return "source";
+  if ("display" in message && "nodes" in message) return "forward";
+  if ("type" in message && "name" in message) return "emoji";
+  return "content";
 }
 
 /**
@@ -103,7 +140,7 @@ export class WhatsAppAdapter extends MessagePlatformAdapter {
   sock: WASocket | null = null;
   botId: string;
   messages: Messages;
-  name = "";
+  name = "WhatsApp";
 
   private sessionId: string;
   private authStateProvider: BaileysAuthStateProvider | undefined;
@@ -120,6 +157,14 @@ export class WhatsAppAdapter extends MessagePlatformAdapter {
     offsetDate: 0,
     isInitialized: false,
   };
+  /** On-demand history backfill budget, reset per getChatsByChunk cycle. */
+  private backfillRequestsThisCycle = 0;
+  /** Persistent message store; created here when no listener attached one. */
+  private messageStore: WhatsAppMessageHistoryStore | null = null;
+  /** Override for the message store base dir (tests). */
+  private historyStoreDir?: string;
+  /** False when sessionId fell back to a random uuid (no botId/sessionKey). */
+  private hasStableSessionId = true;
   private isAuthenticated = false;
   private initializationPromise: Promise<void> | null = null;
   /** Exposed so other adapters (e.g. insights bot) can await socket readiness. */
@@ -131,7 +176,9 @@ export class WhatsAppAdapter extends MessagePlatformAdapter {
   private ownerUserType?: string;
   private eventCleanup: Array<() => void> = [];
   /** Pending reconnect socket creation, used to prevent concurrent reconnects */
-  private _pendingReconnect: Promise<WASocket> | null = null;
+  private _pendingReconnect: Promise<WASocket | null> | null = null;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private isClosed = false;
   /** Cache of recently sent messages for msgRetry requests (max 256 entries). */
   private sentMessageCache: Map<string, proto.IMessage>;
   private fileIngester?: FileIngester;
@@ -148,9 +195,12 @@ export class WhatsAppAdapter extends MessagePlatformAdapter {
     fileIngester?: FileIngester;
     clientRegistry?: ClientRegistry;
     configProvider?: ConfigProvider;
+    /** Override the persistent message store base dir (used by tests) */
+    historyStoreDir?: string;
   }) {
     super();
     this.botId = opts?.botId ?? "";
+    this.hasStableSessionId = Boolean(opts?.sessionKey ?? this.botId);
     this.sessionId =
       (opts?.sessionKey ?? this.botId) || `wa-${randomUUID().slice(0, 8)}`;
     this.messages = [];
@@ -160,6 +210,7 @@ export class WhatsAppAdapter extends MessagePlatformAdapter {
     this.fileIngester = opts?.fileIngester;
     this.clientRegistry = opts?.clientRegistry;
     this.configProvider = opts?.configProvider;
+    this.historyStoreDir = opts?.historyStoreDir;
     // Initialize sentMessageCache once here so it persists across createSocket()
     // calls and reconnections — the getMessage closure captures this reference.
     this.sentMessageCache = new Map<string, proto.IMessage>();
@@ -243,6 +294,10 @@ export class WhatsAppAdapter extends MessagePlatformAdapter {
    * Auth state must be loaded (await ensureAuthState()) before calling this.
    */
   private async createSocket(): Promise<WASocket> {
+    if (this.isClosed) {
+      throw new Error("[whatsapp] Adapter is closed");
+    }
+
     if (DEBUG)
       console.log(
         `[whatsapp] [${this.sessionId}] createSocket() called, current sock: ${!!this.sock}`,
@@ -269,6 +324,9 @@ export class WhatsAppAdapter extends MessagePlatformAdapter {
       );
 
     const { version } = await fetchLatestBaileysVersion();
+    if (this.isClosed) {
+      throw new Error("[whatsapp] Adapter is closed");
+    }
     const logger = pino({ level: DEBUG ? "debug" : "silent" });
 
     const sock = makeWASocket({
@@ -322,6 +380,10 @@ export class WhatsAppAdapter extends MessagePlatformAdapter {
     // Store the socket so subsequent calls can reference it (reconnect flow)
     this.sock = sock;
 
+    // Attach the persistent message store before the connection opens so it
+    // captures the one-time initial history sync pushed right after pairing.
+    this.ensureMessageStore(sock);
+
     // Register immediately — before connection="open" fires — so other adapters
     // (e.g. insights bot) can't race and create a duplicate socket. The "connection=open"
     // handler will re-register with the same socket (idempotent), so this is safe.
@@ -368,10 +430,14 @@ export class WhatsAppAdapter extends MessagePlatformAdapter {
 
       if (qr) {
         this.isAuthenticated = false;
+
+        // Delegate QR code state validation to state.ts pure function
+        const qrState = parseQrCodeState(qr);
         if (DEBUG)
           console.log(
-            `[whatsapp] [${this.sessionId}] QR received (len=${qr.length}), loginDeferred exists: ${!!this.loginDeferred}, firstQrResolved: ${this.loginDeferred?.firstQrResolved ?? false}`,
+            `[whatsapp] [${this.sessionId}] QR received (len=${qr.length}, valid=${qrState.isValid}, index=${qrState.codeIndex}), loginDeferred exists: ${!!this.loginDeferred}, firstQrResolved: ${this.loginDeferred?.firstQrResolved ?? false}`,
           );
+
         if (this.loginDeferred && !this.loginDeferred.firstQrResolved) {
           this.loginDeferred.firstQrResolved = true;
           this.loginDeferred.resolveFirstQr(qr);
@@ -467,9 +533,15 @@ export class WhatsAppAdapter extends MessagePlatformAdapter {
                 );
               return;
             }
+            if (this.isClosed) return;
             const oldSock = this.sock;
-            this._pendingReconnect = new Promise<WASocket>((resolve) => {
-              setTimeout(async () => {
+            this._pendingReconnect = new Promise<WASocket | null>((resolve) => {
+              this.reconnectTimer = setTimeout(async () => {
+                this.reconnectTimer = null;
+                if (this.isClosed) {
+                  resolve(null);
+                  return;
+                }
                 try {
                   // Kill the old socket to stop its listeners firing stale events
                   if (oldSock) {
@@ -483,7 +555,7 @@ export class WhatsAppAdapter extends MessagePlatformAdapter {
                       `[whatsapp] [${this.sessionId}] Reconnect createSocket failed:`,
                       err,
                     );
-                  resolve(null as unknown as WASocket);
+                  resolve(null);
                 } finally {
                   this._pendingReconnect = null;
                 }
@@ -523,7 +595,7 @@ export class WhatsAppAdapter extends MessagePlatformAdapter {
         }
 
         // Unregister from global registry
-        if (this.botId && this.clientRegistry) {
+        if (!this.isClosed && this.botId && this.clientRegistry) {
           this.clientRegistry.unregisterClient(this.botId);
         }
       }
@@ -688,9 +760,15 @@ export class WhatsAppAdapter extends MessagePlatformAdapter {
                 );
               return;
             }
+            if (this.isClosed) return;
             const oldSock = this.sock;
-            this._pendingReconnect = new Promise<WASocket>((resolve) => {
-              setTimeout(async () => {
+            this._pendingReconnect = new Promise<WASocket | null>((resolve) => {
+              this.reconnectTimer = setTimeout(async () => {
+                this.reconnectTimer = null;
+                if (this.isClosed) {
+                  resolve(null);
+                  return;
+                }
                 try {
                   if (oldSock) {
                     await this.kill(oldSock);
@@ -703,7 +781,7 @@ export class WhatsAppAdapter extends MessagePlatformAdapter {
                       `[whatsapp] [${this.sessionId}] Reconnect failed:`,
                       e,
                     );
-                  resolve(null as unknown as WASocket);
+                  resolve(null);
                 } finally {
                   this._pendingReconnect = null;
                 }
@@ -718,7 +796,7 @@ export class WhatsAppAdapter extends MessagePlatformAdapter {
             this.loginDeferred.rejectLogin(err);
           }
         }
-        if (this.botId && this.clientRegistry) {
+        if (!this.isClosed && this.botId && this.clientRegistry) {
           this.clientRegistry.unregisterClient(this.botId);
         }
       }
@@ -751,11 +829,271 @@ export class WhatsAppAdapter extends MessagePlatformAdapter {
   }
 
   private isTauriMode(): boolean {
-    return this.configProvider?.get("TAURI_MODE") === "true";
+    const tauriMode = this.configProvider?.get("TAURI_MODE");
+    const isTauri = this.configProvider?.get("IS_TAURI");
+    return typeof tauriMode === "string" || isTauri === "true";
   }
 
   private timeBeforeHours(hours: number): number {
     return Math.floor(Date.now() / 1000) - hours * 3600;
+  }
+
+  /**
+   * Wait for the initial history sync to populate this.chats.
+   * History arrives via phone-pushed messaging-history.set events
+   * (syncFullHistory: true); there is no server API to request it —
+   * resyncAppState only syncs app state (mute/archive/contacts) and
+   * gets rate-limited (rate-overlimit) when called repeatedly.
+   */
+  private async waitForInitialHistorySync(
+    timeoutMs = HISTORY_SYNC_WAIT_TIMEOUT_MS,
+  ): Promise<void> {
+    // The flag lives on the socket, not the adapter: callers (e.g. the
+    // insight refresh first-landing loop) construct a fresh adapter per call
+    // around the same socket. Once one full wait has timed out, repeating it
+    // is pointless — history sync is a one-time phone push.
+    const sockAny = this.sock as
+      | (WASocket & { __historySyncWaitTimedOut?: boolean })
+      | null;
+    if (sockAny?.__historySyncWaitTimedOut) {
+      console.log(
+        "[whatsapp] Initial history sync already timed out on this socket, skipping wait",
+      );
+      return;
+    }
+    const deadline = Date.now() + timeoutMs;
+    while (this.chats.size === 0 && Date.now() < deadline) {
+      await new Promise((resolve) =>
+        setTimeout(resolve, HISTORY_SYNC_POLL_INTERVAL_MS),
+      );
+    }
+    if (this.chats.size === 0 && sockAny) {
+      sockAny.__historySyncWaitTimedOut = true;
+    }
+  }
+
+  /**
+   * Make sure the socket carries a persistent message history store. The
+   * phone pushes the full history exactly once, seconds after pairing — so
+   * the store must be attached when the socket is created, not later by the
+   * self-message listener (whose frontend-triggered init loses that race).
+   * Keyed by sessionId so every adapter instance for the same WhatsApp
+   * session reads the same persisted data.
+   */
+  private ensureMessageStore(sock: WASocket): void {
+    const sockAny = sock as any;
+    const existingIsClosed =
+      sockAny.store instanceof WhatsAppMessageHistoryStore &&
+      sockAny.store.isClosed;
+    if (sockAny.store && !existingIsClosed) {
+      // Adopt a store another component (e.g. self-listener) already attached.
+      if (
+        !this.messageStore &&
+        sockAny.store instanceof WhatsAppMessageHistoryStore
+      ) {
+        this.messageStore = sockAny.store;
+      }
+      return;
+    }
+    // A destroyed store (e.g. discarded after a socket swap) must never be
+    // reused — all its writes are no-ops and persistence would silently
+    // freeze. Drop the stale reference and create a fresh one.
+    if (this.messageStore?.isClosed) {
+      this.messageStore = null;
+    }
+    if (!this.hasStableSessionId) {
+      // Random session ids change every instance — persisted files could
+      // never be found again after a restart NOR purged on account deletion
+      // (orphaned plain-text dirs). The store runs memory-only instead.
+      console.warn(
+        `[whatsapp] [${this.sessionId}] No stable botId/sessionKey — message store runs in-memory only`,
+      );
+    }
+    const store =
+      this.messageStore ??
+      new WhatsAppMessageHistoryStore({
+        accountId: this.sessionId,
+        baseDir: this.historyStoreDir,
+        persist: this.hasStableSessionId,
+      });
+    this.messageStore = store;
+    store.attach(sock);
+    sockAny.store = store;
+    if (DEBUG)
+      console.log(
+        `[whatsapp] [${this.sessionId}] Persistent message store attached to socket`,
+      );
+  }
+
+  /**
+   * Restore this.chats from the persisted message history store (attached to
+   * the socket by the self-message listener). Lets insight refreshes work
+   * right after a restart, before any new history sync events arrive.
+   */
+  private hydrateChatsFromStore(sock: WASocket): void {
+    const store = (sock as any).store as
+      | { loadChats?: () => Array<{ id: string; name?: string }> }
+      | undefined;
+    const persisted = store?.loadChats?.() ?? [];
+    for (const chat of persisted) {
+      if (!chat.id || chat.id === "status@broadcast") continue;
+      this.chats.set(chat.id, {
+        id: chat.id,
+        name: chat.name ?? jidToUser(chat.id),
+        type: chat.id.endsWith("@g.us") ? "group" : "private",
+      });
+    }
+    if (this.chats.size > 0) {
+      console.log(
+        `[whatsapp] Restored ${this.chats.size} chats from persisted history store`,
+      );
+    }
+  }
+
+  /**
+   * On-demand history backfill via the official Baileys API: when local
+   * coverage for a chat does not reach the requested window start, page
+   * backwards from the oldest locally stored message (the required anchor)
+   * with sock.fetchMessageHistory. The phone responds asynchronously through
+   * an ON_DEMAND messaging-history.set, which the attached store persists —
+   * so arrival is detected by polling the store's oldest message.
+   */
+  private async backfillChatHistory(
+    sock: WASocket,
+    chatJid: string,
+    since: number,
+  ): Promise<void> {
+    // since=0 means "everything locally available" — not a backfill request.
+    if (since <= 0) return;
+    const sockExtra = sock as unknown as {
+      fetchMessageHistory?: (
+        count: number,
+        oldestMsgKey: WAMessage["key"],
+        oldestMsgTimestamp: number,
+      ) => Promise<string>;
+    };
+    if (typeof sockExtra.fetchMessageHistory !== "function") return;
+    const store = (sock as any).store as
+      | {
+          getOldestMessage?: (jid: string) => WAMessage | undefined;
+          canStoreOlderMessages?: (jid: string) => boolean;
+          getOnDemandResponseCount?: () => number;
+        }
+      | undefined;
+    if (typeof store?.getOldestMessage !== "function") return;
+    // Offline-phone circuit breaker lives on the socket (like the history
+    // sync wait flag): callers construct a fresh adapter per refresh, and an
+    // instance field would make every refresh re-pay the full timeouts. The
+    // backoff window keeps it from disabling backfill forever.
+    const breaker = sock as WASocket & {
+      __backfillTimeouts?: number;
+      __backfillOfflineUntil?: number;
+    };
+    if ((breaker.__backfillOfflineUntil ?? 0) > Date.now()) return;
+    // At the per-chat storage cap, backfilled messages would be trimmed away
+    // immediately — the anchor could never move. Skip instead of requesting.
+    if (store.canStoreOlderMessages && !store.canStoreOlderMessages(chatJid)) {
+      return;
+    }
+
+    for (let i = 0; i < MAX_BACKFILL_REQUESTS_PER_CHAT; i++) {
+      const oldest = store.getOldestMessage(chatJid);
+      const oldestTs = Number(oldest?.messageTimestamp ?? 0);
+      // No anchor (nothing stored for this chat) or coverage already reaches
+      // the window start — nothing to backfill.
+      if (!oldest?.key?.id || !oldestTs || oldestTs <= since) return;
+      if (this.backfillRequestsThisCycle >= MAX_BACKFILL_REQUESTS_PER_CYCLE) {
+        return;
+      }
+      if (i > 0) {
+        await new Promise((resolve) =>
+          setTimeout(resolve, BACKFILL_THROTTLE_MS),
+        );
+      }
+
+      this.backfillRequestsThisCycle++;
+      // The store counts ON_DEMAND responses. Note: the counter is per store
+      // (not per request), which assumes backfill requests are single-flight —
+      // true today because getChatsByChunk visits chats sequentially.
+      const responseBaseline = store.getOnDemandResponseCount?.() ?? 0;
+      try {
+        await sockExtra.fetchMessageHistory(
+          BACKFILL_PAGE_SIZE,
+          oldest.key,
+          oldestTs,
+        );
+      } catch (error) {
+        console.warn(
+          `[whatsapp] fetchMessageHistory failed for ${chatJid}:`,
+          error,
+        );
+        return;
+      }
+
+      const { responded, gotOlder } = await this.waitForBackfillResponse(
+        store,
+        chatJid,
+        oldestTs,
+        responseBaseline,
+      );
+      if (gotOlder) {
+        breaker.__backfillTimeouts = 0;
+        continue;
+      }
+      if (responded) {
+        // The phone answered but produced nothing older — we reached the
+        // start of this chat's history. A normal outcome, not a timeout.
+        breaker.__backfillTimeouts = 0;
+        return;
+      }
+      // No response at all — likely an offline phone; count toward the
+      // circuit breaker so the rest of the cycle isn't wasted waiting.
+      breaker.__backfillTimeouts = (breaker.__backfillTimeouts ?? 0) + 1;
+      if (breaker.__backfillTimeouts >= MAX_CONSECUTIVE_BACKFILL_TIMEOUTS) {
+        breaker.__backfillOfflineUntil =
+          Date.now() + BACKFILL_OFFLINE_BACKOFF_MS;
+        breaker.__backfillTimeouts = 0;
+        console.log(
+          `[whatsapp] Backfill paused for ${BACKFILL_OFFLINE_BACKOFF_MS / 60000}min — phone appears offline`,
+        );
+      }
+      return;
+    }
+  }
+
+  /**
+   * Wait for the phone's answer to a fetchMessageHistory request: either the
+   * store's oldest message gets older (new history arrived), or an ON_DEMAND
+   * messaging-history.set lands without older messages (end of history).
+   */
+  private async waitForBackfillResponse(
+    store: {
+      getOldestMessage?: (jid: string) => WAMessage | undefined;
+      getOnDemandResponseCount?: () => number;
+    },
+    chatJid: string,
+    prevOldestTs: number,
+    responseBaseline: number,
+  ): Promise<{ responded: boolean; gotOlder: boolean }> {
+    const deadline = Date.now() + BACKFILL_RESPONSE_TIMEOUT_MS;
+    while (Date.now() < deadline) {
+      const oldest = store.getOldestMessage?.(chatJid);
+      const ts = Number(oldest?.messageTimestamp ?? 0);
+      if (ts && ts < prevOldestTs) return { responded: true, gotOlder: true };
+      if ((store.getOnDemandResponseCount?.() ?? 0) > responseBaseline) {
+        // Response arrived between the two checks — re-read the anchor once.
+        const recheck = store.getOldestMessage?.(chatJid);
+        const recheckTs = Number(recheck?.messageTimestamp ?? 0);
+        return {
+          responded: true,
+          gotOlder: recheckTs > 0 && recheckTs < prevOldestTs,
+        };
+      }
+      await new Promise((resolve) =>
+        setTimeout(resolve, BACKFILL_POLL_INTERVAL_MS),
+      );
+    }
+    return { responded: false, gotOlder: false };
   }
 
   private async ensureReady(): Promise<void> {
@@ -973,53 +1311,61 @@ export class WhatsAppAdapter extends MessagePlatformAdapter {
     id: string,
     messages: Messages,
   ): Promise<void> {
-    await this.ensureReady();
-    const chatId = this.resolveChatId(target, id);
+    await this.runWithAdapterError("sendMessages", async () => {
+      await this.ensureReady();
+      const chatId = this.resolveChatId(target, id);
 
-    for (const message of messages) {
-      try {
-        if (typeof message === "string") {
-          if (!message.trim()) continue;
-          const sent = await this.sock?.sendMessage(chatId, { text: message });
-          if (sent?.message && sent.key.id) {
-            this.sentMessageCache.set(sent.key.id, sent.message);
-            if (this.sentMessageCache.size > 256) {
-              const oldest = this.sentMessageCache.keys().next().value;
-              if (oldest) this.sentMessageCache.delete(oldest);
+      for (const message of messages) {
+        try {
+          if (typeof message === "string") {
+            if (!message.trim()) continue;
+            const sent = await this.sock?.sendMessage(chatId, {
+              text: message,
+            });
+            if (sent?.message && sent.key.id) {
+              this.sentMessageCache.set(sent.key.id, sent.message);
+              if (this.sentMessageCache.size > 256) {
+                const oldest = this.sentMessageCache.keys().next().value;
+                if (oldest) this.sentMessageCache.delete(oldest);
+              }
             }
-          }
-        } else if (isImageMessage(message)) {
-          const media = await this.prepareMediaMessage(message);
-          if (!media) continue;
-          const sent = await this.sock?.sendMessage(chatId, media);
-          if (sent?.message && sent.key.id) {
-            this.sentMessageCache.set(sent.key.id, sent.message);
-            if (this.sentMessageCache.size > 256) {
-              const oldest = this.sentMessageCache.keys().next().value;
-              if (oldest) this.sentMessageCache.delete(oldest);
+          } else if (isImageMessage(message)) {
+            const media = await this.prepareMediaMessage(message);
+            const sent = await this.sock?.sendMessage(chatId, media);
+            if (sent?.message && sent.key.id) {
+              this.sentMessageCache.set(sent.key.id, sent.message);
+              if (this.sentMessageCache.size > 256) {
+                const oldest = this.sentMessageCache.keys().next().value;
+                if (oldest) this.sentMessageCache.delete(oldest);
+              }
             }
-          }
-        } else if (isFileMessage(message)) {
-          const media = await this.prepareFileMessage(message);
-          if (!media) continue;
-          const sent = await this.sock?.sendMessage(chatId, media);
-          if (sent?.message && sent.key.id) {
-            this.sentMessageCache.set(sent.key.id, sent.message);
-            if (this.sentMessageCache.size > 256) {
-              const oldest = this.sentMessageCache.keys().next().value;
-              if (oldest) this.sentMessageCache.delete(oldest);
+          } else if (isFileMessage(message)) {
+            const media = await this.prepareFileMessage(message);
+            const sent = await this.sock?.sendMessage(chatId, media);
+            if (sent?.message && sent.key.id) {
+              this.sentMessageCache.set(sent.key.id, sent.message);
+              if (this.sentMessageCache.size > 256) {
+                const oldest = this.sentMessageCache.keys().next().value;
+                if (oldest) this.sentMessageCache.delete(oldest);
+              }
             }
+          } else {
+            throw this.createAdapterError(
+              "sendMessages",
+              "invalid_request_error",
+              `WhatsApp send does not support message content: ${describeUnsupportedMessage(message)}`,
+            );
           }
+        } catch (error) {
+          if (DEBUG)
+            console.error(
+              `[whatsapp] Failed to send message to ${chatId}:`,
+              error,
+            );
+          throw error;
         }
-      } catch (error) {
-        if (DEBUG)
-          console.error(
-            `[whatsapp] Failed to send message to ${chatId}:`,
-            error,
-          );
-        throw error;
       }
-    }
+    });
   }
 
   async sendMessage(
@@ -1035,64 +1381,70 @@ export class WhatsAppAdapter extends MessagePlatformAdapter {
     messages: Messages,
     quoteOrigin = false,
   ): Promise<void> {
-    await this.ensureReady();
-    const msg = event.sourcePlatformObject as WAMessage | undefined;
-    const targetId =
-      event.targetType === "group"
-        ? event.sender.group.id
-        : (event.sender as { id: string }).id;
-    const normalizedTargetId = String(targetId);
+    await this.runWithAdapterError("replyMessages", async () => {
+      await this.ensureReady();
+      const msg = event.sourcePlatformObject as WAMessage | undefined;
+      const targetId =
+        event.targetType === "group"
+          ? event.sender.group.id
+          : (event.sender as { id: string }).id;
+      const normalizedTargetId = String(targetId);
 
-    if (quoteOrigin && msg) {
-      const remoteJid = msg.key.remoteJid;
-      if (!remoteJid) return;
-      for (const message of messages) {
-        if (typeof message === "string") {
-          if (!message.trim()) continue;
-          const sent = await this.sock?.sendMessage(
-            remoteJid,
-            { text: message },
-            { quoted: msg },
-          );
-          if (sent?.message && sent.key.id) {
-            this.sentMessageCache.set(sent.key.id, sent.message);
-            if (this.sentMessageCache.size > 256) {
-              const oldest = this.sentMessageCache.keys().next().value;
-              if (oldest) this.sentMessageCache.delete(oldest);
+      if (quoteOrigin && msg) {
+        const remoteJid = msg.key.remoteJid;
+        if (!remoteJid) return;
+        for (const message of messages) {
+          if (typeof message === "string") {
+            if (!message.trim()) continue;
+            const sent = await this.sock?.sendMessage(
+              remoteJid,
+              { text: message },
+              { quoted: msg },
+            );
+            if (sent?.message && sent.key.id) {
+              this.sentMessageCache.set(sent.key.id, sent.message);
+              if (this.sentMessageCache.size > 256) {
+                const oldest = this.sentMessageCache.keys().next().value;
+                if (oldest) this.sentMessageCache.delete(oldest);
+              }
             }
-          }
-        } else if (isImageMessage(message)) {
-          const media = await this.prepareMediaMessage(message);
-          if (!media) continue;
-          const sent = await this.sock?.sendMessage(remoteJid, media, {
-            quoted: msg,
-          });
-          if (sent?.message && sent.key.id) {
-            this.sentMessageCache.set(sent.key.id, sent.message);
-            if (this.sentMessageCache.size > 256) {
-              const oldest = this.sentMessageCache.keys().next().value;
-              if (oldest) this.sentMessageCache.delete(oldest);
+          } else if (isImageMessage(message)) {
+            const media = await this.prepareMediaMessage(message);
+            const sent = await this.sock?.sendMessage(remoteJid, media, {
+              quoted: msg,
+            });
+            if (sent?.message && sent.key.id) {
+              this.sentMessageCache.set(sent.key.id, sent.message);
+              if (this.sentMessageCache.size > 256) {
+                const oldest = this.sentMessageCache.keys().next().value;
+                if (oldest) this.sentMessageCache.delete(oldest);
+              }
             }
-          }
-        } else if (isFileMessage(message)) {
-          const media = await this.prepareFileMessage(message);
-          if (!media) continue;
-          const sent = await this.sock?.sendMessage(remoteJid, media, {
-            quoted: msg,
-          });
-          if (sent?.message && sent.key.id) {
-            this.sentMessageCache.set(sent.key.id, sent.message);
-            if (this.sentMessageCache.size > 256) {
-              const oldest = this.sentMessageCache.keys().next().value;
-              if (oldest) this.sentMessageCache.delete(oldest);
+          } else if (isFileMessage(message)) {
+            const media = await this.prepareFileMessage(message);
+            const sent = await this.sock?.sendMessage(remoteJid, media, {
+              quoted: msg,
+            });
+            if (sent?.message && sent.key.id) {
+              this.sentMessageCache.set(sent.key.id, sent.message);
+              if (this.sentMessageCache.size > 256) {
+                const oldest = this.sentMessageCache.keys().next().value;
+                if (oldest) this.sentMessageCache.delete(oldest);
+              }
             }
+          } else {
+            throw this.createAdapterError(
+              "replyMessages",
+              "invalid_request_error",
+              `WhatsApp reply does not support message content: ${describeUnsupportedMessage(message)}`,
+            );
           }
         }
+        return;
       }
-      return;
-    }
 
-    await this.sendMessages(event.targetType, normalizedTargetId, messages);
+      await this.sendMessages(event.targetType, normalizedTargetId, messages);
+    });
   }
 
   async run(): Promise<void> {
@@ -1128,6 +1480,9 @@ export class WhatsAppAdapter extends MessagePlatformAdapter {
     this.sock = sock;
     this.isReady = true;
     this.isAuthenticated = true;
+    // Make sure a persistent message store is attached (no-op when the
+    // socket creator or self-listener already provided one).
+    this.ensureMessageStore(sock);
     // Adopt the socket's existing sentMessageCache so getMessage reads the
     // same cache that self-listener writes to.
     if ((sock as any).sentMessageCache) {
@@ -1192,24 +1547,10 @@ export class WhatsAppAdapter extends MessagePlatformAdapter {
       },
     );
 
-    // Force a history sync so messaging-history.set fires and populates
-    // both this.chats and the InMemoryStore (via self-listener).
-    const sockExtra = sock as unknown as {
-      resyncAppState?: (
-        collections: string[],
-        isInitialSync: boolean,
-      ) => Promise<void>;
-    };
-    sockExtra.resyncAppState?.(
-      [
-        "critical_block",
-        "critical_unblock_low",
-        "regular_high",
-        "regular_low",
-        "regular",
-      ],
-      true,
-    );
+    // History sync cannot be requested from the server: it is pushed by the
+    // phone via messaging-history.set (syncFullHistory: true). Do NOT call
+    // resyncAppState here — it only syncs app state, never messages, and
+    // repeated calls trigger WhatsApp's rate-overlimit throttling.
     // Register under this adapter's botId
     if (this.botId && this.clientRegistry) {
       this.clientRegistry.registerClient(this.botId, sock);
@@ -1223,10 +1564,19 @@ export class WhatsAppAdapter extends MessagePlatformAdapter {
    */
   async kill(targetSock?: WASocket): Promise<boolean> {
     const sockToKill = targetSock ?? this.sock;
+    const isFullKill = !targetSock;
+    if (isFullKill) {
+      this.isClosed = true;
+      activeAdapters.delete(this.sessionId);
+      if (this.reconnectTimer) {
+        clearTimeout(this.reconnectTimer);
+        this.reconnectTimer = null;
+      }
+      this._pendingReconnect = null;
+    }
     if (!sockToKill) return true;
 
     try {
-      activeAdapters.delete(this.sessionId);
       // Only clean up listeners for the target socket, leave other sockets intact
       for (const cleanup of this.eventCleanup) {
         try {
@@ -1282,32 +1632,25 @@ export class WhatsAppAdapter extends MessagePlatformAdapter {
     const sock = this.sock;
     if (!sock) throw new Error("[whatsapp] Socket not available");
 
-    // If this.chats is still empty (resyncAppState hasn't fired yet in attachToSocket),
-    // trigger it here and wait. Without this, the bot finds 0 messages because
-    // resyncAppState is async and attachToSocket returns before it fires.
+    // Cold start (e.g. after a server restart): the chat list can be restored
+    // from the persisted message history store without any network traffic.
+    if (this.chats.size === 0) {
+      this.hydrateChatsFromStore(sock);
+    }
+
+    // If this.chats is still empty, the phone-pushed initial history sync
+    // (messaging-history.set, enabled by syncFullHistory) hasn't arrived yet.
+    // Wait for it instead of calling resyncAppState: app state sync never
+    // returns message history, and WhatsApp rate-limits it aggressively
+    // (rate-overlimit), which used to break onboarding entirely.
     if (this.chats.size === 0) {
       console.log(
-        "[whatsapp] getChatsByChunk: this.chats is empty, triggering history sync...",
+        "[whatsapp] getChatsByChunk: this.chats is empty, waiting for initial history sync...",
       );
-      const sockExtra = sock as unknown as {
-        resyncAppState?: (
-          collections: string[],
-          isInitialSync: boolean,
-        ) => Promise<void>;
-      };
-      await sockExtra.resyncAppState?.(
-        [
-          "critical_block",
-          "critical_unblock_low",
-          "regular_high",
-          "regular_low",
-          "regular",
-        ],
-        true,
-      );
+      await this.waitForInitialHistorySync();
       if (this.chats.size === 0) {
         console.log(
-          "[whatsapp] getChatsByChunk: this.chats still empty after sync, returning empty",
+          "[whatsapp] getChatsByChunk: this.chats still empty after waiting, returning empty",
         );
         return { messages: [], hasMore: false };
       }
@@ -1325,6 +1668,9 @@ export class WhatsAppAdapter extends MessagePlatformAdapter {
       this.asyncIteratorState.currentMessageIndex = 0;
       this.asyncIteratorState.offsetDate = since;
       this.asyncIteratorState.isInitialized = true;
+      // New iteration cycle — reset the on-demand backfill budget. (The
+      // offline-phone breaker is socket-scoped with its own backoff window.)
+      this.backfillRequestsThisCycle = 0;
 
       if (this.asyncIteratorState.chatIds.length === 0) {
         this.asyncIteratorState.isInitialized = false;
@@ -1341,6 +1687,15 @@ export class WhatsAppAdapter extends MessagePlatformAdapter {
     ) {
       const chatJid = chatIds[chatIndex];
       try {
+        // When visiting a chat for the first time in this cycle, backfill
+        // older history on demand if local coverage doesn't reach the window.
+        const resumingMidChat =
+          chatIndex === currentChatIndex &&
+          this.asyncIteratorState.currentMessageIndex > 0;
+        if (!resumingMidChat) {
+          await this.backfillChatHistory(sock, chatJid, offsetDate);
+        }
+
         const store = (sock as any).store;
         const history =
           (await store?.loadMessages?.(chatJid, maxMessageCount, {})) ?? [];
@@ -1397,6 +1752,10 @@ export class WhatsAppAdapter extends MessagePlatformAdapter {
     await this.ensureReady();
     const sock = this.sock;
     if (!sock) return [];
+
+    if (this.chats.size === 0) {
+      this.hydrateChatsFromStore(sock);
+    }
 
     const extractedMessages: ExtractedMessageInfo[] = [];
     const store = (sock as any).store;
@@ -1513,52 +1872,52 @@ export class WhatsAppAdapter extends MessagePlatformAdapter {
 
   private async prepareMediaMessage(
     image: openloomiImage,
-  ): Promise<{ image: Buffer } | null> {
-    try {
-      let buffer: Buffer;
+  ): Promise<{ image: Buffer }> {
+    let buffer: Buffer;
 
-      if (image.base64) {
-        buffer = Buffer.from(image.base64, "base64");
-      } else if (image.url) {
-        const response = await fetch(image.url);
-        if (!response.ok) {
-          throw new Error(`Failed to fetch ${image.url}: ${response.status}`);
-        }
-        const arrayBuffer = await response.arrayBuffer();
-        buffer = Buffer.from(arrayBuffer);
-      } else {
-        return null;
+    if (image.base64) {
+      buffer = Buffer.from(image.base64, "base64");
+    } else if (image.url) {
+      const response = await fetch(image.url);
+      if (!response.ok) {
+        throw Object.assign(
+          new Error(`Failed to fetch ${image.url}: HTTP ${response.status}`),
+          { status: response.status },
+        );
       }
-
-      return { image: buffer };
-    } catch (error) {
-      console.error("[whatsapp] Failed to prepare media:", error);
-      return null;
+      const arrayBuffer = await response.arrayBuffer();
+      buffer = Buffer.from(arrayBuffer);
+    } else {
+      throw this.createAdapterError(
+        "prepareMediaMessage",
+        "invalid_request_error",
+        "WhatsApp image message requires url or base64",
+      );
     }
+
+    return { image: buffer };
   }
 
   private async prepareFileMessage(file: openloomiFile): Promise<{
     document: Buffer;
     mimetype: string;
     fileName: string;
-  } | null> {
-    try {
-      const response = await fetch(file.url);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch ${file.url}: ${response.status}`);
-      }
-      const arrayBuffer = await response.arrayBuffer();
-      const buffer = Buffer.from(arrayBuffer);
-      const mimetype = this.guessMimeType(file.name);
-      return {
-        document: buffer,
-        mimetype,
-        fileName: file.name,
-      };
-    } catch (error) {
-      console.error("[whatsapp] Failed to prepare file:", error);
-      return null;
+  }> {
+    const response = await fetch(file.url);
+    if (!response.ok) {
+      throw Object.assign(
+        new Error(`Failed to fetch ${file.url}: HTTP ${response.status}`),
+        { status: response.status },
+      );
     }
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    const mimetype = this.guessMimeType(file.name);
+    return {
+      document: buffer,
+      mimetype,
+      fileName: file.name,
+    };
   }
 
   private guessMimeType(fileName: string): string {
@@ -1656,22 +2015,33 @@ export class WhatsAppAdapter extends MessagePlatformAdapter {
     const m = msg.message;
     if (!m) return [];
 
-    // Find media message
+    // Delegate message type determination to state.ts pure function
+    const msgType = routeMessageType(msg);
+
+    // Find media message using standardized message type
     let mimeType: string | undefined;
     let isMedia = false;
 
-    if (m.imageMessage) {
-      mimeType = m.imageMessage.mimetype ?? undefined;
-      isMedia = true;
-    } else if (m.videoMessage) {
-      mimeType = m.videoMessage.mimetype ?? undefined;
-      isMedia = true;
-    } else if (m.stickerMessage) {
-      mimeType = m.stickerMessage.mimetype ?? undefined;
-      isMedia = true;
-    } else if (m.documentMessage) {
-      mimeType = m.documentMessage.mimetype ?? undefined;
-      isMedia = true;
+    switch (msgType) {
+      case "image":
+        mimeType = m.imageMessage?.mimetype ?? undefined;
+        isMedia = true;
+        break;
+      case "video":
+        mimeType = m.videoMessage?.mimetype ?? undefined;
+        isMedia = true;
+        break;
+      case "sticker":
+        mimeType = m.stickerMessage?.mimetype ?? undefined;
+        isMedia = true;
+        break;
+      case "document":
+        mimeType = m.documentMessage?.mimetype ?? undefined;
+        isMedia = true;
+        break;
+      default:
+        // Non-media types (text, audio, other) - no attachment
+        isMedia = false;
     }
 
     if (!isMedia || !mimeType || !this.sock) return [];

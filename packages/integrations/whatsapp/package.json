@@ -15,9 +15,12 @@
   },
   "devDependencies": {
     "@openloomi/config": "workspace:*",
-    "typescript": "^5.6.3"
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.8"
   },
   "scripts": {
-    "build": "echo no build needed"
+    "build": "echo no build needed",
+    "test": "vitest run",
+    "test:watch": "vitest"
   }
 }

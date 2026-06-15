@@ -13,6 +13,7 @@
     "./asana": "./asana/src/index.ts",
     "./asana/client": "./asana/src/client.ts",
     "./calendar": "./calendar/src/index.ts",
+    "./composio": "./composio/src/index.ts",
     "./channels": "./channels/src/index.ts",
     "./channels/telegram": "./channels/src/telegram.ts",
     "./channels/whatsapp": "./channels/src/whatsapp.ts",
@@ -41,6 +42,7 @@
     "./telegram/conversation-store": "./telegram/src/conversation-store.ts",
     "./telegram/tdata-decrypter": "./telegram/src/tdata-decrypter/index.ts",
     "./google-docs": "./google-docs/src/index.ts",
+    "./google-meet": "./google-meet/src/index.ts",
     "./weixin": "./weixin/src/index.ts",
     "./weixin/ilink-client": "./weixin/src/ilink-client.ts",
     "./weixin/conversation-store": "./weixin/src/conversation-store.ts",
@@ -51,6 +53,7 @@
     "./linkedin": "./linkedin/src/index.ts",
     "./instagram": "./instagram/src/index.ts",
     "./feishu": "./feishu/src/index.ts",
+    "./feishu/state": "./feishu/src/state.ts",
     "./facebook-messenger": "./facebook-messenger/src/index.ts",
     "./dingtalk": "./dingtalk/src/index.ts",
     "./qqbot": "./qqbot/src/index.ts"

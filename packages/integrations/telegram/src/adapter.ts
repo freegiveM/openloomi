@@ -97,7 +97,7 @@ export class TelegramAdapter extends MessagePlatformAdapter {
   appId: number;
   appHash: string;
   session: StringSession;
-  name = "";
+  name = "Telegram";
   private ownerUserId?: string;
   private ownerUserType?: string;
   private fileIngester?: FileIngester;
@@ -530,20 +530,30 @@ export class TelegramAdapter extends MessagePlatformAdapter {
     id: string,
     messages: Messages,
   ): Promise<void> {
-    if (!this.client.connected) {
-      await withTimeout(
-        this.client.connect(),
-        CONNECT_TIMEOUT_MS,
-        `[Bot ${this.botId}] Telegram client.connect()`,
-      );
-    }
+    await this.runWithAdapterError("sendMessages", async () => {
+      if (!this.client.connected) {
+        await withTimeout(
+          this.client.connect(),
+          CONNECT_TIMEOUT_MS,
+          `[Bot ${this.botId}] Telegram client.connect()`,
+        );
+      }
 
-    if (messages.length === 0) {
-      return;
-    }
+      if (messages.length === 0) {
+        return;
+      }
 
-    const { textParts, images } = this.partitionMessages(messages);
-    await this.dispatchMessages(id, textParts, images);
+      const { textParts, images, unsupported } =
+        this.partitionMessages(messages);
+      if (unsupported.length > 0) {
+        throw this.createAdapterError(
+          "sendMessages",
+          "invalid_request_error",
+          `Telegram send does not support message content: ${unsupported.join(", ")}`,
+        );
+      }
+      await this.dispatchMessages("sendMessages", id, textParts, images);
+    });
   }
 
   async replyMessages(
@@ -551,22 +561,37 @@ export class TelegramAdapter extends MessagePlatformAdapter {
     messages: Messages,
     quoteOrigin = false,
   ): Promise<void> {
-    if (!this.client.connected) {
-      await withTimeout(
-        this.client.connect(),
-        CONNECT_TIMEOUT_MS,
-        `[Bot ${this.botId}] Telegram client.connect()`,
+    await this.runWithAdapterError("replyMessages", async () => {
+      if (!this.client.connected) {
+        await withTimeout(
+          this.client.connect(),
+          CONNECT_TIMEOUT_MS,
+          `[Bot ${this.botId}] Telegram client.connect()`,
+        );
+      }
+
+      if (messages.length === 0) {
+        return;
+      }
+
+      const id =
+        event.targetType === "group" ? event.sender.group.id : event.sender.id;
+      const { textParts, images, unsupported } =
+        this.partitionMessages(messages);
+      if (unsupported.length > 0) {
+        throw this.createAdapterError(
+          "replyMessages",
+          "invalid_request_error",
+          `Telegram reply does not support message content: ${unsupported.join(", ")}`,
+        );
+      }
+      await this.dispatchMessages(
+        "replyMessages",
+        id.toString(),
+        textParts,
+        images,
       );
-    }
-
-    if (messages.length === 0) {
-      return;
-    }
-
-    const id =
-      event.targetType === "group" ? event.sender.group.id : event.sender.id;
-    const { textParts, images } = this.partitionMessages(messages);
-    await this.dispatchMessages(id.toString(), textParts, images);
+    });
   }
 
   async getChatsByChunk(
@@ -1062,6 +1087,7 @@ export class TelegramAdapter extends MessagePlatformAdapter {
       typeof message === "object" &&
       message !== null &&
       "url" in message &&
+      !("length" in message) &&
       !("name" in message) &&
       typeof (message as Image).url === "string" &&
       (message as Image).url.length > 0
@@ -1071,9 +1097,11 @@ export class TelegramAdapter extends MessagePlatformAdapter {
   private partitionMessages(messages: Messages): {
     textParts: string[];
     images: Image[];
+    unsupported: string[];
   } {
     const textParts: string[] = [];
     const images: Image[] = [];
+    const unsupported: string[] = [];
 
     for (const message of messages) {
       if (this.isImageMessage(message)) {
@@ -1084,10 +1112,12 @@ export class TelegramAdapter extends MessagePlatformAdapter {
       const text = openloomiMessageToTgText(message);
       if (text.trim().length > 0) {
         textParts.push(text);
+      } else if (typeof message !== "string") {
+        unsupported.push(describeUnsupportedMessage(message));
       }
     }
 
-    return { textParts, images };
+    return { textParts, images, unsupported };
   }
 
   private inferFileName(image: Image): string {
@@ -1419,6 +1449,7 @@ export class TelegramAdapter extends MessagePlatformAdapter {
   }
 
   private async dispatchMessages(
+    operation: string,
     peer: string,
     textParts: string[],
     images: Image[],
@@ -1462,7 +1493,9 @@ export class TelegramAdapter extends MessagePlatformAdapter {
           `[Bot ${this.botId}] [telegram] Failed to resolve file for upload`,
           error,
         );
-        continue;
+        throw this.toAdapterError(operation, error, {
+          fallbackCode: "invalid_request_error",
+        });
       }
 
       const options: Parameters<TelegramClient["sendFile"]>[1] = {
@@ -1531,6 +1564,17 @@ export function openloomiMessageToTgText(message: Message): string {
       .join("");
   }
   return "";
+}
+
+function describeUnsupportedMessage(message: Message): string {
+  if (!message || typeof message !== "object") return typeof message;
+  if ("name" in message && "url" in message) return "file";
+  if ("length" in message && "url" in message) return "voice";
+  if ("origin" in message) return "quote";
+  if ("time" in message && "id" in message) return "source";
+  if ("display" in message && "nodes" in message) return "forward";
+  if ("type" in message && "name" in message) return "emoji";
+  return "content";
 }
 
 export function tgMessageToopenloomiMessage(message: Api.Message): Messages {

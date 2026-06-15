@@ -9,6 +9,7 @@ import type {
   Message as openloomiMessage,
   Image,
   File as FileMessage,
+  MessageEvent,
 } from "@openloomi/integrations/channels";
 import type { MessageTarget } from "@openloomi/integrations/channels";
 import type {
@@ -355,12 +356,12 @@ end tell`;
     id: string,
     messages: Messages,
   ): Promise<void> {
-    await this.ensureInitialized();
-
     // Collect temp files that need cleanup
     const tempFilesToCleanup: string[] = [];
 
     try {
+      await this.ensureInitialized();
+
       // Categorize messages: text, images, files
       const textMessages: string[] = [];
       const imagePaths: string[] = [];
@@ -421,6 +422,12 @@ end tell`;
               imagePaths.push(message.url);
             }
           }
+        } else {
+          throw this.createAdapterError(
+            "sendMessages",
+            "invalid_request_error",
+            `iMessage send does not support message content: ${this.describeUnsupportedMessage(message)}`,
+          );
         }
       }
 
@@ -527,7 +534,7 @@ end tell`;
         `[Bot ${this.botId}] [imessage] Failed to send message to ${id}:`,
         error,
       );
-      throw error;
+      throw this.toAdapterError("sendMessages", error);
     } finally {
       // Cleanup temp files
       if (tempFilesToCleanup.length > 0) {
@@ -547,6 +554,16 @@ end tell`;
     await this.sendMessages(target, id, [message]);
   }
 
+  async replyMessages(event: MessageEvent, messages: Messages): Promise<void> {
+    await this.runWithAdapterError("replyMessages", async () => {
+      const targetId =
+        event.targetType === "group"
+          ? String(event.sender.group.id)
+          : String(event.sender.id);
+      await this.sendMessages(event.targetType, targetId, messages);
+    });
+  }
+
   /**
    * Check if message is an image message
    * Image messages have url or base64 property, but no name and size properties (distinguishes from file messages)
@@ -556,6 +573,7 @@ end tell`;
     // Image messages have url or base64, but file messages have id, name, size, url
     // Distinguish files from images by checking for name and size
     if ("name" in message && "size" in message) return false;
+    if ("length" in message) return false;
     if (!("url" in message) && !("base64" in message)) return false;
     return true;
   }
@@ -572,6 +590,17 @@ end tell`;
       "size" in message &&
       "url" in message
     );
+  }
+
+  private describeUnsupportedMessage(message: openloomiMessage): string {
+    if (!message || typeof message !== "object") return typeof message;
+    if ("length" in message && "url" in message) return "voice";
+    if ("origin" in message) return "quote";
+    if ("target" in message) return "mention";
+    if ("time" in message && "id" in message) return "source";
+    if ("display" in message && "nodes" in message) return "forward";
+    if ("type" in message && "name" in message) return "emoji";
+    return "content";
   }
 
   /**
