@@ -2,7 +2,8 @@
  * Deployment environment constant definitions
  *
  * IMPORTANT: This file must not import any node: module.
- * For server-only path constants (TAURI_DATA_DIR, etc.), use @/lib/utils/path
+ * For server-only constants (SQLITE_DB_PATH, TAURI_SERVER_*, etc.),
+ * use @/lib/env/server-constants instead.
  */
 import { DEV_PORT, PROD_PORT } from "@openloomi/shared";
 
@@ -22,57 +23,51 @@ export const DEPLOYMENT_MODE: DeploymentMode =
       : "server";
 
 export const DATABASE_TYPE: DatabaseType =
-  DEPLOYMENT_MODE === "tauri" ? "sqlite" : "postgres";
+  DEPLOYMENT_MODE === "tauri" || process.env.USE_SQLITE === "true"
+    ? "sqlite"
+    : "postgres";
 
 export const DEFAULT_STORAGE_TYPE: StorageType =
   DEPLOYMENT_MODE === "tauri" ? "local-fs" : "vercel-blob";
 
 const isDevelopment = process.env.NODE_ENV === "development";
 const defaultPort = isDevelopment ? DEV_PORT : PROD_PORT;
-
-export const TAURI_SERVER_PORT = Number.parseInt(
-  process.env.TAURI_SERVER_PORT || defaultPort,
+const tauriServerPort = Number.parseInt(
+  process.env.TAURI_SERVER_PORT || String(defaultPort),
   10,
 );
-export const TAURI_SERVER_HOST = process.env.TAURI_SERVER_HOST || "localhost";
+const tauriServerHost = process.env.TAURI_SERVER_HOST || "localhost";
+const serverBaseUrl =
+  process.env.NEXT_PUBLIC_APP_URL ||
+  process.env.APP_URL ||
+  process.env.APPLICATION_URL ||
+  process.env.NEXTAUTH_URL ||
+  `http://${tauriServerHost}:${tauriServerPort}`;
 
-// OAuth callback URL configuration
-export const OAUTH_CALLBACK_URL =
-  DEPLOYMENT_MODE === "tauri"
-    ? `http://${TAURI_SERVER_HOST}:${TAURI_SERVER_PORT}/api/auth/callback`
-    : process.env.NEXT_PUBLIC_APP_URL
-      ? `${process.env.NEXT_PUBLIC_APP_URL}/api/auth/callback`
-      : undefined;
+// Re-export client-safe constants
+export { guestRegex } from "@/lib/env/client-constants";
+export {
+  isProductionEnvironment,
+  isDevelopmentEnvironment,
+  isTestEnvironment,
+  DEFAULT_AI_MODEL,
+  isTauriMode,
+  isServerMode,
+  APP_DIR_NAME,
+} from "@/lib/env/client-constants";
 
-export function isTauriMode(): boolean {
-  return DEPLOYMENT_MODE === "tauri";
-}
-
-export function isServerMode(): boolean {
-  return DEPLOYMENT_MODE === "server";
-}
-
-// AI Model and Proxy Configuration
-export const DEFAULT_AI_MODEL =
-  process.env.ANTHROPIC_MODEL || "anthropic/claude-sonnet-4.6";
 export const AI_PROXY_BASE_URL = process.env.ANTHROPIC_BASE_URL;
 
 // Session and Auth Constants
 export const maxChunkSummaryCount = 10;
-export const isProductionEnvironment = process.env.NODE_ENV === "production";
-export const isDevelopmentEnvironment = process.env.NODE_ENV === "development";
-export const isTestEnvironment = Boolean(
-  process.env.PLAYWRIGHT_TEST_BASE_URL ||
-  process.env.PLAYWRIGHT ||
-  process.env.CI_PLAYWRIGHT,
-);
-
-export const guestRegex = /^guest-\d+$/;
 
 // Bump this value to force all users to re-authenticate and receive a fresh session token.
 export const authSessionVersion = "2025-01-17";
 
 export const nextAuthSessionCookies = [
+  "authjs.session-token",
+  "__Secure-authjs.session-token",
+  "__Host-authjs.session-token",
   "next-auth.session-token",
   "__Secure-next-auth.session-token",
   "__Host-next-auth.session-token",

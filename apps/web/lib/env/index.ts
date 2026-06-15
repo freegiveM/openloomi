@@ -18,13 +18,16 @@ export {
   getTauriLogsPath,
 } from "@/lib/utils/path";
 
-import { DEV_PORT, PROD_PORT } from "@openloomi/shared";
-import {
-  DEPLOYMENT_MODE,
+// Server-only env constants that use node: modules (SQLITE_DB_PATH, TAURI_SERVER_*)
+export {
+  SQLITE_DB_PATH,
   TAURI_SERVER_PORT,
   TAURI_SERVER_HOST,
-  isTauriMode,
-} from "./constants";
+} from "./server-constants";
+
+import { DEV_PORT, PROD_PORT } from "@openloomi/shared";
+import { DEPLOYMENT_MODE, isTauriMode } from "./constants";
+import { TAURI_SERVER_HOST, TAURI_SERVER_PORT } from "./server-constants";
 import {
   TAURI_DATA_DIR,
   TAURI_DB_PATH,
