@@ -7,6 +7,51 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+// ============ Network Utilities ============
+
+export async function fetchWithRetry(
+  url: string,
+  options: RequestInit = {},
+  retries = 2,
+): Promise<Response> {
+  let lastError: Error | undefined;
+
+  for (let i = 0; i <= retries; i++) {
+    try {
+      const response = await fetch(url, {
+        ...options,
+        signal: AbortSignal.timeout(10000),
+      });
+      return response;
+    } catch (error: any) {
+      const isTimeout =
+        error?.name === "TimeoutError" ||
+        error?.code === "UND_ERR_CONNECT_TIMEOUT" ||
+        error?.message?.includes("timeout") ||
+        error?.message?.includes("Timeout");
+
+      lastError = error;
+
+      if (!isTimeout || i === retries) {
+        throw error;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 1000 * (i + 1)));
+    }
+  }
+
+  throw lastError;
+}
+
+export function isNetworkError(error: any): boolean {
+  return (
+    error?.name === "TimeoutError" ||
+    error?.code === "UND_ERR_CONNECT_TIMEOUT" ||
+    error?.message?.includes("timeout") ||
+    error?.message?.includes("ECONNREFUSED")
+  );
+}
+
 export function generateUUID(): string {
   return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
     const r = (Math.random() * 16) | 0;
@@ -448,6 +493,28 @@ export function buildNavigationUrl(options: BuildNavigationUrlOptions): string {
   }
 
   return queryString ? `${pathname}?${queryString}` : pathname;
+}
+
+// ============ User ID Normalization ============
+
+const CLOUD_PREFIX = "cloud_";
+
+/**
+ * Normalize a userId by stripping the cloud_ prefix if present.
+ * Used to compare userIds that may come from different sources (local DB, cloud DB)
+ * where shadow users in Tauri mode use the cloud_<uuid> format while cloud stores raw UUIDs.
+ */
+export function normalizeUserId(userId: string): string {
+  return userId.startsWith(CLOUD_PREFIX)
+    ? userId.substring(CLOUD_PREFIX.length)
+    : userId;
+}
+
+/**
+ * Compare two userIds for equality after normalizing the cloud_ prefix.
+ */
+export function userIdsEqual(a: string, b: string): boolean {
+  return normalizeUserId(a) === normalizeUserId(b);
 }
 
 // ============ Cache Utilities ============

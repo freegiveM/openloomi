@@ -6,10 +6,23 @@ export type DataPart = { type: "append-message"; message: string };
 export const messageMetadataSchema = z.object({
   createdAt: z.string().optional(),
   disableAction: z.boolean().optional(),
+  executionKey: z.string().optional(),
   executionId: z.string().optional(),
+  executionAnchor: z.enum(["user", "assistant"]).optional(),
+  executionSource: z.string().optional(),
   executionSequence: z.number().int().positive().optional(),
   messagePhase: z.enum(["process", "final"]).optional(),
+  executionStatus: z
+    .enum(["pending", "running", "done", "error", "blocked", "interrupted"])
+    .optional(),
+  isProcessingIndicator: z.boolean().optional(),
+  linkedAssistantMessageId: z.string().optional(),
+  linkedUserMessageId: z.string().optional(),
   finalizedAt: z.string().optional(),
+  // Server timestamp captured after user input files are materialized and
+  // before the agent starts. Artifact mtime attribution should use this as the
+  // lower bound when available so user inputs are not shown as assistant output.
+  artifactBaselineAt: z.string().optional(),
   platformAccountId: z.uuid().optional(),
   ragDocuments: z
     .array(
@@ -67,10 +80,22 @@ export const messageMetadataSchema = z.object({
   activeTaskId: z.string().optional(),
   taskCreationMode: z.boolean().optional(),
   bootstrapTaskConfig: z.boolean().optional(),
+  // Marks visible continuation messages created after an authorization card is
+  // granted after the original run has already ended.
+  authorizationContinuation: z.boolean().optional(),
+  onboardingIntentId: z.string().optional(),
   taskTemplate: z
     .object({
       id: z.string().optional(),
       name: z.string().optional(),
+    })
+    .optional(),
+  // Skill action event (e.g., button click from action_buttons)
+  skillAction: z
+    .object({
+      skillId: z.string(),
+      messageId: z.string(),
+      actionId: z.string(),
     })
     .optional(),
 });
@@ -387,6 +412,15 @@ export type CustomUIDataTypes = {
     characterName?: string;
     childExecutionId?: string;
     timestamp?: string;
+  };
+  /** Interactive action buttons for skill flows (e.g., meeting summary source selection) */
+  action_buttons: {
+    buttons: Array<{
+      id: string;
+      label: string;
+      emoji?: string;
+    }>;
+    skillId: string;
   };
 };
 

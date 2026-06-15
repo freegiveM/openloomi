@@ -5,3 +5,4 @@ export * from "./constants";
 export * from "./ref";
 export * from "./soul";
 export * from "./tokens";
+export * from "./locale/user-locale";
