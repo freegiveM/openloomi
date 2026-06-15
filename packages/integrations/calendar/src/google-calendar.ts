@@ -1,5 +1,11 @@
 import { google, type calendar_v3 } from "googleapis";
 import type { OAuth2Client } from "google-auth-library";
+import { randomUUID } from "node:crypto";
+import {
+  type ComposioCredentials,
+  isComposioCredentials,
+} from "@openloomi/integrations/composio";
+import { ComposioGoogleCalendarProxy } from "./composio-google-calendar";
 
 // ---------------------------------------------------------------------------
 // Inlined stubs for @/lib/errors
@@ -52,7 +58,7 @@ export const GOOGLE_CALENDAR_SCOPES = [
   "https://www.googleapis.com/auth/userinfo.profile",
 ] as const;
 
-export type GoogleCalendarStoredCredentials = {
+export type GoogleCalendarStoredCredentials = ComposioCredentials & {
   accessToken?: string | null;
   refreshToken?: string | null;
   scope?: string | null;
@@ -100,13 +106,35 @@ type GoogleCalendarAdapterOptions = {
 };
 
 export class GoogleCalendarAdapter {
-  private oauth2Client: OAuth2Client;
+  private oauth2Client: OAuth2Client | null = null;
+  private composioCalendar: ComposioGoogleCalendarProxy | null = null;
   private storedCredentials: GoogleCalendarStoredCredentials;
   private calendarIds: string[];
   private userId: string;
   private platformAccountId: string | null;
 
   constructor(options: GoogleCalendarAdapterOptions) {
+    const calendarIds = options.calendarIds ?? [];
+    this.calendarIds = calendarIds.length > 0 ? calendarIds : ["primary"];
+    this.userId = options.bot.userId;
+    this.platformAccountId = options.bot.platformAccount?.id ?? null;
+    this.storedCredentials = options.credentials ?? {};
+
+    if (isComposioCredentials(this.storedCredentials)) {
+      const connectedAccountId =
+        this.storedCredentials.composioConnectedAccountId;
+      if (!connectedAccountId) {
+        throw new AppError(
+          "bad_request:api",
+          "Google Calendar is missing a Composio connected account id. Please reconnect.",
+        );
+      }
+      this.composioCalendar = new ComposioGoogleCalendarProxy({
+        connectedAccountId,
+      });
+      return;
+    }
+
     const clientId =
       process.env.GOOGLE_CALENDAR_CLIENT_ID ?? process.env.GOOGLE_CLIENT_ID;
     const clientSecret =
@@ -122,29 +150,25 @@ export class GoogleCalendarAdapter {
 
     const redirectUri = process.env.GOOGLE_CALENDAR_REDIRECT_URI ?? "";
 
-    this.oauth2Client = new google.auth.OAuth2({
+    const oauth2Client = new google.auth.OAuth2({
       clientId,
       clientSecret,
       redirectUri,
     });
+    this.oauth2Client = oauth2Client;
 
-    this.userId = options.bot.userId;
-    this.platformAccountId = options.bot.platformAccount?.id ?? null;
-    this.storedCredentials = options.credentials ?? {};
-
-    this.oauth2Client.setCredentials({
+    oauth2Client.setCredentials({
       access_token: this.storedCredentials.accessToken ?? undefined,
       refresh_token: this.storedCredentials.refreshToken ?? undefined,
       expiry_date: this.storedCredentials.expiryDate ?? undefined,
       scope: this.storedCredentials.scope ?? undefined,
       token_type: this.storedCredentials.tokenType ?? undefined,
     });
-
-    const calendarIds = options.calendarIds ?? [];
-    this.calendarIds = calendarIds.length > 0 ? calendarIds : ["primary"];
   }
 
   private async persistCredentialsIfChanged() {
+    if (!this.oauth2Client) return;
+
     const nextCredentials: GoogleCalendarStoredCredentials = {
       accessToken: this.oauth2Client.credentials.access_token ?? null,
       refreshToken: this.oauth2Client.credentials.refresh_token ?? null,
@@ -176,6 +200,13 @@ export class GoogleCalendarAdapter {
   private async withCalendar<T>(
     callback: (calendar: calendar_v3.Calendar) => Promise<T>,
   ): Promise<T> {
+    if (!this.oauth2Client) {
+      throw new AppError(
+        "bad_request:api",
+        "Google Calendar OAuth client is not initialized.",
+      );
+    }
+
     const calendar = google.calendar({
       version: "v3",
       auth: this.oauth2Client,
@@ -186,6 +217,10 @@ export class GoogleCalendarAdapter {
   }
 
   async listCalendars(): Promise<calendar_v3.Schema$CalendarListEntry[]> {
+    if (this.composioCalendar) {
+      return (await this.composioCalendar.listCalendars()) as calendar_v3.Schema$CalendarListEntry[];
+    }
+
     const response = await this.withCalendar((calendar) =>
       calendar.calendarList.list({
         minAccessRole: "reader",
@@ -201,64 +236,43 @@ export class GoogleCalendarAdapter {
     since,
     until,
     maxResults = 100,
+    orderBy = "updated",
   }: {
     since: Date;
     until?: Date;
     maxResults?: number;
+    orderBy?: "startTime" | "updated";
   }): Promise<GoogleCalendarEvent[]> {
     const calendarIds =
       this.calendarIds.length > 0 ? this.calendarIds : ["primary"];
     const events: GoogleCalendarEvent[] = [];
 
     for (const calendarId of calendarIds) {
-      const response = await this.withCalendar((calendar) =>
-        calendar.events.list({
-          calendarId,
-          timeMin: since.toISOString(),
-          timeMax: until?.toISOString(),
-          maxResults,
-          singleEvents: true,
-          orderBy: "updated",
-          showDeleted: false,
-        }),
-      );
+      const items = this.composioCalendar
+        ? await this.composioCalendar.listEvents({
+            calendarId,
+            since,
+            until,
+            maxResults,
+            orderBy,
+          })
+        : ((
+            (await this.withCalendar((calendar) =>
+              calendar.events.list({
+                calendarId,
+                timeMin: since.toISOString(),
+                timeMax: until?.toISOString(),
+                maxResults,
+                singleEvents: true,
+                orderBy,
+                showDeleted: false,
+              }),
+            )) as any
+          ).data?.items ?? []);
 
-      const items = (response as any).data?.items ?? [];
       for (const item of items) {
-        if (!item.id || item.status === "cancelled") continue;
-        const startDate = parseDate(item.start);
-        const endDate = parseDate(item.end);
-        if (!startDate || !endDate) continue;
-
-        events.push({
-          id: item.id,
-          calendarId,
-          summary: item.summary ?? null,
-          description: item.description ?? null,
-          location: item.location ?? null,
-          link: item.htmlLink ?? null,
-          start: startDate,
-          end: endDate,
-          attendees:
-            item.attendees?.map((attendee: any) => ({
-              email: attendee.email ?? null,
-              displayName: attendee.displayName ?? null,
-              responseStatus: attendee.responseStatus ?? null,
-            })) ?? [],
-          organizer: item.organizer
-            ? {
-                email: item.organizer.email ?? null,
-                displayName: item.organizer.displayName ?? null,
-              }
-            : undefined,
-          created: item.created ? new Date(item.created) : null,
-          updated: item.updated ? new Date(item.updated) : null,
-          status: item.status ?? null,
-          conferenceLink:
-            item.hangoutLink ??
-            item.conferenceData?.entryPoints?.[0]?.uri ??
-            null,
-        });
+        const event = toGoogleCalendarEvent(item, calendarId);
+        if (event) events.push(event);
       }
     }
 
@@ -273,6 +287,8 @@ export class GoogleCalendarAdapter {
     location,
     attendees,
     conferenceDataVersion = 0,
+    createConference = false,
+    sendUpdates,
   }: {
     summary: string;
     start: { dateTime: string; timeZone?: string };
@@ -281,67 +297,103 @@ export class GoogleCalendarAdapter {
     location?: string | null;
     attendees?: { email: string; displayName?: string }[];
     conferenceDataVersion?: number;
+    createConference?: boolean;
+    sendUpdates?: "all" | "externalOnly" | "none";
   }): Promise<GoogleCalendarEvent> {
     const calendarId =
       this.calendarIds.length > 0 ? this.calendarIds[0] : "primary";
 
-    const response = await this.withCalendar((calendar) =>
-      calendar.events.insert({
-        calendarId,
-        conferenceDataVersion,
-        requestBody: {
-          summary,
-          description: description ?? undefined,
-          location: location ?? undefined,
-          start,
-          end,
-          attendees: attendees?.map((a) => ({
-            email: a.email,
-            displayName: a.displayName ?? undefined,
-          })),
-        },
-      }),
-    );
+    const requestBody = {
+      summary,
+      description: description ?? undefined,
+      location: location ?? undefined,
+      start,
+      end,
+      attendees: attendees?.map((a) => ({
+        email: a.email,
+        displayName: a.displayName ?? undefined,
+      })),
+      conferenceData: createConference
+        ? {
+            createRequest: {
+              requestId: randomUUID(),
+              conferenceSolutionKey: {
+                type: "hangoutsMeet",
+              },
+            },
+          }
+        : undefined,
+    };
 
-    const item = (response as any).data;
+    const item = (
+      this.composioCalendar
+        ? await this.composioCalendar.createEvent({
+            calendarId,
+            conferenceDataVersion: createConference ? 1 : conferenceDataVersion,
+            sendUpdates,
+            requestBody,
+          })
+        : (
+            (await this.withCalendar((calendar) =>
+              calendar.events.insert({
+                calendarId,
+                conferenceDataVersion: createConference
+                  ? 1
+                  : conferenceDataVersion,
+                sendUpdates,
+                requestBody,
+              }),
+            )) as any
+          ).data
+    ) as any;
     if (!item.id) {
       throw new AppError("bad_request:api", "Failed to create Google event");
     }
 
-    const startDate = parseDate(item.start);
-    const endDate = parseDate(item.end);
-    if (!startDate || !endDate) {
+    const event = toGoogleCalendarEvent(item, calendarId);
+    if (!event) {
       throw new AppError("bad_request:api", "Invalid event dates");
     }
-
-    return {
-      id: item.id,
-      calendarId,
-      summary: item.summary ?? null,
-      description: item.description ?? null,
-      location: item.location ?? null,
-      link: item.htmlLink ?? null,
-      start: startDate,
-      end: endDate,
-      attendees:
-        item.attendees?.map((attendee: any) => ({
-          email: attendee.email ?? null,
-          displayName: attendee.displayName ?? null,
-          responseStatus: attendee.responseStatus ?? null,
-        })) ?? [],
-      organizer: item.organizer
-        ? {
-            email: item.organizer.email ?? null,
-            displayName: item.organizer.displayName ?? null,
-          }
-        : undefined,
-      created: item.created ? new Date(item.created) : null,
-      updated: item.updated ? new Date(item.updated) : null,
-      status: item.status ?? null,
-      conferenceLink:
-        item.hangoutLink ?? item.conferenceData?.entryPoints?.[0]?.uri ?? null,
-    };
+    return event;
   }
+}
+
+function toGoogleCalendarEvent(
+  item: any,
+  calendarId: string,
+): GoogleCalendarEvent | null {
+  if (!item.id || item.status === "cancelled") return null;
+  const startDate = parseDate(item.start);
+  const endDate = parseDate(item.end);
+  if (!startDate || !endDate) return null;
+
+  return {
+    id: item.id,
+    calendarId,
+    summary: item.summary ?? null,
+    description: item.description ?? null,
+    location: item.location ?? null,
+    link: item.htmlLink ?? null,
+    start: startDate,
+    end: endDate,
+    attendees:
+      item.attendees?.map((attendee: any) => ({
+        email: attendee.email ?? null,
+        displayName: attendee.displayName ?? null,
+        responseStatus: attendee.responseStatus ?? null,
+      })) ?? [],
+    organizer: item.organizer
+      ? {
+          email: item.organizer.email ?? null,
+          displayName: item.organizer.displayName ?? null,
+        }
+      : undefined,
+    created: item.created ? new Date(item.created) : null,
+    updated: item.updated ? new Date(item.updated) : null,
+    status: item.status ?? null,
+    conferenceLink:
+      item.hangoutLink ?? item.conferenceData?.entryPoints?.[0]?.uri ?? null,
+  };
 }
 
 function parseDate(

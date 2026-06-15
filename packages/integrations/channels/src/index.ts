@@ -4,6 +4,20 @@
 
 export { MessagePlatformAdapter } from "./adapter";
 export {
+  PlatformAdapterError,
+  createPlatformAdapterError,
+  isPlatformAdapterError,
+  isPlatformErrorEnvelope,
+  makePlatformErrorEnvelope,
+  platformErrorEnvelopeToWireMessage,
+  toPlatformAdapterError,
+} from "./errors";
+export type {
+  PlatformAdapterErrorContext,
+  PlatformAgentErrorCode,
+  PlatformErrorEnvelope,
+} from "./errors";
+export {
   BaseMessageEvent,
   PrivateMessageEvent,
   GroupMessageEvent,

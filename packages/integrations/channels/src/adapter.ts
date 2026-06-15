@@ -1,5 +1,11 @@
 import type { Messages } from "./message";
 import type { MessageEvent, MessageTarget, MessageHandler } from "./events";
+import {
+  createPlatformAdapterError,
+  toPlatformAdapterError,
+  type PlatformAdapterError,
+  type PlatformAgentErrorCode,
+} from "./errors";
 
 /**
  * Base class for message platform adapters
@@ -22,7 +28,7 @@ export abstract class MessagePlatformAdapter {
     id: string,
     message: string,
   ): Promise<void> {
-    this.sendMessages(target, id, [message]);
+    await this.sendMessages(target, id, [message]);
   }
 
   /**
@@ -51,6 +57,62 @@ export abstract class MessagePlatformAdapter {
     quoteOrigin = false,
   ): Promise<void> {
     throw new Error("Method not implemented");
+  }
+
+  protected async runWithAdapterError<T>(
+    operation: string,
+    action: () => Promise<T>,
+    opts?: {
+      fallbackCode?: PlatformAgentErrorCode;
+      fallbackMessage?: string;
+      request_id?: string;
+    },
+  ): Promise<T> {
+    try {
+      return await action();
+    } catch (error) {
+      throw this.toAdapterError(operation, error, opts);
+    }
+  }
+
+  protected toAdapterError(
+    operation: string,
+    error: unknown,
+    opts?: {
+      fallbackCode?: PlatformAgentErrorCode;
+      fallbackMessage?: string;
+      request_id?: string;
+    },
+  ): PlatformAdapterError {
+    return toPlatformAdapterError(
+      this.getAdapterName(),
+      operation,
+      error,
+      opts,
+    );
+  }
+
+  protected createAdapterError(
+    operation: string,
+    code: PlatformAgentErrorCode,
+    message: string,
+    opts?: { request_id?: string; cause?: unknown },
+  ): PlatformAdapterError {
+    return createPlatformAdapterError(
+      this.getAdapterName(),
+      operation,
+      code,
+      message,
+      opts,
+    );
+  }
+
+  private getAdapterName(): string {
+    return (
+      this.name ||
+      this.constructor.name.replace(/Adapter$/, "") ||
+      "message-platform"
+    );
   }
 
   /**

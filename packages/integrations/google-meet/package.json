@@ -1,18 +1,10 @@
 {
-  "name": "@openloomi/integrations-calendar",
+  "name": "@openloomi/integrations-google-meet",
   "version": "0.5.1",
   "private": true,
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
-  },
-  "dependencies": {
-    "@openloomi/integrations": "workspace:*",
-    "googleapis": "^140.0.0",
-    "google-auth-library": "^9.0.0"
-  },
-  "peerDependencies": {
-    "react": ">=18.0.0"
   },
   "devDependencies": {
     "@openloomi/config": "workspace:*",

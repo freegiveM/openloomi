@@ -31,6 +31,7 @@ export type Platform =
   | "instagram"
   | "twitter"
   | "google_calendar"
+  | "google_meet"
   | "outlook_calendar"
   | "teams"
   | "facebook_messenger"
