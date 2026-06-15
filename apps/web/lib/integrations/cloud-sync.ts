@@ -5,7 +5,7 @@
  */
 
 import { getAuthToken } from "@/lib/auth/token-manager";
-import { isTauriMode } from "@/lib/env/client-mode";
+import { isTauriMode } from "@/lib/env/client-constants";
 
 /**
  * Sync cloud integration accounts to local

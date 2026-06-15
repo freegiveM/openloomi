@@ -4,14 +4,17 @@
  * Provides file-based logging for debugging in distributed apps.
  * All logs are written to ~/.openloomi/logs/openloomi.log
  *
- * Console output is only enabled in development environment
+ * Console output is only enabled in development environment.
+ * When Axiom is configured (AXIOM_TOKEN + AXIOM_DATASET),
+ * logs are also sent to Axiom for centralized collection and search.
  */
 
 import { appendFileSync, existsSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { APP_DIR_NAME } from "@/lib/env/config/constants";
 
-const LOG_DIR = join(homedir(), ".openloomi", "logs");
+const LOG_DIR = join(homedir(), APP_DIR_NAME, "logs");
 const LOG_FILE = join(LOG_DIR, "openloomi.log");
 const isDevelopment =
   process.env.NODE_ENV === "development" || process.env.NODE_ENV === "test";

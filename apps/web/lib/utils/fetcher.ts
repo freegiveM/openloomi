@@ -4,7 +4,7 @@ import { formatISO } from "date-fns";
 import type { Session } from "next-auth";
 import { getAuthToken } from "@/lib/auth/token-manager";
 import type { DBMessage } from "@/lib/db/schema";
-import { getUserTimezoneHeaders } from "@/lib/timezone";
+import { getUserTimezoneHeaders } from "@/lib/utils/timezone";
 
 /**
  * Basic fetcher for API calls
@@ -122,9 +122,14 @@ export function convertToUIMessages(messages: DBMessage[]): ChatMessage[] {
     id: message.id,
     role: message.role as "user" | "assistant" | "system",
     parts: message.parts as any,
+    // Spread saved metadata first, then pin createdAt from the server-side
+    // DB column so it always wins over any client-clock value the message
+    // may have been originally constructed with. Pagination compares this
+    // value against the server-clock DB column, so mixing client clocks
+    // in here can silently hide rows when device time is skewed.
     metadata: {
-      createdAt: formatISO(message.createdAt),
       ...(message.metadata || {}),
+      createdAt: formatISO(message.createdAt),
     },
   }));
 }
@@ -138,8 +143,8 @@ export function judgeGuest(session: Session) {
 }
 
 /**
- * Get the home path based on character tab mode.
- * In character tab mode, returns "/character", otherwise returns "/".
+ * Get the home path for the app.
+ * Returns "/" — the main home page.
  */
 export function getHomePath(): string {
   return "/";

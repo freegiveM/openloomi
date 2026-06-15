@@ -72,7 +72,7 @@ export async function sendPasswordResetEmail({
       text: `Hi there!\n\nWe received a request to reset the password for your account.\n\nUse the link below to set a new password. This link is valid for one hour.\n${resetUrl}\n\nIf you didn't request this, you can safely ignore this email.`,
       html: `<!doctype html>
 <html>
-  <body style="font-family: 'Noto Sans SC', 'PingFang SC', 'Helvetica Neue', -apple-system, BlinkMacSystemFont, sans-serif; color: #1f1f1f;">
+  <body style="font-family: 'Roboto', 'Noto Sans SC', 'Source Han Sans SC', 'PingFang SC', 'Microsoft YaHei', 'Helvetica Neue', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #1f1f1f;">
     <p>Hi there!</p>
     <p>We received a request to reset the password for your account.</p>
     <p>

@@ -6,6 +6,7 @@
  */
 
 import "server-only";
+import { APP_DIR_NAME } from "@/lib/env/config/constants";
 
 /**
  * Get user home directory (cross-platform)
@@ -43,13 +44,13 @@ export function getAppDataDir(): string {
     // Windows: prioritize USERPROFILE, then APPDATA
     const userprofile = process.env.USERPROFILE;
     if (userprofile) {
-      return join(userprofile, ".openloomi");
+      return join(userprofile, APP_DIR_NAME);
     }
     return join(process.env.APPDATA || home, "openloomi");
   }
 
-  // Unix (Linux/macOS): ~/.openloomi
-  return join(home, ".openloomi");
+  // Unix (Linux/macOS): ~/${APP_DIR_NAME}
+  return join(home, APP_DIR_NAME);
 }
 
 /**
@@ -71,9 +72,12 @@ export function getDatabasePath(): string {
 /**
  * Get the memory directory path for conversation stores.
  * Path: <appDataDir>/data/memory/
+ * @param userId - Optional user ID for user-scoped memory path
  */
-export function getAppMemoryDir(): string {
-  return getAppDataSubPath("data", "memory");
+export function getAppMemoryDir(userId?: string): string {
+  return userId
+    ? getAppDataSubPath("data", "memory", userId)
+    : getAppDataSubPath("data", "memory");
 }
 
 /**
@@ -82,6 +86,18 @@ export function getAppMemoryDir(): string {
  */
 export function getMemoryPath(): string {
   return getAppDataSubPath("data", "memory");
+}
+
+/**
+ * Get user-scoped memory file system path
+ * Path: <appDataDir>/data/memory/{userId}
+ * Used for user memory isolation - each user has their own memory directory
+ * @param userId - Optional user ID; if not provided, returns base memory path
+ */
+export function getUserMemoryPath(userId?: string): string {
+  return userId
+    ? getAppDataSubPath("data", "memory", userId)
+    : getAppDataSubPath("data", "memory");
 }
 
 /**
