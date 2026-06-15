@@ -1,5 +1,6 @@
 import type { IntegrationId } from "@/hooks/use-integrations";
 import { isIntegrationPlatformConnectable } from "@/lib/integrations/platform-connectability";
+import { UserLocale } from "@openloomi/shared";
 
 type ConnectorActionLike = {
   type?: string;
@@ -69,6 +70,9 @@ const PLATFORM_ALIASES: Record<string, IntegrationId> = {
   "x twitter": "twitter",
   google_calendar: "google_calendar",
   gcal: "google_calendar",
+  // Do not map natural-language "meet/gmeet" requests to the hidden Google
+  // Meet connector. Meeting schedules are handled by Google Calendar; the
+  // Composio Meet toolkit remains backend-only for future spaces/artifacts.
   outlook_calendar: "outlook_calendar",
   teams: "teams",
   microsoft_teams: "teams",
@@ -136,13 +140,16 @@ function compactPlatformText(value: string) {
   return normalizePlatformText(value).replace(/_/g, "");
 }
 
+function mentionsHiddenGoogleMeetConnector(value: string) {
+  return /(?:google[\s_-]*meet|googlemeet|\bgmeet\b)/iu.test(value);
+}
+
 export function normalizeIntegrationPlatform(
   value: unknown,
 ): IntegrationId | null {
   if (typeof value !== "string") return null;
   const normalized = normalizePlatformText(value);
   if (!normalized) return null;
-
   if (/\bx\b/i.test(value) && /twitter|tweet|x twitter/i.test(value)) {
     return "twitter";
   }
@@ -220,9 +227,7 @@ function hasDisconnectedIntegrationSignal(text: string) {
   return DISCONNECTED_INTEGRATION_PATTERN.test(text);
 }
 
-function isEnglishLanguage(language?: string | null): boolean {
-  return language?.toLowerCase().startsWith("en") ?? false;
-}
+const isEnglishLanguage = UserLocale.isEnglishCode;
 
 export function getIntegrationPlatformLabel(
   platform: IntegrationId | null,
@@ -230,11 +235,14 @@ export function getIntegrationPlatformLabel(
 ) {
   if (platform === "twitter") return "X/Twitter";
   if (platform === "google_calendar") return "Google Calendar";
+  if (platform === "google_meet") return "Google Meet";
   if (platform === "outlook_calendar") return "Outlook Calendar";
   if (platform === "facebook_messenger") return "Facebook Messenger";
   if (platform === "google_drive") return "Google Drive";
   if (platform === "google_docs") return "Google Docs";
   if (platform === "imessage") return "iMessage";
+  if (platform === "whatsapp") return "WhatsApp";
+  if (platform === "linkedin") return "LinkedIn";
   if (platform === "qqbot") return "QQ";
   if (platform === "weixin")
     return isEnglishLanguage(language) ? "WeChat" : "WeChat";
@@ -263,6 +271,7 @@ export function resolveDisconnectedIntegrationPlatformFromText(
   text: string,
 ): IntegrationId | null {
   if (!hasDisconnectedIntegrationSignal(text)) return null;
+  if (mentionsHiddenGoogleMeetConnector(text)) return null;
   return normalizeIntegrationPlatform(text);
 }
 
@@ -271,6 +280,7 @@ export function buildMissingIntegrationActionFromText(
   options?: { language?: string | null },
 ): ConnectorTargetAction | null {
   if (!hasDisconnectedIntegrationSignal(text)) return null;
+  if (mentionsHiddenGoogleMeetConnector(text)) return null;
   const platform = normalizeIntegrationPlatform(text);
   if (platform && !isIntegrationPlatformConnectable(platform)) return null;
   const label = getConnectActionLabel(platform, options?.language);
