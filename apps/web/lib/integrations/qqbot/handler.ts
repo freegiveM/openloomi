@@ -84,7 +84,7 @@ export async function handleQQInboundMessage(
     }
     const replyParts: string[] = [];
 
-    const qqbotStore = new QQBotConversationStore();
+    const qqbotStore = new QQBotConversationStore(userId);
     const conversationHistory = qqbotStore.getConversationHistory(
       params.senderId ?? "",
       recipient,

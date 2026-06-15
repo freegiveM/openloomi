@@ -64,6 +64,7 @@
       "@openloomi/billing/entitlements": ["../../packages/billing/src/entitlements.ts"],
       "@openloomi/indexeddb/*": ["../../packages/indexeddb/src/*"],
       "@openloomi/insights/*": ["../../packages/insights/src/*"],
+      "@openloomi/integrations/composio": ["../../packages/integrations/composio/src/index.ts"],
       "@openloomi/integrations/calendar/*": ["../../packages/integrations/calendar/src/*"],
       "@openloomi/hooks/*": ["../../packages/hooks/src/*"],
       "@openloomi/mcp/*": ["../../packages/ai/mcp/src/*"],

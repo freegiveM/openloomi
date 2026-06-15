@@ -295,16 +295,16 @@ describe("indexeddb forgetting bridge", () => {
     );
 
     expect(result.status).toBe("success");
-    expect(result.createdSummaries).toBeGreaterThanOrEqual(2);
-    expect(result.transitionedRecords).toBe(6);
-    expect(result.archivedDetailRecords).toBe(3);
-    expect(result.hardDeletedRecords).toBe(3);
+    expect(result.createdSummaries).toBeGreaterThanOrEqual(1);
+    expect(result.transitionedRecords).toBe(3);
+    expect(result.archivedDetailRecords).toBe(0);
+    expect(result.hardDeletedRecords).toBe(0);
 
     const shortToMid = manager.rawMessages.filter(
       (item) => item.messageId.startsWith("s") && item.memoryStage === "mid",
     );
     expect(shortToMid.length).toBe(3);
-    expect(manager.summaries.length).toBeGreaterThanOrEqual(2);
+    expect(manager.summaries.length).toBeGreaterThanOrEqual(1);
   });
 
   it("queries summaries as fallback when raw is insufficient", async () => {

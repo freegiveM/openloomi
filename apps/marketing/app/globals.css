@@ -71,7 +71,7 @@
   --color-banner-border: rgba(22, 93, 255, 0.12);
   --color-banner-divider: rgba(30, 58, 138, 0.2);
 
-  /* Fonts (aligned with alloomi apps/web design system) */
+  /* Fonts */
   --font-sans:
     "Noto Sans SC", "Source Han Sans SC", "PingFang SC", "Microsoft YaHei",
     "Helvetica Neue", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;

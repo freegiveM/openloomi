@@ -197,7 +197,7 @@ export async function handleDingTalkInboundMessage(
     const workDir = join(tmpdir(), "openloomi-dingtalk-out", userId, msgId);
     await mkdir(workDir, { recursive: true });
 
-    const dingtalkStore = new DingTalkConversationStore();
+    const dingtalkStore = new DingTalkConversationStore(userId);
     const conversationHistory = dingtalkStore.getConversationHistory(
       params.senderId,
       params.chatId,
