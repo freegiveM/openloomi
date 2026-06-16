@@ -337,22 +337,22 @@
     --card-foreground: var(--foreground);
     --popover: 0 0% 100%;
     --popover-foreground: 227 28% 12%;
-    /* New design system primary color #13408F (blue palette 700), HSL for Tailwind hsl(var(--primary)) */
-    --primary: 218 76% 32%;
+    /* New design system primary color - Black (matching TaskComposer send button #000000) */
+    --primary: 0 0% 0%;
     --primary-foreground: 0 0% 100%;
-    --brand-blue: 218 76% 32%;
-    --brand-magenta: 218 76% 32%;
-    --primary-blue: 218 76% 32%;
-    --primary-blue-text: 218 76% 18%;
-    /* Theme color system - Blue theme (primary color 700) */
-    --theme-vivid-orange: 218 76% 32%;
-    --theme-electric-orange: 216 55% 55%;
-    --theme-amber: 214 52% 48%;
-    --theme-yellow-accent: 216 60% 42%;
+    --brand-blue: 0 0% 0%;
+    --brand-magenta: 0 0% 0%;
+    --primary-blue: 0 0% 0%;
+    --primary-blue-text: 0 0% 5%;
+    /* Theme color system - Black theme */
+    --theme-vivid-orange: 0 0% 0%;
+    --theme-electric-orange: 0 0% 8%;
+    --theme-amber: 0 0% 5%;
+    --theme-yellow-accent: 0 0% 3%;
     /* Dynamic theme color system - supports runtime switching */
-    --dynamic-theme-start: 218 76% 32%;
-    --dynamic-theme-main: 216 55% 55%;
-    --dynamic-theme-end: 218 76% 32%;
+    --dynamic-theme-start: 0 0% 0%;
+    --dynamic-theme-main: 0 0% 8%;
+    --dynamic-theme-end: 0 0% 0%;
     /* Match badge colors in images */
     --tag-red-text: 0 84% 56%;
     --tag-red-bg: 358 100% 95%;
@@ -372,26 +372,26 @@
     --success-foreground: 161 82% 15%;
     --border: 220 17% 91%;
     --input: 220 17% 89%;
-    --ring: 218 76% 32%;
-    --chart-1: 218 76% 32%;
-    --chart-2: 216 55% 55%;
-    --chart-3: 214 52% 48%;
-    --chart-4: 216 60% 42%;
+    --ring: 0 0% 0%;
+    --chart-1: 0 0% 0%;
+    --chart-2: 0 0% 10%;
+    --chart-3: 0 0% 5%;
+    --chart-4: 0 0% 3%;
     --chart-5: 220 10% 40%;
     --radius: 0.75rem;
     --radius-2xl: 1.5rem;
     --sidebar-background: 0 0% 96%;
     --sidebar-foreground: 220 44% 10%;
-    --sidebar-primary: 218 76% 32%;
+    --sidebar-primary: 0 0% 0%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 218 76% 32%;
+    --sidebar-accent: 0 0% 0%;
     --sidebar-accent-foreground: 220 10% 98%;
     --sidebar-border: 220 17% 91%;
     --sidebar-ring: var(--ring);
-    --sidebar-active: 218 76% 32%;
+    --sidebar-active: 0 0% 0%;
     --sidebar-active-foreground: 0 0% 100%;
     --sidebar-hover: 220 10% 98%;
-    --sidebar-hover-foreground: 218 76% 32%;
+    --sidebar-hover-foreground: 0 0% 0%;
   }
 
   html {

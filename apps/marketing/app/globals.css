@@ -3,20 +3,20 @@
 @import "fumadocs-ui/css/preset.css";
 
 @theme {
-  /* Primary colors - blue palette (aligned with apps/web) */
-  --color-primary-50: #f0f5fc;
-  --color-primary-100: #e3ecf9;
-  --color-primary-200: #cddff4;
-  --color-primary-300: #a9caeb;
-  --color-primary-400: #7faee0;
-  --color-primary-500: #5d90d4;
-  --color-primary-600: #4272c1;
-  --color-primary-700: #13408f;
-  --color-primary-800: #29427e;
-  --color-primary-900: #253964;
-  --color-primary-950: #192441;
-  --color-primary-start: #4272c1;
-  --color-primary-end: #13408f;
+  /* Primary colors - black palette (aligned with apps/web TaskComposer) */
+  --color-primary-50: #f5f5f5;
+  --color-primary-100: #e5e5e5;
+  --color-primary-200: #d4d4d4;
+  --color-primary-300: #a3a3a3;
+  --color-primary-400: #737373;
+  --color-primary-500: #525252;
+  --color-primary-600: #404040;
+  --color-primary-700: #262626;
+  --color-primary-800: #1a1a1a;
+  --color-primary-900: #0a0a0a;
+  --color-primary-950: #000000;
+  --color-primary-start: #262626;
+  --color-primary-end: #000000;
 
   /* Accent colors - orange palette (aligned with apps/web) */
   --color-accent-50: #fdf6ef;
@@ -54,8 +54,8 @@
   /* Brand colors */
   --color-deepwater: var(--color-primary-end); /* Deepwater */
   --color-flowlight: var(--color-accent-brand); /* Flowlight - accent color */
-  --color-surfaceBlue: #e8f0fa;
-  --color-primary: var(--color-primary-700);
+  --color-surfaceBlue: #e8e8e8;
+  --color-primary: var(--color-primary-950);
   --color-primary-foreground: #f8fafc;
 
   /* Semantic colors */
