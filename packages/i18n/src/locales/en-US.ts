@@ -2169,6 +2169,7 @@ const enUS = {
     wrongSubmitCode: "Incorrect verification code. Please try again.",
     submitError: "Submission failed. Please try again.",
     telegramLogout: "Successfully logged out of Telegram",
+    disconnectSuccess: "Disconnected successfully.",
     telegramLogin: "Telegram account logged in successfully!",
     telegramLoginHint:
       "Now send a message to your Telegram Saved Messages to start chatting with AI",
@@ -3300,6 +3301,8 @@ const enUS = {
     prompt: "What kind of assistant do you want to create?",
     askEverything: "Ask everything...",
     sendMessageFailed: "Message send failed, please retry later",
+    send: "Send",
+    sending: "Sending...",
     searchSkills: "Search skills",
     manageSkills: "Manage",
   },

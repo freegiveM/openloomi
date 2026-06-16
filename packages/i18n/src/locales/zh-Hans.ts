@@ -2044,6 +2044,7 @@ const zhHans = {
     wrongSubmitCode: "验证码错误，请重试",
     submitError: "提交失败，请重试",
     telegramLogout: "已成功退出 Telegram 登录",
+    disconnectSuccess: "已成功断开连接",
     telegramLogin: "Telegram 账号登录成功！",
     telegramLoginHint:
       "现在可以在 Telegram「Saved Messages」中发送消息，开始与 AI 对话",
@@ -3088,6 +3089,8 @@ const zhHans = {
     /** Status of pending upload file card */
     uploading: "上传中",
     sendMessageFailed: "消息发送失败，请稍后重试",
+    send: "发送",
+    sending: "发送中...",
     searchSkills: "搜索技能",
     manageSkills: "管理",
   },
