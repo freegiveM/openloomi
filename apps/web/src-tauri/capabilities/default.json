@@ -81,6 +81,7 @@
         "/**"
       ]
     },
-    "allow-get-system-locale"
+    "allow-get-system-locale",
+    "allow-home-dir-custom"
   ]
 }
