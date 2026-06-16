@@ -15,14 +15,28 @@ export function isImageFile(mediaType?: string): boolean {
   return mediaType?.startsWith("image/") ?? false;
 }
 
+export interface TusUploadOptions {
+  signal?: AbortSignal;
+  onUploadCreated?: (uploadId: string) => void;
+}
+
 /**
  * Upload an image file using TUS-style chunked upload
  * Returns the blob URL that can be used to retrieve the uploaded file
  */
 export async function uploadImageTUS(
   file: File,
-  maxRetries = 3,
+  maxRetriesOrOptions: number | TusUploadOptions = 3,
+  maybeOptions?: TusUploadOptions,
 ): Promise<string | null> {
+  const maxRetries =
+    typeof maxRetriesOrOptions === "number" ? maxRetriesOrOptions : 3;
+  const options =
+    typeof maxRetriesOrOptions === "number"
+      ? maybeOptions
+      : maxRetriesOrOptions;
+  const signal = options?.signal;
+  const onUploadCreated = options?.onUploadCreated;
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       // 1. Create upload session
@@ -74,6 +88,7 @@ export async function uploadImageTUS(
       console.log(
         `[TUS] Created upload session: ${uploadId} (attempt ${attempt}/${maxRetries})`,
       );
+      onUploadCreated?.(uploadId);
 
       // 2. Upload chunks
       let offset = 0;

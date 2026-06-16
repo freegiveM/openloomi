@@ -26,7 +26,7 @@ import {
 } from "@openloomi/ui";
 import { RemixIcon } from "@/components/remix-icon";
 import { Spinner } from "@/components/spinner";
-import { MODELS, type ModelType } from "@/components/agent/model-selector";
+import type { ModelType } from "@/components/agent/model-selector";
 
 type CronPreset = "daily" | "weekly" | "monthly" | "custom";
 type CronScheduleSelectValue =
@@ -532,34 +532,6 @@ export default function ScheduledJobCreatePage() {
                     className="flex-1 min-h-0 border-0 rounded-none bg-transparent"
                   />
                 </div>
-              </div>
-
-              <div className="flex flex-col gap-[8px]">
-                <Label htmlFor="job-model">
-                  {t("agent.panels.scheduledJobsPanel.model", "Model")}
-                </Label>
-                <Select
-                  value={form.selectedModel}
-                  onValueChange={(value: ModelType) => {
-                    setForm((prev) => ({ ...prev, selectedModel: value }));
-                  }}
-                >
-                  <SelectTrigger id="job-model">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(MODELS).map(([id, model]) => (
-                      <SelectItem key={id} value={id}>
-                        {id === "default"
-                          ? t(
-                              "agent.panels.scheduledJobsPanel.modelDefault",
-                              "Default",
-                            )
-                          : model.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
               </div>
 
               <div className="flex flex-col gap-[8px]">

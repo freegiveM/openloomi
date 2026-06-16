@@ -9,7 +9,7 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { generateUUID } from "@/lib/utils";
 import type { ChatMessage } from "@openloomi/shared";
 import { VirtualizedMessages } from "@/components/messages-virtualized";
-import { MultimodalInput } from "@/components/multimodal-input";
+import { TaskComposer } from "@/components/task-composer/task-composer";
 import useSWR from "swr";
 import { fetcher } from "@/lib/utils";
 import type { Attachment } from "@openloomi/shared";
@@ -255,15 +255,6 @@ export function AgentChatPanel({
   }, []);
 
   /**
-   * Get remaining suggestions (unused)
-   */
-  const remainingSuggestions = useMemo(() => {
-    return allSuggestions.filter(
-      (suggestion) => !usedSuggestionIds.has(suggestion.id),
-    );
-  }, [allSuggestions, usedSuggestionIds]);
-
-  /**
    * Listen to scroll events and detect scroll state
    */
   useEffect(() => {
@@ -505,11 +496,7 @@ export function AgentChatPanel({
         </div>
       }
     >
-      <div
-        className={cn(
-          "relative flex h-full flex-col bg-card/90 backdrop-blur-md",
-        )}
-      >
+      <div className={cn("relative flex h-full flex-col")}>
         {/* Chat Vault floating panel: controlled by header library button, positioned at top-right of content area */}
         <div className="absolute top-2 right-3 z-[100] flex flex-col items-end">
           <WorkspaceFloatPanel
@@ -532,7 +519,7 @@ export function AgentChatPanel({
         {/* Message content area - scrollable; overflow-y: overlay keeps scrollbar from taking width */}
         <div className="relative flex flex-col flex-1 min-h-0 w-full">
           {/* FocusedInsight floats at the top of the scroll area, does not move with scrolling */}
-          <FocusedInsightFloatingBar contentClassName="mx-auto w-full max-w-3xl min-w-0" />
+          <FocusedInsightFloatingBar contentClassName="mx-auto w-full max-w-[730px] min-w-0" />
 
           <div
             ref={scrollContainerRef}
@@ -544,7 +531,7 @@ export function AgentChatPanel({
             )}
           >
             <div className="flex flex-1 px-4 pb-4 w-full min-w-0">
-              <div className="mx-auto flex w-full max-w-3xl min-w-0">
+              <div className="mx-auto flex w-full max-w-[730px] min-w-0">
                 {requiresApiSetup && messages.length === 0 ? (
                   <ConversationApiSetup />
                 ) : (
@@ -604,36 +591,49 @@ export function AgentChatPanel({
               <ConversationApiSetup compact />
             ) : null
           ) : (
-            <form className="mx-auto flex w-full max-w-3xl flex-col gap-6">
-              <MultimodalInput
-                chatId={chatId}
-                input={input}
-                setInput={handleSetInput}
-                stop={stop}
+            <form className="mx-auto flex w-full max-w-[730px] flex-col gap-6">
+              <TaskComposer
+                value={input}
+                setValue={handleSetInput}
+                onStop={stop}
+                isAgentRunning={isAgentRunning}
                 attachments={attachments}
                 setAttachments={setAttachments}
-                setMessages={setMessages}
-                sendMessage={sendMessagePresent}
-                remainingSuggestions={remainingSuggestions}
-                onSuggestionClick={(suggestion) => {
-                  handleSuggestionUsed(suggestion.id);
-                  // Capture potential errors
-                  try {
-                    sendMessagePresent({
-                      role: "user",
-                      parts: [{ type: "text", text: suggestion.title }],
-                    }).catch((error) => {
-                      console.error(
-                        "[onSuggestionClick] Failed to send message:",
-                        error,
-                      );
-                    });
-                  } catch (error) {
-                    console.error(
-                      "[onSuggestionClick] Error sending message:",
-                      error,
-                    );
-                  }
+                onSubmit={async ({ text, attachments: submitAttachments }) => {
+                  type UploadingAttachment = Attachment & {
+                    isUploading?: boolean;
+                  };
+                  const supportedAttachments = submitAttachments.filter(
+                    (att: UploadingAttachment) => att.url && !att.isUploading,
+                  );
+
+                  const messageObj = {
+                    role: "user" as const,
+                    parts: [
+                      ...supportedAttachments.map((attachment) => ({
+                        type: "file" as const,
+                        url: attachment.url,
+                        name: attachment.name,
+                        mediaType: attachment.contentType,
+                        sizeBytes: attachment.sizeBytes,
+                        blobPath: attachment.blobPath,
+                        downloadUrl: attachment.downloadUrl,
+                        file: (attachment as Attachment & { file?: File }).file,
+                        serverImageTUSUrl: (
+                          attachment as Attachment & {
+                            serverImageTUSUrl?: string;
+                          }
+                        ).serverImageTUSUrl,
+                      })),
+                      {
+                        type: "text" as const,
+                        text: text,
+                      },
+                    ],
+                  };
+
+                  await sendMessagePresent(messageObj as any);
+                  handleSetInput("");
                 }}
               />
             </form>

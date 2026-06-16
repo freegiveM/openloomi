@@ -15,8 +15,6 @@ import { useTranslation } from "react-i18next";
 import { useInsightPagination } from "@/hooks/use-insight-data";
 import IntegrationIcon from "./integration-icon";
 import { RemixIcon } from "@/components/remix-icon";
-import { MessageForwardPanel } from "./message-forward-panel";
-import { Dialog, DialogContent, DialogTitle } from "./ui/dialog";
 
 /**
  * Extract cited Insight IDs from message text
@@ -120,7 +118,6 @@ export function PureMessageActions({
 }) {
   const { mutate } = useSWRConfig();
   const [_, copyToClipboard] = useCopyToClipboard();
-  const [isForwardMenuOpen, setIsForwardMenuOpen] = useState(false);
   const [isVoting, setIsVoting] = useState(false);
   // Locally maintained vote state
   const [localVote, setLocalVote] = useState<Vote | undefined>(vote);
@@ -251,34 +248,6 @@ export function PureMessageActions({
 
   return (
     <div className="relative flex flex-row gap-2 opacity-0 group-hover/message:opacity-100 transition-opacity">
-      <Dialog open={isForwardMenuOpen} onOpenChange={setIsForwardMenuOpen}>
-        {/* Forward button */}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 px-2 text-muted-foreground"
-              onClick={() => setIsForwardMenuOpen(true)}
-            >
-              <RemixIcon name="send_plane" size="size-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{t("common.forward", "Forward")}</TooltipContent>
-        </Tooltip>
-
-        {/* Forward dialog */}
-        <DialogContent className="max-w-3xl p-4" hideCloseButton>
-          <DialogTitle className="sr-only">
-            {t("message.forward.title", "Forward Message")}
-          </DialogTitle>
-          <MessageForwardPanel
-            message={message}
-            onClose={() => setIsForwardMenuOpen(false)}
-          />
-        </DialogContent>
-      </Dialog>
-
       <Tooltip>
         <TooltipTrigger asChild>
           <Button

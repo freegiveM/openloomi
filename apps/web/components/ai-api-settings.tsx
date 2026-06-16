@@ -57,18 +57,18 @@ const providers: Array<{
   baseUrlPlaceholder: string;
   modelPlaceholder: string;
 }> = [
-  {
-    type: "openai_compatible",
-    titleKey: "settings.aiSettingsOpenAiTitle",
-    titleFallback: "OpenAI compatible",
-    descriptionKey: "settings.aiSettingsOpenAiDescription",
-    descriptionFallback:
-      "OpenAI, OpenRouter, Groq, Perplexity, or custom endpoints",
-    apiKeyPlaceholderKey: "settings.aiSettingsOpenAiApiKeyPlaceholder",
-    apiKeyPlaceholderFallback: "sk-...",
-    baseUrlPlaceholder: "https://openrouter.ai/api/v1",
-    modelPlaceholder: "openai/gpt-4o-mini",
-  },
+  // {
+  //   type: "openai_compatible",
+  //   titleKey: "settings.aiSettingsOpenAiTitle",
+  //   titleFallback: "OpenAI compatible",
+  //   descriptionKey: "settings.aiSettingsOpenAiDescription",
+  //   descriptionFallback:
+  //     "OpenAI, OpenRouter, Groq, Perplexity, or custom endpoints",
+  //   apiKeyPlaceholderKey: "settings.aiSettingsOpenAiApiKeyPlaceholder",
+  //   apiKeyPlaceholderFallback: "sk-...",
+  //   baseUrlPlaceholder: "https://openrouter.ai/api/v1",
+  //   modelPlaceholder: "openai/gpt-4o-mini",
+  // },
   {
     type: "anthropic_compatible",
     titleKey: "settings.aiSettingsAnthropicTitle",

@@ -1408,39 +1408,6 @@ export default function ScheduledJobDetailPage() {
                 </div>
 
                 <div className="flex flex-col gap-[8px]">
-                  <Label htmlFor="job-model">
-                    {t(
-                      "agent.panels.scheduledJobsPanel.model",
-                      "Model selection",
-                    )}
-                  </Label>
-                  <Select
-                    value={form.selectedModel}
-                    onValueChange={(value: ModelType) => {
-                      setForm((prev) =>
-                        prev ? { ...prev, selectedModel: value } : prev,
-                      );
-                    }}
-                  >
-                    <SelectTrigger id="job-model">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {Object.entries(MODELS).map(([id, model]) => (
-                        <SelectItem key={id} value={id}>
-                          {id === "default"
-                            ? t(
-                                "agent.panels.scheduledJobsPanel.modelDefault",
-                                "Default",
-                              )
-                            : model.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="flex flex-col gap-[8px]">
                   <Label>
                     {t("agent.panels.scheduledJobsPanel.plan", "Plan")}
                   </Label>
