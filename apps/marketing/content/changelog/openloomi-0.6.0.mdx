@@ -1,0 +1,65 @@
+---
+title: "OpenLoomi 0.6.0"
+description: "OpenLoomi 0.6.0 release notes"
+---
+
+# OpenLoomi 0.6.0 - June 17, 2026
+
+OpenLoomi 0.6.0 delivers significant AI intelligence upgrades with memory relation capabilities, expanded provider support, and cross-platform distribution improvements. The release introduces a relation pipeline prototype, evidence cluster diagnostics, and RPM package support, while also enhancing Tauri integration and platform connector management.
+
+### Notable Changes
+
+#### Anthropic-Compatible Provider Support
+
+OpenLoomi now supports Anthropic-compatible API endpoints out of the box. Configure any Anthropic-compatible provider seamlessly within the existing AI provider framework, enabling broader model access and flexibility for teams with custom API setups.
+
+#### Memory Relation Intelligence
+
+A suite of memory relationship features powers deeper knowledge insights:
+
+- **Relation Pipeline Prototype**: New pipeline system for processing and analyzing memory relations at scale
+- **Relation Graph Assignment Helper**: Visualize and manage relationship graphs across your knowledge base
+- **Consolidation Plan Helper**: Intelligent suggestions for organizing and deduplicating memory entries
+- **Evidence Cluster Diagnostics**: Tools to diagnose and validate evidence clustering quality
+- **Evidence Cluster Scoring Helper**: Automated scoring to rank and prioritize memory clusters
+
+#### Cross-Platform Distribution
+
+Distribution reach expands with new package format support:
+
+- **RPM Package Support**: Native RPM packages added to the release artifacts alongside existing DMG and deb packages
+- **Linux Build Improvements**: Enhanced audio library (libasound2-dev) and dpkg-dev dependencies for more reliable Linux builds
+- **Homebrew Cask Consolidation**: Release workflow streamlined to automatically update Homebrew cask in a single step
+
+#### Tauri Desktop Integration
+
+Desktop app experience refined with several quality-of-life improvements:
+
+- Analytics exports now properly saved to disk in Tauri mode
+- Command permissions and home directory custom path handling fixed for Linux
+- Missing capability permissions added for a more complete sandbox configuration
+
+#### Platform Connector Enhancements
+
+Account management and integration resilience improved:
+
+- Local-only deletion properly handled in Tauri mode for integration accounts
+- API key masking now shows placeholder value for enhanced security visibility
+- Fallback to user API settings when modelConfig is not provided, ensuring graceful degradation
+
+#### UI/UX Refinements
+
+Visual and interaction polish continues:
+
+- Primary color updated to black to match TaskComposer send button for visual consistency
+- Analytics date formatting respects i18n language settings
+- Missing translation keys added for `chat.send` and `auth.disconnectSuccess`
+
+#### Marketing & Documentation
+
+Content experience enhancements:
+
+- New Loop Engineering personal agent blog post highlighting platform capabilities
+- Patent-style illustrations added to the agent memory blog for visual storytelling
+- Cover image field documentation improved
+- English translation pass completed for all blog content

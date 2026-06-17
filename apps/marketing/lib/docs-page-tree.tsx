@@ -32,6 +32,7 @@ const DOC_TITLES = new Map([
   ["/docs/glossary", "Glossary"],
   ["/docs/use-cases", "Use Cases"],
   ["/docs/changelog", "Changelog"],
+  ["/docs/changelog/openloomi-0.6.0", "OpenLoomi 0.6.0"],
   ["/docs/changelog/openloomi-0.5.0", "OpenLoomi 0.5.0"],
   ["/docs/changelog/openloomi-0.4.0", "OpenLoomi 0.4.0"],
   ["/docs/changelog/openloomi-0.3.0", "OpenLoomi 0.3.0"],
