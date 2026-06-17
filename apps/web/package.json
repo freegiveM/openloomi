@@ -57,6 +57,8 @@
     "@openloomi/search": "workspace:*",
     "@openloomi/shared": "workspace:*",
     "@openloomi/sqlite": "workspace:*",
+    "@openloomi/voice-kokoro": "workspace:*",
+    "@openloomi/voice-whisper": "workspace:*",
     "@anthropic-ai/claude-agent-sdk": "^0.2.71",
     "@anthropic-ai/sandbox-runtime": "^0.0.32",
     "@anthropic-ai/sdk": "^0.72.1",

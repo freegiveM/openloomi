@@ -24,6 +24,7 @@ import { CloudSyncInit } from "@/components/cloud-sync-init";
 import { InsightRefreshInit } from "@/components/insight-refresh-init";
 import { RawMessagesMigrationInit } from "@/components/raw-messages-migration-init";
 import { TelegramTokenFormProvider } from "@/components/platform-integrations";
+import { VoiceProvider } from "@/components/audio/voice-provider";
 
 // Lazy load initialization components - use Suspense boundaries to avoid blocking initial render
 const IntegrationInitComponents = memo(() => (
@@ -68,10 +69,12 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
       {/* Lazy load integration initialization components */}
       <IntegrationInitComponents />
       <TelegramTokenFormProvider>
-        <MobileLayoutWrapper>
-          <AppContent>{children}</AppContent>
-          <MobileComponents />
-        </MobileLayoutWrapper>
+        <VoiceProvider>
+          <MobileLayoutWrapper>
+            <AppContent>{children}</AppContent>
+            <MobileComponents />
+          </MobileLayoutWrapper>
+        </VoiceProvider>
       </TelegramTokenFormProvider>
     </SessionProvider>
   );

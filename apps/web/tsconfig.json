@@ -119,7 +119,11 @@
       "@openloomi/security": ["../../packages/security/src/index.ts"],
       "@openloomi/security/token-encryption": ["../../packages/security/src/token-encryption.ts"],
       "@openloomi/security/url-validator": ["../../packages/security/src/url-validator.ts"],
-      "@openloomi/security/key-manager": ["../../packages/security/src/key-manager.ts"]
+      "@openloomi/security/key-manager": ["../../packages/security/src/key-manager.ts"],
+      "@openloomi/voice-kokoro": ["../../packages/voice-kokoro/src/index.ts"],
+      "@openloomi/voice-kokoro/*": ["../../packages/voice-kokoro/src/*"],
+      "@openloomi/voice-whisper": ["../../packages/voice-whisper/src/index.ts"],
+      "@openloomi/voice-whisper/*": ["../../packages/voice-whisper/src/*"]
     },
     "typeRoots": ["./node_modules/@types"]
   },

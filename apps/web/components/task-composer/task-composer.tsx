@@ -22,6 +22,8 @@ import { uploadFile } from "@/lib/files/upload";
 import { uploadImageTUS } from "@/lib/files/tus-upload";
 import { useAttachmentUpload } from "./use-attachment-upload";
 import type { TaskComposerProps, TaskComposerSubmitPayload } from "./types";
+import { VoiceRecordingBar } from "./voice-recording-bar";
+import { useVoice } from "@/components/audio/voice-provider";
 
 const isTauriEnv = typeof window !== "undefined" && "__TAURI__" in window;
 const IME_COMPOSITION_BUFFER_MS = 120;
@@ -113,6 +115,7 @@ function PureTaskComposer({
   enableDropzone = true,
 }: TaskComposerProps) {
   const { t } = useTranslation();
+  const { whisper } = useVoice();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const compositionEndTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
@@ -637,7 +640,7 @@ function PureTaskComposer({
                 )}
               </div>
 
-              {/* {isVoiceActive ? (
+              {isVoiceActive && whisper.enabled ? (
                 <div className="min-w-0 flex-1">
                   <VoiceRecordingBar
                     phase={phase}
@@ -658,9 +661,10 @@ function PureTaskComposer({
                     disableConfirm={!isRecordingAudio}
                   />
                 </div>
-              ) : ( */}
+              ) : (
               <div className="flex shrink-0 items-center gap-2">
-                {/* <Tooltip>
+                {whisper.enabled && (
+                  <Tooltip>
                     <TooltipTrigger asChild>
                       <button
                         type="button"
@@ -686,7 +690,8 @@ function PureTaskComposer({
                         {t("chat.audioStartRecord", "Click to start recording")}
                       </span>
                     </TooltipContent>
-                  </Tooltip> */}
+                  </Tooltip>
+                )}
 
                 {isAgentRunning && onStop ? (
                   <Tooltip>
@@ -744,7 +749,7 @@ function PureTaskComposer({
                   </button>
                 ) : null}
               </div>
-              {/* )} */}
+              )}
             </div>
           </div>
         </div>
