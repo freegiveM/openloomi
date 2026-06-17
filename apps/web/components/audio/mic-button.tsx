@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useRef } from "react";
+import React from "react";
 import { useTranslation } from "react-i18next";
 import { Mic, Square, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,10 @@ interface MicButtonProps {
   disabled?: boolean;
 }
 
-export function MicButton({ onTranscriptionComplete, disabled }: MicButtonProps) {
+export function MicButton({
+  onTranscriptionComplete,
+  disabled,
+}: MicButtonProps) {
   const { whisper } = useVoice();
   const { t } = useTranslation();
 
@@ -54,9 +57,12 @@ export function MicButton({ onTranscriptionComplete, disabled }: MicButtonProps)
           className="h-8 w-8 shrink-0 relative text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/50"
           title={t("chat.stopRecording", "Stop recording")}
         >
-          <div 
+          <div
             className="absolute inset-0 rounded-full bg-red-500/20"
-            style={{ transform: `scale(${scale})`, transition: 'transform 0.05s ease-out' }}
+            style={{
+              transform: `scale(${scale})`,
+              transition: "transform 0.05s ease-out",
+            }}
           />
           <Square className="h-4 w-4 fill-current z-10" />
         </Button>

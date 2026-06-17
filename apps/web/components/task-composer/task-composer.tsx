@@ -662,93 +662,99 @@ function PureTaskComposer({
                   />
                 </div>
               ) : (
-              <div className="flex shrink-0 items-center gap-2">
-                {whisper.enabled && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <button
-                        type="button"
-                        className={cx(
-                          "group flex size-8 items-center justify-center rounded-full bg-transparent p-0 transition-colors hover:bg-[#D9D9D9]",
-                          isProcessingAudio ? "text-primary" : "",
-                        )}
-                        onClick={() => {
-                          if (composerBusy || isLocked) return;
-                          void startRecording();
-                        }}
-                        aria-label={t("chat.audioInput", "Voice input")}
-                      >
-                        <RemixIcon
-                          name="mic"
-                          size="size-4"
-                          className="shrink-0"
-                        />
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <span className="text-xs">
-                        {t("chat.audioStartRecord", "Click to start recording")}
-                      </span>
-                    </TooltipContent>
-                  </Tooltip>
-                )}
+                <div className="flex shrink-0 items-center gap-2">
+                  {whisper.enabled && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          className={cx(
+                            "group flex size-8 items-center justify-center rounded-full bg-transparent p-0 transition-colors hover:bg-[#D9D9D9]",
+                            isProcessingAudio ? "text-primary" : "",
+                          )}
+                          onClick={() => {
+                            if (composerBusy || isLocked) return;
+                            void startRecording();
+                          }}
+                          aria-label={t("chat.audioInput", "Voice input")}
+                        >
+                          <RemixIcon
+                            name="mic"
+                            size="size-4"
+                            className="shrink-0"
+                          />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <span className="text-xs">
+                          {t(
+                            "chat.audioStartRecord",
+                            "Click to start recording",
+                          )}
+                        </span>
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
 
-                {isAgentRunning && onStop ? (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <button
-                        type="button"
-                        className="flex size-8 shrink-0 items-center justify-center rounded-[16px] text-white"
-                        style={{ backgroundColor: "#000000" }}
-                        onClick={(event) => {
-                          event.preventDefault();
-                          onStop();
-                        }}
-                        aria-label={t("chat.stopGenerating", "Stop generating")}
-                      >
-                        <StopIcon size={16} />
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <span className="text-xs">
-                        {t("chat.stopGenerating", "Stop generating")}
-                      </span>
-                    </TooltipContent>
-                  </Tooltip>
-                ) : null}
+                  {isAgentRunning && onStop ? (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          className="flex size-8 shrink-0 items-center justify-center rounded-[16px] text-white"
+                          style={{ backgroundColor: "#000000" }}
+                          onClick={(event) => {
+                            event.preventDefault();
+                            onStop();
+                          }}
+                          aria-label={t(
+                            "chat.stopGenerating",
+                            "Stop generating",
+                          )}
+                        >
+                          <StopIcon size={16} />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <span className="text-xs">
+                          {t("chat.stopGenerating", "Stop generating")}
+                        </span>
+                      </TooltipContent>
+                    </Tooltip>
+                  ) : null}
 
-                {!isAgentRunning ? (
-                  <button
-                    type="button"
-                    className={cx(
-                      "flex size-8 shrink-0 items-center justify-center rounded-[16px] p-0 text-white focus-visible:outline-none focus-visible:ring-0 disabled:cursor-not-allowed",
-                    )}
-                    style={{
-                      backgroundColor: sendButtonMuted
-                        ? "rgba(0,0,0,0.3)"
-                        : "#000000",
-                    }}
-                    onClick={(event) => {
-                      event.preventDefault();
-                      handleSubmit();
-                    }}
-                    disabled={sendDisabled || isVoiceActive}
-                    aria-label={
-                      effectiveUploadingState
-                        ? t("chat.uploading", "Uploading file...")
-                        : showSendingState
-                          ? t("chat.sending", "Sending...")
-                          : t("chat.send", "Send message")
-                    }
-                  >
-                    {showSendingState ? (
-                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                    ) : (
-                      <ArrowUpIcon size={16} />
-                    )}
-                  </button>
-                ) : null}
-              </div>
+                  {!isAgentRunning ? (
+                    <button
+                      type="button"
+                      className={cx(
+                        "flex size-8 shrink-0 items-center justify-center rounded-[16px] p-0 text-white focus-visible:outline-none focus-visible:ring-0 disabled:cursor-not-allowed",
+                      )}
+                      style={{
+                        backgroundColor: sendButtonMuted
+                          ? "rgba(0,0,0,0.3)"
+                          : "#000000",
+                      }}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        handleSubmit();
+                      }}
+                      disabled={sendDisabled || isVoiceActive}
+                      aria-label={
+                        effectiveUploadingState
+                          ? t("chat.uploading", "Uploading file...")
+                          : showSendingState
+                            ? t("chat.sending", "Sending...")
+                            : t("chat.send", "Send message")
+                      }
+                    >
+                      {showSendingState ? (
+                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                      ) : (
+                        <ArrowUpIcon size={16} />
+                      )}
+                    </button>
+                  ) : null}
+                </div>
               )}
             </div>
           </div>

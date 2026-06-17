@@ -21,18 +21,21 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
   // Dummy state updates to force re-renders if enabled flags change
   const [, setTick] = useState(0);
 
-  const contextValue = useMemo(() => ({
-    kokoro,
-    whisper,
-    setKokoroEnabled: (enabled: boolean) => {
-      kokoro.enabled = enabled;
-      setTick((t) => t + 1);
-    },
-    setWhisperEnabled: (enabled: boolean) => {
-      whisper.enabled = enabled;
-      setTick((t) => t + 1);
-    }
-  }), [kokoro, whisper]);
+  const contextValue = useMemo(
+    () => ({
+      kokoro,
+      whisper,
+      setKokoroEnabled: (enabled: boolean) => {
+        kokoro.enabled = enabled;
+        setTick((t) => t + 1);
+      },
+      setWhisperEnabled: (enabled: boolean) => {
+        whisper.enabled = enabled;
+        setTick((t) => t + 1);
+      },
+    }),
+    [kokoro, whisper],
+  );
 
   return (
     <VoiceContext.Provider value={contextValue}>
