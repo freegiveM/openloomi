@@ -1,12 +1,12 @@
 cask "openloomi" do
   if Hardware::CPU.intel?
-    version "0.5.0"
-    sha256 "df80da2df07406d0986d17238670cd0b720ed70e97b9acdfca9f038e57e59abd"
-    url "https://github.com/melandlabs/openloomi/releases/download/v0.5.0/openloomi_0.5.0_macOS_amd64.dmg"
+    version "0.6.0"
+    sha256 "237c9cacae04fd02b79c1ae7afe504ad08257e83764598cf861b6845bf22da5c"
+    url "https://github.com/melandlabs/openloomi/releases/download/v0.6.0/openloomi_0.6.0_macOS_amd64.dmg"
   else
-    version "0.5.0"
-    sha256 "ad7f00baa1634d39c40e1b900b0745576347e331e7f7e4e7746fa9b76c68cd50"
-    url "https://github.com/melandlabs/openloomi/releases/download/v0.5.0/openloomi_0.5.0_macOS_aarch64.dmg"
+    version "0.6.0"
+    sha256 "fe7f3f6e12529e9f56d584b6b8a5b8a5356034cf7288f17ccb171f1a650f5a6d"
+    url "https://github.com/melandlabs/openloomi/releases/download/v0.6.0/openloomi_0.6.0_macOS_aarch64.dmg"
   end
 
   name "openloomi"
