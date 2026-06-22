@@ -87,7 +87,7 @@ fn is_newer_version(latest: &str, current: &str) -> bool {
 }
 
 /// Get download filename for the current platform/arch
-fn get_platform_download_filename(version: &str) -> Option<String> {
+pub(crate) fn get_platform_download_filename(version: &str) -> Option<String> {
     let v = version.strip_prefix('v').unwrap_or(version);
 
     #[cfg(target_os = "macos")]
@@ -300,11 +300,11 @@ pub async fn do_check_for_update() -> Result<UpdateCheckResult, String> {
     // Try R2 first, then fallback to GitHub
     let latest_version = match fetch_version_from_r2(&client).await {
         Ok(v) => {
-            println!("📦 Got version from R2: {}", v);
+            eprintln!("📦 Got version from R2: {}", v);
             v
         }
         Err(e) => {
-            println!("⚠️  R2 failed ({}), trying GitHub...", e);
+            eprintln!("⚠️  R2 failed ({}), trying GitHub...", e);
             fetch_version_from_github(&client).await?
         }
     };
@@ -329,11 +329,11 @@ pub async fn do_check_for_update() -> Result<UpdateCheckResult, String> {
         // Try R2 first
         match client.head(&r2_url).send().await {
             Ok(resp) if resp.status().is_success() => {
-                println!("📦 R2 has file, using: {}", r2_url);
+                eprintln!("📦 R2 has file, using: {}", r2_url);
                 r2_url
             }
             _ => {
-                println!("📦 R2 not available, using GitHub: {}", github_url);
+                eprintln!("📦 R2 not available, using GitHub: {}", github_url);
                 github_url
             }
         }
