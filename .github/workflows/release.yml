@@ -876,13 +876,13 @@ jobs:
       - name: Rename artifacts
         run: |
           cd artifacts
-          mv openloomi-dmg-aarch64/*.dmg "openloomi_${VERSION}_aarch64.dmg"
-          mv openloomi-dmg-x64/*.dmg "openloomi_${VERSION}_amd64.dmg"
-          mv openloomi-linux-amd64/deb/*.deb "openloomi_${VERSION}_amd64.deb"
-          mv openloomi-linux-amd64/rpm/*.rpm "openloomi_${VERSION}_x86_64.rpm"
-          mv openloomi-linux-arm64/deb/*.deb "openloomi_${VERSION}_arm64.deb"
-          mv openloomi-linux-arm64/rpm/*.rpm "openloomi_${VERSION}_aarch64.rpm"
-          mv openloomi-windows-nsis/*.exe "openloomi_${VERSION}_amd64.exe"
+          mv openloomi-dmg-aarch64/*.dmg "openloomi_${VERSION}_macOS_aarch64.dmg"
+          mv openloomi-dmg-x64/*.dmg "openloomi_${VERSION}_macOS_amd64.dmg"
+          mv openloomi-linux-amd64/deb/*.deb "openloomi_${VERSION}_linux_amd64.deb"
+          mv openloomi-linux-amd64/rpm/*.rpm "openloomi_${VERSION}_linux_amd64.rpm"
+          mv openloomi-linux-arm64/deb/*.deb "openloomi_${VERSION}_linux_aarch64.deb"
+          mv openloomi-linux-arm64/rpm/*.rpm "openloomi_${VERSION}_linux_aarch64.rpm"
+          mv openloomi-windows-nsis/*.exe "openloomi_${VERSION}_windows_amd64.exe"
           rm -rf openloomi-dmg-aarch64 openloomi-dmg-x64 openloomi-linux-amd64 openloomi-linux-arm64 openloomi-windows-nsis
           ls -la
 
@@ -895,13 +895,13 @@ jobs:
           overwrite_files: true
           generate_release_notes: true
           files: |
-            artifacts/openloomi_${{ steps.version.outputs.version }}_aarch64.dmg
-            artifacts/openloomi_${{ steps.version.outputs.version }}_amd64.dmg
-            artifacts/openloomi_${{ steps.version.outputs.version }}_amd64.deb
-            artifacts/openloomi_${{ steps.version.outputs.version }}_x86_64.rpm
-            artifacts/openloomi_${{ steps.version.outputs.version }}_arm64.deb
-            artifacts/openloomi_${{ steps.version.outputs.version }}_aarch64.rpm
-            artifacts/openloomi_${{ steps.version.outputs.version }}_amd64.exe
+            artifacts/openloomi_${{ steps.version.outputs.version }}_macOS_aarch64.dmg
+            artifacts/openloomi_${{ steps.version.outputs.version }}_macOS_amd64.dmg
+            artifacts/openloomi_${{ steps.version.outputs.version }}_linux_amd64.deb
+            artifacts/openloomi_${{ steps.version.outputs.version }}_linux_amd64.rpm
+            artifacts/openloomi_${{ steps.version.outputs.version }}_linux_aarch64.deb
+            artifacts/openloomi_${{ steps.version.outputs.version }}_linux_aarch64.rpm
+            artifacts/openloomi_${{ steps.version.outputs.version }}_windows_amd64.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -930,7 +930,7 @@ jobs:
       - name: Calculate SHA256 for ARM64 DMG
         id: sha_arm
         run: |
-          URL="https://github.com/melandlabs/openloomi/releases/download/v${{ env.VERSION }}/openloomi_${{ env.VERSION }}_aarch64.dmg"
+          URL="https://github.com/melandlabs/openloomi/releases/download/v${{ env.VERSION }}/openloomi_${{ env.VERSION }}_macOS_aarch64.dmg"
           echo "Downloading from: $URL"
           SHA=$(curl -sfL "$URL" | shasum -a 256 | cut -d ' ' -f 1)
           if [ -z "$SHA" ]; then
@@ -943,7 +943,7 @@ jobs:
       - name: Calculate SHA256 for Intel DMG
         id: sha_intel
         run: |
-          URL="https://github.com/melandlabs/openloomi/releases/download/v${{ env.VERSION }}/openloomi_${{ env.VERSION }}_amd64.dmg"
+          URL="https://github.com/melandlabs/openloomi/releases/download/v${{ env.VERSION }}/openloomi_${{ env.VERSION }}_macOS_amd64.dmg"
           echo "Downloading from: $URL"
           SHA=$(curl -sfL "$URL" | shasum -a 256 | cut -d ' ' -f 1)
           if [ -z "$SHA" ]; then
@@ -966,8 +966,9 @@ jobs:
           echo "  Intel SHA: $INTEL_SHA"
 
           sed -i "s/version \"[^\"]*\"/version \"$VERSION\"/" "$CASK_FILE"
-          sed -i "s/sha256 arm:   \"[^\"]*\"/sha256 arm:   \"$ARM_SHA\"/" "$CASK_FILE"
-          sed -i "s/intel: \"[^\"]*\"/intel: \"$INTEL_SHA\"/" "$CASK_FILE"
+          sed -i "s|sha256 arm:   \"[^\"]*\"|sha256 arm:   \"$ARM_SHA\"|" "$CASK_FILE"
+          sed -i "s|intel: \"[^\"]*\"|intel: \"$INTEL_SHA\"|" "$CASK_FILE"
+          sed -i "s|openloomi/releases/download/v[0-9.]*/openloomi_[0-9.]*_macOS|openloomi/releases/download/v$VERSION/openloomi_${VERSION}_macOS|g" "$CASK_FILE"
 
           echo "Updated content:"
           head -15 "$CASK_FILE"
