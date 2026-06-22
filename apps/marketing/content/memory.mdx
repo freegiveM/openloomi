@@ -12,9 +12,9 @@ This document covers the system architecture, data model, and the relationships 
 
 ---
 
-## Holistic Context Graph
+## Holistic Context
 
-At its core, OpenLoomi's memory system builds a **Holistic Context Graph** — a comprehensive representation of your work that captures:
+At its core, OpenLoomi's memory system builds a **Holistic Context** — a comprehensive representation of your work that captures:
 
 - **People**: Who you work with, their roles, relationships, and collaboration patterns
 - **Projects**: What you're working on, goals, timelines, and progress
@@ -35,7 +35,7 @@ Current agent memory systems suffer from four critical challenges:
 
 ### The Solution
 
-Unlike traditional memory systems that merely store and retrieve messages, the Holistic Context Graph builds structured knowledge from raw data through a self-evolving closed loop:
+Unlike traditional memory systems that merely store and retrieve messages, the Holistic Context builds structured knowledge from raw data through a self-evolving closed loop:
 
 ```
 Diverse context sources (email, IM, screen, audio)
@@ -50,7 +50,7 @@ Spatial dimension: Hebbian Memory Connections
 Temporal dimension: Time-Travel Queries
 ```
 
-OpenLoomi transforms this pattern for personal AI agents, extracting structured insights from diverse context sources (email, IM, screen, audio) and building the Holistic Context Graph through progressive abstraction.
+OpenLoomi transforms this pattern for personal AI agents, extracting structured insights from diverse context sources (email, IM, screen, audio) and building the Holistic Context through progressive abstraction.
 
 ---
 
@@ -314,7 +314,7 @@ If semantic results are insufficient (`results < minRawResultsWithoutFallback`),
 
 ### Temporal Reasoning: Time-Travel Queries
 
-The **time dimension** of the Holistic Context Graph solves one of the hardest challenges in agent memory: handling **time-sensitive queries** like "What did I work on last week?" or "Give me a summary of decisions made in January."
+The **time dimension** of the Holistic Context solves one of the hardest challenges in agent memory: handling **time-sensitive queries** like "What did I work on last week?" or "Give me a summary of decisions made in January."
 
 Standard retrieval fails because it returns current state without temporal context. OpenLoomi implements **Temporal Validity** — the ability to see what was relevant at a specific point in time:
 
@@ -531,7 +531,7 @@ Grouping by `platform + channel + person + botId` ensures that summaries respect
 
 ### Spatial Dimension: Hebbian Memory Connections
 
-The **spatial dimension** of the Holistic Context Graph implements **associative memory connections** inspired by the Hebbian learning principle ("neurons that fire together wire together"):
+The **spatial dimension** of the Holistic Context implements **associative memory connections** inspired by the Hebbian learning principle ("neurons that fire together wire together"):
 
 ```typescript
 // Connection strength increases when insights are accessed together
@@ -547,7 +547,7 @@ When you access an Insight A, the system automatically strengthens its connectio
 
 ### Coding Agent-Inspired Architecture
 
-The Holistic Context Graph architecture was inspired by closed-loop patterns from Coding Agent workflows. The complete flow:
+The Holistic Context architecture was inspired by closed-loop patterns from Coding Agent workflows. The complete flow:
 
 ```
 GitHub Issue (people/projects/...) → Design Review → Result/Status Update
@@ -561,7 +561,7 @@ Raw Messages → Summary → Agent Updates Insight
 Structured Memory Insights + Timeline + Global Relationship Graph + Self-Evolving Memory
 ```
 
-This creates a complete **Holistic Context Graph**: global/local preferences + structured code + GitHub Issue/Kanban + Git History + Coding Agent patterns + immutable raw context + Insights + Timeline + global relationship graph + self-evolving memory.
+This creates a complete **Holistic Context**: global/local preferences + structured code + GitHub Issue/Kanban + Git History + Coding Agent patterns + immutable raw context + Insights + Timeline + global relationship graph + self-evolving memory.
 
 ---
 

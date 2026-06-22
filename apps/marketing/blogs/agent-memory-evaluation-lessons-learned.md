@@ -77,7 +77,7 @@ Generic benchmarks gave us numbers. We needed something that actually reflected 
 
 ## What We Built
 
-### Holistic Context Graph
+### Holistic Context
 
 The context graph is not a vector store with better branding. It's a **structured representation of memory relationships** that captures temporal edges (what happened when), semantic clusters (related concepts grouped together), and access patterns (what gets retrieved together).
 
