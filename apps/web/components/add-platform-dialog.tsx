@@ -1322,7 +1322,7 @@ export function AddPlatformContent({
             <>
               <button
                 type="button"
-                onClick={() => openUrl("https://app.openloomi.ai/privacy")}
+                onClick={() => openUrl("https://app.alloomi.ai/privacy")}
                 className="text-blue-500 hover:underline bg-transparent border-none cursor-pointer p-0"
               >
                 {t("auth.privacy")}
@@ -1330,7 +1330,7 @@ export function AddPlatformContent({
               {t("auth.and")}
               <button
                 type="button"
-                onClick={() => openUrl("https://app.openloomi.ai/terms")}
+                onClick={() => openUrl("https://app.alloomi.ai/terms")}
                 className="text-blue-500 hover:underline bg-transparent border-none cursor-pointer p-0"
               >
                 {t("auth.tos")}

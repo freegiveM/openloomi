@@ -22,6 +22,7 @@ import {
 } from "@/components/feishu-listener-init";
 import { CloudSyncInit } from "@/components/cloud-sync-init";
 import { InsightRefreshInit } from "@/components/insight-refresh-init";
+import { NewInsightsProvider } from "@/components/insights-new-context";
 import { RawMessagesMigrationInit } from "@/components/raw-messages-migration-init";
 import { TelegramTokenFormProvider } from "@/components/platform-integrations";
 import { VoiceProvider } from "@/components/audio/voice-provider";
@@ -57,7 +58,11 @@ MobileComponents.displayName = "MobileComponents";
  * Core app content - only includes necessary initialization
  */
 export function AppContent({ children }: { children: React.ReactNode }) {
-  return <InsightOptimisticProvider>{children}</InsightOptimisticProvider>;
+  return (
+    <NewInsightsProvider>
+      <InsightOptimisticProvider>{children}</InsightOptimisticProvider>
+    </NewInsightsProvider>
+  );
 }
 
 /**

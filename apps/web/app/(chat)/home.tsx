@@ -37,6 +37,8 @@ import { useChatContext } from "@/components/chat-context";
 import { InsightsPaginationProvider } from "@/hooks/use-insight-data";
 import { FilePreviewOverlay } from "@/components/file-preview-overlay";
 import { ChatHistorySidePanel } from "@/components/agent/chat-history-side-panel";
+import { NewInsightsSidePanel } from "@/components/agent/new-insights-side-panel";
+import { useNewInsightsContext } from "@/components/insights-new-context";
 import type { ChatHistoryResponse } from "@/lib/ai/chat/api";
 import { mutate } from "swr";
 import { AddPlatformDialog } from "@/components/add-platform-dialog";
@@ -90,6 +92,9 @@ export function Home() {
     false,
   );
 
+  // New insights panel switch (only used when page=chat)
+  const [isNewInsightsPanelOpen, setIsNewInsightsPanelOpen] = useState(false);
+
   // Get state from ChatContext
   const {
     messages,
@@ -106,6 +111,9 @@ export function Home() {
     setIsInsightDrawerOpen,
     sendMessage,
   } = useChatContext();
+
+  // Get new insights count from context
+  const { newInsightsCount } = useNewInsightsContext();
 
   // Progressive authorization state
   const [isAddPlatformDialogOpen, setIsAddPlatformDialogOpen] = useState(false);
@@ -777,6 +785,11 @@ export function Home() {
                   onToggleHistoryPanel={() =>
                     setIsChatHistoryOpen((open) => !open)
                   }
+                  isNewInsightsPanelOpen={isNewInsightsPanelOpen}
+                  onToggleNewInsightsPanel={() =>
+                    setIsNewInsightsPanelOpen((open) => !open)
+                  }
+                  newInsightsCount={newInsightsCount}
                 />
                 <div className="flex-1 min-h-0 overflow-hidden">
                   <AgentChatPanel
@@ -801,6 +814,29 @@ export function Home() {
                     isLoading={isLoadingMore}
                   />
                 </div>
+              )}
+
+              {/* Right: new insights sidebar - "Need to Know" */}
+              {isNewInsightsPanelOpen && (
+                <NewInsightsSidePanel
+                  onInsightClick={async (insightId) => {
+                    try {
+                      const res = await fetch(`/api/insights/${insightId}?fetch=true`);
+                      if (res.ok) {
+                        const data = await res.json();
+                        if (data.insight) {
+                          setSelectedInsight(data.insight);
+                          setIsInsightDrawerOpen(true);
+                        }
+                      }
+                    } catch (error) {
+                      console.error("Failed to fetch insight:", error);
+                    }
+                  }}
+                  onSuggestionClick={(suggestion) => {
+                    sendMessage({ parts: [{ type: "text", text: suggestion }] });
+                  }}
+                />
               )}
             </div>
           </AgentLayout>

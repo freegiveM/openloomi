@@ -72,7 +72,7 @@ export async function GET(request: NextRequest) {
   const cloudUrl =
     process.env.CLOUD_API_URL ||
     process.env.NEXT_PUBLIC_APP_URL ||
-    "https://app.openloomi.ai";
+    "https://app.alloomi.ai";
 
   // Use frontend callback page /discord-authorized
   const finalRedirectUri = `${cloudUrl}/discord-authorized`;

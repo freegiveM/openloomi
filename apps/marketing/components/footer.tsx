@@ -64,7 +64,7 @@ export function Footer({
   const finalShowBackgroundImage =
     variant !== undefined ? false : (showBackgroundImage ?? false);
   const useUnifiedStyle = true;
-  const appDomain = "https://app.openloomi.ai";
+  const appDomain = "https://app.alloomi.ai";
 
   const [showWechatQR, setShowWechatQR] = useState(false);
 

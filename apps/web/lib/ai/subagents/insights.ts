@@ -56,6 +56,20 @@ export function buildCategoriesPrompt(
 
 ${categoriesList}
 
+### Standard Insight Tags (always available):
+
+// Insight Type Tags (sorted by importance):
+// 1. Facts - 可操作的客观信息 (actionable objective information)
+// 2. Patterns - 趋势、规律性发现 (trends and regular patterns)
+// 3. Knowledge - 知识、见解 (knowledge and insights)
+// 4. Actions - 需要采取行动的事项 (items requiring action)
+
+// Content Tags:
+// 5. Marketing - 营销邮件/促销内容 (marketing/promotional content)
+// 6. Contacts - 联系人相关信息 (contact-related information)
+// 7. Meetings - 会议相关信息 (meeting-related information)
+// 8. RSVP - 需要回复的邀请 (invitations requiring response)
+
 Classify by primary category only. Leave empty if none match.`;
 }
 

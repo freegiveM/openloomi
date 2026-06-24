@@ -594,7 +594,7 @@ const MarketingPage = () => {
                 {t("sovereignty.subtitle")}
               </p>
               <Link
-                href="https://app.openloomi.ai/privacy"
+                href="https://app.alloomi.ai/privacy"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex w-fit items-center bg-transparent border border-border-primary text-foreground px-8 py-4 rounded-lg font-medium transition-all transform relative z-20 hover:bg-background-secondary"

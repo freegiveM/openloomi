@@ -98,7 +98,7 @@ export async function GET(request: NextRequest) {
   const cloudUrl =
     process.env.CLOUD_API_URL ||
     process.env.NEXT_PUBLIC_APP_URL ||
-    "https://app.openloomi.ai";
+    "https://app.alloomi.ai";
 
   const redirectUri =
     process.env.TWITTER_REDIRECT_URI ?? `${cloudUrl}/api/x/callback`;

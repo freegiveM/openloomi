@@ -347,7 +347,7 @@ export async function exchangeSlackAuthorizationCode(
     const cloudUrl =
       (typeof process !== "undefined" &&
         process.env?.NEXT_PUBLIC_CLOUD_API_URL) ||
-      "https://app.openloomi.ai";
+      "https://app.alloomi.ai";
 
     const response = await fetch(
       `${cloudUrl}/api/integrations/slack/oauth/exchange`,
@@ -390,7 +390,7 @@ export async function exchangeDiscordAuthorizationCode(
     const cloudUrl =
       (typeof process !== "undefined" &&
         process.env?.NEXT_PUBLIC_CLOUD_API_URL) ||
-      "https://app.openloomi.ai";
+      "https://app.alloomi.ai";
 
     const response = await fetch(
       `${cloudUrl}/api/integrations/discord/oauth/exchange`,
@@ -445,7 +445,7 @@ export async function exchangeHubspotAuthorizationCode(
     const cloudUrl =
       (typeof process !== "undefined" &&
         process.env?.NEXT_PUBLIC_CLOUD_API_URL) ||
-      "https://app.openloomi.ai";
+      "https://app.alloomi.ai";
 
     const response = await fetch(
       `${cloudUrl}/api/integrations/hubspot/oauth/exchange`,
@@ -488,7 +488,7 @@ export async function exchangeGoogleDocsAuthorizationCode(
     const cloudUrl =
       (typeof process !== "undefined" &&
         process.env?.NEXT_PUBLIC_CLOUD_API_URL) ||
-      "https://app.openloomi.ai";
+      "https://app.alloomi.ai";
 
     const response = await fetch(
       `${cloudUrl}/api/integrations/google-docs/oauth/exchange`,

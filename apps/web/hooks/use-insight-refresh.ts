@@ -25,6 +25,15 @@ interface RefreshError {
 }
 
 /**
+ * New insight item from refresh
+ */
+export interface NewInsightItem {
+  id: string;
+  title: string;
+  summary?: string;
+}
+
+/**
  * Return value of Insight refresh Hook
  */
 interface UseInsightRefreshReturn {
@@ -33,6 +42,9 @@ interface UseInsightRefreshReturn {
   refreshError: RefreshError | null;
   handleRefresh: () => Promise<void>;
   stopAutoRefresh: () => void; // Expose method to stop auto refresh (optional)
+  newInsights: NewInsightItem[];
+  newInsightsCount: number;
+  clearNewInsights: () => void;
 }
 
 /**
@@ -40,7 +52,7 @@ interface UseInsightRefreshReturn {
  */
 interface AutoRefreshOptions {
   enabled?: boolean; // Whether auto refresh is enabled
-  interval?: number; // Normal refresh interval (ms), defaults to 30 minutes (1800000)
+  interval?: number; // Normal refresh interval (ms), defaults to 10 minutes (600000)
   retryInterval?: number; // Retry interval during refresh (ms), defaults to 1 minute (60000)
 }
 
@@ -58,7 +70,7 @@ export function useInsightRefresh(
   initialRefresh = true,
   autoRefreshOptions: AutoRefreshOptions = {
     enabled: true,
-    interval: 1800000,
+    interval: 600000,
     retryInterval: 60000,
   },
 ): UseInsightRefreshReturn {
@@ -67,6 +79,8 @@ export function useInsightRefresh(
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [refreshStatus, setRefreshStatus] = useState<string | null>(null);
   const [refreshError, setRefreshError] = useState<RefreshError | null>(null);
+  const [newInsights, setNewInsights] = useState<NewInsightItem[]>([]);
+  const [newInsightsCount, setNewInsightsCount] = useState(0);
 
   // Use Ref to sync state, avoiding frequent rebuilds due to useCallback depending on state
   const isRefreshingRef = useRef(isRefreshing);
@@ -517,6 +531,20 @@ export function useInsightRefresh(
         }
       }
 
+      // Extract new insights from refresh response for notification
+      if (
+        refreshResult.newInsights &&
+        Array.isArray(refreshResult.newInsights)
+      ) {
+        const insights = refreshResult.newInsights.map((item: any) => ({
+          id: item.id,
+          title: item.title,
+          summary: item.summary || item.description || "",
+        }));
+        setNewInsights(insights);
+        setNewInsightsCount(refreshResult.newInsightsCount ?? insights.length);
+      }
+
       setIsRefreshing(false);
       refreshPollingRef.current = false;
     } catch (error) {
@@ -582,7 +610,7 @@ export function useInsightRefresh(
     // Destructure config options with defaults
     const {
       enabled = true,
-      interval = 1800000,
+      interval = 600000,
       retryInterval = 60000,
     } = autoRefreshOptions;
 
@@ -619,6 +647,14 @@ export function useInsightRefresh(
     }
   }, []);
 
+  /**
+   * Clear new insights (e.g., after user dismisses notification)
+   */
+  const clearNewInsights = useCallback(() => {
+    setNewInsights([]);
+    setNewInsightsCount(0);
+  }, []);
+
   // 1. Execute refresh on first load (configurable)
   useEffect(() => {
     if (initialRefresh) {
@@ -642,5 +678,8 @@ export function useInsightRefresh(
     refreshError,
     handleRefresh,
     stopAutoRefresh,
+    newInsights,
+    newInsightsCount,
+    clearNewInsights,
   };
 }

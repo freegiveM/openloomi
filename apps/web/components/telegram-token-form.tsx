@@ -875,7 +875,7 @@ export function TelegramTokenForm({
                 {checkIsTauri() ? (
                   <button
                     type="button"
-                    onClick={() => openUrl("https://app.openloomi.ai/privacy")}
+                    onClick={() => openUrl("https://app.alloomi.ai/privacy")}
                     className="text-sky-500 hover:underline text-sm flex items-center bg-transparent border-none cursor-pointer p-0"
                   >
                     {t("securityPrompt.learnMore")}

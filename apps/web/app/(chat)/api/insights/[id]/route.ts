@@ -5,13 +5,15 @@ import {
   deleteInsightsByIds,
   getBotsByUserId,
   getInsightByIdForUser,
+  getStoredInsightsByBotIds,
+  normalizeInsight,
   updateInsightById,
 } from "@/lib/db/queries";
 import { AppError } from "@openloomi/shared/errors";
 import timeout from "p-timeout";
 import { insight } from "@/lib/db/schema";
 import { db } from "@/lib/db/queries";
-import { eq } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
 import { extractCloudAuthToken } from "@/lib/ai/request-context";
 
 // ------------------------------
@@ -159,6 +161,18 @@ export async function GET(
       targetBotIds = [id];
     }
 
+    // Get existing insight IDs before refresh (to track new ones)
+    const existingInsightsBeforeRefresh = new Set<string>();
+    for (const botId of targetBotIds) {
+      const { insights: existingInsights } = await getStoredInsightsByBotIds({
+        ids: [botId],
+        days: 1,
+      });
+      existingInsights.forEach((insight: any) => {
+        existingInsightsBeforeRefresh.add(insight.id);
+      });
+    }
+
     // Collect results of all tasks (including success and failure)
     // Extract cloud auth token from request
     const cloudAuthToken = extractCloudAuthToken(request);
@@ -213,6 +227,32 @@ export async function GET(
       }
     });
 
+    // Query for new insights after refresh (insights created in the last few minutes)
+    const newInsights: any[] = [];
+    for (const botId of targetBotIds) {
+      const recentInsights = await db
+        .select()
+        .from(insight)
+        .where(eq(insight.botId, botId))
+        .orderBy(desc(insight.createdAt))
+        .limit(50);
+
+      // Normalize and filter to find new insights
+      const normalizedRecentInsights = recentInsights.map((i: any) =>
+        normalizeInsight(i),
+      );
+      for (const insightItem of normalizedRecentInsights) {
+        if (!existingInsightsBeforeRefresh.has(insightItem.id)) {
+          newInsights.push({
+            id: insightItem.id,
+            title: insightItem.title,
+            summary: insightItem.description || "",
+            createdAt: insightItem.createdAt?.toISOString?.() ?? insightItem.createdAt,
+          });
+        }
+      }
+    }
+
     const apiResult = {
       successful: successful.length,
       failed: failures.length,
@@ -224,6 +264,8 @@ export async function GET(
             }))
           : undefined,
       rawMessages: allRawMessages.length > 0 ? allRawMessages : undefined,
+      newInsights,
+      newInsightsCount: newInsights.length,
     };
     return Response.json(apiResult, { status: 200 });
   } catch (error) {

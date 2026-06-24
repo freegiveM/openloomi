@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
   const cloudUrl =
     process.env.CLOUD_API_URL ||
     process.env.NEXT_PUBLIC_CLOUD_API_URL ||
-    "https://app.openloomi.ai";
+    "https://app.alloomi.ai";
 
   // Detect if this is a forwarded request from local proxy
   const isForwarded = request.nextUrl.searchParams.get("from") === "local";

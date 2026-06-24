@@ -39,7 +39,7 @@ function getVisionBaseUrl(): string {
   const localProxyUrl =
     process.env.LLM_LOCAL_PROXY_URL ||
     process.env.NEXT_PUBLIC_CLOUD_API_URL ||
-    "https://app.openloomi.ai";
+    "https://app.alloomi.ai";
   const proxyPath = "/api/ai/v1";
   const fullLocalUrl = `${localProxyUrl}${proxyPath}`;
 

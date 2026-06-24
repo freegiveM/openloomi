@@ -256,6 +256,62 @@ function applyContentRules(
     result.keywords?.push(...foundKeywords);
   }
 
+  // RSVP / Meeting invitation keywords
+  const rsvpKeywords = [
+    "rsvp",
+    "please respond",
+    "kindly respond",
+    "will you attend",
+    "are you attending",
+    "confirm your attendance",
+    "meeting invitation",
+    "invitation",
+    "you are invited",
+    "join meeting",
+    "join call",
+    "zoom meeting",
+    "google meet",
+    "teams meeting",
+    "webex",
+    "schedule a meeting",
+    "meeting request",
+    "calendar invite",
+    "add to calendar",
+    "when would you like to meet",
+    "available time",
+    "book a meeting",
+    "schedule sync",
+    "1:1 meeting",
+    "sync meeting",
+  ];
+  if (rsvpKeywords.some((kw) => combined.includes(kw))) {
+    result.categories?.push("RSVP");
+    result.urgency = result.urgency || "medium";
+    const foundKeywords = rsvpKeywords.filter((kw) => combined.includes(kw));
+    result.keywords?.push(...foundKeywords);
+  }
+
+  // Meeting-related keywords (for meetings info category)
+  const meetingKeywords = [
+    "meeting notes",
+    "meeting minutes",
+    "meeting summary",
+    "meeting recording",
+    "action items",
+    "follow up",
+    "next steps",
+    "meeting scheduled",
+    "meeting canceled",
+    "reschedule",
+    "postpone",
+    "adjourn",
+  ];
+  if (meetingKeywords.some((kw) => combined.includes(kw))) {
+    result.categories?.push("Meetings");
+    const foundKeywords = meetingKeywords.filter((kw) => combined.includes(kw));
+    result.keywords?.push(...foundKeywords);
+  }
+
   // Security/Auth keywords
   const securityKeywords = [
     "verify",

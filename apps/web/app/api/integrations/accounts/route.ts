@@ -507,6 +507,6 @@ function getCloudUrl(): string {
   return (
     process.env.CLOUD_API_URL ||
     process.env.NEXT_PUBLIC_CLOUD_API_URL ||
-    "https://app.openloomi.ai"
+    "https://app.alloomi.ai"
   );
 }
