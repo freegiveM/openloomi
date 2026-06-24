@@ -1,8 +1,6 @@
 import { auth } from "@/app/(auth)/auth";
 import { AppError } from "@openloomi/shared/errors";
-import {
-  generateText,
-} from "ai";
+import { generateText } from "ai";
 import { getModelProvider } from "@/lib/ai";
 import { setAIUserContextFromRequest } from "@/lib/ai/request-context";
 import { z } from "zod";
@@ -27,7 +25,14 @@ const DailyFocusSuggestionSchema = z.object({
   id: z.string(),
   title: z.string(),
   emoji: z.string(),
-  type: z.enum(["urgent", "high_priority", "potential", "event_based", "pattern_based", "role_based"]),
+  type: z.enum([
+    "urgent",
+    "high_priority",
+    "potential",
+    "event_based",
+    "pattern_based",
+    "role_based",
+  ]),
   priority: z.enum(["urgent", "high_priority", "potential"]).optional(),
   insightId: z.string().optional(),
   reasoning: z.string(),
@@ -42,14 +47,16 @@ const DailyFocusSuggestionSchema = z.object({
   related_insight_ids: z.array(z.string()),
 });
 
-const DailyFocusSuggestionsResponseSchema = z.object({
-  suggested_prompts: z.array(DailyFocusSuggestionSchema).optional(),
-  suggestions: z.array(DailyFocusSuggestionSchema).optional(),
-  summary: z.string().optional(),
-}).transform((data) => ({
-  suggested_prompts: data.suggested_prompts || data.suggestions || [],
-  summary: data.summary,
-}));
+const DailyFocusSuggestionsResponseSchema = z
+  .object({
+    suggested_prompts: z.array(DailyFocusSuggestionSchema).optional(),
+    suggestions: z.array(DailyFocusSuggestionSchema).optional(),
+    summary: z.string().optional(),
+  })
+  .transform((data) => ({
+    suggested_prompts: data.suggested_prompts || data.suggestions || [],
+    summary: data.summary,
+  }));
 
 /**
  * GET /api/daily-focus/suggestions
@@ -138,7 +145,10 @@ export async function GET(request: Request) {
       nextActions: insight.nextActions ?? null,
       actionRequired: insight.actionRequired ?? null,
       categories: insight.categories ?? null,
-      time: insight.time instanceof Date ? insight.time.toISOString() : insight.time,
+      time:
+        insight.time instanceof Date
+          ? insight.time.toISOString()
+          : insight.time,
       isArchived: insight.isArchived ?? null,
     }));
 
@@ -153,81 +163,136 @@ export async function GET(request: Request) {
 
     // Build user prompt for generating suggestions
     const userPrompt = isChinese
-      ? `Based on the Daily Focus analysis results, generate 3 personalized conversation suggestions with detailed context.
+      ? `Based on the Daily Focus analysis results, generate 3 personalized action suggestions from the USER's perspective.
 
 分析结果摘要: ${snapshot.summary}
 事件总数: ${snapshot.totalCount}
 
 重要事件（包含完整信息）:
-${snapshot.events.slice(0, 5).map((event, idx) => `
+${snapshot.events
+  .slice(0, 5)
+  .map(
+    (event, idx) => `
 ${idx + 1}. [${event.priority}] ${event.summary}
    - 详情: ${event.overview || "无"}
-   - 来源: ${event.sources.map(s => s.label).join(", ") || "未知"}
-   - 相关人: ${event.sources.flatMap(s => s.label).slice(0, 3).join(", ") || "无"}
-   - 时间: ${event.sources[0]?.type || "未知"}`).join("\n")}
+   - 来源: ${event.sources.map((s) => s.label).join(", ") || "未知"}
+   - 相关人: ${
+     event.sources
+       .flatMap((s) => s.label)
+       .slice(0, 3)
+       .join(", ") || "无"
+   }
+   - 时间: ${event.sources[0]?.type || "未知"}`,
+  )
+  .join("\n")}
 
 用户角色: ${userRoles.map((r) => r.role).join(", ") || "未设置"}
 行业: ${industries.join(", ") || "未设置"}
 关注话题: ${focusTopics.join(", ") || "未设置"}
 当前日期: ${currentDate}
 
-请生成3个简短的中文对话建议（标题≤15字符），每个建议必须包含足够的上下文信息让用户一看就明白是什么。
-每个建议应该是可执行的、具体的问题或行动。
+## 核心要求
+
+**标题（title）必须满足：**
+- 从用户第一人称视角出发，如"我应该..."、"回复..."、"确认..."、"处理..."
+- 直接可发送到对话中执行的动作或问题
+- 长度控制在15个字符以内
+- 避免抽象描述，要具体可操作
+
+**示例（好的标题）：**
+- "回复确认参加会议"
+- "催促项目进度"
+- "查看财报要点"
+
+**示例（不好的标题）：**
+- "会议邀请收到"（被动描述）
+- "团队动态更新"（不知道要做什么）
+- "John发来的邮件"（缺少行动）
+
+**摘要（summary）要提供足够上下文：**
+- 告诉用户这个建议是关于什么的
+- 包含关键人物、事件、截止时间等信息
+- 让用户一看就明白为什么需要关注
 
 返回JSON格式，使用字段名 "suggested_prompts"（不是"suggestions"）:
 {
   "suggested_prompts": [
     {
       "id": "suggest_001",
-      "title": "建议内容（≤15字符）",
+      "title": "用户视角的可执行动作（≤15字符）",
       "emoji": "💡",
       "type": "event_based",
       "priority": "urgent/high_priority/potential",
       "insightId": "相关insight_id",
-      "summary": "一句话描述这个事件的详情（≤50字符）",
+      "summary": "补充上下文信息，帮助用户理解这个建议的背景（≤50字符）",
       "platform": "来源平台如 Gmail/Slack",
       "time": "时间描述如 2小时前/昨天",
-      "categories": ["RSVP", "Meetings", "Contacts", "Marketing", "Actions", "Facts", "Patterns", "Knowledge", "Observation"] // 分类标签
-      "reasoning": "生成原因",
+      "categories": ["RSVP", "Meetings", "Contacts", "Marketing", "Actions", "Facts", "Patterns", "Knowledge", "Observation"],
+      "reasoning": "为什么生成这个建议",
       "related_insight_ids": ["insight_id"]
     }
   ]
 }`
-      : `Based on the Daily Focus analysis results, generate 3 personalized conversation suggestions with detailed context.
+      : `Based on the Daily Focus analysis results, generate 3 personalized action suggestions from the USER's perspective.
 
 Summary: ${snapshot.summary}
 Total Events: ${snapshot.totalCount}
 
 Top Events (with full details):
-${snapshot.events.slice(0, 5).map((event, idx) => `
+${snapshot.events
+  .slice(0, 5)
+  .map(
+    (event, idx) => `
 ${idx + 1}. [${event.priority}] ${event.summary}
    - Details: ${event.overview || "None"}
-   - Source: ${event.sources.map(s => s.label).join(", ") || "Unknown"}
-   - Time: ${event.sources[0]?.type || "Unknown"}`).join("\n")}
+   - Source: ${event.sources.map((s) => s.label).join(", ") || "Unknown"}
+   - Time: ${event.sources[0]?.type || "Unknown"}`,
+  )
+  .join("\n")}
 
 User Roles: ${userRoles.map((r) => r.role).join(", ") || "Not set"}
 Industries: ${industries.join(", ") || "Not set"}
 Focus Topics: ${focusTopics.join(", ") || "Not set"}
 Current Date: ${currentDate}
 
-Generate 3 short English conversation suggestions (title ≤15 chars), each with enough context so users immediately understand what it refers to.
-Each suggestion should be actionable and specific.
+## Core Requirements
+
+**Title (title) MUST be:**
+- From user's first-person perspective: "I should...", "Reply to...", "Confirm...", "Handle..."
+- Direct actions that can be sent to chat and executed
+- Max 15 characters
+- Avoid abstract descriptions - be specific and actionable
+
+**Good title examples:**
+- "Reply confirm meeting"
+- "Follow up project"
+- "Check report highlights"
+
+**Bad title examples:**
+- "Meeting invitation received" (passive)
+- "Team update" (unclear action)
+- "Email from John" (lacks action)
+
+**Summary should provide enough context:**
+- Tell user what this suggestion is about
+- Include key people, events, deadlines
+- Help user understand why they need to act
 
 Return JSON format with field "suggested_prompts" (NOT "suggestions"):
 {
   "suggested_prompts": [
     {
       "id": "suggest_001",
-      "title": "Suggestion (≤15 chars)",
+      "title": "Action from user perspective (≤15 chars)",
       "emoji": "💡",
       "type": "event_based",
       "priority": "urgent/high_priority/potential",
       "insightId": "related_insight_id",
-      "summary": "One sentence describing this event (≤50 chars)",
+      "summary": "Context to help user understand this suggestion (≤50 chars)",
       "platform": "Source platform like Gmail/Slack",
       "time": "Time description like 2h ago/yesterday",
-      "categories": ["RSVP", "Meetings", "Contacts", "Marketing", "Actions", "Facts", "Patterns", "Knowledge", "Observation"]
-      "reasoning": "Why this suggestion",
+      "categories": ["RSVP", "Meetings", "Contacts", "Marketing", "Actions", "Facts", "Patterns", "Knowledge", "Observation"],
+      "reasoning": "Why this suggestion was generated",
       "related_insight_ids": ["insight_id"]
     }
   ]
@@ -261,7 +326,10 @@ Return JSON format with field "suggested_prompts" (NOT "suggestions"):
         responseText,
       );
       // Fallback suggestions based on analysis
-      const fallbackSuggestions = generateFallbackSuggestions(snapshot, isChinese);
+      const fallbackSuggestions = generateFallbackSuggestions(
+        snapshot,
+        isChinese,
+      );
       return Response.json({
         suggested_prompts: fallbackSuggestions,
         summary: snapshot.summary,
@@ -273,7 +341,10 @@ Return JSON format with field "suggested_prompts" (NOT "suggestions"):
       summary: snapshot.summary,
     });
   } catch (error) {
-    console.error("[Daily Focus Suggestions] Failed to generate suggestions:", error);
+    console.error(
+      "[Daily Focus Suggestions] Failed to generate suggestions:",
+      error,
+    );
     if (error instanceof AppError) {
       return error.toResponse();
     }
@@ -305,22 +376,58 @@ function generateFallbackSuggestions(
 
   // Get urgent and high priority events
   const urgentEvents = snapshot.events.filter((e) => e.priority === "urgent");
-  const highPriorityEvents = snapshot.events.filter((e) => e.priority === "high_priority");
+  const highPriorityEvents = snapshot.events.filter(
+    (e) => e.priority === "high_priority",
+  );
   const otherEvents = snapshot.events.filter((e) => e.priority === "potential");
 
-  const priorityEvents = [...urgentEvents, ...highPriorityEvents, ...otherEvents].slice(0, 3);
+  const priorityEvents = [
+    ...urgentEvents,
+    ...highPriorityEvents,
+    ...otherEvents,
+  ].slice(0, 3);
 
   for (let i = 0; i < priorityEvents.length; i++) {
     const event = priorityEvents[i];
-    const emoji = event.priority === "urgent" ? "🚨" : event.priority === "high_priority" ? "💡" : "📌";
+    const emoji =
+      event.priority === "urgent"
+        ? "🚨"
+        : event.priority === "high_priority"
+          ? "💡"
+          : "📌";
     const platform = event.sources?.[0]?.type || "unknown";
     const sourceLabel = event.sources?.[0]?.label || "未知来源";
     const categories = event.categories || [];
 
+    // Check if this is an informational/newsletter type event
+    const isInformational =
+      categories.includes("Marketing") ||
+      categories.includes("Updates") ||
+      categories.includes("News") ||
+      event.summary.toLowerCase().includes("email") ||
+      event.summary.toLowerCase().includes("newsletter") ||
+      event.summary.toLowerCase().includes("digest");
+
+    // Generate actionable title based on event type
+    let actionableTitle: string;
+    if (isInformational) {
+      // For newsletters/informational, suggest cleanup or review
+      actionableTitle = isChinese ? "查看或标记已读" : "Review or mark as read";
+    } else if (event.priority === "urgent") {
+      // For urgent events, suggest immediate action
+      actionableTitle = isChinese ? "处理紧急事项" : "Handle urgent matter";
+    } else if (event.priority === "high_priority") {
+      // For high priority, suggest follow up
+      actionableTitle = isChinese ? "跟进重要事项" : "Follow up on priority";
+    } else {
+      // For potential, suggest checking
+      actionableTitle = isChinese ? "查看详情" : "Check details";
+    }
+
     if (isChinese) {
       suggestions.push({
         id: `suggest_${String(i + 1).padStart(3, "0")}`,
-        title: event.summary.slice(0, 15),
+        title: actionableTitle,
         emoji,
         type: event.priority as "urgent" | "high_priority" | "potential",
         priority: event.priority as "urgent" | "high_priority" | "potential",
@@ -335,7 +442,7 @@ function generateFallbackSuggestions(
     } else {
       suggestions.push({
         id: `suggest_${String(i + 1).padStart(3, "0")}`,
-        title: event.summary.slice(0, 15),
+        title: actionableTitle,
         emoji,
         type: event.priority as "urgent" | "high_priority" | "potential",
         priority: event.priority as "urgent" | "high_priority" | "potential",

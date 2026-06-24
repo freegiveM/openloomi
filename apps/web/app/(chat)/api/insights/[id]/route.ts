@@ -247,7 +247,8 @@ export async function GET(
             id: insightItem.id,
             title: insightItem.title,
             summary: insightItem.description || "",
-            createdAt: insightItem.createdAt?.toISOString?.() ?? insightItem.createdAt,
+            createdAt:
+              insightItem.createdAt?.toISOString?.() ?? insightItem.createdAt,
           });
         }
       }

@@ -104,8 +104,7 @@ export function InsightRefreshInit() {
 
   // Track authentication state and trigger start when auth becomes available
   useEffect(() => {
-    isAuthenticatedRef.current =
-      session != null && session?.user?.id != null;
+    isAuthenticatedRef.current = session != null && session?.user?.id != null;
 
     // If auth just became available and we haven't started yet, trigger start
     if (isAuthenticatedRef.current && !hasStartedRef.current) {

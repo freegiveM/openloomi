@@ -50,7 +50,9 @@ async function createTaskFromInsight(
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
-      throw new Error(error.message || `Failed to create task: ${response.status}`);
+      throw new Error(
+        error.message || `Failed to create task: ${response.status}`,
+      );
     }
 
     return true;
@@ -91,7 +93,10 @@ export function InsightsNewCountDialog({
       } else {
         toast({
           type: "error",
-          description: t("insight.newCountDialog.taskCreateFailed", "Failed to create task"),
+          description: t(
+            "insight.newCountDialog.taskCreateFailed",
+            "Failed to create task",
+          ),
         });
       }
     } finally {
@@ -161,11 +166,9 @@ export function InsightsNewCountDialog({
           ))}
           {remainingCount > 0 && (
             <p className="text-xs text-muted-foreground text-center">
-              {t(
-                "insight.newCountDialog.more",
-                "and {{count}} more...",
-                { count: remainingCount },
-              )}
+              {t("insight.newCountDialog.more", "and {{count}} more...", {
+                count: remainingCount,
+              })}
             </p>
           )}
         </div>

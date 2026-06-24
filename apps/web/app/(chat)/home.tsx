@@ -821,7 +821,9 @@ export function Home() {
                 <NewInsightsSidePanel
                   onInsightClick={async (insightId) => {
                     try {
-                      const res = await fetch(`/api/insights/${insightId}?fetch=true`);
+                      const res = await fetch(
+                        `/api/insights/${insightId}?fetch=true`,
+                      );
                       if (res.ok) {
                         const data = await res.json();
                         if (data.insight) {
@@ -834,7 +836,9 @@ export function Home() {
                     }
                   }}
                   onSuggestionClick={(suggestion) => {
-                    sendMessage({ parts: [{ type: "text", text: suggestion }] });
+                    sendMessage({
+                      parts: [{ type: "text", text: suggestion }],
+                    });
                   }}
                 />
               )}

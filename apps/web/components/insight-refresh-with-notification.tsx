@@ -4,7 +4,10 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslation } from "react-i18next";
 import { useInsightRefresh } from "@/hooks/use-insight-refresh";
-import { InsightsNewCountDialog, type InsightNewItem } from "./insights-new-count-dialog";
+import {
+  InsightsNewCountDialog,
+  type InsightNewItem,
+} from "./insights-new-count-dialog";
 import { toast } from "@/components/toast";
 
 interface InsightRefreshWithNotificationProps {
@@ -28,15 +31,16 @@ export function InsightRefreshWithNotification({
   const router = useRouter();
   const [dialogOpen, setDialogOpen] = useState(false);
 
-  const {
-    newInsights,
-    newInsightsCount,
-    clearNewInsights,
-  } = useInsightRefresh(assistantName, isFirstLanding, initialRefresh, {
-    enabled,
-    interval: 600000, // 10 minutes
-    retryInterval: 60000,
-  });
+  const { newInsights, newInsightsCount, clearNewInsights } = useInsightRefresh(
+    assistantName,
+    isFirstLanding,
+    initialRefresh,
+    {
+      enabled,
+      interval: 600000, // 10 minutes
+      retryInterval: 60000,
+    },
+  );
 
   // Show dialog when any new insights are detected
   useEffect(() => {

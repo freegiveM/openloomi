@@ -1,6 +1,12 @@
 "use client";
 
-import { createContext, useContext, useState, useCallback, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useState,
+  useCallback,
+  type ReactNode,
+} from "react";
 import type { InsightNewItem } from "./insights-new-count-dialog";
 
 interface NewInsightsContextValue {
@@ -16,10 +22,13 @@ export function NewInsightsProvider({ children }: { children: ReactNode }) {
   const [newInsights, setNewInsightsState] = useState<InsightNewItem[]>([]);
   const [newInsightsCount, setNewInsightsCount] = useState(0);
 
-  const setNewInsights = useCallback((insights: InsightNewItem[], count: number) => {
-    setNewInsightsState(insights);
-    setNewInsightsCount(count);
-  }, []);
+  const setNewInsights = useCallback(
+    (insights: InsightNewItem[], count: number) => {
+      setNewInsightsState(insights);
+      setNewInsightsCount(count);
+    },
+    [],
+  );
 
   const clearNewInsights = useCallback(() => {
     setNewInsightsState([]);

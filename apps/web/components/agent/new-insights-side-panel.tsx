@@ -18,7 +18,13 @@ interface SuggestedPrompt {
   id: string;
   title: string;
   emoji: string;
-  type: "event_based" | "pattern_based" | "role_based" | "urgent" | "high_priority" | "potential";
+  type:
+    | "event_based"
+    | "pattern_based"
+    | "role_based"
+    | "urgent"
+    | "high_priority"
+    | "potential";
   priority?: "urgent" | "high_priority" | "potential";
   reasoning: string;
   summary?: string;
@@ -27,6 +33,7 @@ interface SuggestedPrompt {
   time?: string;
   categories?: string[];
   related_insight_ids: string[];
+  insightId?: string;
 }
 
 type TabType = "insights" | "suggestions";
@@ -41,12 +48,8 @@ export function NewInsightsSidePanel({
   onSuggestionClick,
 }: NewInsightsSidePanelProps) {
   const { t } = useTranslation();
-  const {
-    newInsights,
-    newInsightsCount,
-    clearNewInsights,
-    setNewInsights,
-  } = useNewInsightsContext();
+  const { newInsights, newInsightsCount, clearNewInsights, setNewInsights } =
+    useNewInsightsContext();
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<TabType>("insights");
 
@@ -149,7 +152,10 @@ export function NewInsightsSidePanel({
       setSuggestions(data.suggested_prompts || []);
       lastSuggestionsFetchRef.current = Date.now();
     } catch (error) {
-      console.error("[NewInsightsSidePanel] Failed to fetch suggestions:", error);
+      console.error(
+        "[NewInsightsSidePanel] Failed to fetch suggestions:",
+        error,
+      );
       setSuggestionsError(
         error instanceof Error ? error.message : "Failed to load suggestions",
       );
@@ -163,7 +169,8 @@ export function NewInsightsSidePanel({
     if (activeTab === "suggestions") {
       const now = Date.now();
       const lastFetch = lastSuggestionsFetchRef.current;
-      const shouldFetch = suggestions.length === 0 ||
+      const shouldFetch =
+        suggestions.length === 0 ||
         (lastFetch && now - lastFetch > SUGGESTIONS_CACHE_DURATION);
       if (shouldFetch) {
         fetchSuggestions();
@@ -172,7 +179,46 @@ export function NewInsightsSidePanel({
   }, [activeTab, suggestions.length, fetchSuggestions]);
 
   const handleSuggestionClick = (suggestion: SuggestedPrompt) => {
-    onSuggestionClick?.(suggestion.title);
+    // Check if this is an RSVP suggestion with an associated insightId
+    const isRsvp =
+      suggestion.categories?.includes("RSVP") ||
+      suggestion.categories?.includes("Meetings");
+    const insightId = suggestion.insightId;
+
+    // If RSVP/Meetings with insightId, open the insight directly
+    if (isRsvp && insightId) {
+      onInsightClick?.(insightId);
+      return;
+    }
+
+    // Build a comprehensive message with context
+    const parts: string[] = [];
+
+    // Add the action title
+    parts.push(suggestion.title);
+
+    // Add source info (platform, sender, etc.)
+    if (suggestion.sourceLabel) {
+      parts.push(`来源: ${suggestion.sourceLabel}`);
+    } else if (suggestion.platform && suggestion.platform !== "unknown") {
+      parts.push(`平台: ${suggestion.platform}`);
+    }
+
+    // Add summary/details
+    if (suggestion.summary) {
+      parts.push(`详情: ${suggestion.summary}`);
+    }
+
+    // Add time if available
+    if (suggestion.time) {
+      parts.push(`时间: ${suggestion.time}`);
+    }
+
+    // Join with separator
+    const message = parts.join("\n");
+
+    // Send the comprehensive message to chat
+    onSuggestionClick?.(message);
   };
 
   // Display up to 10 insights
@@ -356,7 +402,11 @@ export function NewInsightsSidePanel({
           <div className="py-2">
             {isLoadingSuggestions ? (
               <div className="flex flex-col items-center justify-center py-8 text-center text-sm text-muted-foreground">
-                <RemixIcon name="loader_icon" size="size-6" className="animate-spin mb-2" />
+                <RemixIcon
+                  name="loader_icon"
+                  size="size-6"
+                  className="animate-spin mb-2"
+                />
                 <p>Loading suggestions...</p>
               </div>
             ) : suggestionsError ? (
@@ -390,16 +440,22 @@ export function NewInsightsSidePanel({
                     <div className="flex-1 min-w-0">
                       {/* Platform and Category tags */}
                       <div className="flex items-center gap-1.5 mb-1 flex-wrap">
-                        {suggestion.platform && suggestion.platform !== "unknown" && (
-                          <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                            {suggestion.platform}
-                          </span>
-                        )}
-                        {suggestion.categories && suggestion.categories.length > 0 && suggestion.categories.slice(0, 2).map((cat) => (
-                          <span key={cat} className="text-[10px] text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded">
-                            {cat}
-                          </span>
-                        ))}
+                        {suggestion.platform &&
+                          suggestion.platform !== "unknown" && (
+                            <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                              {suggestion.platform}
+                            </span>
+                          )}
+                        {suggestion.categories &&
+                          suggestion.categories.length > 0 &&
+                          suggestion.categories.slice(0, 2).map((cat) => (
+                            <span
+                              key={cat}
+                              className="text-[10px] text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded"
+                            >
+                              {cat}
+                            </span>
+                          ))}
                       </div>
                       {/* Title */}
                       <p className="text-sm font-medium text-foreground leading-tight">

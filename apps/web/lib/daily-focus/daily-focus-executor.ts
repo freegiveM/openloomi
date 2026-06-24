@@ -178,11 +178,19 @@ function analyzeInsightActionable(insight: DailyFocusInsightInput): {
   const hasInfoValue = INFO_VALUE_SIGNAL_PATTERN.test(combined);
 
   // Determine priority hint
+  // Info-only content (newsletters, digests, FYI) should be deprioritized
   let priorityHint: FocusPriority = "potential";
-  if (URGENT_WORDS.has(combined) || insight.urgency === "high" || insight.importance === "high") {
-    priorityHint = "urgent";
-  } else if (IMPORTANT_WORDS.has(combined) || hasActionable) {
-    priorityHint = "high_priority";
+  if (!hasInfoValue) {
+    // Only elevate priority if it's NOT just informational content
+    if (
+      URGENT_WORDS.has(combined) ||
+      insight.urgency === "high" ||
+      insight.importance === "high"
+    ) {
+      priorityHint = "urgent";
+    } else if (IMPORTANT_WORDS.has(combined) || hasActionable) {
+      priorityHint = "high_priority";
+    }
   }
 
   return {
@@ -213,7 +221,8 @@ export function buildDailyFocusCandidates(
     // Skip noise
     if (analysis.isNoise) continue;
 
-    const title = insight.title || insight.description?.slice(0, 50) || "Untitled";
+    const title =
+      insight.title || insight.description?.slice(0, 50) || "Untitled";
     const context = [
       insight.description,
       insight.details,
@@ -233,7 +242,9 @@ export function buildDailyFocusCandidates(
       sources: [
         {
           type: insight.platform || "unknown",
-          label: insight.platform ? capitalizeFirst(insight.platform) : "Unknown",
+          label: insight.platform
+            ? capitalizeFirst(insight.platform)
+            : "Unknown",
         },
       ],
       sourceSnippets: [
@@ -316,9 +327,7 @@ export function candidatesToEvents(
 /**
  * Execute Daily Focus analysis on insights
  */
-export function executeDailyFocusAnalysis(
-  insights: DailyFocusInsightInput[],
-): {
+export function executeDailyFocusAnalysis(insights: DailyFocusInsightInput[]): {
   snapshot: DailyFocusSnapshot;
   candidates: DailyFocusCandidate[];
 } {

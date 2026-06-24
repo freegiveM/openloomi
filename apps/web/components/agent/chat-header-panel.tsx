@@ -427,9 +427,10 @@ export function ChatHeaderPanel({
                 onClick={onToggleNewInsightsPanel}
               >
                 <RemixIcon name="bell" size="size-4" />
-                {typeof newInsightsCount === "number" && newInsightsCount > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 flex h-2 w-2 items-center justify-center rounded-full bg-red-500" />
-                )}
+                {typeof newInsightsCount === "number" &&
+                  newInsightsCount > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 flex h-2 w-2 items-center justify-center rounded-full bg-red-500" />
+                  )}
               </Button>
             </TooltipTrigger>
             <TooltipContent>
