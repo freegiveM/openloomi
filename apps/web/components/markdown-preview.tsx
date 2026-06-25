@@ -21,6 +21,21 @@ export interface MarkdownPreviewProps {
 }
 
 /**
+ * Returns true if `filePath` looks like an absolute local filesystem path
+ * (POSIX `/...`, Windows drive `C:\...` / `C:/...`, or UNC `\\...`).
+ * Such paths are NOT browser-servable URLs, so we must avoid using them
+ * directly as `src`/`href` attributes — that would trigger a same-origin
+ * request to e.g. `/Users/foo/...` which returns 404.
+ */
+function looksLikeLocalAbsolutePath(filePath: string): boolean {
+  if (!filePath) return false;
+  if (filePath.startsWith("/")) return true;
+  if (filePath.startsWith("\\\\")) return true;
+  if (/^[a-zA-Z]:[\\/]/.test(filePath)) return true;
+  return false;
+}
+
+/**
  * Markdown preview drawer: top bar shares FilePreviewDrawerHeader with WebsitePreview / library list cards.
  */
 export function MarkdownPreview({
@@ -162,6 +177,38 @@ export function MarkdownPreview({
                 },
                 // Custom image rendering
                 img: ({ node, src, alt, ...props }: any) => {
+                  // If src is an absolute local filesystem path
+                  // (e.g. /Users/.../.openloomi/sessions/.../foo.png or C:\...\foo.png),
+                  // do NOT render an <img> tag — the browser would treat the leading
+                  // "/" as an absolute URL on the current origin and request it via
+                  // HTTP, returning a 404 (the path only exists on the user's disk).
+                  // Render a click-to-open badge instead.
+                  if (
+                    typeof src === "string" &&
+                    looksLikeLocalAbsolutePath(src)
+                  ) {
+                    const fileName =
+                      src.split(/[/\\]/).filter(Boolean).pop() || src;
+                    return (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          void openPathCustom(src);
+                        }}
+                        className="inline-flex max-w-full items-center gap-1.5 my-1 px-2 py-1 rounded-md border bg-muted hover:bg-muted/70 transition-colors text-left"
+                        title={src}
+                      >
+                        <span className="font-medium text-sm truncate">
+                          {fileName}
+                        </span>
+                        <span className="text-xs text-muted-foreground truncate min-w-0">
+                          {src}
+                        </span>
+                      </button>
+                    );
+                  }
                   return (
                     <img
                       src={src}
