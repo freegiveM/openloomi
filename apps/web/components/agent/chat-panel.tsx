@@ -17,7 +17,6 @@ import type { SuggestedPrompt } from "@/components/suggested-actions";
 import { useChatContext } from "../chat-context";
 import { ArrowUpIcon, ArrowDownIcon } from "@/components/icons";
 import { Button } from "@openloomi/ui";
-import { FocusedInsightFloatingBar } from "../focused-insight-floating-bar";
 import { WorkspaceFloatPanel } from "./workspace-float-panel";
 import { useGlobalInsightDrawer } from "@/components/global-insight-drawer";
 import { ErrorBoundary } from "@/components/error-boundary";
@@ -83,7 +82,6 @@ export function AgentChatPanel({
     switchChatId,
     isVaultOpen,
     setVaultOpen,
-    focusedInsights,
     getIsAgentRunningByChatId,
   } = useChatContext();
 
@@ -518,16 +516,10 @@ export function AgentChatPanel({
 
         {/* Message content area - scrollable; overflow-y: overlay keeps scrollbar from taking width */}
         <div className="relative flex flex-col flex-1 min-h-0 w-full">
-          {/* FocusedInsight floats at the top of the scroll area, does not move with scrolling */}
-          <FocusedInsightFloatingBar contentClassName="mx-auto w-full max-w-[730px] min-w-0" />
-
           <div
             ref={scrollContainerRef}
             className={cn(
-              "flex flex-col items-center flex-1 min-h-0 w-full overflow-y-scroll overflow-x-hidden",
-              // When the floating bar is shown, increase top padding to avoid covering the first message
-              "transition-[padding-top] duration-300",
-              focusedInsights.length > 0 ? "pt-[56px]" : "pt-0",
+              "flex flex-col items-center flex-1 min-h-0 w-full overflow-y-scroll overflow-x-hidden pt-0",
             )}
           >
             <div className="flex flex-1 px-4 pb-4 w-full min-w-0">
