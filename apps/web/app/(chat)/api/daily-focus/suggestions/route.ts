@@ -174,6 +174,7 @@ ${snapshot.events
   .map(
     (event, idx) => `
 ${idx + 1}. [${event.priority}] ${event.summary}
+   - ID: ${event.insightId || event.id}
    - 详情: ${event.overview || "无"}
    - 来源: ${event.sources.map((s) => s.label).join(", ") || "未知"}
    - 相关人: ${
@@ -209,10 +210,16 @@ ${idx + 1}. [${event.priority}] ${event.summary}
 - "团队动态更新"（不知道要做什么）
 - "John发来的邮件"（缺少行动）
 
-**摘要（summary）要提供足够上下文：**
-- 告诉用户这个建议是关于什么的
+**摘要（summary）必须满足：**
+- 从用户第一人称视角出发，描述用户自己的处境
+- 格式如："我在Gmail收到了..."、"我有X封邮件待处理"、"Kevin邀请我参加..."
 - 包含关键人物、事件、截止时间等信息
 - 让用户一看就明白为什么需要关注
+
+**推理（reasoning）必须满足：**
+- 从用户第一人称视角出发，描述用户需要做什么
+- 格式如："我需要确认是否参加"、"我应该清理邮件订阅"、"我有这个疑问所以要查看..."
+- 解释为什么这个建议重要，以及用户的下一步行动
 
 返回JSON格式，使用字段名 "suggested_prompts"（不是"suggestions"）:
 {
@@ -224,11 +231,11 @@ ${idx + 1}. [${event.priority}] ${event.summary}
       "type": "event_based",
       "priority": "urgent/high_priority/potential",
       "insightId": "相关insight_id",
-      "summary": "补充上下文信息，帮助用户理解这个建议的背景（≤50字符）",
-      "platform": "来源平台如 Gmail/Slack",
-      "time": "时间描述如 2小时前/昨天",
-      "categories": ["RSVP", "Meetings", "Contacts", "Marketing", "Actions", "Facts", "Patterns", "Knowledge", "Observation"],
-      "reasoning": "为什么生成这个建议",
+      "summary": "我收到了Kevin的直播邀请，已注册确认参加",
+      "platform": "Gmail",
+      "time": "2小时前",
+      "categories": ["RSVP", "Meetings"],
+      "reasoning": "我已经注册了Kevin的直播课程，需要确认参加以免错过",
       "related_insight_ids": ["insight_id"]
     }
   ]
@@ -244,6 +251,7 @@ ${snapshot.events
   .map(
     (event, idx) => `
 ${idx + 1}. [${event.priority}] ${event.summary}
+   - ID: ${event.insightId || event.id}
    - Details: ${event.overview || "None"}
    - Source: ${event.sources.map((s) => s.label).join(", ") || "Unknown"}
    - Time: ${event.sources[0]?.type || "Unknown"}`,
@@ -273,26 +281,32 @@ Current Date: ${currentDate}
 - "Team update" (unclear action)
 - "Email from John" (lacks action)
 
-**Summary should provide enough context:**
-- Tell user what this suggestion is about
+**Summary (summary) MUST be:**
+- From user's first-person perspective, describing the user's situation
+- Format like: "I received...", "I have X emails to process...", "Kevin invited me to..."
 - Include key people, events, deadlines
 - Help user understand why they need to act
+
+**Reasoning (reasoning) MUST be:**
+- From user's first-person perspective, describing what the user needs to do
+- Format like: "I need to confirm...", "I should clean up...", "I want to check because..."
+- Explain why this suggestion matters and what the user's next step is
 
 Return JSON format with field "suggested_prompts" (NOT "suggestions"):
 {
   "suggested_prompts": [
     {
       "id": "suggest_001",
-      "title": "Action from user perspective (≤15 chars)",
+      "title": "Confirm Kevin's live session",
       "emoji": "💡",
       "type": "event_based",
       "priority": "urgent/high_priority/potential",
       "insightId": "related_insight_id",
-      "summary": "Context to help user understand this suggestion (≤50 chars)",
-      "platform": "Source platform like Gmail/Slack",
-      "time": "Time description like 2h ago/yesterday",
-      "categories": ["RSVP", "Meetings", "Contacts", "Marketing", "Actions", "Facts", "Patterns", "Knowledge", "Observation"],
-      "reasoning": "Why this suggestion was generated",
+      "summary": "I registered for Kevin's live session on workflow automation",
+      "platform": "Gmail",
+      "time": "2h ago",
+      "categories": ["RSVP", "Meetings"],
+      "reasoning": "The session could help my career growth, I need to confirm attendance",
       "related_insight_ids": ["insight_id"]
     }
   ]

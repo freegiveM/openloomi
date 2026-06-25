@@ -16,9 +16,6 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@openloomi/ui";
 import { useTranslation } from "react-i18next";
 import { RemixIcon } from "@/components/remix-icon";
 import { useLocalStorage } from "@openloomi/hooks/use-local-storage";
-import { useSingleInsightRefresh } from "@/hooks/use-single-insight-refresh";
-import { useInsightCache } from "@/hooks/use-insight-cache";
-import { useInsightOptimisticUpdates } from "@/components/insight-optimistic-context";
 import { useSidePanel } from "@/components/agent/side-panel-context";
 import { useChatContext } from "@/components/chat-context";
 import { AgentChatPanel } from "@/components/agent/chat-panel";
@@ -318,11 +315,6 @@ function InsightDetailDrawerContent({
 }) {
   const { t, i18n } = useTranslation();
 
-  // Global optimistic update management
-  const { updateInsightCategories, getInsightCategories } =
-    useInsightOptimisticUpdates();
-  const { updateCategories } = useInsightCache();
-
   // Drawer open counter - increments each time the drawer opens, used to force remount child components
   const [drawerOpenCount, setDrawerOpenCount] = useState(0);
 
@@ -562,37 +554,9 @@ function InsightDetailDrawerContent({
         : data.alerts,
     };
   }, [latestInsight]);
-  // Check if pinned to today's focus:
-  // First check if in today's focus list, if not check if categories has keep-focused
-  const isPinned = useMemo(() => {
-    // If in today's focus list, consider it pinned
-    const inBriefList =
-      !!isInBriefContext && !!briefListInsightIds?.has(normalizedInsight.id);
-    if (inBriefList) {
-      return true;
-    }
-    // If not in list, check if categories has keep-focused
-    const hasKeepFocused =
-      (
-        getInsightCategories(
-          normalizedInsight.id,
-          normalizedInsight.categories,
-        ) || []
-      ).includes("keep-focused") || false;
-    return hasKeepFocused;
-  }, [
-    normalizedInsight.id,
-    normalizedInsight.categories,
-    getInsightCategories,
-    isInBriefContext,
-    briefListInsightIds,
-  ]);
-
   const isMobile = useIsMobile();
 
   const [isMuteConfirmOpen, setIsMuteConfirmOpen] = useState(false);
-  /** Secondary confirmation dialog before removing from Today Focus */
-  const [isUnpinConfirmOpen, setIsUnpinConfirmOpen] = useState(false);
 
   /** Click "Mute" */
   const handleArchiveClick = useCallback(
@@ -612,134 +576,6 @@ function InsightDetailDrawerContent({
     onArchive?.(normalizedInsight);
     setIsMuteConfirmOpen(false);
   }, [onArchive, normalizedInsight, onUnpinnedFromBrief]);
-
-  /** Execute pin to Today Focus (pin only, no dialog logic) */
-  const performPin = useCallback(
-    async (e: React.MouseEvent) => {
-      e.stopPropagation();
-      const insightId = normalizedInsight.id;
-      const originalCategories =
-        getInsightCategories(insightId, normalizedInsight.categories) || [];
-      const newCategories = [...originalCategories, "keep-focused"];
-
-      try {
-        await updateInsightCategories(insightId, newCategories, async () => {
-          const response = await fetch(`/api/insights/${insightId}/pin`, {
-            method: "POST",
-          });
-          if (!response.ok) {
-            throw new Error(t("insight.pinFailed", "Failed to pin"));
-          }
-          await updateCategories(insightId, newCategories);
-        });
-        toast({
-          type: "success",
-          description: t("insight.pinned", "Pinned to today's focus"),
-        });
-        // Dispatch event to notify refresh status (optimistic update)
-        window.dispatchEvent(
-          new CustomEvent("insightPinStatusChanged", {
-            detail: { insightId, isPinned: true },
-          }),
-        );
-        // Dispatch event to force refresh list
-        window.dispatchEvent(
-          new CustomEvent("insightListRefresh", {
-            detail: { insightId, isPinned: true },
-          }),
-        );
-        // Dispatch event to refresh brief panel
-        window.dispatchEvent(new CustomEvent("brief:refresh"));
-      } catch (error) {
-        console.error("[performPin] Error:", error);
-        toast({
-          type: "error",
-          description:
-            error instanceof Error
-              ? error.message
-              : t("insight.pinFailed", "Failed to pin"),
-        });
-      }
-    },
-    [
-      normalizedInsight.id,
-      normalizedInsight.categories,
-      t,
-      updateCategories,
-      updateInsightCategories,
-      getInsightCategories,
-    ],
-  );
-
-  /** Execute remove from Today Focus (unpin only, called after confirmation dialog confirmed) */
-  const performUnpin = useCallback(async () => {
-    const insightId = normalizedInsight.id;
-    const originalCategories =
-      getInsightCategories(insightId, normalizedInsight.categories) || [];
-    const newCategories = originalCategories.filter(
-      (c: string) => c !== "keep-focused",
-    );
-
-    try {
-      await updateInsightCategories(insightId, newCategories, async () => {
-        const response = await fetch(`/api/insights/${insightId}/pin`, {
-          method: "DELETE",
-        });
-        if (!response.ok) {
-          throw new Error(t("insight.unpinFailed", "Failed to unpin"));
-        }
-        await updateCategories(insightId, newCategories);
-      });
-      toast({
-        type: "success",
-        description: t("insight.unpinned", "Removed from today's focus"),
-      });
-      // Trigger event to notify status refresh (optimistic update)
-      window.dispatchEvent(
-        new CustomEvent("insightPinStatusChanged", {
-          detail: { insightId, isPinned: false },
-        }),
-      );
-      // Trigger brief panel refresh
-      window.dispatchEvent(new CustomEvent("brief:refresh"));
-    } catch (error) {
-      console.error("[performUnpin] Error:", error);
-      toast({
-        type: "error",
-        description:
-          error instanceof Error
-            ? error.message
-            : t("insight.unpinFailed", "Failed to unpin"),
-      });
-    }
-  }, [
-    normalizedInsight.id,
-    normalizedInsight.categories,
-    t,
-    updateCategories,
-    updateInsightCategories,
-    getInsightCategories,
-  ]);
-
-  /** Click pin button: if already in Today Focus, show dialog to confirm removal; otherwise pin directly */
-  const handlePinClick = useCallback(
-    async (e: React.MouseEvent) => {
-      if (isPinned) {
-        setIsUnpinConfirmOpen(true);
-        return;
-      }
-      await performPin(e);
-    },
-    [isPinned, performPin],
-  );
-
-  /** Execute unpin, notify parent, and close dialog after user confirms "Remove from Today Focus" */
-  const handleUnpinConfirm = useCallback(() => {
-    const insightId = normalizedInsight.id;
-    setIsUnpinConfirmOpen(false);
-    onUnpinnedFromBrief?.(insightId);
-    void performUnpin();
-  }, [normalizedInsight.id, onUnpinnedFromBrief, performUnpin]);
 
   const handleCloseClick = useCallback(
     (e: React.MouseEvent) => {
@@ -786,30 +622,6 @@ function InsightDetailDrawerContent({
   // rerender-move-effect-to-event: use ref to track recorded insight, avoid duplicate calls
   const lastRecordedInsightRef = useRef<string | null>(null);
   const lastRecordedInsightViewRef = useRef<string | null>(null);
-
-  // Single insight refresh hook
-  const { isRefreshing, handleRefresh: refreshInsight } =
-    useSingleInsightRefresh();
-
-  /**
-   * Handle refreshing a single insight
-   */
-  const handleRefresh = async () => {
-    const result = await refreshInsight(normalizedInsight.id);
-    if (result?.insight) {
-      window.dispatchEvent(
-        new CustomEvent("insight:refreshed", {
-          detail: { insightId: normalizedInsight.id, insight: result.insight },
-        }),
-      );
-    }
-  };
-
-  // handleRefreshClick needs to be defined after handleRefresh (rerender-defer-reads)
-  const handleRefreshClick = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    handleRefresh();
-  }, []);
 
   // When insight changes, clear generation state and local state overrides
   useEffect(() => {
@@ -1177,79 +989,6 @@ function InsightDetailDrawerContent({
                           </TooltipContent>
                         </Tooltip>
                       )}
-                      {/* Pin button - pin to Today Focus */}
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={handlePinClick}
-                            className={cn(
-                              "shrink-0 size-7",
-                              isPinned
-                                ? "text-primary hover:text-primary/90"
-                                : "text-muted-foreground hover:text-primary",
-                            )}
-                            aria-label={
-                              isPinned
-                                ? t("insight.unpin", "Unpin")
-                                : t("insight.pin", "Pin to today's focus")
-                            }
-                          >
-                            <RemixIcon
-                              name="pushpin"
-                              size="size-3"
-                              filled={isPinned}
-                            />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>
-                            {isPinned
-                              ? t("insight.unpin", "Unpin")
-                              : t("insight.pin", "Pin to today's focus")}
-                          </p>
-                        </TooltipContent>
-                      </Tooltip>
-                      {/* Refresh button */}
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={handleRefreshClick}
-                            disabled={isRefreshing}
-                            className="shrink-0 size-7 text-muted-foreground hover:text-primary"
-                            aria-label={t(
-                              "insightDetail.refresh.button",
-                              "Refresh",
-                            )}
-                          >
-                            {isRefreshing ? (
-                              <RemixIcon
-                                name="loader_2"
-                                size="size-3"
-                                className="animate-spin"
-                              />
-                            ) : (
-                              <RemixIcon name="refresh" size="size-3" />
-                            )}
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>
-                            {isRefreshing
-                              ? t(
-                                  "insightDetail.refresh.refreshing",
-                                  "Refreshing...",
-                                )
-                              : t(
-                                  "insightDetail.refresh.tooltip",
-                                  "Regenerate this event's content",
-                                )}
-                          </p>
-                        </TooltipContent>
-                      </Tooltip>
                     </div>
                   </div>
                 </>
@@ -1505,37 +1244,6 @@ function InsightDetailDrawerContent({
             </AlertDialogCancel>
             <AlertDialogAction onClick={handleMuteConfirm}>
               {t("insight.muteConfirmComplete", "Confirm mute")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* Secondary confirmation before removing from Today Focus */}
-      <AlertDialog
-        open={isUnpinConfirmOpen}
-        onOpenChange={setIsUnpinConfirmOpen}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {t(
-                "insight.unpinConfirmTitle",
-                "Remove this event from today's focus?",
-              )}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {t(
-                "insight.unpinConfirmDescription",
-                "After removing, this event will no longer appear in Today's Focus list, you can pin it again anytime.",
-              )}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>
-              {t("insight.muteConfirmCancel", "Cancel")}
-            </AlertDialogCancel>
-            <AlertDialogAction onClick={handleUnpinConfirm}>
-              {t("insight.unpin", "Unpin")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

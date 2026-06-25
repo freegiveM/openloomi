@@ -103,14 +103,14 @@ export const OpenLoomiDocsCards = (): JSX.Element => {
       description: "Tiered storage, forgetting engine, and temporal reasoning",
     },
     {
-      id: "benchmark",
-      title: "Benchmarks",
-      description: "LoCoMo, LongMemEval, and Aloomi Harness performance data",
-    },
-    {
       id: "privacy-security",
       title: "Privacy & Security",
       description: "How we protect your data and privacy",
+    },
+    {
+      id: "benchmark",
+      title: "Benchmarks",
+      description: "LoCoMo, LongMemEval, and Aloomi Harness performance data",
     },
     {
       id: "glossary",

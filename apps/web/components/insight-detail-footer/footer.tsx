@@ -243,6 +243,8 @@ export function InsightDetailFooter({
   // Initialize activeChatId: if there is chat history, auto-select the latest; otherwise create a new chat
   const [isInitialized, setIsInitialized] = useState(false);
   useEffect(() => {
+    // Only auto-switch/create chat when autoOpenChat is enabled
+    if (!autoOpenChat) return;
     if (isInitialized || !chatHistory) return;
 
     if (chatHistory.chats && chatHistory.chats.length > 0) {

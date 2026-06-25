@@ -1722,6 +1722,7 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
   // Persist chatSessionStates to localStorage - use debounced async write to avoid blocking main thread
   // Limit stored sessions to prevent localStorage quota exceeded errors
   const MAX_STORED_SESSIONS = 20;
+  const MAX_FOCUSED_INSIGHTS = 10;
   useEffect(() => {
     if (typeof window === "undefined") return;
     const timeoutId = setTimeout(() => {
@@ -1733,12 +1734,42 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
         const obj: Record<string, Omit<ChatSessionState, "abortFn">> = {};
         recentEntries.forEach(([key, value]) => {
           // eslint-disable-next-line @typescript-eslint/no-unused-vars
-          const { abortFn, ...serializable } = value;
-          obj[key] = serializable;
+          const { abortFn, focusedInsights, ...rest } = value;
+          obj[key] = {
+            ...rest,
+            // Limit focusedInsights per session to prevent quota exceeded
+            focusedInsights:
+              focusedInsights?.slice(-MAX_FOCUSED_INSIGHTS) ?? [],
+          };
         });
         localStorage.setItem("chatSessionStates", JSON.stringify(obj));
       } catch (e) {
-        console.error("[ChatContext] Failed to save chatSessionStates:", e);
+        // Handle QuotaExceededError specifically - clear old data and retry with fewer sessions
+        if (
+          e instanceof DOMException &&
+          (e.name === "QuotaExceededError" || e.code === 22)
+        ) {
+          console.warn(
+            "[ChatContext] localStorage quota exceeded, clearing old sessions",
+          );
+          try {
+            // Keep only the most recent 5 sessions and minimal data
+            const entries = Array.from(chatSessionStates.entries());
+            const recentEntries = entries.slice(-5);
+            const obj: Record<string, Omit<ChatSessionState, "abortFn">> = {};
+            recentEntries.forEach(([key, value]) => {
+              // eslint-disable-next-line @typescript-eslint/no-unused-vars
+              const { abortFn, ...rest } = value;
+              obj[key] = { ...rest, focusedInsights: [] };
+            });
+            localStorage.setItem("chatSessionStates", JSON.stringify(obj));
+          } catch {
+            // If even that fails, clear entirely
+            localStorage.removeItem("chatSessionStates");
+          }
+        } else {
+          console.error("[ChatContext] Failed to save chatSessionStates:", e);
+        }
       }
     }, 100);
     return () => clearTimeout(timeoutId);
@@ -1980,6 +2011,9 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
 
   const switchChatId = useCallback(
     async (newChatId: string | null, forceRefresh?: boolean) => {
+      // Close drawer when switching conversations
+      setIsInsightDrawerOpen(false);
+      setSelectedInsight(null);
       // Close drawer when switching conversations
       setIsInsightDrawerOpen(false);
       setSelectedInsight(null);
