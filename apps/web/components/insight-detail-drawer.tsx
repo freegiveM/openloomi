@@ -1,15 +1,7 @@
 "use client";
 
 import type React from "react";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  lazy,
-  Suspense,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ScrollArea } from "@openloomi/ui";
 import { Button, Tabs, TabsList, TabsTrigger } from "@openloomi/ui";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@openloomi/ui";
@@ -18,7 +10,6 @@ import { RemixIcon } from "@/components/remix-icon";
 import { useLocalStorage } from "@openloomi/hooks/use-local-storage";
 import { useSidePanel } from "@/components/agent/side-panel-context";
 import { useChatContext } from "@/components/chat-context";
-import { AgentChatPanel } from "@/components/agent/chat-panel";
 import type { Insight } from "@/lib/db/schema";
 import type { DetailData, TimelineData } from "@/lib/ai/subagents/insights";
 import { useIsMobile } from "@openloomi/hooks/use-is-mobile";
@@ -28,27 +19,8 @@ import {
   InsightDetailFooter,
   ReplyWorkspace,
 } from "@/components/insight-detail-footer";
-import { toast } from "./toast";
 import { cn, normalizeTimestamp } from "@/lib/utils";
-import { TimelineEventCard } from "@/components/timeline-event-card";
-import type { InsightTimelineHistory } from "@/lib/db/schema";
 import { addRecentInsight } from "@/lib/insights/recent";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@openloomi/ui";
-
-const TimelineHistoryDialog = lazy(() =>
-  import("@/components/timeline-history-dialog").then((mod) => ({
-    default: mod.TimelineHistoryDialog,
-  })),
-);
 
 // client-event-listeners: Global event manager to avoid duplicate listeners
 class EventManager {
@@ -94,64 +66,6 @@ class EventManager {
 // Use module-level singleton
 const eventManager = new EventManager();
 
-interface TimelineActionChatSidePanelContentProps {
-  initialMessage: string;
-  onClose: () => void;
-}
-
-function TimelineActionChatSidePanelContent({
-  initialMessage,
-  onClose,
-}: TimelineActionChatSidePanelContentProps) {
-  const { t } = useTranslation();
-  const { sidePanel, setSidePanelDisplayMode } = useSidePanel();
-  const isFullscreen = sidePanel?.displayMode === "fullscreen";
-
-  return (
-    <div className="h-full flex flex-col bg-card">
-      <div className="flex items-center justify-end gap-1 px-2 py-2 bg-white/70 shrink-0">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={() =>
-                setSidePanelDisplayMode(isFullscreen ? "sidebar" : "fullscreen")
-              }
-              className="h-8 w-8 shrink-0"
-              aria-label={t("common.fullscreen", "Fullscreen")}
-            >
-              <RemixIcon
-                name={isFullscreen ? "minimize_2" : "fullscreen"}
-                className="size-3"
-              />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>
-            <span>
-              {isFullscreen
-                ? t("common.exitFullscreen", "Exit fullscreen")
-                : t("common.fullscreen", "Fullscreen")}
-            </span>
-          </TooltipContent>
-        </Tooltip>
-        <Button
-          size="icon"
-          variant="ghost"
-          onClick={onClose}
-          className="h-8 w-8 shrink-0"
-          aria-label={t("common.close", "Close")}
-        >
-          <RemixIcon name="close" className="size-3" />
-        </Button>
-      </div>
-      <div className="flex-1 min-h-0 flex flex-col">
-        <AgentChatPanel chatId={null} initialInput={initialMessage} />
-      </div>
-    </div>
-  );
-}
-
 /**
  * Event detail sidebar: icon-only navigation (Digest / Sources / Notes / Files)
  */
@@ -168,22 +82,20 @@ function InsightDetailSidebar({
 
   const isManual = platform === "manual";
 
-  const tabs = [
-    {
-      id: "digest" as const,
-      icon: "timeline_view",
-      tooltip: t("insightDetail.sidebarTooltipDigest", "Updates"),
-    },
-    ...(isManual
-      ? []
-      : [
-          {
-            id: "sources" as const,
-            icon: "discuss",
-            tooltip: t("insightDetail.sidebarTooltipSources", "Info"),
-          },
-        ]),
-  ];
+  // Only show sources tab for non-manual platforms
+  const tabs = isManual
+    ? []
+    : [
+        {
+          id: "sources" as const,
+          icon: "discuss",
+          tooltip: t("insightDetail.sidebarTooltipSources", "Info"),
+        },
+      ];
+
+  if (tabs.length === 0) {
+    return null;
+  }
 
   return (
     <div className="flex flex-col items-center gap-1 py-0 w-fit">
@@ -313,7 +225,7 @@ function InsightDetailDrawerContent({
   initialTab?: "digest" | "sources" | "attached" | "files";
   targetSourceDetailIds?: string[];
 }) {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
 
   // Drawer open counter - increments each time the drawer opens, used to force remount child components
   const [drawerOpenCount, setDrawerOpenCount] = useState(0);
@@ -338,24 +250,6 @@ function InsightDetailDrawerContent({
     closeSidePanel();
     onClose();
   }, [onClose, closeSidePanel]);
-
-  // Handle timeline action click - opens a chat side panel with the action pre-filled
-  const handleTimelineActionClick = useCallback(
-    (action: string) => {
-      switchChatId(null);
-      openSidePanel({
-        id: `timeline-action-chat-${Date.now()}`,
-        width: 400,
-        content: (
-          <TimelineActionChatSidePanelContent
-            initialMessage={action}
-            onClose={closeSidePanel}
-          />
-        ),
-      });
-    },
-    [closeSidePanel, openSidePanel, switchChatId],
-  );
 
   // Listen for global favorite change events, sync update the currently open insight
   // client-event-listeners: use eventManager to avoid duplicate listeners
@@ -556,27 +450,6 @@ function InsightDetailDrawerContent({
   }, [latestInsight]);
   const isMobile = useIsMobile();
 
-  const [isMuteConfirmOpen, setIsMuteConfirmOpen] = useState(false);
-
-  /** Click "Mute" */
-  const handleArchiveClick = useCallback(
-    (e: React.MouseEvent) => {
-      e.stopPropagation();
-      // Optimistic update: immediately remove from brief panel
-      onUnpinnedFromBrief?.(normalizedInsight.id);
-      onArchive?.(normalizedInsight);
-    },
-    [onArchive, normalizedInsight, onUnpinnedFromBrief],
-  );
-
-  /** Execute archive and close dialog after user confirms "Complete and Mute" */
-  const handleMuteConfirm = useCallback(() => {
-    // Optimistic update: remove from brief panel immediately
-    onUnpinnedFromBrief?.(normalizedInsight.id);
-    onArchive?.(normalizedInsight);
-    setIsMuteConfirmOpen(false);
-  }, [onArchive, normalizedInsight, onUnpinnedFromBrief]);
-
   const handleCloseClick = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
@@ -585,27 +458,10 @@ function InsightDetailDrawerContent({
     [handleClose],
   );
 
-  const [showIterationHistory, setShowIterationHistory] = useState(false);
   /** Detail inner Tabs: Digest | Sources | Attached | Files */
   const [detailTab, setDetailTab] = useLocalStorage<
     "digest" | "sources" | "attached" | "files"
   >("openloomi_insight_detail_tab", "digest");
-
-  // Timeline history dialog state
-  const [timelineHistoryDialog, setTimelineHistoryDialog] = useState<{
-    open: boolean;
-    eventId: string;
-    eventName: string;
-    history: InsightTimelineHistory[];
-  }>({
-    open: false,
-    eventId: "",
-    eventName: "",
-    history: [],
-  });
-
-  const [isTimelineHistoryLoading, setIsTimelineHistoryLoading] =
-    useState(false);
 
   /** Called by "Reply" button on message bubble in source: prepend @name to quick reply input */
   const prependToReplyInputRef = useRef<((name: string) => void) | null>(null);
@@ -777,59 +633,6 @@ function InsightDetailDrawerContent({
     ? "opacity-100 pointer-events-auto"
     : "opacity-0 pointer-events-none";
 
-  /**
-   * Show timeline event history
-   */
-  const handleShowTimelineHistory = async (event: {
-    id?: string;
-    summary?: string;
-    time?: number | null;
-  }) => {
-    if (!event.id) {
-      toast({
-        type: "error",
-        description: "Event ID is missing",
-      });
-      return;
-    }
-
-    setIsTimelineHistoryLoading(true);
-    setTimelineHistoryDialog({
-      open: true,
-      eventId: event.id,
-      eventName: event.summary || "Unknown Event",
-      history: [],
-    });
-
-    try {
-      const response = await fetch(
-        `/api/insights/${normalizedInsight.id}/timeline/${encodeURIComponent(event.id)}`,
-      );
-
-      if (!response.ok) {
-        throw new Error("Failed to fetch timeline history");
-      }
-
-      const data = await response.json();
-      setTimelineHistoryDialog((prev) => ({
-        ...prev,
-        history: data.history || [],
-      }));
-    } catch (error) {
-      console.error("Failed to fetch timeline history:", error);
-      toast({
-        type: "error",
-        description: t(
-          "insightDetail.timelineHistory.noHistory",
-          "Failed to load event history",
-        ),
-      });
-      setTimelineHistoryDialog((prev) => ({ ...prev, open: false }));
-    } finally {
-      setIsTimelineHistoryLoading(false);
-    }
-  };
-
   return (
     <>
       {/* Background overlay: not needed for embedded mode and mobile, kept for desktop drawer */}
@@ -871,133 +674,31 @@ function InsightDetailDrawerContent({
             }}
           >
             <div className="flex flex-col gap-0.5">
-              {/* Header in update history state */}
-              {showIterationHistory ? (
-                <div className="flex items-center justify-between gap-2 px-4 py-3">
-                  <div className="flex items-center gap-2">
+              <>
+                {/* First row - close button + title on left, action buttons on right */}
+                <div className="flex items-center justify-between gap-2 px-3 py-3 border-b border-border">
+                  {/* Left: close button + title (title takes as much remaining width as possible) */}
+                  <div className="flex items-center gap-0 min-w-0 flex-1">
                     <Button
                       variant="ghost"
                       size="icon"
+                      onClick={handleCloseClick}
                       className="shrink-0 size-7"
-                      onClick={() => setShowIterationHistory(false)}
-                      aria-label={t("common.back", "Back")}
+                      aria-label={t("tour.common.close", "Close")}
                     >
                       <RemixIcon name="arrow_left_s" size="size-4" />
                     </Button>
-                    <h3 className="text-sm font-semibold text-foreground">
-                      {t("insightDetail.iterationHistory", "Updates")}
-                    </h3>
+                    <h1 className="text-sm font-medium text-foreground line-clamp-1 min-w-0 flex-1 truncate">
+                      {normalizedInsight.title}
+                    </h1>
                   </div>
-                  {/* Close button */}
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={handleCloseClick}
-                    className="shrink-0 size-7"
-                    aria-label={t("tour.common.close", "Close")}
-                  >
-                    <RemixIcon name="close" size="size-3" />
-                  </Button>
                 </div>
-              ) : (
-                <>
-                  {/* First row - close button + title on left, action buttons on right */}
-                  <div className="flex items-center justify-between gap-2 px-3 py-3 border-b border-border">
-                    {/* Left: close button + title (title takes as much remaining width as possible) */}
-                    <div className="flex items-center gap-0 min-w-0 flex-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={handleCloseClick}
-                        className="shrink-0 size-7"
-                        aria-label={t("tour.common.close", "Close")}
-                      >
-                        <RemixIcon name="arrow_left_s" size="size-4" />
-                      </Button>
-                      <h1 className="text-sm font-medium text-foreground line-clamp-1 min-w-0 flex-1 truncate">
-                        {normalizedInsight.title}
-                      </h1>
-                    </div>
-                    {/* Right: action buttons (Mute, Pin, Refresh, Close) */}
-                    <div className="flex items-center gap-1 shrink-0">
-                      {/* Favorite button temporarily hidden */}
-                      {/* {onFavorite && (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={handleFavoriteClick}
-                              className={`shrink-0 size-7 ${
-                                isFav
-                                  ? "text-yellow-600 hover:text-yellow-700"
-                                  : "text-gray-500 hover:text-yellow-600"
-                              }`}
-                              aria-label={
-                                isFav
-                                  ? t("insight.unfavorite", "Unfavorite")
-                                  : t("insight.favorite", "Favorite")
-                              }
-                            >
-                              <Star
-                                className={`size-3 ${isFav ? "fill-current" : ""}`}
-                              />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>
-                              {isFav
-                                ? t("insight.unfavorite", "Unfavorite")
-                                : t("insight.favorite", "Favorite")}
-                            </p>
-                          </TooltipContent>
-                        </Tooltip>
-                      )} */}
-                      {/* Mute / unmute button (bell-off), state syncs with isArchived */}
-                      {onArchive && (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={handleArchiveClick}
-                              className={cn(
-                                "shrink-0 size-7",
-                                normalizedInsight.isArchived
-                                  ? "text-primary hover:text-primary/90"
-                                  : "text-muted-foreground hover:text-primary",
-                              )}
-                              aria-label={
-                                normalizedInsight.isArchived
-                                  ? t("insight.unmute", "Unmute")
-                                  : t("insight.mute", "Mute")
-                              }
-                            >
-                              <RemixIcon
-                                name="bell_off"
-                                size="size-3"
-                                filled={!!normalizedInsight.isArchived}
-                              />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>
-                              {normalizedInsight.isArchived
-                                ? t("insight.unmute", "Unmute")
-                                : t("insight.mute", "Mute")}
-                            </p>
-                          </TooltipContent>
-                        </Tooltip>
-                      )}
-                    </div>
-                  </div>
-                </>
-              )}
+              </>
             </div>
           </div>
 
           {/* Content with sidebar navigation */}
-          {!showIterationHistory && (
+          {!false && (
             <div className="flex flex-1 min-h-0 overflow-hidden">
               {/* Sidebar - fixed height with content area */}
               <div className="hidden sm:flex flex-col w-fit shrink-0 border-r border-border py-3 px-2">
@@ -1029,17 +730,6 @@ function InsightDetailDrawerContent({
                           : "grid-cols-2",
                       )}
                     >
-                      <TabsTrigger
-                        value="digest"
-                        className="flex items-center gap-2"
-                      >
-                        <RemixIcon
-                          name="refresh"
-                          size="size-4"
-                          className="shrink-0"
-                        />
-                        {t("insightDetail.tabDigest", "Digest")}
-                      </TabsTrigger>
                       {normalizedInsight.platform !== "manual" && (
                         <TabsTrigger
                           value="sources"
@@ -1058,7 +748,7 @@ function InsightDetailDrawerContent({
                 </div>
 
                 {/* Sources tab: render directly, no ScrollArea, scrolling controlled internally by InsightDetailSourceInfo */}
-                {!showIterationHistory && detailTab === "sources" && (
+                {detailTab === "sources" && (
                   <div
                     className="flex-1 min-h-0 overflow-hidden flex flex-col px-4 sm:px-4 pt-0 pb-0"
                     style={{
@@ -1083,7 +773,7 @@ function InsightDetailDrawerContent({
                 )}
 
                 {/* Other tabs and iteration history: use ScrollArea */}
-                {(showIterationHistory || detailTab !== "sources") && (
+                {detailTab !== "sources" && (
                   <ScrollArea
                     ref={scrollAreaRef}
                     className="flex-1 min-h-0"
@@ -1091,9 +781,7 @@ function InsightDetailDrawerContent({
                   >
                     <div
                       className={cn(
-                        showIterationHistory
-                          ? "p-4 space-y-2 sm:space-y-3"
-                          : "p-4 flex flex-col min-h-0 gap-0 justify-start items-start",
+                        "p-4 flex flex-col min-h-0 gap-0 justify-start items-start",
                       )}
                       style={{
                         width: "100%",
@@ -1103,84 +791,35 @@ function InsightDetailDrawerContent({
                           : undefined,
                       }}
                     >
-                      {showIterationHistory ? (
-                        <>
-                          {normalizedInsight.timeline &&
-                          normalizedInsight.timeline.length > 0 ? (
-                            <div className="space-y-3">
-                              {/* Reverse array: newest events display at the top */}
-                              {[...normalizedInsight.timeline]
-                                .reverse()
-                                .map((item, index) => (
-                                  <TimelineEventCard
-                                    key={`timeline-${item.id || item.time}-${index}`}
-                                    event={{
-                                      ...item,
-                                      lastUpdatedAt:
-                                        item.lastUpdatedAt ??
-                                        item.time ??
-                                        undefined,
-                                    }}
-                                    locale={
-                                      i18n.language.includes("zh") ? "zh" : "en"
-                                    }
-                                    showHistory={
-                                      (item.changeCount || 0) > 0
-                                        ? () => handleShowTimelineHistory(item)
-                                        : undefined
-                                    }
-                                    onActionClick={handleTimelineActionClick}
-                                  />
-                                ))}
-                            </div>
-                          ) : (
-                            <div className="text-sm text-muted-foreground text-center py-8">
-                              {t(
-                                "insightDetail.noIterationHistory",
-                                "No update records yet",
-                              )}
-                            </div>
-                          )}
-                        </>
-                      ) : (
-                        <>
-                          {/* Content area: displays different content based on detailTab */}
-                          <div className="flex flex-col min-h-0 w-full">
-                            {detailTab === "digest" && (
-                              <InsightDetailContext
-                                key={`${normalizedInsight.id}-${drawerOpenCount}`}
-                                insight={normalizedInsight}
-                                timeline={normalizedInsight.timeline}
-                                onShowIterationHistory={() =>
-                                  setShowIterationHistory(true)
-                                }
-                                canUnderstand={canUnderstand}
-                                isUnderstanding={isUnderstanding}
-                                onUnderstand={onUnderstand}
-                                onTimelineActionClick={
-                                  handleTimelineActionClick
-                                }
-                              />
-                            )}
-                          </div>
-                        </>
-                      )}
+                      <>
+                        {/* Content area: always show InsightDetailContext since timeline tab is removed */}
+                        <div className="flex flex-col min-h-0 w-full">
+                          <InsightDetailContext
+                            key={`${normalizedInsight.id}-${drawerOpenCount}`}
+                            insight={normalizedInsight}
+                            timeline={normalizedInsight.timeline}
+                            canUnderstand={canUnderstand}
+                            isUnderstanding={isUnderstanding}
+                            onUnderstand={onUnderstand}
+                          />
+                        </div>
+                      </>
                     </div>
                   </ScrollArea>
                 )}
 
-                {/* Footer - placed inside main content area, below scroll area */}
-                {detailTab === "digest" ? (
-                  <div className="pb-0">
-                    <InsightDetailFooter
-                      key={`footer-${normalizedInsight.id}-${drawerOpenCount}`}
-                      insight={normalizedInsight}
-                      autoOpenChat={autoOpenChat}
-                      onGenerateStateChange={setGenerateState}
-                    />
-                  </div>
-                ) : detailTab === "sources" &&
-                  !(shouldHideReplyWorkspace ?? false) ? (
+                {/* Footer - always show InsightDetailFooter */}
+                <div className="pb-0">
+                  <InsightDetailFooter
+                    key={`footer-${normalizedInsight.id}-${drawerOpenCount}`}
+                    insight={normalizedInsight}
+                    autoOpenChat={autoOpenChat}
+                    onGenerateStateChange={setGenerateState}
+                  />
+                </div>
+                {/* ReplyWorkspace - only show on sources tab */}
+                {detailTab === "sources" &&
+                !(shouldHideReplyWorkspace ?? false) ? (
                   <div className="pb-0">
                     <div className="bg-card shrink-0 border-t border-border flex flex-col gap-3 p-4 h-fit">
                       <ReplyWorkspace
@@ -1199,55 +838,6 @@ function InsightDetailDrawerContent({
           )}
         </div>
       </div>
-
-      {/* Timeline history dialog */}
-      <Suspense
-        fallback={
-          <div className="fixed inset-0 z-[70] flex items-center justify-center bg-background/80">
-            <RemixIcon
-              name="loader_2"
-              size="size-8"
-              className="animate-spin text-primary"
-            />
-          </div>
-        }
-      >
-        <TimelineHistoryDialog
-          open={timelineHistoryDialog.open}
-          onClose={() =>
-            setTimelineHistoryDialog((prev) => ({ ...prev, open: false }))
-          }
-          eventId={timelineHistoryDialog.eventId}
-          eventName={timelineHistoryDialog.eventName}
-          history={timelineHistoryDialog.history}
-          isLoading={isTimelineHistoryLoading}
-        />
-      </Suspense>
-
-      {/* Mute confirmation before proceeding */}
-      <AlertDialog open={isMuteConfirmOpen} onOpenChange={setIsMuteConfirmOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {t("insight.muteConfirmTitle", "Confirm mute?")}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {t(
-                "insight.muteConfirmDescription",
-                "After muting, this event will no longer appear in Today's Focus.",
-              )}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>
-              {t("insight.muteConfirmCancel", "Cancel")}
-            </AlertDialogCancel>
-            <AlertDialogAction onClick={handleMuteConfirm}>
-              {t("insight.muteConfirmComplete", "Confirm mute")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </>
   );
 }
