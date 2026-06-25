@@ -3,6 +3,10 @@ import baseZh from "@openloomi/i18n/locales/zh-Hans";
 
 const zh = {
   ...baseZh,
+  chat: {
+    ...baseZh.chat,
+    stopGenerating: "停止生成",
+  },
   common: {
     ...baseZh.common,
     export: "导出",
@@ -92,6 +96,7 @@ const zh = {
   },
   insight: {
     ...(baseZh.insight ?? {}),
+    needYouToKnow: "须知",
     tabs: {
       ...(baseZh.insight?.tabs ?? {}),
       preset: {

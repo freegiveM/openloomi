@@ -3,6 +3,10 @@ import baseEn from "@openloomi/i18n/locales/en-US";
 
 const en = {
   ...baseEn,
+  chat: {
+    ...baseEn.chat,
+    stopGenerating: "Stop generating",
+  },
   common: {
     ...baseEn.common,
     export: "Export",
@@ -96,6 +100,7 @@ const en = {
   },
   insight: {
     ...(baseEn.insight ?? {}),
+    needYouToKnow: "Need to Know",
     tabs: {
       ...(baseEn.insight?.tabs ?? {}),
       preset: {
