@@ -3,22 +3,12 @@
 import { useState, useRef, useMemo, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { useRouter } from "next/navigation";
-import { Badge, Button } from "@openloomi/ui";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@openloomi/ui";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@openloomi/ui";
-import { HorizontalScrollContainer, hasDragged } from "@openloomi/ui";
+import { Button } from "@openloomi/ui";
 import { useChatContextOptional } from "@/components/chat-context";
 import { useIsMobile } from "@openloomi/hooks/use-is-mobile";
 import { useSidePanel } from "@/components/agent/side-panel-context";
 import { AgentChatPanel } from "@/components/agent/chat-panel";
 import { RemixIcon } from "@/components/remix-icon";
-import { format } from "date-fns";
-import { enUS, zhCN } from "date-fns/locale";
 import useSWR from "swr";
 import { fetcher, generateUUID } from "@/lib/utils";
 import { cn } from "@/lib/utils";
@@ -368,212 +358,13 @@ export function InsightDetailFooter({
   return (
     <div
       className={cn(
-        "bg-card shrink-0 border-t border-border flex flex-col gap-3 p-4 h-fit relative",
+        "bg-card shrink-0 border-t border-border flex items-center justify-center p-4 h-fit relative",
         className,
       )}
       role="region"
-      aria-label={t("chat.fileDropArea", "File drop area")}
+      aria-label={t("insight.detailFooter", "Insight actions")}
     >
-      <div className="flex items-center gap-2">
-        {/* Chat history badges horizontal scroll area */}
-        <HorizontalScrollContainer
-          scrollRef={scrollContainerRef}
-          autoScrollToEnd
-          autoScrollDeps={[recentChats.length, activeChatId]}
-          className="gap-2"
-        >
-          {recentChats.map((chat) => {
-            const isActive = activeChatId === chat.id;
-            return (
-              <Badge
-                key={chat.id}
-                variant={isActive ? "default" : "outline"}
-                className={cn(
-                  "cursor-pointer transition-colors rounded-[10px] max-w-[160px] min-w-0 truncate shrink-0 px-3 py-1.5",
-                  isActive
-                    ? "bg-primary text-primary-foreground"
-                    : "hover:bg-secondary",
-                )}
-                onClick={(e) => {
-                  // If a drag occurred, do not trigger the click event
-                  if (hasDragged(scrollContainerRef)) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    return;
-                  }
-                  // Set the active chat and navigate to it immediately
-                  setActiveChatId(chat.id);
-                  activeChatIdRef.current = chat.id;
-                  // Update panel content, ensure ChatSidePanel gets the latest activeChatId
-                  if (sidePanel) {
-                    setSidePanelContent(
-                      <ChatSidePanel
-                        activeChatId={chat.id}
-                        activeChatIdRef={activeChatIdRef}
-                        insight={insight}
-                        onClose={closeSidePanel}
-                      />,
-                    );
-                  }
-                  if (chat.id !== currentChatId) {
-                    // First set pending, then set in useEffect after currentChatId changes
-                    pendingInsightRef.current = insight;
-                    switchChatId(chat.id);
-                  }
-                }}
-                title={chat.title || t("insight.chatHistory", "Chat history")}
-              >
-                {chat.title || t("insight.chatHistory", "Chat history")}
-              </Badge>
-            );
-          })}
-        </HorizontalScrollContainer>
-
-        {/* Action button group - right-aligned */}
-        <div className="flex items-center gap-1 shrink-0 ml-auto">
-          {/* New chat button */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                onClick={handleNewChat}
-                className="size-8"
-                aria-label={t("insight.newChat", "New chat")}
-              >
-                <RemixIcon name="add" size="size-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>{t("insight.newChat", "New chat")}</p>
-            </TooltipContent>
-          </Tooltip>
-
-          {/* History button (opens DropdownMenu to view all) */}
-          <DropdownMenu>
-            <Tooltip>
-              <DropdownMenuTrigger asChild>
-                <TooltipTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="size-8"
-                    aria-label={t("insight.chatHistory", "Chat history")}
-                  >
-                    <RemixIcon name="history" size="size-4" />
-                  </Button>
-                </TooltipTrigger>
-              </DropdownMenuTrigger>
-              <TooltipContent>
-                <p>{t("insight.chatHistory", "Chat history")}</p>
-              </TooltipContent>
-            </Tooltip>
-            <DropdownMenuContent
-              align="end"
-              className="w-[320px] sm:w-[400px] max-h-[50vh] overflow-y-auto"
-            >
-              {sortedChats.length > 0 ? (
-                sortedChats.map((chat) => {
-                  const isActive = activeChatId === chat.id;
-                  return (
-                    <DropdownMenuItem
-                      key={chat.id}
-                      onClick={() => {
-                        setActiveChatId(chat.id);
-                        activeChatIdRef.current = chat.id;
-                        if (sidePanel) {
-                          setSidePanelContent(
-                            <ChatSidePanel
-                              activeChatId={chat.id}
-                              activeChatIdRef={activeChatIdRef}
-                              insight={insight}
-                              onClose={closeSidePanel}
-                            />,
-                          );
-                        }
-                        if (chat.id !== currentChatId) {
-                          // First set pending, then set in useEffect after currentChatId changes
-                          pendingInsightRef.current = insight;
-                          switchChatId(chat.id);
-                        }
-                      }}
-                      className="flex items-start gap-2 p-3 cursor-pointer"
-                    >
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between gap-2 mb-1">
-                          <span className="text-sm font-medium text-[#37352f] truncate">
-                            {chat.title}
-                          </span>
-                          {isActive && (
-                            <RemixIcon
-                              name="check"
-                              size="size-4"
-                              className="shrink-0 text-primary"
-                            />
-                          )}
-                        </div>
-                        {chat.latestMessageContent && (
-                          <p className="text-xs text-[#9b9a97] line-clamp-1">
-                            {chat.latestMessageContent}
-                          </p>
-                        )}
-                        <div className="flex items-center gap-2 mt-1 text-xs text-[#9b9a97]">
-                          <span>
-                            {format(
-                              new Date(
-                                chat.latestMessageTime || chat.createdAt,
-                              ),
-                              isMobile ? "MM/dd" : "MM/dd HH:mm",
-                              {
-                                locale: i18n.language.includes("zh")
-                                  ? zhCN
-                                  : enUS,
-                              },
-                            )}
-                          </span>
-                          <span>·</span>
-                          <span>{chat.messageCount}</span>
-                        </div>
-                      </div>
-                    </DropdownMenuItem>
-                  );
-                })
-              ) : (
-                <div className="p-4 text-center text-sm text-muted-foreground">
-                  {t("insight.noChatHistory", "No relevant chat history")}
-                </div>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          {/* Switch chat button - opens side panel on desktop, navigates to chat page on mobile */}
-          {(activeChatId || currentChatId) && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="icon"
-                  onClick={() => {
-                    openChatPanel();
-                  }}
-                  className="size-8"
-                  aria-label={t("chat.addEvent", "Add event")}
-                >
-                  @
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>
-                  {t("chat.addEventHint", "Add an event, or type @ to search")}
-                </p>
-              </TooltipContent>
-            </Tooltip>
-          )}
-        </div>
-      </div>
+      {/* Chat functionality removed */}
     </div>
   );
 }
