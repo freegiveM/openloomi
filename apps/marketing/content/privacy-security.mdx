@@ -129,6 +129,99 @@ Your original messages and files **stay on your device**. OpenLoomi only accesse
 - Only processed results are transmitted when needed
 - Complete control over what data OpenLoomi can access
 
+#### Why Local-First?
+
+OpenLoomi is built on the principle that **privacy should not be a trade-off**. Traditional AI assistants send your data to remote servers for processing—every conversation, every file, every query becomes训练 data or at minimum passes through someone else's infrastructure.
+
+OpenLoomi flips this model. We believe your personal AI agent should work for _you_, not the other way around. By processing as much as possible locally, we ensure:
+
+- **Your data never leaves your control** — Messages, files, and context are processed on your machine
+- **No dependency on cloud services** — Work offline or in low-connectivity environments
+- **Faster response times** — Local inference eliminates network round-trips for many tasks
+- **Cost efficiency** — Run your own models without paying per-token fees
+
+#### What Stays Local?
+
+OpenLoomi maintains a **local knowledge graph** on your device that powers your personal memory and context:
+
+| Data Type    | Location                  | Description                                                                            |
+| ------------ | ------------------------- | -------------------------------------------------------------------------------------- |
+| Database     | `openloomi/data/data.db`  | SQLite database storing messages, knowledge graph nodes, embeddings, and user settings |
+| File Storage | `openloomi/data/storage/` | Downloaded and cached files (attachments, exported data)                               |
+| Logs         | `openloomi/data/logs/`    | Application and audit logs                                                             |
+
+> **Data directory path by platform:**
+>
+> - macOS: `~/.openloomi/data`
+> - Linux: `~/.openloomi/data`
+> - Windows: `%USERPROFILE%\.openloomi\data`
+
+All data at rest is encrypted. The database is stored in SQLite with application-level encryption, ensuring that even if your disk is accessed directly, your personal data remains protected.
+
+#### Local Scenarios
+
+OpenLoomi excels in these **fully local** scenarios:
+
+**Offline Email Drafting**
+When you're traveling without internet, OpenLoomi can draft replies using your local email context and cached data. Queued replies are sent automatically when connectivity returns.
+
+**Air-Gapped Document Q&A**
+Ask questions about sensitive documents stored on your local machine—no document content ever leaves your device. Only the question and extracted answer travel across the network.
+
+**Private Voice Notes**
+Record voice memos that are transcribed and summarized entirely locally. Your voice data never touches a cloud STT service.
+
+**Local RAG (Retrieval-Augmented Generation)**
+Build a personal knowledge base from local files (PDFs, Markdown, Notion exports). OpenLoomi indexes and retrieves from your local filesystem—nothing is uploaded to external vector databases.
+
+#### Configuring Local Models
+
+All local model settings are managed in **Settings → API Settings**, which covers conversation models and embedding models.
+
+![API Settings page showing Conversation models and Embedding models configuration panels](/img/openloomi/api-settings.png)
+
+##### Conversation Models (Language Models)
+
+The **Conversation models** section lets you configure an Anthropic-compatible provider. This is the model used for chat, reasoning, and general task execution.
+
+**To configure a language model:**
+
+1. Go to **Settings → API Settings → Conversation models**
+2. Find the **Anthropic compatible** provider card
+3. Fill in the fields:
+   - **API Key**: Your API key (e.g., `sk-ant-...`)
+   - **Base URL**: The endpoint URL (e.g., `https://api.anthropic.com` for Anthropic, or a custom endpoint like `http://localhost:11434` for a local Ollama server)
+   - **Model**: The model ID to use (e.g., `claude-sonnet-4-6`, or your local model name)
+4. Toggle **Enabled** to activate the provider
+5. Click **Test** to verify the connection works
+6. Click **Save** to persist your settings
+
+You can also point it to any **Anthropic-compatible endpoint** (e.g., a local Ollama server, a proxy service, or a custom deployment) by changing the Base URL. If your workspace has system defaults, they are shown as reference—your personal settings override them.
+
+##### Embedding Models
+
+The **Embedding models** section controls how OpenLoomi creates vector embeddings for knowledge base, memory, and semantic search. You can choose between **Online API** (cloud) or **Local model**.
+
+**To switch to local embeddings:**
+
+1. Go to **Settings → API Settings → Embedding models**
+2. Choose **Local model** instead of Online API
+3. Select a model from the dropdown:
+   - `all-MiniLM-L6-v2` (384 dimensions) — lightweight, fast
+   - `bge-large-zh-v1.5` (1024 dimensions) — higher quality, bilingual support
+   - **Custom model ID or local path** — enter any Hugging Face model ID or local path
+4. Optionally enable **Use local files only** to restrict to model files already on your device (disables automatic downloads)
+5. Click **Test** to verify — the first test may download the model and take longer
+6. Click **Save** to persist
+
+To go back to cloud embeddings, choose **Online API** and fill in your API Key, Base URL, and Model ID (e.g., `text-embedding-3-small`).
+
+##### Speech Models (STT / TTS)
+
+Voice transcription uses the **Online API** (cloud) endpoint configured in Embedding models settings. For fully local voice transcription, a local STT configuration panel is planned — stay tuned.
+
+> 💡 **Privacy Tip**: Set the **Base URL** to your local Ollama server (`http://localhost:11434`) to route all inference through your own machine. Your prompts and context never leave your device.
+
 ### End-to-End Encryption
 
 All authorized data is encrypted with **AES-256** industry standard, processed in hardware-isolated trusted execution environments—completely inaccessible to external parties.
