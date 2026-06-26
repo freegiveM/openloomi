@@ -27,9 +27,11 @@ export const fetcher = async (url: string) => {
       }
     }
     throw new AppError(
-      (parsed?.code as ErrorCode) ?? (`http_${response.status}:api` as ErrorCode),
+      (parsed?.code as ErrorCode) ??
+        (`http_${response.status}:api` as ErrorCode),
       parsed?.cause ??
-        (rawBody.slice(0, 500) || `HTTP ${response.status} ${response.statusText}`.trim()),
+        (rawBody.slice(0, 500) ||
+          `HTTP ${response.status} ${response.statusText}`.trim()),
     );
   }
 

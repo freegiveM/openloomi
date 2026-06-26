@@ -139,11 +139,10 @@ export function EmbeddingApiSettings() {
       console.error("[Embedding Settings] Failed to load settings", detail);
       toast({
         type: "error",
-        description:
-          `${t(
-            "settings.embeddingLoadError",
-            "Failed to load embedding settings.",
-          )} (${detail})`,
+        description: `${t(
+          "settings.embeddingLoadError",
+          "Failed to load embedding settings.",
+        )} (${detail})`,
       });
     } finally {
       setLoading(false);

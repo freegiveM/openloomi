@@ -69,7 +69,9 @@ async function handleGuestAuth(request: Request) {
         ...(cookie.expires && { expires: cookie.expires }),
         ...(cookie.httpOnly !== undefined && { httpOnly: cookie.httpOnly }),
         ...(cookie.secure !== undefined && { secure: cookie.secure }),
-        ...(cookie.sameSite && { sameSite: cookie.sameSite as "lax" | "strict" | "none" }),
+        ...(cookie.sameSite && {
+          sameSite: cookie.sameSite as "lax" | "strict" | "none",
+        }),
       });
     }
     return response;
