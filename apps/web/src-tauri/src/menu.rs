@@ -54,7 +54,8 @@ pub fn build_native_menu(app: &tauri::AppHandle) -> Result<(), tauri::Error> {
 
         let id = event.id().as_ref();
         if id == "help-docs" {
-            if let Err(e) = crate::system::open_url_custom("https://openloomi.ai/docs".to_string()) {
+            if let Err(e) = crate::system::open_url_custom("https://openloomi.ai/docs".to_string())
+            {
                 // Show error dialog to user
                 app.dialog()
                     .message(format!("Failed to open documentation: {}", e))

@@ -300,8 +300,8 @@ pub fn extract_archive(
             }
         }
         ArchiveKind::Conda => {
-            let scratch_dir =
-                std::env::temp_dir().join(format!("openloomi-pdftoppm-conda-{}", std::process::id()));
+            let scratch_dir = std::env::temp_dir()
+                .join(format!("openloomi-pdftoppm-conda-{}", std::process::id()));
             if scratch_dir.exists() {
                 let _ = std::fs::remove_dir_all(&scratch_dir);
             }

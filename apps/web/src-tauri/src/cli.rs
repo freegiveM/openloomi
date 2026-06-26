@@ -221,7 +221,7 @@ where
             ExitCode::SUCCESS
         }
         Ok(CliCommand::Version) => {
-            println!("openloomi {}", env!("CARGO_PKG_VERSION"));
+            println!("openloomi-ctl {}", env!("CARGO_PKG_VERSION"));
             ExitCode::SUCCESS
         }
         Ok(CliCommand::UpdateCheck { json }) => run_update_check(json).await,
@@ -229,7 +229,7 @@ where
         Err(error) => {
             eprintln!("error: {}", error.message);
             eprintln!();
-            eprintln!("Run `openloomi --help` for usage.");
+            eprintln!("Run `openloomi-ctl --help` for usage.");
             ExitCode::from(2)
         }
     }
@@ -267,7 +267,7 @@ fn parse_args(raw_args: &[String]) -> Result<CliCommand, CliError> {
         }
         return Err(CliError::new(
             "usage",
-            "`openloomi update` currently supports only `--check`.",
+            "`openloomi-ctl update` currently supports only `--check`.",
         ));
     }
 
@@ -548,7 +548,7 @@ async fn execute_one_shot(
     };
 
     let client = reqwest::Client::builder()
-        .user_agent("openloomi-cli")
+        .user_agent("openloomi-ctl")
         .timeout(Duration::from_secs(ONE_SHOT_TIMEOUT_SECS))
         .build()
         .map_err(|error| {
@@ -617,7 +617,7 @@ async fn ensure_one_shot_server(base_url: &str) -> Result<OneShotServerGuard, Cl
 async fn is_one_shot_server_ready(base_url: &str) -> bool {
     let health_url = format!("{}/api/native/agent", base_url.trim_end_matches('/'));
     let client = match reqwest::Client::builder()
-        .user_agent("openloomi-cli")
+        .user_agent("openloomi-ctl")
         .timeout(Duration::from_secs(ONE_SHOT_SERVER_HEALTH_TIMEOUT_SECS))
         .build()
     {
@@ -729,7 +729,7 @@ fn prepare_one_shot_server_log() -> Result<PathBuf, CliError> {
         })?;
     let _ = writeln!(
         file,
-        "\n=== openloomi one-shot headless server start: {:?} ===",
+        "\n=== openloomi-ctl one-shot headless server start: {:?} ===",
         std::time::SystemTime::now()
     );
     Ok(log_path)
@@ -1761,7 +1761,7 @@ async fn run_update_preflight(
 
 async fn check_network_connectivity() -> PreflightCheck {
     let client = match reqwest::Client::builder()
-        .user_agent("openloomi-cli")
+        .user_agent("openloomi-ctl")
         .timeout(std::time::Duration::from_secs(10))
         .build()
     {
@@ -1877,7 +1877,7 @@ async fn check_download_url(download_url: &str) -> (PreflightCheck, Option<u64>)
     // HEAD avoids downloading the installer during --check while still
     // validating reachability and, when available, content length.
     let client = match reqwest::Client::builder()
-        .user_agent("openloomi-cli")
+        .user_agent("openloomi-ctl")
         .timeout(std::time::Duration::from_secs(15))
         .build()
     {
@@ -2125,14 +2125,14 @@ fn print_json<T: serde::Serialize>(value: &T) {
 
 fn print_help() {
     println!(
-        r#"openloomi {}
+        r#"openloomi-ctl {}
 
 Usage:
-  openloomi --one-shot <prompt> [--json] [--model <model>] [--provider <provider>] [--platform <platform>]
-  openloomi --one-shot --stdin [--json] [--model <model>] [--provider <provider>] [--platform <platform>]
-  openloomi update --check [--json]
-  openloomi --version
-  openloomi --help
+  openloomi-ctl --one-shot <prompt> [--json] [--model <model>] [--provider <provider>] [--platform <platform>]
+  openloomi-ctl --one-shot --stdin [--json] [--model <model>] [--provider <provider>] [--platform <platform>]
+  openloomi-ctl update --check [--json]
+  openloomi-ctl --version
+  openloomi-ctl --help
 
 Options:
   -z, --one-shot          Execute a non-interactive one-shot prompt
@@ -2154,7 +2154,7 @@ mod tests {
     use super::*;
 
     fn args(values: &[&str]) -> Vec<String> {
-        std::iter::once("openloomi".to_string())
+        std::iter::once("openloomi-ctl".to_string())
             .chain(values.iter().map(|value| value.to_string()))
             .collect()
     }
