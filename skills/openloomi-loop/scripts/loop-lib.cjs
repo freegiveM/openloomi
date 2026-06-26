@@ -12,7 +12,6 @@
  *   rules             - hard-rule filters + decision classifiers
  *   now / uid / log   - small utilities
  */
-'use strict';
 
 const fs = require('node:fs');
 const path = require('node:path');

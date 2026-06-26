@@ -256,6 +256,51 @@ On exit, the decision is moved to `done` or `dismissed`. Any memory writeback ha
 
 Use `run <id> --dry` to print the prompt without spawning anything.
 
+### ⚠️ Known issue: `run <id>` fails when called from inside another Claude Code session
+
+When the Loop itself is being driven by a Claude Code session (e.g. the user invokes `loop run <id>` from inside Claude Code, or the Web UI's **▶ RUN** button is clicked while the user is running Claude Code), `run <id>` aborts with:
+
+```
+Error: Claude Code cannot be launched inside another Claude Code session.
+Nested sessions share runtime resources and will crash all active sessions.
+To bypass this check, unset the CLAUDECODE environment variable.
+```
+
+Two caveats even with the bypass:
+
+1. **Do NOT `unset CLAUDECODE` blindly.** If the inner `claude -p` exits, errors, or hangs, it can corrupt the parent Claude Code session's stdio / shared resources. The CLI's own check is correct.
+2. **Failed spawn is recorded against the decision.** The loop marks the decision as `dismissed` with `result=null` and increments the failure counter (`failed (1/null)` in the run log), even though no action was actually attempted.
+
+**Recommended pattern (no bypass needed):**
+
+1. `loop run <id> --dry` → read the built prompt and the suggested `action.kind` / `action.params`.
+2. Take the action **in the parent Claude Code session itself**, by calling the appropriate tool directly:
+   - `calendar_rsvp` → `mcp__composio__COMPOSIO_MULTI_EXECUTE_TOOL` with `GOOGLECALENDAR_PATCH_EVENT` (pass `event_id`, `calendar_id="primary"`, `rsvp_response="accepted|declined|tentative"`, `send_updates="none"` if you don't want to spam attendees).
+   - `email_reply` → `mcp__composio__COMPOSIO_MULTI_EXECUTE_TOOL` with `GMAIL_SEND_EMAIL` (or `GMAIL_CREATE_DRAFT` for review-first).
+   - `github_review` → `mcp__composio__COMPOSIO_MULTI_EXECUTE_TOOL` with `GITHUB_CREATE_REVIEW` / `GITHUB_ADD_REVIEW_COMMENT`.
+   - `slack_reply` / `todo` → analogous Composio tool per toolkit.
+3. Confirm the action landed (e.g. fetch the event / PR / message again and check the new state).
+4. Move the decision to `done` manually — there's no CLI subcommand for it, but it's one `node` call against `decisions.json`:
+
+   ```js
+   const fs = require('fs');
+   const p = '/path/to/openloomi-loop/data/decisions.json';  // the path `loop status` prints
+   const d = JSON.parse(fs.readFileSync(p, 'utf8'));
+   const id = 'dec_xxxxxxxxx';
+   const item = (d.dismissed || []).splice(
+     (d.dismissed || []).findIndex(x => x.id === id), 1
+   )[0] || (d.pending || []).splice(
+     (d.pending || []).findIndex(x => x.id === id), 1
+   )[0];
+   item.status = 'done';
+   item.result = { action: '<kind>', ...item.action.params, via: 'in_session_api_call' };
+   item.completed_at = new Date().toISOString();
+   d.done.unshift(item);
+   fs.writeFileSync(p, JSON.stringify(d, null, 2));
+   ```
+
+**When `unset CLAUDECODE` IS acceptable:** only when the parent Claude Code session is throwaway (e.g. a `claude -p "…"` one-shot from a shell, or a CI job). Not acceptable from inside an interactive Claude Code session that the user wants to keep.
+
 ---
 
 ## Sources

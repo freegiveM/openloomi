@@ -22,7 +22,6 @@
  *   - Claude agentically via mcp__composio__* (preferred)
  *   - Manual drop into data/inbox/*.json (still supported)
  */
-'use strict';
 
 const fs = require('node:fs');
 const path = require('node:path');
