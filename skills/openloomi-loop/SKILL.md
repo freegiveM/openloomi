@@ -66,6 +66,39 @@ node $SKILL_DIR/scripts/openloomi-loop.cjs memory search-all "Sarah"
 
 ---
 
+## Quick start/stop with `loop-ctl.sh`
+
+For day-to-day use, prefer the bundled `loop-ctl.sh` helper over running the CLI directly. It manages both the `schedule` background loop and the `web` UI as a pair, writes PID files for clean shutdown, and self-heals the `data/` directory on first run.
+
+```bash
+# Start schedule + web (defaults: INTERVAL=600s, PORT=3614)
+./loop-ctl.sh start
+
+# Check what's running
+./loop-ctl.sh status
+#   schedule: pid=6948 uptime=18m05s
+#   web:      pid=6949 http://127.0.0.1:3614/
+
+# Restart (e.g. after editing scripts/)
+./loop-ctl.sh restart
+
+# Stop both
+./loop-ctl.sh stop
+
+# Override defaults
+PORT=4000 INTERVAL=300 ./loop-ctl.sh start
+```
+
+What it does:
+- **`start`** — runs `openloomi-loop schedule --interval ${INTERVAL:-600}` and `openloomi-loop web --port ${PORT:-3614}` in the background. `schedule` writes its own PID to `data/daemon.pid`; the web PID is written to `data/web.pid`. Both stdout/stderr are redirected to `data/schedule.log` and `data/web.log`. Auto-`mkdir` of `data/` so first-run after a git-clean works. Skips if either is already alive (no double-start).
+- **`stop`** — `SIGTERM` each PID recorded in `data/daemon.pid` / `data/web.pid`, plus a `pkill -f` belt-and-suspenders for any orphan. Removes the PID files. No SIGKILL grace — `claude -p` children are expected to terminate cleanly on parent exit.
+- **`status`** — prints the `loop status` snapshot, checks that the web port is bound via `lsof`, and lists each PID file as alive / stale / not present.
+- **`restart`** — `stop` then `start`.
+
+It does **not** start a tick on its own — `schedule` spawns ticks every `INTERVAL` seconds, independent of any manual invocation. Pair with `loop analyze` or `loop inject` if you want to feed it ad-hoc.
+
+---
+
 ## Architecture
 
 ```

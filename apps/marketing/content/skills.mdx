@@ -62,11 +62,1245 @@ To get started, type `/skill-creator` in any chat.
 
 OpenLoomi's core capabilities are packaged as standalone, open-source Skills. Integrate them into any Agent that supports MCP — Claude Code, Codex, OpenClaw, Hermes, and more.
 
-| Skill                                                                                                              | Description                                                                                                                                                    |
-| ------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **[openloomi-memory](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi-memory/SKILL.md)**         | Search memory files, knowledge base, and chat insights. Memory search, knowledge base, documents, insights                                                     |
-| **[openloomi-connectors](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi-connectors/SKILL.md)** | Manage platform integrations — OAuth connections, list accounts, check status, disconnect. Connect Telegram, WhatsApp, WeChat, Slack, Discord, Gmail, and more |
-| **[openloomi-api](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi-api/SKILL.md)**               | OpenLoomi API documentation — authentication, backend routes, integrations, billing, and server-side functionality                                             |
-| **[openloomi-loop](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi-loop/SKILL.md)**           | Proactive execution brain — pulls signals from Gmail/Calendar/GitHub/Slack via Composio MCP, enriches through openloomi-memory, classifies into typed decisions, and executes via Claude Code |
+| Skill                                                                                                                                                | Description                                                                                                                                                                                   |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **[openloomi-memory](#openloomi-memory)** ([GitHub](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi-memory/SKILL.md))             | Search memory files, knowledge base, and chat insights. Memory search, knowledge base, documents, insights                                                                                    |
+| **[openloomi-connectors](#openloomi-connectors)** ([GitHub](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi-connectors/SKILL.md)) | Manage platform integrations — OAuth connections, list accounts, check status, disconnect. Connect Telegram, WhatsApp, WeChat, Slack, Discord, Gmail, and more                                |
+| **[openloomi-api](#openloomi-api)** ([GitHub](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi-api/SKILL.md))                      | OpenLoomi API documentation — authentication, backend routes, integrations, billing, and server-side functionality                                                                            |
+| **[openloomi-loop](#openloomi-loop)** ([GitHub](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi-loop/SKILL.md))                   | Proactive execution brain — pulls signals from Gmail/Calendar/GitHub/Slack via Composio MCP, enriches through openloomi-memory, classifies into typed decisions, and executes via Claude Code |
 
 These Skills are open-source under Apache 2.0. Fork them, extend them, or integrate them into your own Agent workflow.
+
+---
+
+## openloomi-memory
+
+> **Three stores, one CLI.** Personal markdown notes, uploaded documents (RAG), and AI-extracted insights from chat history — searchable, writable, and composable from any MCP-compatible Agent.
+
+The [openloomi-memory](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi-memory) skill exposes OpenLoomi's memory capabilities to **any Agent that supports MCP** — Claude Code, Codex, OpenClaw, Hermes, and more. Memory is the single source of truth for [openloomi-loop](#openloomi-loop), which delegates all of its reads and writes here.
+
+For the deep system architecture (tiered storage, the forgetting engine, scoring formulas, the time-travel / Hebbian-connection subsystems), see the [Memory deep-dive](/docs/memory).
+
+### When to Use Memory
+
+- 🔍 **"What did I decide about X?"** — semantic + keyword search across files, knowledge base, and insights in one call
+- 🧠 **Entity resolution** — "Is 'John' the same person as 'John Doe'?" via the entity registry
+- ⏰ **Time-travel queries** — "What was the project status on March 1st?"
+- 🔗 **Living connections** — "What other things do I usually look at when I look at this?"
+- 📝 **Write-back from any agent** — Claude Code running a task can persist findings to memory with one CLI call
+- 📚 **Document RAG** — semantic search over uploaded PDFs / DOCX / Notion exports
+
+It is **not** designed for:
+
+- ❌ Real-time search — the local-filesystem search is sub-second; the knowledge-base / insights APIs hit the cloud and have network latency
+- ❌ Per-message storage — that's [openloomi-connectors](#openloomi-connectors)'s job; memory ingests the **extracted insights** that come from connector sync
+- ❌ Replacing a vector database — the skill is a thin wrapper; for high-volume / high-cardinality workloads you want a dedicated store
+
+### The Three Memory Types
+
+| Type               | What it is                                                                    | Where it lives                      | Search style                |
+| ------------------ | ----------------------------------------------------------------------------- | ----------------------------------- | --------------------------- |
+| **Memory Files**   | Personal markdown / JSON notes                                                | `~/.openloomi/data/memory/` (local) | Case-insensitive full-text  |
+| **Knowledge Base** | User-uploaded documents (PDF, DOCX, MD, …)                                    | OpenLoomi server (RAG / embeddings) | Semantic similarity         |
+| **Insights**       | AI-extracted structured records (decisions, action items, notes, preferences) | OpenLoomi server (indexed)          | Structured query + temporal |
+
+```
+~/.openloomi/data/memory/         # Memory Files (local)
+├── chats/                        #   exported conversations
+├── channels/                     #   per-channel memory (telegram, gmail, …)
+├── people/                       #   person profiles
+├── projects/                     #   project notes
+├── notes/                        #   general notes
+└── strategy/                     #   strategy documents
+```
+
+The three stores are **independent** — pick the one that matches your query, or use `search-all` to query them in parallel.
+
+### Quick Start
+
+**Prerequisites**
+
+- **Node.js 18+**
+- **Claude Code** (or any MCP-compatible Agent) installed
+- A valid token at `~/.openloomi/token` (auto-decoded by the CLI)
+
+**Step 1 — Comprehensive search across all three stores**
+
+```bash
+node $SKILL_DIR/scripts/openloomi-memory.cjs search-all "Q2 launch"
+```
+
+**Expected output** (abbreviated):
+
+```json
+{
+  "query": "Q2 launch",
+  "files": {
+    "results": [
+      {
+        "file": "projects/q2-launch.md",
+        "line": 12,
+        "preview": "Q2 launch date: June 15, blocked on legal review"
+      }
+    ],
+    "total": 1
+  },
+  "knowledge": {
+    "results": [
+      {
+        "id": "doc_abc",
+        "title": "Q2 Launch Plan.pdf",
+        "score": 0.91,
+        "preview": "..."
+      }
+    ],
+    "total": 1
+  },
+  "insights": {
+    "results": [
+      {
+        "id": "ins_xyz",
+        "type": "decision",
+        "content": "Team agreed to push Q2 launch by one week",
+        "time": "2026-04-12T..."
+      }
+    ],
+    "total": 1
+  }
+}
+```
+
+**Step 2 — Search a specific store**
+
+```bash
+# Local files only
+node $SKILL_DIR/scripts/openloomi-memory.cjs search-memory "launch" --directory=projects
+
+# Knowledge base only
+node $SKILL_DIR/scripts/openloomi-memory.cjs search-knowledge "launch plan"
+
+# Recent insights from a specific channel
+node $SKILL_DIR/scripts/openloomi-memory.cjs list-insights --channel=slack --days=7
+```
+
+**Step 3 — Write back from an agent**
+
+```bash
+# Add a memory file
+node $SKILL_DIR/scripts/openloomi-memory.cjs add-memory "Sarah prefers async standups; runs 2x/week" --file=people/sarah_chen.md
+
+# Add a structured insight
+node $SKILL_DIR/scripts/openloomi-memory.cjs add-insight \
+  --title="Q2 launch pushed to June 22" \
+  --description="Legal review needs one more week" \
+  --importance=High \
+  --urgency=Urgent \
+  --groups=gmail,slack \
+  --people="Sarah Chen,Marcus Webb"
+```
+
+**Step 4 — Verify**
+
+```bash
+node $SKILL_DIR/scripts/openloomi-memory.cjs search-all "Q2 launch June 22"
+```
+
+You should see your newly written memory file **and** the new insight both in the results.
+
+### Scenario Walkthrough: "Who is Sarah and what do we have on her?"
+
+This is the kind of compound query an agent runs dozens of times a day: combine entity lookup, file search, and recent insights into a single context block.
+
+**Step 1 — Find the entity**
+
+```bash
+node $SKILL_DIR/scripts/openloomi-memory.cjs list-entities --search=Sarah
+```
+
+**Expected output:**
+
+```json
+{
+  "entities": [
+    {
+      "id": "ent_sarah_chen",
+      "type": "person",
+      "name": "Sarah Chen",
+      "aliases": ["Sarah", "sarah@acme.com"],
+      "insightCount": 14
+    }
+  ],
+  "total": 1
+}
+```
+
+**Step 2 — Pull the person note + related insights in one call**
+
+```bash
+node $SKILL_DIR/scripts/openloomi-memory.cjs get-entity ent_sarah_chen --insights
+```
+
+**Expected output:**
+
+```json
+{
+  "entity": {
+    "id": "ent_sarah_chen",
+    "type": "person",
+    "name": "Sarah Chen",
+    "...": "..."
+  },
+  "insights": [
+    {
+      "id": "ins_1",
+      "type": "action_item",
+      "content": "Sarah to send Q2 review agenda by Mon",
+      "time": "2026-06-23T..."
+    },
+    {
+      "id": "ins_2",
+      "type": "preference",
+      "content": "Sarah prefers async standups",
+      "time": "2026-05-10T..."
+    }
+  ]
+}
+```
+
+**Step 3 — Surface what else you usually look at with her**
+
+```bash
+node $SKILL_DIR/scripts/openloomi-memory.cjs get-related-insights ins_1 --limit=5
+```
+
+**Expected output:**
+
+```json
+{
+  "relatedInsights": [
+    { "insightId": "ins_q2_review", "strength": 0.78, "coAccessCount": 6 },
+    { "insightId": "ins_acme_kickoff", "strength": 0.61, "coAccessCount": 4 }
+  ]
+}
+```
+
+This is the **Living Connections** subsystem — Hebbian-style "insights that fire together wire together." Strength grows when you view two insights within 5 minutes of each other; decays with the Ebbinghaus curve otherwise.
+
+**What you can now do**
+
+With three CLI calls you have: an entity record, the latest 2 action items / preferences tied to her, and the related-context suggestions. An agent can hand this whole block to a downstream task (drafting a reply, planning a meeting, etc.) without any further search.
+
+### Special Features
+
+**Time-Travel Queries**
+
+```bash
+# What was relevant on a specific date?
+node $SKILL_DIR/scripts/openloomi-memory.cjs get-insights-as-of 2026-03-01
+
+# Currently-valid insights only (hide expired)
+node $SKILL_DIR/scripts/openloomi-memory.cjs get-current-insights
+
+# Insights active during an interval
+node $SKILL_DIR/scripts/openloomi-memory.cjs get-insights-in-interval 2026-01-01 2026-06-01
+```
+
+Backed by the `validFrom` / `validUntil` fields on each insight. Useful for "what was my priority in Q3?" type queries.
+
+**Combined Search with Connections**
+
+```bash
+node $SKILL_DIR/scripts/openloomi-memory.cjs search-with-connections "project deadline" --limit=5
+```
+
+Returns matching insights **plus** their Living Connections, giving richer context in a single call.
+
+**Entity Registry**
+
+```bash
+node $SKILL_DIR/scripts/openloomi-memory.cjs list-entities --type=person
+node $SKILL_DIR/scripts/openloomi-memory.cjs list-entities --type=project
+node $SKILL_DIR/scripts/openloomi-memory.cjs get-entity ent_sarah_chen --insights
+```
+
+Entity types: `person` · `group` · `concept` · `project` · `company`. Each entity has aliases for disambiguation (e.g. "Sarah" → "Sarah Chen" → `sarah@acme.com`).
+
+### Configuration
+
+The CLI auto-reads your token from `~/.openloomi/token` (base64-encoded JWT) — no manual auth steps.
+
+The Memory Files search is configured by convention — subdirectories under `~/.openloomi/data/memory/` are searched recursively (max depth 5), and only `.md` / `.json` files are scanned. No flags needed.
+
+For RAG, the search threshold is **0.7** cosine similarity by default; limit defaults to 5 results.
+
+### Companion Skills
+
+| When you want…                             | Use                                                               |
+| ------------------------------------------ | ----------------------------------------------------------------- |
+| Proactive decisions from new signals       | [openloomi-loop](#openloomi-loop) (delegates all memory I/O here) |
+| Connect a platform so memory can ingest it | [openloomi-connectors](#openloomi-connectors)                     |
+| Server-side API for the same memory stores | [openloomi-api](#openloomi-api)                                   |
+
+The Memory skill is the **memory layer**. The Loop is the **proactive executor**. The two compose: every tick in the Loop enriches via memory and writes back via memory.
+
+### REST API (Optional)
+
+For programmatic access from non-MCP environments, the same capabilities are exposed via the local server on port **3414**:
+
+| Endpoint                              | Purpose                                         |
+| ------------------------------------- | ----------------------------------------------- |
+| `POST /api/rag/search`                | Semantic search across knowledge-base documents |
+| `GET  /api/rag/documents`             | List uploaded documents                         |
+| `GET  /api/insights?days=7&channel=…` | List insights (filterable by channel & date)    |
+| `POST /api/insights`                  | Create a new insight                            |
+| `PUT  /api/insights/[id]`             | Partial update (arrays append, not replace)     |
+| `GET  /api/insights/analytics`        | Usage analytics + value-score leaderboard       |
+| `POST /api/insights/[id]/view`        | Record a view (feeds the scoring formula)       |
+
+All endpoints require `Authorization: Bearer $TOKEN` where `$TOKEN` is the **base64-decoded** JWT from `~/.openloomi/token`. See [openloomi-api](#openloomi-api) for the full reference.
+
+### Reference
+
+- **Full CLI / API reference:** [openloomi-memory SKILL.md on GitHub](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi-memory/SKILL.md)
+- **System architecture (data model, forgetting engine, scoring):** [Memory deep-dive](/docs/memory)
+- **Source code:** [`skills/openloomi-memory/`](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi-memory)
+- **Apache 2.0 license** — fork it, extend it, integrate it.
+
+---
+
+## openloomi-connectors
+
+> **26 platforms, one CLI.** OAuth flows, app-password auth, and bot credentials unified into a single command-line tool that any MCP-compatible Agent can drive.
+
+The [openloomi-connectors](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi-connectors) skill exposes OpenLoomi's platform-integration layer to **any Agent that supports MCP**. It is the doorway through which [openloomi-memory](#openloomi-memory) ingests raw messages and through which [openloomi-loop](#openloomi-loop) pulls fresh signals.
+
+For the full per-platform setup walkthroughs (Lark/Feishu permission lists, DingTalk Stream mode, iMessage macOS permissions, etc.), see the [Connectors deep-dive](/docs/connectors).
+
+### When to Use Connectors
+
+- 🔌 **Connect a platform** — Slack, Discord, Gmail, Outlook, X, GitHub, Telegram, WhatsApp, WeChat, Feishu, DingTalk, QQ, iMessage, plus 13 more
+- 📋 **List connected accounts** — see what's already linked, get the `botId` you need to send from
+- 🩺 **Check status** — is a platform connected, expired, or disconnected?
+- 🔌 **Disconnect** — revoke access for one account
+- 👤 **Query contacts** — paginated, name-filtered contact lookup
+- ✉️ **Send a message** — from any connected bot, with recipient resolution
+
+It is **not** designed for:
+
+- ❌ Per-message read access from an agent — that's the [openloomi-api](#openloomi-api) `/api/messages` route; this skill is for **account management + bot messaging**
+- ❌ Real-time event subscription — the connectors sync on a schedule; if you need push-style events, use the platform's native webhook or the [openloomi-loop](#openloomi-loop) tick
+- ❌ Building a customer-facing bot from scratch — for that, set up the platform's bot credentials and point them at OpenLoomi's listener endpoints (see [Connectors deep-dive → Feishu setup](/docs/connectors#larkfeishu))
+
+### Supported Platforms (26)
+
+| ID                   | Display Name       | Auth method                          |
+| -------------------- | ------------------ | ------------------------------------ |
+| `telegram`           | Telegram           | QR / Phone (browser)                 |
+| `whatsapp`           | WhatsApp           | QR / Pair code (browser)             |
+| `slack`              | Slack              | OAuth (auto-opens browser)           |
+| `discord`            | Discord            | OAuth (auto-opens browser)           |
+| `gmail`              | Gmail              | App Password                         |
+| `outlook`            | Outlook            | App Password                         |
+| `linkedin`           | LinkedIn           | OAuth                                |
+| `instagram`          | Instagram          | OAuth                                |
+| `twitter`            | X / Twitter        | OAuth (auto-opens browser)           |
+| `google_calendar`    | Google Calendar    | OAuth                                |
+| `outlook_calendar`   | Outlook Calendar   | OAuth                                |
+| `teams`              | Microsoft Teams    | OAuth                                |
+| `facebook_messenger` | Facebook Messenger | OAuth                                |
+| `google_drive`       | Google Drive       | OAuth                                |
+| `google_docs`        | Google Docs        | OAuth                                |
+| `hubspot`            | HubSpot            | OAuth                                |
+| `notion`             | Notion             | OAuth                                |
+| `github`             | GitHub             | OAuth                                |
+| `asana`              | Asana              | OAuth                                |
+| `jira`               | Jira               | OAuth                                |
+| `linear`             | Linear             | OAuth                                |
+| `imessage`           | iMessage           | Local (macOS only, browser)          |
+| `feishu`             | Lark / Feishu      | App Credentials (App ID + Secret)    |
+| `dingtalk`           | DingTalk           | App Credentials (Client ID + Secret) |
+| `qqbot`              | QQ                 | App Credentials (App ID + Token)     |
+| `weixin`             | WeChat             | iLink Token                          |
+
+Aliases are supported (case-insensitive, English + Chinese): `gh` → `github`, `gcal` → `google_calendar`, `微信` → `weixin`, `飞书` → `feishu`, `钉钉` → `dingtalk`, etc.
+
+### Quick Start
+
+**Prerequisites**
+
+- **Node.js 18+**
+- **Claude Code** (or any MCP-compatible Agent)
+- A valid token at `~/.openloomi/token` (auto-decoded by the CLI)
+- The local API server reachable at `http://localhost:3414` (fallback: `3515`)
+
+**Step 1 — See what's available**
+
+```bash
+node $SKILL_DIR/scripts/openloomi-connectors.cjs list-platforms
+```
+
+**Expected output** (truncated):
+
+```json
+{
+  "platforms": [
+    { "id": "telegram", "displayName": "Telegram", "aliases": ["tg"] },
+    { "id": "slack", "displayName": "Slack", "aliases": [] },
+    { "id": "gmail", "displayName": "Gmail", "aliases": ["google_mail"] },
+    {
+      "id": "feishu",
+      "displayName": "Lark/Feishu",
+      "aliases": ["lark", "飞书"]
+    }
+  ],
+  "total": 26
+}
+```
+
+**Step 2 — See what's already connected**
+
+```bash
+node $SKILL_DIR/scripts/openloomi-connectors.cjs list-accounts
+```
+
+**Expected output:**
+
+```json
+{
+  "accounts": [
+    {
+      "id": "int_gmail_001",
+      "platform": "gmail",
+      "externalId": "me@gmail.com",
+      "displayName": "Personal Gmail",
+      "status": "active",
+      "botId": "bot_gmail_001"
+    },
+    {
+      "id": "int_slack_001",
+      "platform": "slack",
+      "externalId": "T0ABC123",
+      "displayName": "Acme Workspace",
+      "status": "active",
+      "botId": "bot_slack_001"
+    }
+  ],
+  "total": 2
+}
+```
+
+> 💡 **Note `botId`**: it is different from the account `id`. You'll need `botId` to send messages.
+
+**Step 3 — Connect a new platform**
+
+```bash
+# OAuth — opens the browser automatically
+node $SKILL_DIR/scripts/openloomi-connectors.cjs connect slack
+
+# App Password
+node $SKILL_DIR/scripts/openloomi-connectors.cjs connect gmail --email=me@gmail.com --password=xxxx-xxxx-xxxx-xxxx
+
+# App Credentials
+node $SKILL_DIR/scripts/openloomi-connectors.cjs connect feishu --appId=cli_xxx --appSecret=xxx
+```
+
+**Expected output** (OAuth):
+
+```
+→ Opening browser to https://slack.com/oauth/v2/authorize?...
+✓ Authorization received
+✓ Account int_slack_002 created (botId=bot_slack_002)
+```
+
+**Step 4 — Send a message**
+
+```bash
+node $SKILL_DIR/scripts/openloomi-connectors.cjs send-reply \
+  --botId=bot_slack_002 \
+  --recipients=John \
+  --message="Heads up — Q2 review tomorrow at 10am."
+```
+
+**Expected output:**
+
+```json
+{
+  "success": true,
+  "messageId": "msg_abc123",
+  "deliveredAt": "2026-06-26T10:00:00Z"
+}
+```
+
+### Scenario Walkthrough: Connect Slack and send a message to John
+
+**Step 1 — Check whether Slack is already connected**
+
+```bash
+node $SKILL_DIR/scripts/openloomi-connectors.cjs status slack
+```
+
+**Expected output:**
+
+```json
+{ "platform": "slack", "connected": false, "accounts": [] }
+```
+
+**Step 2 — Connect it**
+
+```bash
+node $SKILL_DIR/scripts/openloomi-connectors.cjs connect slack
+```
+
+This opens the default browser to Slack's OAuth page. You approve the permissions (the CLI prints which scopes are requested), Slack redirects back, and the CLI prints the new account ID and `botId`.
+
+**Expected output:**
+
+```
+→ Opening browser to Slack OAuth...
+✓ Authorization received
+{
+  "accountId": "int_slack_002",
+  "botId": "bot_slack_002",
+  "workspace": "Acme Workspace",
+  "scopes": ["chat:write", "channels:read", "im:history", ...]
+}
+```
+
+**Step 3 — Find John's contact record**
+
+```bash
+node $SKILL_DIR/scripts/openloomi-connectors.cjs query-contacts --name=John --pageSize=5
+```
+
+**Expected output:**
+
+```json
+{
+  "contacts": [
+    {
+      "id": "contact_001",
+      "name": "John Doe",
+      "type": "slack",
+      "botId": "bot_slack_002"
+    },
+    {
+      "id": "contact_002",
+      "name": "John Smith",
+      "type": "slack",
+      "botId": "bot_slack_002"
+    }
+  ]
+}
+```
+
+> ⚠️ **Disambiguation**: with two Johns, you'll need to pick the right one — either by checking the contact `id` or by passing the full name. The CLI does not auto-resolve.
+
+**Step 4 — Send**
+
+```bash
+node $SKILL_DIR/scripts/openloomi-connectors.cjs send-reply \
+  --botId=bot_slack_002 \
+  --recipients="John Doe" \
+  --message="Heads up — Q2 review tomorrow at 10am."
+```
+
+**Expected output:**
+
+```json
+{
+  "success": true,
+  "messageId": "msg_xyz789",
+  "channel": "D0ABC123",
+  "deliveredAt": "2026-06-26T10:01:23Z"
+}
+```
+
+The message lands in John Doe's Slack DM, sent by the OpenLoomi bot.
+
+**Step 5 (optional) — Disconnect later**
+
+```bash
+node $SKILL_DIR/scripts/openloomi-connectors.cjs disconnect int_slack_002
+```
+
+**Expected output:**
+
+```json
+{
+  "success": true,
+  "deletedAccountId": "int_slack_002",
+  "deletedBotIds": ["bot_slack_002"]
+}
+```
+
+### Connection Methods by Platform
+
+The CLI normalizes four different platform auth models:
+
+| Method               | Platforms                                                                                                          | Flow                                                                |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------- |
+| **OAuth (auto)**     | `slack`, `discord`, `x`, `linkedin`, `google_*`, `github`, `hubspot`, `notion`, `asana`, `jira`, `linear`, `teams` | CLI opens the browser → you approve → callback writes account       |
+| **App Password**     | `gmail`, `outlook`                                                                                                 | Pass `--email` + `--password` flags                                 |
+| **App Credentials**  | `feishu`, `dingtalk`, `qqbot`                                                                                      | Pass `--appId` + `--appSecret` (or `--clientId` + `--clientSecret`) |
+| **iLink Token**      | `weixin`                                                                                                           | Pass `--token`                                                      |
+| **Browser required** | `whatsapp`, `telegram`, `imessage`                                                                                 | CLI opens browser for QR scan / interactive auth                    |
+
+For `feishu` / `dingtalk` / `qqbot`, the app must be **published** in the platform's admin console before messages can reach it — see the [Connectors deep-dive → Feishu setup](/docs/connectors#larkfeishu) for the full publish step.
+
+### Command Reference
+
+| Command                                        | Purpose                                                    |
+| ---------------------------------------------- | ---------------------------------------------------------- |
+| `list-platforms`                               | List all 26 supported platforms with IDs and aliases       |
+| `list-accounts`                                | List all connected accounts (includes `botId` per account) |
+| `status <platform>`                            | Check if a platform is connected                           |
+| `connect <platform> [flags]`                   | Connect a platform (auth-method-aware)                     |
+| `disconnect <accountId>`                       | Disconnect a specific account by ID                        |
+| `query-contacts [--name=] [--page=]`           | Paginated, name-filtered contact lookup                    |
+| `send-reply --botId= --recipients= --message=` | Send a message via a connected bot                         |
+
+### Companion Skills
+
+| When you want…                                   | Use                                   |
+| ------------------------------------------------ | ------------------------------------- |
+| Persist ingested messages / search memory        | [openloomi-memory](#openloomi-memory) |
+| Pull signals from connected accounts proactively | [openloomi-loop](#openloomi-loop)     |
+| Server-side access to the same integration data  | [openloomi-api](#openloomi-api)       |
+
+Connector accounts feed two downstream skills: the **memory** skill receives synced messages and extracts insights, and the **loop** skill polls the accounts for fresh signals to classify. Both are read paths — they do not call the connectors CLI directly.
+
+### REST API (Optional)
+
+For non-MCP environments, the same operations are exposed via the local API on port **3414**:
+
+| Endpoint                                        | Purpose                            |
+| ----------------------------------------------- | ---------------------------------- |
+| `GET    /api/integrations/accounts`             | List connected accounts            |
+| `GET    /api/integrations/slack/oauth/start`    | Get the Slack OAuth URL            |
+| `GET    /api/integrations/slack/oauth/exchange` | Exchange OAuth code → account      |
+| `GET    /api/contacts?name=…&page=…`            | Query contacts                     |
+| `POST   /api/messages`                          | Send a message via a connected bot |
+| `DELETE /api/integrations/:id`                  | Disconnect an account              |
+
+Each platform also has its own callback / listener init endpoint — see the [Connectors deep-dive](/docs/connectors) or [openloomi-api](#openloomi-api) for the full list.
+
+### Reference
+
+- **Full CLI / API reference + desktop UI walkthrough:** [openloomi-connectors SKILL.md on GitHub](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi-connectors/SKILL.md)
+- **Per-platform setup walkthroughs (screenshots, permission lists):** [Connectors deep-dive](/docs/connectors)
+- **Source code:** [`skills/openloomi-connectors/`](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi-connectors)
+- **Apache 2.0 license** — fork it, extend it, integrate it.
+
+---
+
+## openloomi-api
+
+> **129+ endpoints, 12 modules, one base URL.** Auth, chat, messages, files, RAG, integrations, AI, insights, billing — all the same OpenLoomi server your desktop app talks to, exposed as a REST API for any Agent to drive.
+
+The [openloomi-api](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi-api) skill is the open-source **server-side reference** for OpenLoomi's backend. It is the lowest-level of the open-source stack — the [memory](#openloomi-memory), [connectors](#openloomi-connectors), and [loop](#openloomi-loop) skills all eventually call into these endpoints, but you can call them directly when you need full control or want to build a custom integration.
+
+For the full endpoint-by-endpoint reference (all 129+ routes, request/response schemas), see the [openloomi-api SKILL.md on GitHub](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi-api/SKILL.md).
+
+### When to Use the API
+
+- 🤖 **Drive OpenLoomi from your own Agent** — Claude Code, Codex, custom bots — without installing the desktop app
+- 🧠 **Build a custom RAG pipeline** — upload, chunk, embed, search documents against the same store the desktop app uses
+- 💬 **Stream chat completions** — the same `/api/ai/chat` endpoint the desktop chat UI uses
+- 🗂️ **Manage workspace artifacts and skills** — CRUD on `artifacts/`, `files/`, `skills/`
+- 🔍 **Programmatic access to memory** — read insights, record views, run analytics
+- 💳 **Billing introspection** — pull the ledger for your own dashboards
+
+It is **not** designed for:
+
+- ❌ Webhooks from external services — those are platform-specific (Slack events, GitHub webhooks); OpenLoomi receives them via the [connectors skill](#openloomi-connectors)
+- ❌ Long-running background jobs — the API is request/response; for that, use the [loop skill](#openloomi-loop) which schedules ticks
+- ❌ Direct database access — the API is the only supported surface; there is no public Postgres endpoint
+
+### Module Overview
+
+| Module           | Base Path                                 | What it covers                                      |
+| ---------------- | ----------------------------------------- | --------------------------------------------------- |
+| **Auth**         | `/api/auth/*`, `/api/remote-auth/*`       | Login, register, OAuth, token refresh, current user |
+| **User**         | `/api/user/*`                             | Identity, entitlements, password change             |
+| **Chat**         | `/api/chat/*`                             | Chat / character CRUD                               |
+| **Messages**     | `/api/messages/*`                         | Send, list, sync, check, fetch raw                  |
+| **Files**        | `/api/files/*`                            | Upload, list, get, save, storage usage              |
+| **Storage**      | `/api/storage/*`                          | Disk usage, sessions, cleanup                       |
+| **Integrations** | `/api/integrations/*`, `/api/*/callback`  | OAuth start/exchange, callbacks, listener init      |
+| **RAG**          | `/api/rag/*`                              | Document upload, search, stats, async upload        |
+| **Workspace**    | `/api/workspace/*`                        | Artifacts, files, skills CRUD                       |
+| **Native**       | `/api/native/*`                           | Native agent operations                             |
+| **AI**           | `/api/ai/*`                               | Chat, embeddings, image gen, TTS, STT, models list  |
+| **Insights**     | `/api/insights/*`, `/api/chat-insights/*` | Analytics, brief categories, insight tabs           |
+| **Billing**      | `/api/billing/*`                          | Billing ledger                                      |
+
+### Authentication
+
+Two surfaces, two auth styles:
+
+| Surface                  | Auth                                                 | Use it from                                   |
+| ------------------------ | ---------------------------------------------------- | --------------------------------------------- |
+| **Local desktop server** | `Authorization: Bearer $TOKEN`                       | Claude Code / Tauri / scripts on your machine |
+| **Cloud**                | Same Bearer token, base URL `https://app.alloomi.ai` | Production integrations, multi-user apps      |
+
+The token is stored at `~/.openloomi/token` as a **base64-encoded** JWT. You must decode it before sending it as a Bearer token.
+
+```bash
+# Decode and stash in $TOKEN
+TOKEN=$(cat ~/.openloomi/token | base64 -d)
+```
+
+> ⚠️ **Common mistake**: passing the raw base64 string to `Authorization: Bearer` returns `401 Unauthorized`. Always decode first.
+
+### Quick Start
+
+**Step 1 — Verify the local server is up**
+
+```bash
+curl -s http://localhost:3414/api/ai/chat
+```
+
+**Expected output:**
+
+```json
+{ "status": "ok", "provider": "openai", "model": "gpt-4o-mini" }
+```
+
+**Step 2 — Get the current user**
+
+```bash
+TOKEN=$(cat ~/.openloomi/token | base64 -d)
+curl -s http://localhost:3414/api/remote-auth/user \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+**Expected output:**
+
+```json
+{
+  "id": "user_xxx",
+  "email": "you@example.com",
+  "name": "Your Name",
+  "subscription": { "plan": "pro", "renewsAt": "2026-09-01T..." }
+}
+```
+
+**Step 3 — Stream a chat completion**
+
+```bash
+TOKEN=$(cat ~/.openloomi/token | base64 -d)
+curl -N -X POST http://localhost:3414/api/ai/chat \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "messages": [
+      {"role": "system", "content": "You are a helpful assistant."},
+      {"role": "user", "content": "What did I decide about Q2?"}
+    ],
+    "stream": true
+  }'
+```
+
+**Expected output** (SSE stream, truncated):
+
+```
+data: {"delta": "Based on your memory, "}
+data: {"delta": "you decided to push "}
+data: {"delta": "the Q2 launch to June 22."}
+data: [DONE]
+```
+
+**Step 4 — Search the knowledge base (RAG)**
+
+```bash
+TOKEN=$(cat ~/.openloomi/token | base64 -d)
+curl -X POST http://localhost:3414/api/rag/search \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"query":"Q2 launch plan","limit":5}'
+```
+
+**Expected output:**
+
+```json
+{
+  "results": [
+    {
+      "id": "doc_abc",
+      "title": "Q2 Launch Plan.pdf",
+      "score": 0.93,
+      "content": "Launch date: June 22, contingent on legal sign-off..."
+    }
+  ],
+  "total": 1
+}
+```
+
+**Step 5 — Use the cloud API (production)**
+
+```bash
+export TOKEN="your_production_jwt"
+curl https://app.alloomi.ai/api/remote-auth/user \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+The same endpoints, the same schemas — only the base URL changes.
+
+### Scenario Walkthrough: Build a custom RAG assistant
+
+You have a folder of PDFs and want to query them from Claude Code. Here's the minimum viable flow.
+
+**Step 1 — Upload a document**
+
+```bash
+TOKEN=$(cat ~/.openloomi/token | base64 -d)
+
+# Initialize the upload
+curl -X POST http://localhost:3414/api/rag/upload/init \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"fileName":"q2-plan.pdf","contentType":"application/pdf","sizeBytes":482310}'
+```
+
+**Expected output:**
+
+```json
+{
+  "uploadId": "upl_abc",
+  "chunkSize": 1048576,
+  "totalChunks": 1
+}
+```
+
+**Step 2 — Stream the chunks**
+
+```bash
+curl -X POST http://localhost:3414/api/rag/upload/chunk \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/octet-stream" \
+  --data-binary @q2-plan.pdf
+```
+
+**Step 3 — Complete the upload and wait for embedding**
+
+```bash
+curl -X POST http://localhost:3414/api/rag/upload/complete \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"uploadId":"upl_abc"}'
+
+# Poll until done
+curl "http://localhost:3414/api/rag/upload/async/status?uploadId=upl_abc" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+**Expected output:**
+
+```json
+{
+  "uploadId": "upl_abc",
+  "status": "indexed",
+  "documentId": "doc_xyz",
+  "totalChunks": 47
+}
+```
+
+> 💡 **Tip:** for files > 5 MB, prefer the `async` variant (`POST /api/rag/upload/async`) — the synchronous path can time out on large PDFs.
+
+**Step 4 — Query the new document**
+
+```bash
+curl -X POST http://localhost:3414/api/rag/search \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"query":"legal sign-off requirements","limit":3,"documentIds":["doc_xyz"]}'
+```
+
+**Expected output:**
+
+```json
+{
+  "results": [
+    {
+      "id": "chunk_012",
+      "documentId": "doc_xyz",
+      "content": "Legal sign-off required for: data processing addendum, IP disclosures...",
+      "score": 0.88
+    }
+  ],
+  "total": 1
+}
+```
+
+You now have semantic search running against a PDF you just uploaded, available to any Agent that holds the same token.
+
+### Error Handling
+
+All errors return standard HTTP status codes with a JSON body:
+
+```typescript
+{
+  error: string;      // human-readable message
+  code?: string;      // programmatic code
+  cause?: string;     // additional context
+}
+```
+
+| Code | Meaning               | Typical cause                                 |
+| ---- | --------------------- | --------------------------------------------- |
+| 200  | Success               | —                                             |
+| 400  | Bad Request           | Missing / invalid input                       |
+| 401  | Unauthorized          | Token missing, expired, or not base64-decoded |
+| 403  | Forbidden             | Insufficient permissions for this account     |
+| 404  | Not Found             | ID does not exist                             |
+| 429  | Too Many Requests     | Rate limit hit                                |
+| 500  | Internal Server Error | Server-side bug                               |
+
+### Highlights by Module
+
+**AI (`/api/ai/*`)**
+
+| Method | Endpoint                           | Use                            |
+| ------ | ---------------------------------- | ------------------------------ |
+| POST   | `/api/ai/chat`                     | Streaming chat completions     |
+| POST   | `/api/ai/v1/chat/completions`      | OpenAI-compatible chat         |
+| POST   | `/api/ai/v1/embeddings`            | Generate embeddings (1536-dim) |
+| POST   | `/api/ai/v1/images/generations`    | Image generation               |
+| POST   | `/api/ai/v1/audio/speech`          | Text-to-speech                 |
+| POST   | `/api/ai/v1/audio/transcriptions`  | Speech-to-text                 |
+| GET    | `/api/ai/v1/models`                | List available models          |
+| POST   | `/api/ai/v1/messages/count_tokens` | Token counting                 |
+
+**RAG (`/api/rag/*`)**
+
+| Method | Endpoint                                                                                | Use                                         |
+| ------ | --------------------------------------------------------------------------------------- | ------------------------------------------- |
+| POST   | `/api/rag/search`                                                                       | Semantic document search                    |
+| GET    | `/api/rag/documents`                                                                    | List documents                              |
+| GET    | `/api/rag/documents/[id]`                                                               | Get one document                            |
+| GET    | `/api/rag/documents/[id]/binary`                                                        | Download original file                      |
+| POST   | `/api/rag/upload` / `upload/init` / `upload/chunk` / `upload/complete` / `upload/async` | Document upload (chunked, resumable, async) |
+| GET    | `/api/rag/stats`                                                                        | RAG statistics                              |
+
+**Integrations (`/api/integrations/*`)**
+
+| Method | Endpoint                                 | Use                     |
+| ------ | ---------------------------------------- | ----------------------- |
+| GET    | `/api/integrations/accounts`             | List connected accounts |
+| GET    | `/api/integrations/slack/oauth/start`    | Begin Slack OAuth       |
+| GET    | `/api/integrations/slack/oauth/exchange` | Complete Slack OAuth    |
+| GET    | `/api/integrations/discord/oauth/start`  | Begin Discord OAuth     |
+| GET    | `/api/integrations/x/oauth/start`        | Begin X OAuth           |
+| DELETE | `/api/integrations/:id`                  | Disconnect              |
+
+Plus platform-specific callbacks (Slack, Discord, Google, GitHub, Feishu, DingTalk, QQ, WeChat, Telegram, WhatsApp, iMessage) — see the [openloomi-api SKILL.md](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi-api/SKILL.md) for the full list.
+
+### Companion Skills
+
+| When you want…                         | Use                                           |
+| -------------------------------------- | --------------------------------------------- |
+| Memory storage with structured CLI     | [openloomi-memory](#openloomi-memory)         |
+| Platform connection management         | [openloomi-connectors](#openloomi-connectors) |
+| Proactive decisions on top of API data | [openloomi-loop](#openloomi-loop)             |
+
+The API is the **foundation layer** — every other open-source skill calls into it. When you need full control, low-level access, or to build a custom integration that doesn't fit the skill model, go straight to the API.
+
+### Reference
+
+- **Full endpoint reference (all 129+ routes, schemas):** [openloomi-api SKILL.md on GitHub](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi-api/SKILL.md)
+- **Production API base URL:** `https://app.alloomi.ai`
+- **Local API base URL:** `http://localhost:3414` (fallback `3515`)
+- **Token location:** `~/.openloomi/token` (base64-encoded JWT)
+- **Source code:** [`skills/openloomi-api/`](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi-api)
+- **Apache 2.0 license** — fork it, extend it, integrate it.
+
+---
+
+## openloomi-loop
+
+> **主动持续 (Proactive & Continuous)** — watches your connected tools, classifies ambient signals into typed decisions, and queues them up the moment you look. Nothing fires automatically; everything is ready when you are.
+
+OpenLoomi Loop is an **open-source Claude Code skill** that runs as the **proactive execution brain (主动执行大脑)** on top of your existing tools. Instead of you remembering to check inbox, calendar, and PRs, the Loop watches them in the background, enriches each new signal with [openloomi-memory](#openloomi-memory), and turns it into a decision card you can act on in one click.
+
+The Loop is **not a daemon, not a cron job, and not a script**. It is Claude, looping — every tick is a fresh `claude -p` invocation, every executed decision is a fresh `claude -p` session. Composable over persistent. Visible over magic.
+
+### When to Use Loop
+
+The Loop shines when **ambient signals need to become actions** and the cost of missing them is real:
+
+- 📥 **Inbox triage** — Sarah's email about "Q2 review tomorrow please RSVP" becomes a `draft_reply` card with her project context already attached.
+- 📅 **Calendar RSVPs** — A meeting invite where you haven't responded surfaces as an `rsvp` card with the organizer's last three notes already in the prompt.
+- 🔀 **PR review queue** — Every PR where you're a reviewer lands in the queue as a `review_pr` card, with the diff stats and the last CI status.
+- 💬 **Slack mentions** — Messages that @mention you become `slack_reply` cards with the thread context pre-loaded.
+- ✅ **Assigned issues** — GitHub issues assigned to you surface as `todo` cards, with prior discussion linked.
+
+It is **not** designed for:
+
+- ❌ Auto-sending emails or RSVPs without your approval — the tick is strictly read/derive. Execution is always on you.
+- ❌ Replacing a real-time alert system — ticks run on a schedule (default every 10 min), not in real time.
+- ❌ Bulk automation across many accounts — the Loop is single-user, single-tenant.
+
+### How It Works
+
+Three layers, all agentic — no subprocess hacks, no local memory cache:
+
+```
+            ┌───────────────────────────────────────────────┐
+            │                                               │
+            ▼                                               │
+   ┌──────────────┐    ┌──────────────┐    ┌───────────────┴──┐    ┌──────────────┐
+   │  External    │───▶│   Context    │───▶│     Decision     │───▶│   Execute    │───▶ Output
+   │ Environment  │    │    Layer     │    │      Layer       │    │    Layer     │
+   │              │    │              │    │                  │    │              │
+   │ Composio MCP │    │ signals.jsonl│    │ openloomi-memory │    │ spawn        │
+   │ (gmail/cal/  │    │              │    │  enrichment      │    │   claude     │
+   │  gh/slack)   │    │              │    │ + classifier     │    │ with prompt  │
+   └──────────────┘    └──────┬───────┘    └────────┬─────────┘    └──────┬───────┘
+                              │                     │                    │
+                              ▼                     ▼                    ▼
+                        openloomi-memory  (single source of truth:
+                                           people, projects, insights)
+```
+
+| Layer        | What it does                                                                                   | What it writes to                 |
+| ------------ | ---------------------------------------------------------------------------------------------- | --------------------------------- |
+| **Pull**     | Claude calls Composio MCP tools in parallel to fetch fresh signals                             | `data/signals.jsonl`              |
+| **Enrich**   | Each signal is enriched via openloomi-memory (sender lookup, project context, recent insights) | `~/.openloomi/data/memory/...`    |
+| **Classify** | LLM assigns a typed action (`rsvp`, `draft_reply`, `review_pr`, `slack_reply`, `todo`)         | `data/decisions.json`             |
+| **Execute**  | You pick a card; Loop spawns a fresh `claude -p` with the full context                         | API calls (email, calendar, etc.) |
+
+Hard rules run **before** the LLM and short-circuit: `noreply@*` senders, Gmail `Promotions/Social/Forums/Updates/Spam` labels, already-accepted calendar events, and already-replied emails are skipped without ever reaching the classifier.
+
+### Quick Start
+
+**Prerequisites**
+
+- **Node.js 18+**
+- **Claude Code** installed and on `PATH` (`claude --version` should work)
+- **Composio MCP** connected for at least one toolkit (Gmail, Google Calendar, GitHub, or Slack) — or use the manual `inject` path for testing without connections
+- **[openloomi-memory](#openloomi-memory)** installed (the Loop delegates all memory reads/writes to it)
+
+**Step 1 — Drop a test signal (no Composio needed)**
+
+```bash
+echo '{"source":"gmail","type":"email","payload":{"from":"Sarah <sarah@acme.com>","subject":"Q2 review tomorrow please RSVP","labels":["INBOX"]}}' \
+  | node $SKILL_DIR/scripts/openloomi-loop.cjs inject -
+```
+
+This drops a synthetic email signal into `data/inbox/`. The Loop will ingest it on the next analyze.
+
+**Step 2 — Run the lib-level analyze**
+
+```bash
+node $SKILL_DIR/scripts/openloomi-loop.cjs analyze
+```
+
+**Expected output** (approximate):
+
+```
+ingested 1 signal
+classified:
+  dec_a1b2c3d4  rsvp         conf 0.60  "Q2 review tomorrow please RSVP"
+```
+
+If Sarah is already in your openloomi-memory, confidence will be **0.85**; otherwise **0.60**.
+
+**Step 3 — Browse the decision queue**
+
+```bash
+node $SKILL_DIR/scripts/openloomi-loop.cjs inbox           # plain list
+node $SKILL_DIR/scripts/openloomi-loop.cjs inbox --pick    # arrow-key picker
+```
+
+**Expected output:**
+
+```
+PENDING (1)
+  dec_a1b2c3d4  rsvp   conf 0.85  Q2 review tomorrow please RSVP  ← from Sarah
+  └─ 👤 Sarah Chen (people/sarah_chen.md)  ·  🧠 2 prior interactions
+```
+
+**Step 4 — Run the decision**
+
+```bash
+node $SKILL_DIR/scripts/openloomi-loop.cjs run dec_a1b2c3d4
+```
+
+This spawns a fresh `claude -p` session with the full decision context. The spawned session will:
+
+1. Confirm what it's about to do in one line
+2. Take the action (send the RSVP, draft the reply, etc.)
+3. Write any new people/projects back to openloomi-memory
+4. Summarize in 3 bullets: what changed, what was written to memory, follow-ups
+
+On exit, the decision is moved from `pending` → `done` in `data/decisions.json`.
+
+**Step 5 (optional) — Schedule continuous ticks**
+
+```bash
+node $SKILL_DIR/scripts/openloomi-loop.cjs schedule --interval 600
+```
+
+Runs in the foreground with two independent timers: a tick every 600 seconds and a watch every 5 seconds for desktop notifications on new pending decisions. **A hung tick never blocks notifications** — the tick is hard-killed after `LOOP_CLAUDE_TIMEOUT_MS` (default 6 min).
+
+### Scenario Walkthrough: Triage a PR Review Request
+
+A teammate opens a PR on a repo where you're a reviewer. Here's what the Loop does, end to end.
+
+**Input — the raw signal**
+
+```json
+{
+  "source": "github",
+  "type": "github_pr",
+  "payload": {
+    "repo": "acme/api",
+    "number": 482,
+    "title": "Refactor auth middleware",
+    "state": "open",
+    "user_is_reviewer": true
+  }
+}
+```
+
+**Process — what the tick does**
+
+1. **Enrich**: Loop calls openloomi-memory → `search-all "auth middleware"` → finds your prior review of PR #401 with notes on the JWT validation pattern.
+2. **Filter**: PR is open, you're a reviewer, not a draft → passes hard rules.
+3. **Classify**: LLM sees a PR with a reviewer assignment → assigns `type: review_pr`, `confidence: 0.85` (you're in memory as the reviewer).
+4. **Queue**: Decision written to `data/decisions.json`.
+
+**Output — the decision card (Web UI)**
+
+Open `http://127.0.0.1:3414/` (run `loop web` if not already running):
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│ review_pr  ·  conf 0.85                          dec_x7y8z9w  │
+├──────────────────────────────────────────────────────────────┤
+│ ⏰ opened 2h ago  ·  🔀 acme/api#482                        │
+│ Refactor auth middleware                                       │
+│                                                               │
+│ 👤 Reviewer: you                                              │
+│ 🧠 memory:  projects/auth_rewrite.md  (prior review PR #401)  │
+│                                                               │
+│ Action: github_review                                         │
+│   repo: acme/api  pr: 482  event: REQUEST_CHANGES  body: ...  │
+│                                                               │
+│ [▶ RUN]  [DRY RUN]  [✓ DONE]  [✕ DISMISS]                     │
+└──────────────────────────────────────────────────────────────┘
+```
+
+**What "RUN" actually does**
+
+`loop run dec_x7y8z9w` builds a prompt like:
+
+```
+You are executing an openloomi Loop decision. The user picked this from a proactive suggestion list.
+
+DECISION TYPE: review_pr
+TITLE: Review: Refactor auth middleware (acme/api#482)
+CONFIDENCE: 0.85
+
+WHY THIS SURFACED:
+- Source: github:github_pr
+- You're listed as a reviewer on this PR
+- PR is open and awaiting review
+
+MEMORY REFS (openloomi-memory):
+- projects/auth_rewrite.md  (your prior notes on the JWT validation pattern)
+
+SOURCE SIGNAL (github:github_pr):
+{ ...full PR payload... }
+
+SUGGESTED ACTION:
+{ "kind": "github_review", "params": { "repo": "acme/api", "pr": 482, "event": "REQUEST_CHANGES", ... } }
+
+Execute this action now. Steps:
+1. Confirm what you're about to do in one line.
+2. Take the action (read files, draft replies, update tasks — whatever the action calls for).
+3. When done, summarize in 3 bullets: what changed, what was written to memory, follow-ups.
+4. If any step is destructive or sends externally, STOP and ask the user to confirm before continuing.
+```
+
+It then spawns `claude -p "<prompt>"` and inherits stdio, so you see Claude's output directly. On exit, the decision moves to `done` with a `result` payload recording the action taken.
+
+> ⚠️ **Known issue:** `loop run` cannot be invoked from inside another interactive Claude Code session (nested sessions share runtime resources). If you are already in Claude Code, either run `loop run --dry` to read the prompt and execute the action yourself with Composio MCP tools, or spawn the run from a fresh shell. See the [GitHub SKILL.md → Running a Decision](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi-loop/SKILL.md#running-a-decision--claude-code) for the full workaround.
+
+### Decision Types
+
+| Type          | Trigger                                                                               | Suggested action |
+| ------------- | ------------------------------------------------------------------------------------- | ---------------- |
+| `rsvp`        | Calendar event with `my_response: needsAction`                                        | `calendar_rsvp`  |
+| `draft_reply` | Email matching meeting/RSVP/invite patterns, or with action verbs from a known person | `email_reply`    |
+| `review_pr`   | GitHub PR where you're a reviewer                                                     | `github_review`  |
+| `todo`        | GitHub issue assigned to you, open                                                    | `todo`           |
+| `slack_reply` | Slack message that mentions you                                                       | `slack_reply`    |
+
+Confidence is **0.85** when the sender is in openloomi-memory (known contact), else **0.60**.
+
+### Configuration
+
+Defaults are tuned for a low-noise, high-signal queue. Adjust via `loop config set`:
+
+```bash
+loop config set intervalSec 600           # tick frequency (default 10 min)
+loop config set maxSignals 5000           # cap on signals.jsonl
+loop config set maxDecisions 500          # cap on decisions.json
+loop config set autoRun false             # always false — execution is user-driven
+loop config set noReplySkip true          # skip noreply@* senders
+loop config set promotionSkip true        # skip Gmail Promotions/Social/Forums/Updates/Spam
+loop config set enableSources.file false  # disable manual inbox/ injection
+```
+
+Environment variables:
+
+| Var                            | Default          | Effect                                                    |
+| ------------------------------ | ---------------- | --------------------------------------------------------- |
+| `LOOP_CLAUDE_BIN`              | `claude`         | Binary invoked for `claude -p ...`                        |
+| `LOOP_CLAUDE_TIMEOUT_MS`       | `360000` (6 min) | Hard timeout for one tick's `claude -p` child             |
+| `LOOP_CLAUDE_SAFE_PERMISSIONS` | _(unset)_        | Set to `1` to opt out of `--dangerously-skip-permissions` |
+| `LOOP_WEB_PORT`                | `3414`           | Default port for `loop web`                               |
+| `LOOP_NOTIFY_WEBHOOK`          | _(unset)_        | Slack-compatible webhook URL for notification fan-out     |
+
+### Companion Skills
+
+| When you want…              | Use                                                          |
+| --------------------------- | ------------------------------------------------------------ |
+| API endpoint reference      | [openloomi-api](#openloomi-api)                              |
+| Connect / manage a platform | [openloomi-connectors](#openloomi-connectors)                |
+| **Search / write memory**   | **[openloomi-memory](#openloomi-memory)** (delegated target) |
+
+The Loop is the **proactive executor**; `openloomi-memory` is the **memory layer**. The Loop never owns its own memory — it asks openloomi-memory for every enrich and every writeback.
+
+### Web UI — `loop web`
+
+`loop web` starts a local server at `http://127.0.0.1:3414/` with three views:
+
+- **Q Queue** — 3-column kanban (PENDING / DONE / DISMISSED). Click a card for the full decision detail and action buttons.
+- **T Timeline** — Canvas graph of decisions as hex nodes, positioned by time and grouped by type. Pan / zoom.
+- **A Activity** — Split view: live `notifications.log` feed (left) + recent decisions (right). Auto-refreshes every 4s.
+
+Keyboard: `Q` / `T` / `A` switch views · `/` open search · `↑↓` navigate · `Enter` run selected · `Esc` close.
+
+REST API (CORS-enabled, returns JSON):
+
+```
+GET  /api/state                counts, last tick, status
+GET  /api/decisions            { pending, done, dismissed }
+GET  /api/decision/:id         full decision + bucket
+GET  /api/signals?limit=50     tail of signals.jsonl
+GET  /api/notifications?limit=50  tail of notifications.log
+GET  /api/memory?path=<rel>    read ~/.openloomi/data/memory/<rel>   (path-traversal safe)
+GET  /api/source?path=<rel>    read data/inbox/<rel>                 (path-traversal safe)
+POST /api/run/:id[?dry=1]      spawn `claude -p <prompt>` (or return prompt if dry=1)
+POST /api/dismiss/:id          move pending → dismissed
+POST /api/done/:id             move pending → done
+POST /api/notify               fire macOS desktop test notification
+```
+
+### Reference
+
+- **Full skill reference (commands, env vars, troubleshooting):** [openloomi-loop SKILL.md on GitHub](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi-loop/SKILL.md)
+- **Source code:** [`skills/openloomi-loop/`](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi-loop)
+- **Apache 2.0 license** — fork it, extend it, integrate it into your own Agent workflow.
