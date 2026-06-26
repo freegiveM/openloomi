@@ -16,7 +16,7 @@ name = "openloomi"
 path = "src/main.rs"
 
 [[bin]]
-name = "openloomi-cli"
+name = "openloomi-ctl"
 path = "src/bin/openloomi.rs"
 
 [build-dependencies]
