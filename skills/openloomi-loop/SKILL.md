@@ -1,6 +1,6 @@
 ---
 name: openloomi-loop
-description: "Use this when the user asks about openloomi's Loop — openloomi's 主动执行大脑 (proactive execution brain). It actively and continuously (主动持续) pulls external signals (Gmail, Calendar, GitHub, Slack) via Composio MCP, enriches them through openloomi-memory, classifies them into typed decisions, and executes via Claude Code. Triggers: 'openloomi loop', 'loop tick', 'loop schedule', 'loop inbox', 'loop run', 'proactive decisions', 'context → decision → execute', 'pull signals', 'decision queue', 'loop serve', '上下文闭环', '主动建议', '主动执行大脑', '主动持续', 'RSVP 提醒', '自动草稿', '决策队列', '拉取信号', '运行决策'"
+description: "Use this when the user asks about openloomi's Loop — openloomi's proactive execution brain. It actively and continuously pulls external signals (Gmail, Calendar, GitHub, Slack) via Composio MCP, enriches them through openloomi-memory, classifies them into typed decisions, and executes via Claude Code. Triggers: 'openloomi loop', 'loop tick', 'loop schedule', 'loop inbox', 'loop run', 'proactive decisions', 'context → decision → execute', 'pull signals', 'decision queue', 'loop serve'"
 allowed-tools: Bash(node $SKILL_DIR/scripts/openloomi-loop.cjs *), Bash(node $SKILL_DIR/scripts/loop-tick.cjs *), Bash(node ../../openloomi-memory/scripts/openloomi-memory.cjs *), Bash(claude -p *), Bash(tail -f $SKILL_DIR/data/daemon.log), Bash(cat >> $SKILL_DIR/data/signals.jsonl), Bash(echo *), Bash(ls *)
 metadata:
   version: 0.6.1
@@ -8,11 +8,11 @@ metadata:
 
 > **Note:** If you haven't downloaded or installed openloomi yet, please refer to [Getting Started](https://openloomi.ai/docs/getting-started) for installation instructions.
 
-# OpenLoomi Loop — 主动执行大脑 · The Proactive Execution Brain
+# OpenLoomi Loop — The Proactive Execution Brain
 
-> **主动持续 (Proactive & Continuous)** — watches external signals, thinks via openloomi-memory, and acts via Claude Code. **主动执行大脑 (Proactive Execution Brain)** — the always-on execution layer of openloomi.
+> **Proactive & Continuous** — watches external signals, thinks via openloomi-memory, and acts via Claude Code. **Proactive Execution Brain** — the always-on execution layer of openloomi.
 
-A **Claude Code skill** that runs **proactively and continuously (主动持续)**, turning ambient signals from your connected tools into finished work. The Loop is openloomi's **proactive execution brain (主动执行大脑)** — a vigilant teammate that watches, thinks, and acts without you having to ask. Three layers, all agentic:
+A **Claude Code skill** that runs **proactively and continuously**, turning ambient signals from your connected tools into finished work. The Loop is openloomi's **proactive execution brain** — a vigilant teammate that watches, thinks, and acts without you having to ask. Three layers, all agentic:
 
 1. **Pull** — Claude, via **Composio MCP**, fetches fresh signals (Gmail, Calendar, GitHub, Slack) into a local signal store.
 2. **Enrich + Classify** — Claude calls the **openloomi-memory** skill to look up senders / projects, classify each new signal into a typed decision (`rsvp`, `draft_reply`, `review_pr`, …), and queue it.
@@ -22,15 +22,15 @@ No background daemon. No subprocess hacks. No local memory cache. **The Loop is 
 
 ---
 
-## 主动持续 — Proactive & Continuous
+## Proactive & Continuous
 
-The Loop is not a one-shot tool you invoke. It is a **持续运行 (continuously running)** execution brain with two complementary properties:
+The Loop is not a one-shot tool you invoke. It is a **continuously running** execution brain with two complementary properties:
 
-- **主动 / Proactive** — The Loop watches Gmail, Calendar, GitHub, and Slack in the background. It surfaces decisions *before* you ask: a meeting invitation becomes an `rsvp` suggestion, an unread email from a known person becomes a `draft_reply` card, a PR where you're a reviewer becomes a `review_pr` task. Nothing fires automatically — but everything is queued and waiting the moment you look.
-- **持续 / Continuous** — `loop schedule --interval N` runs an infinite tick loop in the background. Each tick: pull new signals → enrich with memory → classify → queue. State persists in `data/decisions.json`, so the queue survives restarts, and each new signal joins the same ongoing conversation. `loop watch` keeps emitting desktop notifications on fresh entries.
-- **主动执行大脑 / Proactive Execution Brain** — Openloomi's memory (`openloomi-memory`) stores *what you know*; the Loop is the brain that *decides what to do about it*. Itself not a daemon, not a script, not a cron — the Loop is Claude, looping. Each tick is a fresh `claude -p` invocation; each executed decision is a fresh `claude -p` session. Composability over persistence.
+- **Proactive** — The Loop watches Gmail, Calendar, GitHub, and Slack in the background. It surfaces decisions *before* you ask: a meeting invitation becomes an `rsvp` suggestion, an unread email from a known person becomes a `draft_reply` card, a PR where you're a reviewer becomes a `review_pr` task. Nothing fires automatically — but everything is queued and waiting the moment you look.
+- **Continuous** — `loop schedule --interval N` runs an infinite tick loop in the background. Each tick: pull new signals → enrich with memory → classify → queue. State persists in `data/decisions.json`, so the queue survives restarts, and each new signal joins the same ongoing conversation. `loop watch` keeps emitting desktop notifications on fresh entries.
+- **Proactive Execution Brain** — Openloomi's memory (`openloomi-memory`) stores *what you know*; the Loop is the brain that *decides what to do about it*. Itself not a daemon, not a script, not a cron — the Loop is Claude, looping. Each tick is a fresh `claude -p` invocation; each executed decision is a fresh `claude -p` session. Composability over persistence.
 
-Together, **主动持续** turns Claude into a teammate that never sleeps and never loses context: it remembers people (via openloomi-memory), watches the world (via Composio MCP), and prepares the next move (via the decision queue). You stay in control of execution; the Loop stays in control of awareness.
+Together, **Proactive and Continuous** turns Claude into a teammate that never sleeps and never loses context: it remembers people (via openloomi-memory), watches the world (via Composio MCP), and prepares the next move (via the decision queue). You stay in control of execution; the Loop stays in control of awareness.
 
 ---
 

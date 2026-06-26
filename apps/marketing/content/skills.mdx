@@ -73,7 +73,7 @@ These Skills are open-source under Apache 2.0. Fork them, extend them, or integr
 
 ---
 
-## openloomi-memory
+### openloomi-memory
 
 > **Three stores, one CLI.** Personal markdown notes, uploaded documents (RAG), and AI-extracted insights from chat history — searchable, writable, and composable from any MCP-compatible Agent.
 
@@ -368,7 +368,7 @@ All endpoints require `Authorization: Bearer $TOKEN` where `$TOKEN` is the **bas
 
 ---
 
-## openloomi-connectors
+### openloomi-connectors
 
 > **26 platforms, one CLI.** OAuth flows, app-password auth, and bot credentials unified into a single command-line tool that any MCP-compatible Agent can drive.
 
@@ -693,7 +693,7 @@ Each platform also has its own callback / listener init endpoint — see the [Co
 
 ---
 
-## openloomi-api
+### openloomi-api
 
 > **129+ endpoints, 12 modules, one base URL.** Auth, chat, messages, files, RAG, integrations, AI, insights, billing — all the same OpenLoomi server your desktop app talks to, exposed as a REST API for any Agent to drive.
 
@@ -1016,11 +1016,11 @@ The API is the **foundation layer** — every other open-source skill calls into
 
 ---
 
-## openloomi-loop
+### openloomi-loop
 
-> **主动持续 (Proactive & Continuous)** — watches your connected tools, classifies ambient signals into typed decisions, and queues them up the moment you look. Nothing fires automatically; everything is ready when you are.
+> **Proactive & Continuous** — watches your connected tools, classifies ambient signals into typed decisions, and queues them up the moment you look. Nothing fires automatically; everything is ready when you are.
 
-OpenLoomi Loop is an **open-source Claude Code skill** that runs as the **proactive execution brain (主动执行大脑)** on top of your existing tools. Instead of you remembering to check inbox, calendar, and PRs, the Loop watches them in the background, enriches each new signal with [openloomi-memory](#openloomi-memory), and turns it into a decision card you can act on in one click.
+OpenLoomi Loop is an **open-source Claude Code skill** that runs as the **proactive execution brain** on top of your existing tools. Instead of you remembering to check inbox, calendar, and PRs, the Loop watches them in the background, enriches each new signal with [openloomi-memory](#openloomi-memory), and turns it into a decision card you can act on in one click.
 
 The Loop is **not a daemon, not a cron job, and not a script**. It is Claude, looping — every tick is a fresh `claude -p` invocation, every executed decision is a fresh `claude -p` session. Composable over persistent. Visible over magic.
 
