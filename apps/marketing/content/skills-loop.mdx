@@ -1,0 +1,312 @@
+---
+title: "Loop — Proactive Execution Brain"
+description: "OpenLoomi's always-on skill that pulls signals from Gmail, Calendar, GitHub, and Slack, classifies them into typed decisions, and lets you act on them in one click"
+icon: "FaSync"
+---
+
+# Loop — Proactive Execution Brain
+
+> **主动持续 (Proactive & Continuous)** — watches your connected tools, classifies ambient signals into typed decisions, and queues them up the moment you look. Nothing fires automatically; everything is ready when you are.
+
+OpenLoomi Loop is an **open-source Claude Code skill** that runs as the **proactive execution brain (主动执行大脑)** on top of your existing tools. Instead of you remembering to check inbox, calendar, and PRs, the Loop watches them in the background, enriches each new signal with [openloomi-memory](/docs/skills-memory), and turns it into a decision card you can act on in one click.
+
+The Loop is **not a daemon, not a cron job, and not a script**. It is Claude, looping — every tick is a fresh `claude -p` invocation, every executed decision is a fresh `claude -p` session. Composable over persistent. Visible over magic.
+
+---
+
+## When to Use Loop
+
+The Loop shines when **ambient signals need to become actions** and the cost of missing them is real:
+
+- 📥 **Inbox triage** — Sarah's email about "Q2 review tomorrow please RSVP" becomes a `draft_reply` card with her project context already attached.
+- 📅 **Calendar RSVPs** — A meeting invite where you haven't responded surfaces as an `rsvp` card with the organizer's last three notes already in the prompt.
+- 🔀 **PR review queue** — Every PR where you're a reviewer lands in the queue as a `review_pr` card, with the diff stats and the last CI status.
+- 💬 **Slack mentions** — Messages that @mention you become `slack_reply` cards with the thread context pre-loaded.
+- ✅ **Assigned issues** — GitHub issues assigned to you surface as `todo` cards, with prior discussion linked.
+
+It is **not** designed for:
+
+- ❌ Auto-sending emails or RSVPs without your approval — the tick is strictly read/derive. Execution is always on you.
+- ❌ Replacing a real-time alert system — ticks run on a schedule (default every 10 min), not in real time.
+- ❌ Bulk automation across many accounts — the Loop is single-user, single-tenant.
+
+---
+
+## How It Works
+
+Three layers, all agentic — no subprocess hacks, no local memory cache:
+
+```
+            ┌───────────────────────────────────────────────┐
+            │                                               │
+            ▼                                               │
+   ┌──────────────┐    ┌──────────────┐    ┌───────────────┴──┐    ┌──────────────┐
+   │  External    │───▶│   Context    │───▶│     Decision     │───▶│   Execute    │───▶ Output
+   │ Environment  │    │    Layer     │    │      Layer       │    │    Layer     │
+   │              │    │              │    │                  │    │              │
+   │ Composio MCP │    │ signals.jsonl│    │ openloomi-memory │    │ spawn        │
+   │ (gmail/cal/  │    │              │    │  enrichment      │    │   claude     │
+   │  gh/slack)   │    │              │    │ + classifier     │    │ with prompt  │
+   └──────────────┘    └──────┬───────┘    └────────┬─────────┘    └──────┬───────┘
+                              │                     │                    │
+                              ▼                     ▼                    ▼
+                        openloomi-memory  (single source of truth:
+                                           people, projects, insights)
+```
+
+| Layer        | What it does                                                                                  | What it writes to                |
+| ------------ | --------------------------------------------------------------------------------------------- | -------------------------------- |
+| **Pull**     | Claude calls Composio MCP tools in parallel to fetch fresh signals                           | `data/signals.jsonl`             |
+| **Enrich**   | Each signal is enriched via openloomi-memory (sender lookup, project context, recent insights) | `~/.openloomi/data/memory/...`   |
+| **Classify** | LLM assigns a typed action (`rsvp`, `draft_reply`, `review_pr`, `slack_reply`, `todo`)        | `data/decisions.json`            |
+| **Execute**  | You pick a card; Loop spawns a fresh `claude -p` with the full context                        | API calls (email, calendar, etc.) |
+
+Hard rules run **before** the LLM and short-circuit: `noreply@*` senders, Gmail `Promotions/Social/Forums/Updates/Spam` labels, already-accepted calendar events, and already-replied emails are skipped without ever reaching the classifier.
+
+---
+
+## Quick Start
+
+### Prerequisites
+
+- **Node.js 18+**
+- **Claude Code** installed and on `PATH` (`claude --version` should work)
+- **Composio MCP** connected for at least one toolkit (Gmail, Google Calendar, GitHub, or Slack) — or use the manual `inject` path for testing without connections
+- **[openloomi-memory](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi-memory/SKILL.md)** installed (the Loop delegates all memory reads/writes to it)
+
+### Step 1 — Drop a test signal (no Composio needed)
+
+```bash
+echo '{"source":"gmail","type":"email","payload":{"from":"Sarah <sarah@acme.com>","subject":"Q2 review tomorrow please RSVP","labels":["INBOX"]}}' \
+  | node $SKILL_DIR/scripts/openloomi-loop.cjs inject -
+```
+
+This drops a synthetic email signal into `data/inbox/`. The Loop will ingest it on the next analyze.
+
+### Step 2 — Run the lib-level analyze
+
+```bash
+node $SKILL_DIR/scripts/openloomi-loop.cjs analyze
+```
+
+**Expected output** (approximate):
+
+```
+ingested 1 signal
+classified:
+  dec_a1b2c3d4  rsvp         conf 0.60  "Q2 review tomorrow please RSVP"
+```
+
+If Sarah is already in your openloomi-memory, confidence will be **0.85**; otherwise **0.60**.
+
+### Step 3 — Browse the decision queue
+
+```bash
+node $SKILL_DIR/scripts/openloomi-loop.cjs inbox           # plain list
+node $SKILL_DIR/scripts/openloomi-loop.cjs inbox --pick    # arrow-key picker
+```
+
+**Expected output:**
+
+```
+PENDING (1)
+  dec_a1b2c3d4  rsvp   conf 0.85  Q2 review tomorrow please RSVP  ← from Sarah
+  └─ 👤 Sarah Chen (people/sarah_chen.md)  ·  🧠 2 prior interactions
+```
+
+### Step 4 — Run the decision
+
+```bash
+node $SKILL_DIR/scripts/openloomi-loop.cjs run dec_a1b2c3d4
+```
+
+This spawns a fresh `claude -p` session with the full decision context. The spawned session will:
+
+1. Confirm what it's about to do in one line
+2. Take the action (send the RSVP, draft the reply, etc.)
+3. Write any new people/projects back to openloomi-memory
+4. Summarize in 3 bullets: what changed, what was written to memory, follow-ups
+
+On exit, the decision is moved from `pending` → `done` in `data/decisions.json`.
+
+### Step 5 (optional) — Schedule continuous ticks
+
+```bash
+node $SKILL_DIR/scripts/openloomi-loop.cjs schedule --interval 600
+```
+
+Runs in the foreground with two independent timers: a tick every 600 seconds and a watch every 5 seconds for desktop notifications on new pending decisions. **A hung tick never blocks notifications** — the tick is hard-killed after `LOOP_CLAUDE_TIMEOUT_MS` (default 6 min).
+
+---
+
+## Scenario Walkthrough: Triage a PR Review Request
+
+A teammate opens a PR on a repo where you're a reviewer. Here's what the Loop does, end to end.
+
+### Input — the raw signal
+
+```json
+{
+  "source": "github",
+  "type": "github_pr",
+  "payload": {
+    "repo": "acme/api",
+    "number": 482,
+    "title": "Refactor auth middleware",
+    "state": "open",
+    "user_is_reviewer": true
+  }
+}
+```
+
+### Process — what the tick does
+
+1. **Enrich**: Loop calls openloomi-memory → `search-all "auth middleware"` → finds your prior review of PR #401 with notes on the JWT validation pattern.
+2. **Filter**: PR is open, you're a reviewer, not a draft → passes hard rules.
+3. **Classify**: LLM sees a PR with a reviewer assignment → assigns `type: review_pr`, `confidence: 0.85` (you're in memory as the reviewer).
+4. **Queue**: Decision written to `data/decisions.json`.
+
+### Output — the decision card (Web UI)
+
+Open `http://127.0.0.1:3414/` (run `loop web` if not already running):
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│ review_pr  ·  conf 0.85                          dec_x7y8z9w  │
+├──────────────────────────────────────────────────────────────┤
+│ ⏰ opened 2h ago  ·  🔀 acme/api#482                        │
+│ Refactor auth middleware                                       │
+│                                                               │
+│ 👤 Reviewer: you                                              │
+│ 🧠 memory:  projects/auth_rewrite.md  (prior review PR #401)  │
+│                                                               │
+│ Action: github_review                                         │
+│   repo: acme/api  pr: 482  event: REQUEST_CHANGES  body: ...  │
+│                                                               │
+│ [▶ RUN]  [DRY RUN]  [✓ DONE]  [✕ DISMISS]                     │
+└──────────────────────────────────────────────────────────────┘
+```
+
+### What "RUN" actually does
+
+`loop run dec_x7y8z9w` builds a prompt like:
+
+```
+You are executing an openloomi Loop decision. The user picked this from a proactive suggestion list.
+
+DECISION TYPE: review_pr
+TITLE: Review: Refactor auth middleware (acme/api#482)
+CONFIDENCE: 0.85
+
+WHY THIS SURFACED:
+- Source: github:github_pr
+- You're listed as a reviewer on this PR
+- PR is open and awaiting review
+
+MEMORY REFS (openloomi-memory):
+- projects/auth_rewrite.md  (your prior notes on the JWT validation pattern)
+
+SOURCE SIGNAL (github:github_pr):
+{ ...full PR payload... }
+
+SUGGESTED ACTION:
+{ "kind": "github_review", "params": { "repo": "acme/api", "pr": 482, "event": "REQUEST_CHANGES", ... } }
+
+Execute this action now. Steps:
+1. Confirm what you're about to do in one line.
+2. Take the action (read files, draft replies, update tasks — whatever the action calls for).
+3. When done, summarize in 3 bullets: what changed, what was written to memory, follow-ups.
+4. If any step is destructive or sends externally, STOP and ask the user to confirm before continuing.
+```
+
+It then spawns `claude -p "<prompt>"` and inherits stdio, so you see Claude's output directly. On exit, the decision moves to `done` with a `result` payload recording the action taken.
+
+> ⚠️ **Known issue:** `loop run` cannot be invoked from inside another interactive Claude Code session (nested sessions share runtime resources). If you are already in Claude Code, either run `loop run --dry` to read the prompt and execute the action yourself with Composio MCP tools, or spawn the run from a fresh shell. See the [GitHub SKILL.md → Running a Decision](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi-loop/SKILL.md#running-a-decision--claude-code) for the full workaround.
+
+---
+
+## Decision Types
+
+| Type           | Trigger                                            | Suggested action     |
+| -------------- | -------------------------------------------------- | -------------------- |
+| `rsvp`         | Calendar event with `my_response: needsAction`     | `calendar_rsvp`      |
+| `draft_reply`  | Email matching meeting/RSVP/invite patterns, or with action verbs from a known person | `email_reply`        |
+| `review_pr`    | GitHub PR where you're a reviewer                  | `github_review`      |
+| `todo`         | GitHub issue assigned to you, open                 | `todo`               |
+| `slack_reply`  | Slack message that mentions you                    | `slack_reply`        |
+
+Confidence is **0.85** when the sender is in openloomi-memory (known contact), else **0.60**.
+
+---
+
+## Configuration
+
+Defaults are tuned for a low-noise, high-signal queue. Adjust via `loop config set`:
+
+```bash
+loop config set intervalSec 600        # tick frequency (default 10 min)
+loop config set maxSignals 5000        # cap on signals.jsonl
+loop config set maxDecisions 500       # cap on decisions.json
+loop config set autoRun false          # always false — execution is user-driven
+loop config set noReplySkip true       # skip noreply@* senders
+loop config set promotionSkip true     # skip Gmail Promotions/Social/Forums/Updates/Spam
+loop config set enableSources.file false   # disable manual inbox/ injection
+```
+
+Environment variables:
+
+| Var                          | Default              | Effect                                                       |
+| ---------------------------- | -------------------- | ------------------------------------------------------------ |
+| `LOOP_CLAUDE_BIN`            | `claude`             | Binary invoked for `claude -p ...`                           |
+| `LOOP_CLAUDE_TIMEOUT_MS`     | `360000` (6 min)     | Hard timeout for one tick's `claude -p` child                |
+| `LOOP_CLAUDE_SAFE_PERMISSIONS` | _(unset)_          | Set to `1` to opt out of `--dangerously-skip-permissions`    |
+| `LOOP_WEB_PORT`              | `3414`               | Default port for `loop web`                                  |
+| `LOOP_NOTIFY_WEBHOOK`        | _(unset)_            | Slack-compatible webhook URL for notification fan-out        |
+
+---
+
+## Companion Skills
+
+| When you want…                  | Use                                                                          |
+| ------------------------------- | ---------------------------------------------------------------------------- |
+| API endpoint reference          | [openloomi-api](/docs/skills-api)                                            |
+| Connect / manage a platform     | [openloomi-connectors](/docs/skills-connectors)                              |
+| **Search / write memory**       | **[openloomi-memory](/docs/skills-memory)** (delegated target for the Loop)  |
+
+The Loop is the **proactive executor**; `openloomi-memory` is the **memory layer**. The Loop never owns its own memory — it asks openloomi-memory for every enrich and every writeback.
+
+---
+
+## Web UI — `loop web`
+
+`loop web` starts a local server at `http://127.0.0.1:3414/` with three views:
+
+- **Q Queue** — 3-column kanban (PENDING / DONE / DISMISSED). Click a card for the full decision detail and action buttons.
+- **T Timeline** — Canvas graph of decisions as hex nodes, positioned by time and grouped by type. Pan / zoom.
+- **A Activity** — Split view: live `notifications.log` feed (left) + recent decisions (right). Auto-refreshes every 4s.
+
+Keyboard: `Q` / `T` / `A` switch views · `/` open search · `↑↓` navigate · `Enter` run selected · `Esc` close.
+
+REST API (CORS-enabled, returns JSON):
+
+```
+GET  /api/state                counts, last tick, status
+GET  /api/decisions            { pending, done, dismissed }
+GET  /api/decision/:id         full decision + bucket
+GET  /api/signals?limit=50     tail of signals.jsonl
+GET  /api/notifications?limit=50  tail of notifications.log
+GET  /api/memory?path=<rel>    read ~/.openloomi/data/memory/<rel>   (path-traversal safe)
+GET  /api/source?path=<rel>    read data/inbox/<rel>                 (path-traversal safe)
+POST /api/run/:id[?dry=1]      spawn `claude -p <prompt>` (or return prompt if dry=1)
+POST /api/dismiss/:id          move pending → dismissed
+POST /api/done/:id             move pending → done
+POST /api/notify               fire macOS desktop test notification
+```
+
+---
+
+## Reference
+
+- **Full skill reference (commands, env vars, troubleshooting):** [openloomi-loop SKILL.md on GitHub](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi-loop/SKILL.md)
+- **Source code:** [`skills/openloomi-loop/`](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi-loop)
+- **Apache 2.0 license** — fork it, extend it, integrate it into your own Agent workflow.

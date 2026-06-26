@@ -1,7 +1,7 @@
 ---
 name: openloomi-loop
 description: "Use this when the user asks about openloomi's Loop — openloomi's 主动执行大脑 (proactive execution brain). It actively and continuously (主动持续) pulls external signals (Gmail, Calendar, GitHub, Slack) via Composio MCP, enriches them through openloomi-memory, classifies them into typed decisions, and executes via Claude Code. Triggers: 'openloomi loop', 'loop tick', 'loop schedule', 'loop inbox', 'loop run', 'proactive decisions', 'context → decision → execute', 'pull signals', 'decision queue', 'loop serve', '上下文闭环', '主动建议', '主动执行大脑', '主动持续', 'RSVP 提醒', '自动草稿', '决策队列', '拉取信号', '运行决策'"
-allowed-tools: Bash(node $SKILL_DIR/scripts/openloomi-loop.cjs *), Bash(node $SKILL_DIR/scripts/loop-tick.cjs *), Bash(node ../../openloomi-memory/scripts/openloomi-memory.cjs *), Bash(tail -f $SKILL_DIR/data/daemon.log), Bash(cat >> $SKILL_DIR/data/signals.jsonl), Bash(echo *), Bash(ls *)
+allowed-tools: Bash(node $SKILL_DIR/scripts/openloomi-loop.cjs *), Bash(node $SKILL_DIR/scripts/loop-tick.cjs *), Bash(node ../../openloomi-memory/scripts/openloomi-memory.cjs *), Bash(claude -p *), Bash(tail -f $SKILL_DIR/data/daemon.log), Bash(cat >> $SKILL_DIR/data/signals.jsonl), Bash(echo *), Bash(ls *)
 metadata:
   version: 0.6.1
 ---
@@ -58,7 +58,7 @@ node $SKILL_DIR/scripts/openloomi-loop.cjs inbox --pick    # arrow-key picker
 node $SKILL_DIR/scripts/openloomi-loop.cjs run dec_xxx
 
 # 6. Optional: schedule ticks in the background every N seconds
-node $SKILL_DIR/scripts/openloomi-loop.cjs schedule --interval 300
+node $SKILL_DIR/scripts/openloomi-loop.cjs schedule --interval 600
 
 # 7. Memory operations go through the openloomi-memory skill
 node $SKILL_DIR/scripts/openloomi-loop.cjs memory search-all "Sarah"
@@ -114,11 +114,11 @@ The tick is **strictly read/derive**. No external destructive action runs during
 | Command | Purpose |
 |---|---|
 | `tick [--compact] [--json] [--config k=v]` | Print the prompt Claude runs for one Loop tick. `--compact` for cron; `--json` for structured output. |
-| `schedule [--interval N]` | Loop: `claude -p $(loop tick --compact)` every N seconds **and** watch for new decisions (desktop notifications). Writes its own PID for stop. |
+| `schedule [--interval N] [--watch-interval N]` | Loop: `claude -p $(loop tick --compact)` every N seconds **and** watch for new decisions (desktop notifications). The tick and watch run on **independent timers** — a hung tick never blocks notifications. Tick is hard-killed after `LOOP_CLAUDE_TIMEOUT_MS` (default 15 min). Writes its own PID for stop. |
 | `watch [--interval N]` | Poll `decisions.json` every N seconds and fire desktop notifications on new pending decisions. Pair with external ticks (cron, another `loop schedule`) to feed it. |
 | `notify [--all] [--webhook URL]` | Manually fire notifications. `--all` notifies every current pending; default notifies only new (unseen) ones. Webhook (Slack-compatible JSON) optional via `--webhook` or env `LOOP_NOTIFY_WEBHOOK`. |
 | `ingest-decision <json\|- or file>` | Append a decision to `decisions.json`. Called by the Claude tick agent. |
-| `analyze` | Lib-level tick: ingest `data/inbox/` → classify → decisions. Memory enrichment is skipped (the agentic tick handles that). |
+| `analyze [--seen-init]` | Lib-level tick: ingest `data/inbox/` → classify → decisions. Memory enrichment is skipped (the agentic tick handles that). `--seen-init` also clears `data/notifications.seen.json` so a running watch will re-fire notifications for all current pending on its next poll. |
 | `pull` | Alias for `analyze` (kept for backwards compat). |
 | `status` | Show last-tick snapshot + counts + config + current watch session (pid, started_at, host). |
 | `summary [--since=ISO]` | Activity report from `notifications.log`. **Default** = current watch session window. **`--since=<ISO>`** = everything from that timestamp. Batches tagged `[pid=X]` (this session) vs `[pid=?]` (pre-session, historical). Use to answer *"what did I receive this session?"* without conflating historical log entries. |
@@ -348,7 +348,7 @@ Or for calendar:
 
 ```bash
 loop config get
-loop config set intervalSec 300       # for `loop schedule`
+loop config set intervalSec 600       # for `loop schedule` (10 min)
 loop config set noReplySkip false
 loop config set enableSources.file false
 ```
@@ -357,7 +357,7 @@ Defaults:
 
 ```json
 {
-  "intervalSec": 60,
+  "intervalSec": 600,
   "maxSignals": 5000,
   "maxDecisions": 500,
   "autoRun": false,
@@ -366,6 +366,22 @@ Defaults:
   "promotionSkip": true
 }
 ```
+
+### Environment variables
+
+| Var | Default | Effect |
+|---|---|---|
+| `LOOP_CLAUDE_BIN` | `claude` | Binary invoked for `claude -p ...` (`schedule`, `run`, `tick`). |
+| `LOOP_CLAUDE_TIMEOUT_MS` | `900000` (15 min) | Hard timeout for one tick's `claude -p` child. On timeout: SIGTERM → 5s grace → SIGKILL. Prevents a hung tick from blocking notifications. |
+| `LOOP_CLAUDE_SAFE_PERMISSIONS` | _(unset)_ | Set to `1` to **opt out** of `--dangerously-skip-permissions` for the spawned child. Default adds it so the tick can call `mcp__composio__*` and the openloomi CLIs without per-call prompts. Ticks are read/derive only — no email sends, no RSVPs, no dismisses — so the flag is safe. |
+| `LOOP_WEB_PORT` | `3414` | Default port for `loop web` (override per-call with `--port N`). |
+| `LOOP_NOTIFY_WEBHOOK` | _(unset)_ | If set, every notification also POSTs a Slack-compatible JSON payload to this URL. |
+
+### Watch independence + `--seen-init`
+
+`loop schedule` runs **two independent timers**: one for ticks (`--interval`, default 600s) and one for watching (`--watch-interval`, default 5s). A hung tick can never block notifications — the watch loop polls `data/decisions.json` every 5s regardless.
+
+If you want to **re-fire notifications for everything currently pending** (e.g. after fixing a bug in the notification path, or to demo it), run `loop analyze --seen-init`. This clears `data/notifications.seen.json`, and the next watch poll — even on a running `loop schedule` / `loop watch` — will treat every current pending decision as new.
 
 ---
 
@@ -430,10 +446,10 @@ loop memory search-all "Sarah"
 
 ```bash
 # Foreground loop (Ctrl+C to stop)
-loop schedule --interval 300          # tick every 5 minutes
+loop schedule --interval 600          # tick every 10 minutes
 
-# Or one-shot via launchd / cron, every 5 min:
-*/5 * * * * /usr/local/bin/node $SKILL_DIR/scripts/openloomi-loop.cjs tick --compact | /usr/local/bin/claude -p --output-format text
+# Or one-shot via launchd / cron, every 10 min:
+*/10 * * * * /usr/local/bin/node $SKILL_DIR/scripts/openloomi-loop.cjs tick --compact | /usr/local/bin/claude -p --output-format text
 ```
 
 ### REPL session
