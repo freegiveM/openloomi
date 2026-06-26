@@ -16,8 +16,21 @@ export const fetcher = async (url: string) => {
   });
 
   if (!response.ok) {
-    const { code, cause } = await response.json();
-    throw new AppError(code as ErrorCode, cause);
+    const contentType = response.headers.get("content-type") ?? "";
+    const rawBody = await response.text().catch(() => "");
+    let parsed: { code?: string; cause?: unknown } | null = null;
+    if (contentType.includes("application/json") && rawBody) {
+      try {
+        parsed = JSON.parse(rawBody);
+      } catch {
+        // Body wasn't actually JSON despite the header — fall through.
+      }
+    }
+    throw new AppError(
+      (parsed?.code as ErrorCode) ?? (`http_${response.status}:api` as ErrorCode),
+      parsed?.cause ??
+        (rawBody.slice(0, 500) || `HTTP ${response.status} ${response.statusText}`.trim()),
+    );
   }
 
   return response.json();

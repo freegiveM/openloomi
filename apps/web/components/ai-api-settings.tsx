@@ -174,11 +174,15 @@ export function AiApiSettings() {
     setLoading(true);
     try {
       const response = await fetchWithAuth("/api/preferences/ai");
-      const data = (await response.json()) as AiSettingsResponse;
 
       if (!response.ok) {
-        throw new Error("load_failed");
+        const body = await response.text().catch(() => "");
+        throw new Error(
+          `load_failed: HTTP ${response.status} ${response.statusText} — ${body.slice(0, 300)}`,
+        );
       }
+
+      const data = (await response.json()) as AiSettingsResponse;
 
       setSettings(data.settings);
       setSystemDefaults(data.systemDefaults);
@@ -196,13 +200,14 @@ export function AiApiSettings() {
         ),
       });
     } catch (error) {
-      console.error("[AI Settings] Failed to load settings", error);
+      const detail = error instanceof Error ? error.message : String(error);
+      console.error("[AI Settings] Failed to load settings", detail);
       toast({
         type: "error",
-        description: t(
+        description: `${t(
           "settings.aiSettingsLoadError",
           "Failed to load AI settings.",
-        ),
+        )} (${detail})`,
       });
     } finally {
       setLoading(false);
