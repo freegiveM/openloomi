@@ -112,7 +112,12 @@ It does **not** start a tick on its own — `schedule` spawns ticks every `INTER
    │ Composio MCP │    │ signals.jsonl│    │ openloomi-memory │    │ spawn        │
    │ (gmail/cal/  │    │              │    │  enrichment      │    │   claude     │
    │  gh/slack)   │    │              │    │ + classifier     │    │ with prompt  │
-   │ + data/inbox │    │              │    │ (typed actions)  │    │              │
+   │   ↘ (no       │    │              │    │ (typed actions)  │    │              │
+   │  composio →)  │    │              │    │                  │    │              │
+   │ list-insights │    │              │    │                  │    │              │
+   │ (openloomi-   │    │              │    │                  │    │              │
+   │  memory)      │    │              │    │                  │    │              │
+   │ + data/inbox │    │              │    │                  │    │              │
    └──────────────┘    └──────┬───────┘    └────────┬─────────┘    └──────┬───────┘
                               │                     │                    │
                               │       ┌─────────────┘                    │
@@ -125,7 +130,15 @@ It does **not** start a tick on its own — `schedule` spawns ticks every `INTER
 
 ### Data flow per tick (agentic)
 
-1. **Pull** — Claude calls `mcp__composio__COMPOSIO_MANAGE_CONNECTIONS` (list), then `mcp__composio__COMPOSIO_MULTI_EXECUTE_TOOL` in parallel for each connected toolkit (Gmail, Google Calendar, GitHub, Slack, etc...). If `data/inbox/*.json` is present, the lib-level tick also ingests it.
+1. **Pull** — Claude calls `mcp__composio__COMPOSIO_MANAGE_CONNECTIONS` (list), then
+   `mcp__composio__COMPOSIO_MULTI_EXECUTE_TOOL` in parallel for each connected toolkit
+   (Gmail, Google Calendar, GitHub, Slack). For **gmail** and **slack**, if the toolkit is
+   not registered, the tick falls back to
+   `openloomi-memory list-insights --channel=<gmail|slack> --days=N`. For **googlecalendar**
+   and **github** (no dedicated insight channel), the tick falls back to unfiltered
+   `list-insights --days=N` and lets the existing classifier drop non-matching channels.
+   `data/inbox/*.json` is always available as a manual path and is ingested by the lib-level
+   tick. See "Synthesizing signals from insights" below for the payload mapping.
 2. **Persist** — Each new signal is appended to `data/signals.jsonl` (deduped by `messageId` / `eventId` / `ts`).
 3. **Enrich** — For every signal, Claude calls `openloomi-memory` to look up the sender / organizer / channel:
    - `search-all <name-or-email>` across local files + knowledge base + insights
@@ -139,6 +152,24 @@ It does **not** start a tick on its own — `schedule` spawns ticks every `INTER
 8. **Status** — A snapshot is written to `data/status.json` for `loop status`.
 
 The tick is **strictly read/derive**. No external destructive action runs during a tick — execution is always on user request via `loop run <id>`.
+
+### Synthesizing signals from insights
+
+When the composio toolkit is not registered for a channel, the tick prompt instructs Claude
+to fall back to `openloomi-memory list-insights` and map each returned insight into the same
+`data/signals.jsonl` payload shape that the composio path produces. The mapping is:
+
+| Insight channel | Synthesized signal |
+|---|---|
+| `gmail`        | `type: "email"` with `payload.messageId = insight.id`, `payload.from = insight.people[0]`, `payload.subject = insight.title`, etc. |
+| `slack`        | `type: "slack_message"` with `payload.channel`, `payload.ts`, `payload.user`, `payload.text`. `mentions_me = false` (insights don't carry this flag — conservative). |
+| `google_calendar`, `github` | Pull unfiltered insights; synthesize based on `insight.groups[0]`; signals whose `type` is not recognized by `classify()` are safely dropped. |
+| Other (`telegram`, `whatsapp`, `discord`, `linkedin`, `twitter`, `weixin`, `rss`, …) | Synthesize as `type: "<channel>_message"`; classifier returns null and the signal is dropped. |
+
+Each synthesized signal carries `_origin: "insights"` in its envelope so `data/daemon.log`
+can account for which path produced it. Dedup uses both the existing
+`messageId` / `eventId` / `ts` keys and a new `_insightId = insight.id` key, so toggling
+composio on/off between ticks does not double-insert.
 
 ---
 
@@ -341,6 +372,7 @@ Two caveats even with the bypass:
 | Source | What it pulls | When enabled |
 |---|---|---|
 | **Composio MCP** (`mcp__composio__*`) | Connected toolkits: gmail, googlecalendar, github, slack. Claude pulls in parallel. | Whenever the user has connected those toolkits via Composio. |
+| **openloomi-memory insights** (`list-insights`) | Pre-extracted summaries for channels synced by `openloomi-connectors` (gmail, slack, telegram, whatsapp, etc.). Synthesized into signal-shape payloads; the existing classifier handles gmail/slack and drops everything else. | Always on. Kicks in only when the corresponding Composio toolkit is not registered. |
 | **openloomi-memory** (`mcp__*` or CLI) | Memory reads/writes for enrichment. | Always — required for proper context. |
 | **data/inbox/*.json** | Manual drop folder (or any non-Composio bridge script). | Default `enableSources.file: true`. |
 
