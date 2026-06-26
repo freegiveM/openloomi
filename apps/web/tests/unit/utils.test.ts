@@ -74,15 +74,20 @@ describe("utils", () => {
   it("fetcher throws AppError on API error", async () => {
     const mockResponse = {
       ok: false,
-      json: vi.fn().mockResolvedValue({
-        code: "bad_request:api",
-        cause: "oops",
-      }),
+      headers: {
+        get: vi.fn().mockReturnValue("application/json"),
+      },
+      text: vi.fn().mockResolvedValue(
+        JSON.stringify({
+          code: "bad_request:api",
+          cause: "oops",
+        }),
+      ),
     };
     global.fetch = vi.fn().mockResolvedValue(mockResponse as any);
 
     await expect(fetcher("/api/error")).rejects.toBeInstanceOf(AppError);
-    expect(mockResponse.json).toHaveBeenCalled();
+    expect(mockResponse.text).toHaveBeenCalled();
   });
 
   it("fetchWithErrorHandlers returns response on success", async () => {
