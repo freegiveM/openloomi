@@ -61,17 +61,18 @@ async function handleGuestAuth(request: Request) {
 
     const cookieStore = await cookies();
     const response = NextResponse.redirect(new URL(callbackUrl, request.url));
+    // RequestCookie only exposes `name` and `value`, so we can't preserve
+    // every attribute from the source cookie. NextAuth's session/CSRF cookies
+    // are HttpOnly + SameSite=Lax with path "/" — applying those defaults
+    // here is sufficient to keep the session valid after the redirect.
     for (const cookie of cookieStore.getAll()) {
       response.cookies.set({
         name: cookie.name,
         value: cookie.value,
-        path: cookie.path ?? "/",
-        ...(cookie.expires && { expires: cookie.expires }),
-        ...(cookie.httpOnly !== undefined && { httpOnly: cookie.httpOnly }),
-        ...(cookie.secure !== undefined && { secure: cookie.secure }),
-        ...(cookie.sameSite && {
-          sameSite: cookie.sameSite as "lax" | "strict" | "none",
-        }),
+        path: "/",
+        httpOnly: true,
+        sameSite: "lax",
+        secure: process.env.NODE_ENV === "production",
       });
     }
     return response;

@@ -360,90 +360,6 @@ const MarketingPage = () => {
                   {t("cta.openSourceCta")}
                 </a>
               </div>
-              {/* Download buttons hidden */}
-              {/* <div className="flex flex-col sm:flex-row justify-center gap-4">
-                {platform === "mobile" && (
-                  <div className="w-full sm:w-auto bg-background-card border border-border-primary rounded-lg px-6 py-4 text-sm text-foreground-secondary flex flex-col gap-1">
-                    <div className="flex items-center gap-2 font-medium text-foreground">
-                      <RemixIcon name="computer" size="size-5" />
-                      {t("hero.installOnDesktop")}
-                    </div>
-                    <span>{t("hero.installDesktopDesc")}</span>
-                  </div>
-                )}
-                {platform === "macOS" && (
-                  <>
-                    {data.downloadLinks.macOS.arm64 && (
-                      <a
-                        href={data.downloadLinks.macOS.arm64}
-                        className="bg-primary-gradient text-primary-foreground px-8 py-4 rounded-lg shadow-sm font-medium transition-all transform flex items-center gap-2 relative z-20 hover:brightness-95 min-w-[220px] justify-center"
-                        aria-label={`Download openloomi for ${t("hero.macosAppleSilicon")}`}
-                      >
-                        <RemixIcon name="download" size="size-5" />
-                        {t("hero.macosAppleSilicon")}
-                      </a>
-                    )}
-                    {data.downloadLinks.macOS.amd64 && (
-                      <a
-                        href={data.downloadLinks.macOS.amd64}
-                        className="bg-primary-gradient text-primary-foreground px-8 py-4 rounded-lg shadow-sm font-medium transition-all transform flex items-center gap-2 relative z-20 hover:brightness-95 min-w-[220px] justify-center"
-                        aria-label={`Download openloomi for ${t("hero.macosIntel")}`}
-                      >
-                        <RemixIcon name="download" size="size-5" />
-                        {t("hero.macosIntel")}
-                      </a>
-                    )}
-                  </>
-                )}
-                {platform === "linux" && (
-                  <>
-                    {data.downloadLinks.linux.amd64 && (
-                      <a
-                        href={data.downloadLinks.linux.amd64}
-                        className="bg-primary-gradient text-primary-foreground px-8 py-4 rounded-lg shadow-sm font-medium transition-all transform flex items-center gap-2 relative z-20 hover:brightness-95 min-w-[220px] justify-center"
-                        aria-label={`Download openloomi for ${t("hero.linuxX86_64")}`}
-                      >
-                        <RemixIcon name="download" size="size-5" />
-                        {t("hero.linuxX86_64")}
-                      </a>
-                    )}
-                    {data.downloadLinks.linux.arm64 && (
-                      <a
-                        href={data.downloadLinks.linux.arm64}
-                        className="bg-primary-gradient text-primary-foreground px-8 py-4 rounded-lg shadow-sm font-medium transition-all transform flex items-center gap-2 relative z-20 hover:brightness-95 min-w-[220px] justify-center"
-                        aria-label={`Download openloomi for ${t("hero.linuxARM64")}`}
-                      >
-                        <RemixIcon name="download" size="size-5" />
-                        {t("hero.linuxARM64")}
-                      </a>
-                    )}
-                  </>
-                )}
-                {platform === "windows" && (
-                  <a
-                    href={data.downloadLinks.windows.amd64}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="bg-primary-gradient text-primary-foreground px-8 py-4 rounded-lg shadow-sm font-medium transition-all transform flex items-center gap-2 relative z-20 hover:brightness-95"
-                    aria-label={t("hero.downloadForWindows")}
-                  >
-                    <RemixIcon name="download" size="size-5" />
-                    {t("hero.downloadForWindows")}
-                  </a>
-                )}
-                {platform === "unknown" && (
-                  <a
-                    href={data.downloadLinks.github}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="bg-primary-gradient text-primary-foreground px-8 py-4 rounded-lg shadow-sm font-medium transition-all transform flex items-center gap-2 relative z-20 hover:brightness-95"
-                    aria-label={t("hero.downloadopenloomi")}
-                  >
-                    <RemixIcon name="download" size="size-5" />
-                    {t("hero.downloadopenloomi")}
-                  </a>
-                )}
-              </div> */}
               <div className="w-full mt-8">
                 <Image
                   src="/img/pic/index.png"
@@ -460,7 +376,7 @@ const MarketingPage = () => {
 
         {/* The Problem Section */}
         <section className="w-full mx-0 py-20 sm:py-32 bg-primary-50">
-          <div className="max-w-[1440px] mx-auto px-4 sm:px-20 lg:px-16">
+          <div className="max-w-360 mx-auto px-4 sm:px-20 lg:px-16">
             <SectionEyebrow variant="pill" className="mb-6">
               {t("problem.eyebrow")}
             </SectionEyebrow>
@@ -481,13 +397,13 @@ const MarketingPage = () => {
               </div>
               {/* Right: problem cards */}
               <div className="flex min-w-0 flex-col gap-4 w-full">
-                <div className="mt-[36px] flex flex-col md:flex-row w-full gap-6">
+                <div className="mt-9 flex flex-col md:flex-row w-full gap-6">
                   {problemCardsLocalized.map((item) => (
                     <div
                       key={item.text}
-                      className="flex flex-1 min-h-[320px] flex-col bg-card border border-border rounded-[24px] p-0 overflow-hidden"
+                      className="flex flex-1 min-h-80 flex-col bg-card border border-border rounded-[24px] p-0 overflow-hidden"
                     >
-                      <div className="relative mb-0 w-full aspect-[4/3] overflow-hidden rounded-none border-0">
+                      <div className="relative mb-0 w-full aspect-4/3 overflow-hidden rounded-none border-0">
                         <Image
                           src={item.image}
                           alt={item.text}
@@ -515,7 +431,7 @@ const MarketingPage = () => {
         <CapabilitiesSection />
 
         {/* Open-Source Section */}
-        <section className="w-full max-w-[1440px] mx-auto px-4 sm:px-20 lg:px-16 py-20 sm:py-32">
+        <section className="w-full max-w-360 mx-auto px-4 sm:px-20 lg:px-16 py-20 sm:py-32">
           <div className="flex flex-col items-center text-center">
             <SectionEyebrow variant="pill" className="mb-6">
               {t("openSource.eyebrow")}
@@ -523,7 +439,7 @@ const MarketingPage = () => {
             <h2 className="text-[42px] sm:text-[48px] leading-[1.04] font-serif font-semibold tracking-tight text-foreground mb-6">
               {t("openSource.title")}
             </h2>
-            <p className="text-lg text-foreground-muted max-w-[640px] mb-10">
+            <p className="text-lg text-foreground-muted max-w-160 mb-10">
               {t("openSource.subtitle")}
             </p>
             <div className="flex flex-col sm:flex-row items-center gap-4 mb-8">
@@ -581,7 +497,7 @@ const MarketingPage = () => {
         )}
 
         {/* Sovereignty Section */}
-        <section className="w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-20 pt-3 sm:pt-20 md:pt-32 pb-32 sm:pb-32 md:pb-32 mb-0">
+        <section className="w-full max-w-360 mx-auto px-4 sm:px-6 lg:px-20 pt-3 sm:pt-20 md:pt-32 pb-32 sm:pb-32 md:pb-32 mb-0">
           <div className="w-full">
             <div className="mb-12 px-0 flex flex-col gap-6 justify-start items-center">
               <SectionEyebrow variant="pill">

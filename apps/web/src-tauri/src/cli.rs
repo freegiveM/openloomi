@@ -221,7 +221,7 @@ where
             ExitCode::SUCCESS
         }
         Ok(CliCommand::Version) => {
-            println!("alloomi {}", env!("CARGO_PKG_VERSION"));
+            println!("openloomi {}", env!("CARGO_PKG_VERSION"));
             ExitCode::SUCCESS
         }
         Ok(CliCommand::UpdateCheck { json }) => run_update_check(json).await,
@@ -229,7 +229,7 @@ where
         Err(error) => {
             eprintln!("error: {}", error.message);
             eprintln!();
-            eprintln!("Run `alloomi --help` for usage.");
+            eprintln!("Run `openloomi --help` for usage.");
             ExitCode::from(2)
         }
     }
@@ -267,7 +267,7 @@ fn parse_args(raw_args: &[String]) -> Result<CliCommand, CliError> {
         }
         return Err(CliError::new(
             "usage",
-            "`alloomi update` currently supports only `--check`.",
+            "`openloomi update` currently supports only `--check`.",
         ));
     }
 
@@ -729,7 +729,7 @@ fn prepare_one_shot_server_log() -> Result<PathBuf, CliError> {
         })?;
     let _ = writeln!(
         file,
-        "\n=== alloomi one-shot headless server start: {:?} ===",
+        "\n=== openloomi one-shot headless server start: {:?} ===",
         std::time::SystemTime::now()
     );
     Ok(log_path)
@@ -2125,14 +2125,14 @@ fn print_json<T: serde::Serialize>(value: &T) {
 
 fn print_help() {
     println!(
-        r#"alloomi {}
+        r#"openloomi {}
 
 Usage:
-  alloomi --one-shot <prompt> [--json] [--model <model>] [--provider <provider>] [--platform <platform>]
-  alloomi --one-shot --stdin [--json] [--model <model>] [--provider <provider>] [--platform <platform>]
-  alloomi update --check [--json]
-  alloomi --version
-  alloomi --help
+  openloomi --one-shot <prompt> [--json] [--model <model>] [--provider <provider>] [--platform <platform>]
+  openloomi --one-shot --stdin [--json] [--model <model>] [--provider <provider>] [--platform <platform>]
+  openloomi update --check [--json]
+  openloomi --version
+  openloomi --help
 
 Options:
   -z, --one-shot          Execute a non-interactive one-shot prompt
@@ -2154,7 +2154,7 @@ mod tests {
     use super::*;
 
     fn args(values: &[&str]) -> Vec<String> {
-        std::iter::once("alloomi".to_string())
+        std::iter::once("openloomi".to_string())
             .chain(values.iter().map(|value| value.to_string()))
             .collect()
     }

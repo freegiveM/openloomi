@@ -226,7 +226,7 @@ The web UI is built on the **Ink & Circuit** visual language. Reference files in
 | File | What |
 |---|---|
 | `references/DESIGN.md` | Canonical design tokens (colors, type, layout), component patterns, animation rules, keyboard map, "how to adapt to a new domain" guide. **Update first** when extending the visual language. |
-| `references/index.html` | The original Alloomi "KNOWLEDGE DISPATCH v41 · INK & CIRCUIT" graph — the design source this UI was adapted from. Keep untouched as a visual reference. |
+| `references/index.html` | The design source this UI was adapted from. Keep untouched as a visual reference. |
 | `web/index.html` | The openloomi-loop implementation. Has a header comment linking to `../references/DESIGN.md`. |
 
 The design system maps 5 decision types to the 5 knowledge-graph categories: rsvp (amber), draft_reply (green), review_pr (blue), slack_reply (purple), todo (red). When adding a new decision type, add a CSS variable, a `.t-<type>` card class, a hex color in JS `TC`, and a label in `TL`.
