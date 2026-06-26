@@ -94,6 +94,13 @@ export function ConversationApiOnboardingGuard({
         });
 
         if (!response.ok) {
+          // 401/403 means the user is not signed in (or session expired, e.g.
+          // ~/.openloomi was deleted). Fail open silently instead of spamming
+          // the console — the login UI is shown elsewhere.
+          if (response.status === 401 || response.status === 403) {
+            setConfigurationState("available");
+            return;
+          }
           throw new Error("Failed to load AI API settings");
         }
 
