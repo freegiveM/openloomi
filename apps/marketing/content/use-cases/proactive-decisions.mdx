@@ -219,6 +219,10 @@ The local web UI's **Queue** view (the `Q` tab at `http://127.0.0.1:3614/`) show
 
 ![OpenLoomi Loop web UI — Queue view (PENDING / DONE / DISMISSED kanban)](/img/use-cases/proactive-decisions-kanban.png)
 
+Click any card and the detail panel slides in from the right with the suggested action (e.g. `calendar_rsvp` with `response: "accepted"`) and four explicit buttons — **▶ RUN** spawns the Claude session with the decision prompt, **DRY RUN** previews the prompt without executing, **✓ MARK DONE** records it as handled, **✕ DISMISS** drops it. Nothing fires automatically; you always pick the action.
+
+![OpenLoomi Loop Kanban with action buttons](/img/use-cases/proactive-decisions-kanban-actions.png)
+
 ---
 
 ### Use the Right Skills
@@ -250,3 +254,11 @@ The local web UI's **Queue** view (the `Q` tab at `http://127.0.0.1:3614/`) show
 - Missing Composio toolkit → falls back to `openloomi-memory list-insights` for that channel
 - Missing memory → the lib-level `loop analyze` + `data/inbox/` drop folder still produce typed decisions
 - Queue never goes silent; the Loop works on day one with zero toolkits connected
+
+---
+
+## See Also
+
+For the full reference — every CLI flag, the lib-level `analyze` / `route` / `notify` APIs, the JSON schema for `decisions.json`, classifier prompt templates, the `loop-ctl.sh` lifecycle, and how to extend the Loop with new decision types and toolkits — see the source-of-truth spec:
+
+**[`openloomi-loop/SKILL.md` on GitHub](https://github.com/melandlabs/openloomi/blob/main/skills/openloomi-loop/SKILL.md)**
