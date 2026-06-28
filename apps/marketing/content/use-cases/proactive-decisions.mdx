@@ -31,13 +31,19 @@ If you haven't seen it yet, the Loop is OpenLoomi's proactive execution brain �
 
 ---
 
-### Decisions Land in OpenLoomi's Loop Panel
+### Decisions Land in the Web View
 
-Once started, the Loop writes new decisions to `~/.openloomi/skills/openloomi-loop/data/decisions.json`. New pending decisions arrive as a desktop notification (top-right) so you see them without opening the panel:
+Once started, the Loop writes new decisions to `~/.openloomi/skills/openloomi-loop/data/decisions.json`. New pending decisions arrive as a desktop notification (top-right) so you see them without opening the view:
 
 ![OpenLoomi Loop notification surfacing 8 new decisions](/img/use-cases/proactive-decisions-notification.png)
 
-OpenLoomi's own Loop panel then surfaces them as cards — type badge, confidence bar, triggering context, memory refs, suggested action — and lets you `▶ RUN`, `✓ DONE`, or `✕ DISMISS` without leaving the app.
+Open the Web View at `http://127.0.0.1:3614/` and the Loop surfaces them as cards — type badge, confidence bar, triggering context, memory refs, suggested action — in a 3-column kanban at the `Q` tab: PENDING, DONE, DISMISSED. Click any card to open the full decision detail and run it from the browser:
+
+![OpenLoomi Loop web UI — Queue view (PENDING / DONE / DISMISSED kanban)](/img/use-cases/proactive-decisions-kanban.png)
+
+The detail panel slides in from the right with the suggested action (e.g. `calendar_rsvp` with `response: "accepted"`) and four explicit buttons — **▶ RUN** spawns the Claude session with the decision prompt, **DRY RUN** previews the prompt without executing, **✓ MARK DONE** records it as handled, **✕ DISMISS** drops it. Nothing fires automatically; you always pick the action.
+
+![OpenLoomi Loop Kanban with action buttons](/img/use-cases/proactive-decisions-kanban-actions.png)
 
 ---
 
@@ -213,15 +219,7 @@ Three ways to inspect what the Loop has queued:
 | **Web UI (local)**       | `http://127.0.0.1:3614/`           | Kanban + timeline + activity views, REST API |
 | **CLI inbox**            | `loop inbox` / `loop inbox --pick` | Terminal-first workflows, arrow-key picker   |
 
-Each card carries the memory refs that explain why it surfaced — click any **🧠 memory_refs** entry to inline-load the person / project / insight note.
-
-The local web UI's **Queue** view (the `Q` tab at `http://127.0.0.1:3614/`) shows the same decisions as a 3-column kanban — PENDING, DONE, DISMISSED — with the type badge, confidence bar, and suggested action rendered inline. Click any card to open the full decision detail and run it from the browser:
-
-![OpenLoomi Loop web UI — Queue view (PENDING / DONE / DISMISSED kanban)](/img/use-cases/proactive-decisions-kanban.png)
-
-Click any card and the detail panel slides in from the right with the suggested action (e.g. `calendar_rsvp` with `response: "accepted"`) and four explicit buttons — **▶ RUN** spawns the Claude session with the decision prompt, **DRY RUN** previews the prompt without executing, **✓ MARK DONE** records it as handled, **✕ DISMISS** drops it. Nothing fires automatically; you always pick the action.
-
-![OpenLoomi Loop Kanban with action buttons](/img/use-cases/proactive-decisions-kanban-actions.png)
+Each card carries the memory refs that explain why it surfaced — click any **🧠 memory_refs** entry to inline-load the person / project / insight note. Screenshots of the web UI's Queue view and the four action buttons on every card live in [See It in Action](#see-it-in-action) — this step stays focused on setup.
 
 ---
 
