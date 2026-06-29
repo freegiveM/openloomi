@@ -324,7 +324,7 @@ const securityHeaders = [
   {
     key: "Content-Security-Policy",
     value:
-      "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline' tauri: https://d3js.org https://unpkg.com https://cdn.tailwindcss.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.tailwindcss.com; img-src 'self' data: https: http: blob:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https: http: wss: tauri: ipca: https://unpkg.com https://cdn.tailwindcss.com https://fonts.googleapis.com; frame-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self';",
+      "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline' tauri: https://d3js.org https://unpkg.com https://cdn.jsdelivr.net https://cdn.tailwindcss.com https://geddle.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.tailwindcss.com; img-src 'self' data: https: http: blob:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https: http: wss: tauri: ipc: https://unpkg.com https://cdn.jsdelivr.net https://cdn.tailwindcss.com https://fonts.googleapis.com; frame-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self';",
   },
 ];
 

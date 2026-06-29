@@ -22,7 +22,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self' 'unsafe-inline' 'unsafe-eval' blob: data:; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: data: tauri: https://unpkg.com https://cdn.tailwindcss.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.tailwindcss.com; img-src 'self' data: https: http: blob:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https: http: wss: blob: data: tauri: ipca: https://unpkg.com https://cdn.tailwindcss.com https://fonts.googleapis.com; frame-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self';",
+      "csp": "default-src 'self' 'unsafe-inline' 'unsafe-eval' blob: data:; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: data: tauri: https://unpkg.com https://cdn.jsdelivr.net https://cdn.tailwindcss.com https://geddle.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.tailwindcss.com; img-src 'self' data: https: http: blob:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https: http: wss: blob: data: tauri: ipc: https://unpkg.com https://cdn.jsdelivr.net https://cdn.tailwindcss.com https://fonts.googleapis.com; frame-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self';",
       "capabilities": ["default"]
     }
   },
