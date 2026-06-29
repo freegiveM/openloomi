@@ -95,14 +95,14 @@ pub(crate) fn get_platform_download_filename(version: &str) -> Option<String> {
         return if cfg!(target_arch = "aarch64") {
             Some(format!("openloomi_{}_macOS_aarch64.dmg", v))
         } else {
-            Some(format!("openloomi_{}_macOS_x64.dmg", v))
+            Some(format!("openloomi_{}_macOS_amd64.dmg", v))
         };
     }
 
     #[cfg(target_os = "linux")]
     {
         return if cfg!(target_arch = "aarch64") {
-            Some(format!("openloomi_{}_linux_arm64.deb", v))
+            Some(format!("openloomi_{}_linux_aarch64.deb", v))
         } else {
             Some(format!("openloomi_{}_linux_amd64.deb", v))
         };
@@ -110,7 +110,7 @@ pub(crate) fn get_platform_download_filename(version: &str) -> Option<String> {
 
     #[cfg(target_os = "windows")]
     {
-        return Some(format!("openloomi_{}_windows_x64-setup.exe", v));
+        return Some(format!("openloomi_{}_windows_amd64.exe", v));
     }
 
     #[allow(unreachable_code)]
@@ -282,7 +282,7 @@ fn get_app_relaunch_path() -> Option<String> {
 
 // ============ Tauri Commands ============
 
-/// Tauri command: check for a newer version via R2
+/// Tauri command: check for a newer version via GitHub Releases
 #[tauri::command]
 pub async fn check_for_update() -> Result<UpdateCheckResult, String> {
     crate::panic_guard::catch_unwind_future_result("check_for_update", do_check_for_update()).await
@@ -297,17 +297,7 @@ pub async fn do_check_for_update() -> Result<UpdateCheckResult, String> {
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
 
-    // Try R2 first, then fallback to GitHub
-    let latest_version = match fetch_version_from_r2(&client).await {
-        Ok(v) => {
-            eprintln!("📦 Got version from R2: {}", v);
-            v
-        }
-        Err(e) => {
-            eprintln!("⚠️  R2 failed ({}), trying GitHub...", e);
-            fetch_version_from_github(&client).await?
-        }
-    };
+    let latest_version = fetch_version_from_github(&client).await?;
 
     let latest_tag = format!("v{}", latest_version);
     let download_filename = get_platform_download_filename(&latest_tag).unwrap_or_default();
@@ -315,28 +305,11 @@ pub async fn do_check_for_update() -> Result<UpdateCheckResult, String> {
     let has_update =
         is_newer_version(&latest_version, current_version) && !download_filename.is_empty();
 
-    // Try R2 first for download, then fallback to GitHub
     let download_url = if !download_filename.is_empty() {
-        let github_url = format!(
-            "https://github.com/melandlabs/release/releases/download/{}/{}",
+        format!(
+            "https://github.com/melandlabs/openloomi/releases/download/{}/{}",
             latest_tag, download_filename
-        );
-        let r2_url = format!(
-            "https://pub-7f8ad94cb1444cbebae6bfd55ec52f5d.r2.dev/{}",
-            download_filename
-        );
-
-        // Try R2 first
-        match client.head(&r2_url).send().await {
-            Ok(resp) if resp.status().is_success() => {
-                eprintln!("📦 R2 has file, using: {}", r2_url);
-                r2_url
-            }
-            _ => {
-                eprintln!("📦 R2 not available, using GitHub: {}", github_url);
-                github_url
-            }
-        }
+        )
     } else {
         String::new()
     };
@@ -347,39 +320,16 @@ pub async fn do_check_for_update() -> Result<UpdateCheckResult, String> {
         current_version: current_version.to_string(),
         download_url,
         release_url: format!(
-            "https://github.com/melandlabs/release/releases/tag/{}",
+            "https://github.com/melandlabs/openloomi/releases/tag/{}",
             latest_tag
         ),
         file_size: 0,
     })
 }
 
-async fn fetch_version_from_r2(client: &reqwest::Client) -> Result<String, String> {
-    let r2_url = "https://pub-7f8ad94cb1444cbebae6bfd55ec52f5d.r2.dev/latest.json";
-    let response = client
-        .get(r2_url)
-        .send()
-        .await
-        .map_err(|e| format!("R2 request failed: {}", e))?;
-
-    if !response.status().is_success() {
-        return Err(format!("HTTP {}", response.status()));
-    }
-
-    let json: serde_json::Value = response
-        .json()
-        .await
-        .map_err(|e| format!("Failed to parse latest.json: {}", e))?;
-
-    json["version"]
-        .as_str()
-        .ok_or("Invalid latest.json: missing 'version' field".to_string())
-        .map(|s| s.to_string())
-}
-
 async fn fetch_version_from_github(client: &reqwest::Client) -> Result<String, String> {
     let mut req = client
-        .get("https://api.github.com/repos/melandlabs/release/tags")
+        .get("https://api.github.com/repos/melandlabs/openloomi/tags")
         .header("Accept", "application/vnd.github+json");
     if let Ok(token) = std::env::var("GITHUB_TOKEN") {
         if !token.is_empty() {

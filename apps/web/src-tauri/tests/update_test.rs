@@ -100,7 +100,7 @@ mod get_platform_download_filename_tests {
         assert!(result.is_some());
         let name = result.unwrap();
         assert!(
-            name.contains("openloomi_1.0.0_macOS_x64.dmg"),
+            name.contains("openloomi_1.0.0_macOS_amd64.dmg"),
             "got: {}",
             name
         );
@@ -134,7 +134,7 @@ mod get_platform_download_filename_tests {
         assert!(result.is_some());
         let name = result.unwrap();
         assert!(
-            name.contains("openloomi_1.0.0_windows_x64-setup.exe"),
+            name.contains("openloomi_1.0.0_windows_amd64.exe"),
             "got: {}",
             name
         );
