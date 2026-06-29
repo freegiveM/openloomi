@@ -8,7 +8,9 @@ icon: "FaBrain"
 
 ## Four Streams of Inbound + Whatever You Throw At It, One Decision Queue
 
-The average professional has 4 streams of inbound — Gmail, Calendar, GitHub, Slack — and no single place where "what should I do next" lives. You tab-switch all day, re-read the same thread three times, and miss the calendar RSVP until it's already started. Just as often, the real work isn't inbound at all — it's the half-formed thought on your walk, the screenshot of a deadline you noticed in passing, the article you bookmarked for later, the Slack thread someone pinged you about. OpenLoomi's **Proactive Execution Brain** (`openloomi-loop`) runs inside the desktop app, watches every channel in the background, enriches every new signal through your local memory, and turns each one into a typed decision card ready for a one-keystroke action — or, when you point it at messy input, a structured daily plan that checks back in.
+The average professional has 4 streams of inbound — Gmail, Calendar, GitHub, Slack — and no single place where "what should I do next" lives. You tab-switch all day, re-read the same thread three times, and miss the calendar RSVP until it's already started. Just as often, the real work isn't inbound at all — it's the half-formed thought on your walk, the screenshot of a deadline you noticed in passing, the article you bookmarked for later, the Slack thread someone pinged you about.
+
+OpenLoomi's **Proactive Execution Brain** (`openloomi-loop`) runs inside the desktop app, watches every channel in the background, enriches every new signal through your local memory, and turns each one into a typed decision card ready for a one-keystroke action — or, when you point it at messy input, a structured daily plan that checks back in.
 
 **What it does:**
 
@@ -158,10 +160,9 @@ The Loop never leaves you with an empty queue. When a Composio toolkit isn't con
 
 Both keys live in **Settings → API Settings**. OpenLoomi uses them in tandem — one for the local server, one for the Composio MCP toolkit the Loop calls into.
 
-| Key                   | Where to get it                                                                            | Why OpenLoomi needs it                                                                                                                     |
-| --------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| **OpenLoomi API Key** | Auto-generated on first sign-in; reset via **Settings → Account → Reset Local Token**      | Authenticates requests to the local OpenLoomi server (`http://127.0.0.1:3414/api/`) that the Loop reads/writes memory and insights through |
-| **COMPOSIO_API_KEY**  | Sign up at [composio.dev](https://composio.dev), then **Settings → API Keys → Create Key** | Authenticates the Composio MCP toolkit that fetches signals from Gmail, Calendar, GitHub, Slack                                            |
+| Key                  | Where to get it                                                                            | Why OpenLoomi needs it                                                                          |
+| -------------------- | ------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
+| **COMPOSIO_API_KEY** | Sign up at [composio.dev](https://composio.dev), then **Settings → API Keys → Create Key** | Authenticates the Composio MCP toolkit that fetches signals from Gmail, Calendar, GitHub, Slack |
 
 > **💡 Prefer the terminal? Use the Composio CLI instead.** Recommended for headless servers, CI, and local debugging — install the CLI, log in, and the Loop picks the key up automatically (no need to paste it in **Settings → API Settings**):
 >
@@ -213,10 +214,6 @@ Each toolkit OpenLoomi exposes for the Loop routes through Composio under the ho
 
 > **💡 Prefer to stay inside OpenLoomi?** Invoke the `composio-cli` skill from chat — "connect gmail, googlecalendar, github, and slack for the Loop" — and it drives the same login + OAuth flow without leaving the app. Both the CLI and the skill write to the same `~/.composio/` store the Loop reads from, so they stay in sync.
 
-> **Tip:** The Loop degrades gracefully — you can start with just one toolkit connected. Missing toolkits fall back to `openloomi-memory list-insights` so the queue still produces decisions.
-
-> **🔧 Extensible by design.** The four typed actions above (`rsvp`, `draft_reply`, `review_pr`, `slack_reply`) are just the defaults — `openloomi-loop` is a normal skill directory at `~/.openloomi/skills/openloomi-loop/`, so you can iterate on it like any other OpenLoomi skill. Add new decision types, swap in custom classifiers, point at additional toolkits (`composio add linear`, `composio add notion`, `composio add jira`, …), or teach the Loop to handle a brand-new channel by editing the skill's classify / enrich code and reloading. Ask OpenLoomi in chat to evolve it — _"extend openloomi-loop to also classify Linear issues into `linear_review` decisions"_ — and it handles the edit + reload for you.
-
 ---
 
 ### Step 3: Start the Loop — just ask OpenLoomi
@@ -264,6 +261,8 @@ Three ways to inspect what the Loop has queued:
 
 Each card carries the memory refs that explain why it surfaced — click any **🧠 memory_refs** entry to inline-load the person / project / insight note. Screenshots of the web UI's Queue view and the four action buttons on every card live in [See It in Action](#see-it-in-action) — this step stays focused on setup.
 
+> **🔧 Extensible by design.** The four typed actions above (`rsvp`, `draft_reply`, `review_pr`, `slack_reply`) are just the defaults — `openloomi-loop` is a normal skill directory at `~/.openloomi/skills/openloomi-loop/`, so you can iterate on it like any other OpenLoomi skill. Add new decision types, swap in custom classifiers, point at additional toolkits (`composio add linear`, `composio add notion`, `composio add jira`, …), or teach the Loop to handle a brand-new channel by editing the skill's classify / enrich code and reloading. Ask OpenLoomi in chat to evolve it — _"extend openloomi-loop to also classify Linear issues into `linear_review` decisions"_ — and it handles the edit + reload for you.
+
 ---
 
 ### Use the Right Skills
@@ -280,7 +279,7 @@ Each card carries the memory refs that explain why it surfaced — click any **�
 
 **🧠 Decisions, Not Streams**
 
-- Four inboxes collapse into one typed queue: `rsvp`, `draft_reply`, `review_pr`, `todo`, `slack_reply`
+- Four inboxes collapse into one typed queue: `rsvp`, `draft_reply`, `review_pr`, `todo`, `slack_reply`, etc.
 - Each card carries the memory refs that explain why it surfaced — no guessing, no re-reading
 - Confidence score (0.85 known / 0.60 cold) lets you triage in one glance
 
