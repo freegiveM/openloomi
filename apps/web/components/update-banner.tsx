@@ -94,7 +94,13 @@ export function UpdateBanner() {
   const handleStartDownload = useCallback(async () => {
     if (!result) return;
     setErrorMessage(null);
-    setProgress({ downloaded: 0, total: 0, percent: 0, done: false, error: null });
+    setProgress({
+      downloaded: 0,
+      total: 0,
+      percent: 0,
+      done: false,
+      error: null,
+    });
     setPhase("downloading");
     try {
       await startUpdateDownload(result.download_url, result.file_size);
@@ -150,7 +156,8 @@ export function UpdateBanner() {
   }, [result]);
 
   if (!isTauri()) return null;
-  if (phase === "idle" || phase === "checking" || phase === "dismissed") return null;
+  if (phase === "idle" || phase === "checking" || phase === "dismissed")
+    return null;
   if (!result) return null;
 
   return (
@@ -239,13 +246,19 @@ export function UpdateBanner() {
             )}
             {phase === "downloading" && (
               <Button variant="ghost" size="sm" disabled>
-                <RemixIcon name="ri-loader-4-line" className="mr-1 animate-spin" />
+                <RemixIcon
+                  name="ri-loader-4-line"
+                  className="mr-1 animate-spin"
+                />
                 Downloading
               </Button>
             )}
             {phase === "installing" && (
               <Button variant="ghost" size="sm" disabled>
-                <RemixIcon name="ri-loader-4-line" className="mr-1 animate-spin" />
+                <RemixIcon
+                  name="ri-loader-4-line"
+                  className="mr-1 animate-spin"
+                />
                 Installing
               </Button>
             )}
