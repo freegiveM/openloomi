@@ -591,5 +591,4 @@ This skill (`openloomi-loop`) is the **proactive executor** — `openloomi-memor
 - openloomi documents: https://openloomi.ai/docs
 - Composio MCP: `mcp__composio__*` tools
 - openloomi-memory CLI: `node $SKILL_DIR/../openloomi-memory/scripts/openloomi-memory.cjs <subcommand>`
-- openloomi desktop app's local API (separate from this skill): `http://127.0.0.1:3414` — only when the app is running. **Not** the loop web UI; loop's web UI binds `3614` (loop-ctl default) or whatever you pass to `loop web --port`.
 - Token: `~/.openloomi/token` (base64-encoded JWT)

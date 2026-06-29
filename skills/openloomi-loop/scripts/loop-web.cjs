@@ -73,7 +73,7 @@ const NOTIFY_SEEN = path.join(DATA_DIR, 'notifications.seen.json');
 const STATUS_PATH = path.join(DATA_DIR, 'status.json');
 const DRAFT_DIR = path.join(DATA_DIR, 'drafts');
 
-const PORT = Number.parseInt(process.env.LOOP_WEB_PORT || process.argv[2] || '3414', 10);
+const PORT = Number.parseInt(process.env.LOOP_WEB_PORT || process.argv[2] || '3614', 10);
 const HOST = process.env.LOOP_WEB_HOST || '127.0.0.1';
 
 // --- helpers -----------------------------------------------------------------
