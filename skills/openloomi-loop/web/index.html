@@ -341,8 +341,12 @@ function showToast(msg, ms=2200){
 
 // ── FORMATTERS ───────────────────────────────────────────────────────────────
 function fmtContext(dec){
-  const p = dec.source_signal?.payload || {};
-  const t = dec.source_signal?.type;
+  // Defensive: API returns decision with `source` (e.g. "gmail:email") + flat `context` (the payload).
+  // Older enrichment shape nested payload under `source_signal.payload` — keep both paths working.
+  const sigType = dec.source_signal?.type
+    || (dec.source ? String(dec.source).split(':').slice(-1)[0] : null);
+  const p = dec.context || dec.source_signal?.payload || {};
+  const t = sigType;
   const out = [];
   if (t === 'calendar_event') {
     if (p.start) out.push(`<span class="k">⏰</span><span class="v">${fmtTimeShort(p.start)} – ${fmtTimeShort(p.end)} <em style="color:var(--text3)">(${relTime(p.start)})</em></span>`);
@@ -355,7 +359,9 @@ function fmtContext(dec){
     if (p.attachmentUrl || p.hasAttachment) out.push(`<span class="k">📎</span><span class="v">agenda attached</span>`);
   } else if (t === 'email') {
     if (p.from) out.push(`<span class="k">from</span><span class="v amber">${extractName(p.from)}</span>`);
-    if (p.timestamp) out.push(`<span class="k">sent</span><span class="v">${fmtTimeShort(p.timestamp)} <em style="color:var(--text3)">(${relTime(p.timestamp)})</em></span>`);
+    // API uses messageTimestamp (single email) or messageTimestamp_reply (thread reply); legacy payload used `timestamp`.
+    const ts = p.timestamp || p.messageTimestamp_reply || p.messageTimestamp;
+    if (ts) out.push(`<span class="k">sent</span><span class="v">${fmtTimeShort(ts)} <em style="color:var(--text3)">(${relTime(ts)})</em></span>`);
     if (p.subject) out.push(`<span class="k">re</span><span class="v">${escapeHTML(p.subject)}</span>`);
     if (Array.isArray(p.labels) && p.labels.length) {
       const skipLabels = new Set(['INBOX','SENT','DRAFT','IMPORTANT','UNREAD','STARRED','CATEGORY_PERSONAL','CATEGORY_PROMOTIONS','CATEGORY_SOCIAL','CATEGORY_UPDATES','CATEGORY_FORUMS']);
