@@ -71,7 +71,7 @@ node $SKILL_DIR/scripts/openloomi-loop.cjs memory search-all "Sarah"
 For day-to-day use, prefer the bundled `loop-ctl.sh` helper over running the CLI directly. It manages both the `schedule` background loop and the `web` UI as a pair, writes PID files for clean shutdown, and self-heals the `data/` directory on first run.
 
 ```bash
-# Start schedule + web (defaults: INTERVAL=600s, PORT=3614)
+# Start schedule + web (defaults: INTERVAL=600s, LOOP_WEB_PORT=3614)
 $SKILL_DIR/loop-ctl.sh start
 
 # Check what's running
@@ -86,11 +86,11 @@ $SKILL_DIR/loop-ctl.sh restart
 $SKILL_DIR/loop-ctl.sh stop
 
 # Override defaults
-PORT=4000 INTERVAL=300 $SKILL_DIR/loop-ctl.sh start
+LOOP_WEB_PORT=4000 INTERVAL=300 $SKILL_DIR/loop-ctl.sh start
 ```
 
 What it does:
-- **`start`** — runs `openloomi-loop schedule --interval ${INTERVAL:-600}` and `openloomi-loop web --port ${PORT:-3614}` in the background. `schedule` writes its own PID to `data/daemon.pid`; the web PID is written to `data/web.pid`. Both stdout/stderr are redirected to `data/schedule.log` and `data/web.log`. Auto-`mkdir` of `data/` so first-run after a git-clean works. Skips if either is already alive (no double-start).
+- **`start`** — runs `openloomi-loop schedule --interval ${INTERVAL:-600}` and `openloomi-loop web --port ${LOOP_WEB_PORT:-3614}` in the background. `schedule` writes its own PID to `data/daemon.pid`; the web PID is written to `data/web.pid`. Both stdout/stderr are redirected to `data/schedule.log` and `data/web.log`. Auto-`mkdir` of `data/` so first-run after a git-clean works. Skips if either is already alive (no double-start).
 - **`stop`** — `SIGTERM` each PID recorded in `data/daemon.pid` / `data/web.pid`, plus a `pkill -f` belt-and-suspenders for any orphan. Removes the PID files. No SIGKILL grace — `claude -p` children are expected to terminate cleanly on parent exit.
 - **`status`** — prints the `loop status` snapshot, checks that the web port is bound via `lsof`, and lists each PID file as alive / stale / not present.
 - **`restart`** — `stop` then `start`.
