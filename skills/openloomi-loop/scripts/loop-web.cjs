@@ -81,6 +81,27 @@ const HOST = process.env.LOOP_WEB_HOST || '127.0.0.1';
 function readJson(p, fallback) {
   try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return fallback; }
 }
+// Schema contract: `memory_refs` and `insight_refs` live INSIDE `context`.
+// Some agent emits put them at the top level of the decision object.
+// Hoist them into `context` on every read so the web UI, the run-prompt
+// builder, and the move/bucket writers all see one consistent shape.
+// Mutates and returns the same object.
+function normalizeDecision(dec) {
+  if (!dec || typeof dec !== 'object') return dec;
+  if (!dec.context || typeof dec.context !== 'object') dec.context = {};
+  const ctx = dec.context;
+  for (const k of ['memory_refs', 'insight_refs']) {
+    if (Array.isArray(dec[k]) && dec[k].length) {
+      if (!Array.isArray(ctx[k])) ctx[k] = [];
+      for (const v of dec[k]) {
+        if (!ctx[k].includes(v)) ctx[k].push(v);
+      }
+      delete dec[k];
+    }
+  }
+  return dec;
+}
+
 function readJsonlTail(p, limit) {
   if (!fs.existsSync(p)) return [];
   const lines = fs.readFileSync(p, 'utf8').split('\n').filter(Boolean);
@@ -114,7 +135,7 @@ function findDecision(id) {
   const d = readJson(DECISIONS_PATH, { pending: [], done: [], dismissed: [] });
   for (const bucket of ['pending', 'done', 'dismissed']) {
     const found = (d[bucket] || []).find((x) => x.id === id);
-    if (found) return { dec: found, bucket, store: d };
+    if (found) return { dec: normalizeDecision(found), bucket, store: d };
   }
   return null;
 }
@@ -133,6 +154,12 @@ function moveDecision(id, toBucket) {
     }
   }
   if (!moved) return null;
+  // Defensive: clean up top-level memory_refs/insight_refs on write so the
+  // on-disk format matches the schema contract (refs live inside `context`).
+  // Idempotent — no-op if already correctly nested.
+  for (const bucket of ['pending', 'done', 'dismissed']) {
+    if (Array.isArray(d[bucket])) for (const dec of d[bucket]) normalizeDecision(dec);
+  }
   const tmp = `${DECISIONS_PATH}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(d, null, 2));
   fs.renameSync(tmp, DECISIONS_PATH);
@@ -194,6 +221,9 @@ function handleState(req, res) {
 
 function handleListDecisions(req, res) {
   const d = readJson(DECISIONS_PATH, { pending: [], done: [], dismissed: [] });
+  for (const bucket of ['pending', 'done', 'dismissed']) {
+    if (Array.isArray(d[bucket])) for (const dec of d[bucket]) normalizeDecision(dec);
+  }
   jsonRes(res, 200, d);
 }
 

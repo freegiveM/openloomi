@@ -226,8 +226,9 @@ where <json> is (FIELD PLACEMENT IS STRICT — see warning below):
 
 ⚠️ FIELD-PLACEMENT WARNING ⚠️
 - \`memory_refs\` and \`insight_refs\` MUST live INSIDE \`context\` (nested), NEVER at the top level of the decision object.
-- The CLI normalizes misplaced refs as a safety net, but the schema contract is: \`context.memory_refs\`.
-- Top-level \`memory_refs\` will be hoisted into \`context\`, and the CLI will print a one-line warning to stderr so you know to fix the next emit.
+- The schema contract is: \`context.memory_refs\`. All readers (CLI \`openloomi-loop inbox\`, web UI, webhook payload, run-prompt builder) read from there.
+- Safety net: \`loop-lib.cjs → readDecisions()\` and \`loop-web.cjs → handleListDecisions\` / \`findDecision\` / \`moveDecision\` hoist misplaced top-level \`memory_refs\` / \`insight_refs\` into \`context\` on every read and write. The on-disk format will self-heal as decisions are moved between buckets.
+- \`cmdIngestDecision\` prints a one-line stderr warning when it hoists, so emit-side bugs are still visible. Fix the emitter rather than relying on the safety net.
 
 Confidence: 0.85 if sender is in openloomi-memory, else 0.60.
 
