@@ -211,16 +211,67 @@ export function listSessionFiles(
 }
 
 /**
- * Read session file content (text)
+ * Directories outside the session that READS are allowed to access.
+ * Each entry must be an absolute directory; subpaths of these directories
+ * are also permitted. Writes and deletes are still session-scoped.
+ *
+ * Add entries here only with explicit user approval, since reads let
+ * the agent see file contents.
  */
-function validatePath(taskId: string, filePath: string): string | null {
+const EXTERNAL_READ_WHITELIST: readonly string[] = [
+  // openloomi skill runtime data. The bundled install lives at
+  // /Applications/openloomi.app/.../skills/<name>/data and the user-side
+  // install at ~/.openloomi/skills/<name>/data — both fall outside any
+  // session directory, but skill agents (e.g. openloomi-loop) need to
+  // read their own state via the workspace tool.
+  join(getAppDataDir(), "skills"),
+];
+
+/**
+ * Check whether an absolute path falls under a whitelisted external
+ * directory. Returns the matched whitelist entry, or null.
+ */
+function matchExternalReadWhitelist(resolved: string): string | null {
+  for (const allowed of EXTERNAL_READ_WHITELIST) {
+    const allowedResolved = resolve(allowed);
+    if (
+      resolved.startsWith(allowedResolved + sep) ||
+      resolved === allowedResolved
+    ) {
+      return allowedResolved;
+    }
+  }
+  return null;
+}
+
+/**
+ * Validate a workspace path for an operation.
+ *
+ * - Always permits the session directory itself.
+ * - For relative paths, only the session directory is allowed.
+ * - For absolute paths, also permits subpaths of `EXTERNAL_READ_WHITELIST`
+ *   when `options.allowExternal` is true. Callers performing destructive
+ *   operations (delete) should leave this off.
+ */
+function validatePath(
+  taskId: string,
+  filePath: string,
+  options: { allowExternal?: boolean } = {},
+): string | null {
   const sessionDir = resolve(getTaskSessionDir(taskId));
 
-  // If filePath is already an absolute path within the session directory, use it directly
+  // If filePath is already an absolute path, check session dir first,
+  // then (when allowed) the external read whitelist.
   if (isAbsolute(filePath)) {
     const resolved = resolve(filePath);
     if (resolved.startsWith(sessionDir + sep) || resolved === sessionDir) {
       return resolved;
+    }
+    if (options.allowExternal) {
+      const matched = matchExternalReadWhitelist(resolved);
+      if (matched) {
+        return resolved;
+      }
     }
     workspaceLogger.error("Absolute path outside session directory:", filePath);
     return null;
@@ -242,7 +293,7 @@ export function readSessionFile(
   taskId: string,
   filePath: string,
 ): string | null {
-  const fullPath = validatePath(taskId, filePath);
+  const fullPath = validatePath(taskId, filePath, { allowExternal: true });
   if (!fullPath) {
     return null;
   }
@@ -266,7 +317,7 @@ export function readSessionFileBinary(
   taskId: string,
   filePath: string,
 ): Buffer | null {
-  const fullPath = validatePath(taskId, filePath);
+  const fullPath = validatePath(taskId, filePath, { allowExternal: true });
   if (!fullPath) {
     return null;
   }
