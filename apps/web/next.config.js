@@ -210,25 +210,6 @@ const nextConfig = {
         weixinRedactShimPath,
     };
 
-    // Sentry source maps upload in production
-    if (
-      process.env.SENTRY_AUTH_TOKEN &&
-      process.env.NODE_ENV === "production" &&
-      !isServer
-    ) {
-      const SentryWebpackPlugin = require("@sentry/webpack-plugin");
-      config.plugins.push(
-        new SentryWebpackPlugin({
-          org: process.env.SENTRY_ORG,
-          project: process.env.SENTRY_PROJECT,
-          authToken: process.env.SENTRY_AUTH_TOKEN,
-          include: "./.next/static",
-          ignore: ["node_modules"],
-          setCommits: { auto: true },
-        }),
-      );
-    }
-
     if (isServer) {
       config.externals = config.externals ?? [];
       config.externals.push({
