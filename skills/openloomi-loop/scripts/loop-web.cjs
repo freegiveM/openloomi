@@ -252,7 +252,7 @@ function handleRun(req, res, id) {
       env: cleanChildEnv(),
     });
     child.unref();
-    return jsonRes(res, 202, { ok: true, spawned: child.pid, bin: claudeBin });
+    return jsonRes(res, 202, { ok: true, spawned: child.pid, bin });
   } catch (e) {
     return jsonRes(res, 500, { error: 'spawn_failed', message: e.message });
   }
