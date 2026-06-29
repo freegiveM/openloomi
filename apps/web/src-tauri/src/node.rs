@@ -1045,7 +1045,16 @@ pub fn try_start_nextjs(
     };
 
     // Double-base64 encoded secrets (format: base64(base64(value)))
-    let encoded_secrets: Vec<(&str, &str)> = vec![];
+    let encoded_secrets: Vec<(&str, &str)> = vec![
+        (
+            "AUTH_SECRET",
+            "V1ZONU5ISnFaMnc1SzFaNllYWmlWRkp4UmxSU1lscGtOR0ZOYld4eWVIb3dXbXhVUmtaQ2VGSnFVVDA9",
+        ),
+        (
+            "ENCRYPTION_KEY",
+            "V1ZONU5ISnFaMnc1SzFaNllYWmlWRkp4UmxSU1lscGtOR0ZOYld4eWVIb3dXbXhVUmtaQ2VGSnFVVDA9",
+        ),
+    ];
 
     let decode_double_base64 = |encoded: &str| -> Option<String> {
         let first = base64_decode(encoded).ok()?;

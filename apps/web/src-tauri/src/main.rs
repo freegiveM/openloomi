@@ -360,6 +360,8 @@ fn main() {
             // Chronicle (screen-aware memory)
             system::register_screen_capture_shortcut,
             system::unregister_screen_capture_shortcut,
+            system::register_voice_input_shortcut,
+            system::unregister_voice_input_shortcut,
             system::test_global_shortcut,
             // Chronicle screen capture (macOS only - uses xcap/ScreenCaptureKit)
             #[cfg(target_os = "macos")]
