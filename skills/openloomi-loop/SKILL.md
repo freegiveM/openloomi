@@ -196,7 +196,7 @@ composio on/off between ticks does not double-insert.
 | `config [get\|set k v]` | Read/edit config. |
 | `logs [-n N]` | Tail the loop log. |
 | `serve` | REPL: `list`, `run <id>`, `dismiss <id>`, `analyze`, `status`, `quit`. |
-| `web [--port N] [--no-open]` | Start HTTP server with REST API + Ink & Circuit style UI at `http://127.0.0.1:N/`. Auto-opens browser. CLI default port **3414** — **collides with the openloomi desktop app**, which binds 3414. When the app is running, use `--port 3614` (or any other free port), or run via `$SKILL_DIR/loop-ctl.sh start` which defaults to 3614 to avoid the clash. |
+| `web [--port N] [--no-open]` | Start HTTP server with REST API + Ink & Circuit style UI at `http://127.0.0.1:N/`. Auto-opens browser. CLI default port **3614** — **collides with the openloomi desktop app**, which binds 3614. When the app is running, use `--port 3614` (or any other free port), or run via `$SKILL_DIR/loop-ctl.sh start` which defaults to 3614 to avoid the clash. |
 
 ### Notification channels
 
@@ -214,7 +214,7 @@ All commands operate on `$SKILL_DIR/data/` for the signal/decision store. Memory
 
 ## Web UI — `loop web`
 
-`loop web` (or `node scripts/loop-web.cjs <port>`) starts an HTTP server (override with `--port N` or `LOOP_WEB_PORT`). The CLI default is **3414**, but the **openloomi desktop app also binds 3414** — if both run on the same machine, the second one to start will fail with `EADDRINUSE`. The bundled `$SKILL_DIR/loop-ctl.sh start` defaults to **3614** to sidestep the conflict. Auto-opens the default browser.
+`loop web` (or `node scripts/loop-web.cjs <port>`) starts an HTTP server (override with `--port N` or `LOOP_WEB_PORT`). The CLI default is **3614**, but the **openloomi desktop app also binds 3614** — if both run on the same machine, the second one to start will fail with `EADDRINUSE`. The bundled `$SKILL_DIR/loop-ctl.sh start` defaults to **3614** to sidestep the conflict. Auto-opens the default browser.
 
 **Ink & Circuit** themed UI (amber/dark, Syne + Space Grotesk + JetBrains Mono, hex markers, circuit corners) with three views:
 
@@ -439,7 +439,7 @@ Defaults:
 | `LOOP_CLAUDE_BIN` | `claude` | Binary invoked for `claude -p ...` (`schedule`, `run`, `tick`). |
 | `LOOP_CLAUDE_TIMEOUT_MS` | `900000` (15 min) | Hard timeout for one tick's `claude -p` child. On timeout: SIGTERM → 5s grace → SIGKILL. Prevents a hung tick from blocking notifications. |
 | `LOOP_CLAUDE_SAFE_PERMISSIONS` | _(unset)_ | Set to `1` to **opt out** of `--dangerously-skip-permissions` for the spawned child. Default adds it so the tick can call `mcp__composio__*` and the openloomi CLIs without per-call prompts. Ticks are read/derive only — no email sends, no RSVPs, no dismisses — so the flag is safe. |
-| `LOOP_WEB_PORT` | `3414` (CLI) / `3614` (loop-ctl.sh) | Default port for `loop web`. CLI / `LOOP_WEB_PORT` defaults to 3414, which **conflicts with the openloomi desktop app's** Next.js server on the same port. `loop-ctl.sh` defaults to 3614 to avoid that clash; override per-call with `--port N` or this env var. |
+| `LOOP_WEB_PORT` | 3614 | Default port for `loop web`. CLI / `LOOP_WEB_PORT` defaults to 3614, which **conflicts with the openloomi desktop app's** Next.js server on the same port. `loop-ctl.sh` defaults to 3614 to avoid that clash; override per-call with `--port N` or this env var. |
 | `LOOP_NOTIFY_WEBHOOK` | _(unset)_ | If set, every notification also POSTs a Slack-compatible JSON payload to this URL. |
 
 ### Watch independence + `--seen-init`
