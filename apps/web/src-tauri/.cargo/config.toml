@@ -1,0 +1,18 @@
+# Per-target linker flags for the Tauri Rust crate.
+#
+# On macOS 15 (Sequoia) Intel runners, the default Apple linker does NOT embed
+# an ad-hoc code signature into produced binaries, while the Sonoma linker used
+# on macos-14 runners does. Tauri's macOS bundler expects each binary inside
+# Contents/MacOS/ to already carry a signature; without one, `codesign` aborts
+# with "code object is not signed at all" when signing the main app or its
+# subcomponents (e.g. openloomi-ctl).
+#
+# Forcing `-Wl,-adhoc_codesign` at link time gives the linker the same
+# ad-hoc-signature behavior on every macOS version, so the bundler can replace
+# it with the Developer ID signature cleanly.
+#
+# We scope this to x86_64-apple-darwin because that is the only target where
+# the regression has been observed; the aarch64 macos-14 runner is unaffected.
+
+[target.x86_64-apple-darwin]
+rustflags = ["-C", "link-arg=-Wl,-adhoc_codesign"]
