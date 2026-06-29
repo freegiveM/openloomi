@@ -378,7 +378,11 @@ function fmtContext(dec){
     if (p.channel) out.push(`<span class="k">chan</span><span class="v amber">#${escapeHTML(p.channel)}</span>`);
     if (p.user) out.push(`<span class="k">user</span><span class="v amber">${escapeHTML(p.user)}</span>`);
   }
-  return out.length ? out.map(r=>`<div class="row">${r}</div>`).join('') : '<span class="v" style="color:var(--text3)">— no context —</span>';
+  return out.length ? out.map(r=>`<div class="row">${r}</div>`).join('') : '';
+}
+function fmtCtxBlock(d){
+  const html = fmtContext(d);
+  return html ? `<div class="card-ctx">${html}</div>` : '';
 }
 function fmtPerson(d){
   if (!d.context?.person) return '';
@@ -411,7 +415,7 @@ function fmtCard(d){
       <span class="card-cf">${cf}<span class="bar"><i style="width:${Math.round(cf*100)}%"></i></span></span>
     </div>
     <div class="card-t">${escapeHTML(d.title||'(no title)')}</div>
-    <div class="card-ctx">${fmtContext(d)}</div>
+    ${fmtCtxBlock(d)}
     ${fmtPerson(d)}
     ${fmtMemory(d)}
     ${fmtAction(d)}
