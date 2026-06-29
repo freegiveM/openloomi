@@ -1014,7 +1014,7 @@ async function cmdServe() {
 
 function cmdWeb(args) {
   // Delegate to scripts/loop-web.cjs (separate process for clean signal handling).
-  const port = args.flags.port || process.env.LOOP_WEB_PORT || args._[1] || '3414';
+  const port = args.flags.port || process.env.LOOP_WEB_PORT || args._[1] || '3614';
   const open = args.flags.open !== false && !args.flags['no-open'];
   const child = spawn(
     process.execPath,
