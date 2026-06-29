@@ -134,12 +134,6 @@ The executing session also **writes back any new people or insights it discovers
 
 ---
 
-### Graceful Degradation
-
-The Loop never leaves you with an empty queue. When a Composio toolkit isn't connected — say you're missing `slack` for the day — the tick falls back to `openloomi-memory list-insights --channel=<channel>` and synthesizes signals from pre-extracted insight summaries. If even memory is offline, `data/inbox/` stays available as a manual drop folder so the lib-level analyze path still produces typed decisions.
-
----
-
 ## What Changed
 
 | Aspect            | Before                                    | After                                                       |
