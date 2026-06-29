@@ -12,12 +12,12 @@ The average professional has 4 streams of inbound — Gmail, Calendar, GitHub, S
 
 **What it does:**
 
-| Step            | Action                                                                                                                                                         |
-| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 👀 **Watch**    | Pulls new signals from Gmail, Calendar, GitHub, and Slack via Composio MCP and accepts voice memos, screenshots, links, pasted notes — every tick, in parallel |
-| 🧠 **Enrich**   | Looks up each sender / organizer / repo through `openloomi-memory` so the card arrives with full context attached                                              |
-| 🏷️ **Classify** | Maps each signal to a typed decision: `rsvp`, `draft_reply`, `review_pr`, `todo`, `slack_reply`                                                                |
-| ✅ **Pick**     | Review the queue in OpenLoomi's Loop panel, the local web UI, or the REPL — one keystroke to execute                                                           |
+| Step            | Action                                                                                                                                                                                                |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 👀 **Watch**    | Pulls new signals from Gmail, Calendar, GitHub, and Slack via Composio MCP and accepts voice memos, screenshots, links, pasted notes — every tick, in parallel                                        |
+| 🧠 **Enrich**   | Reads senders / organizers / repos through `openloomi-memory` so the card arrives with full context attached — and **writes back** new senders to `people/` and recurring event titles to `projects/` |
+| 🏷️ **Classify** | Maps each signal to a typed decision: `rsvp`, `draft_reply`, `review_pr`, `todo`, `slack_reply`                                                                                                       |
+| ✅ **Pick**     | Review the queue in OpenLoomi's Loop panel, the local web UI, or the REPL — one keystroke to execute                                                                                                  |
 
 ---
 
@@ -83,9 +83,52 @@ The Loop never surfaces raw emails or PRs — every signal becomes a typed decis
 
 ---
 
+### A Mind That Reads, Writes, and Evolves With You
+
+`openloomi-memory` isn't a static context dump the Loop reads at the start. It's a living layer the Loop co-writes with you across three phases, so every decision arrives enriched by what's been learned before and writes back what's learned now.
+
+**1. Watch + Remember — the tick reads AND writes**
+
+Every tick enriches first, then remembers what was just learned:
+
+- **Read** — `search-all`, `search-memory --directory=people`, `list-entities --type=person`, `list-insights --channel=<gmail|slack|…>`
+- **Remember** — brand-new senders get written to `~/.openloomi/data/memory/people/<email>.md`; recurring calendar event titles become project notes under `~/.openloomi/data/memory/projects/`
+
+The tick itself is **strictly read/derive against external tools** (Gmail, Calendar, GitHub, Slack) — but writing to your own memory is fair game. After a few weeks the Loop has quietly built a contact and project graph you never had to maintain by hand.
+
+**2. Execute + Writeback — the action session re-enters memory**
+
+When you pick a card, the spawned `claude -p` session runs with the full memory context baked into the prompt. As it does the work, **any new people or insights it discovers are immediately written back via `openloomi-memory`**, so the next tick — and the next decision — already know about them.
+
+```text
+$ loop run dec_a1b2c3d4
+✓ opened session with full memory context
+  … claude reads people/sarah_chen.md, projects/q2_roadmap.md …
+  … drafts reply and sends via GMAIL_SEND_EMAIL …
+  → new person detected (Jamie from design team)
+  → openloomi-memory add-memory "Jamie prefers Loom for async reviews"
+  ✓ decision moved to done (memory already updated for the next tick)
+```
+
+**3. Self-Evolve — memory tunes itself between ticks**
+
+Memory doesn't wait for the Loop to update it. Between ticks it self-tunes:
+
+- **📊 Usage tracking** — every read increments `accessCountTotal / 7d / 30d` and `lastAccessedAt`, so hot context stays hot
+- **🧬 Living Connections (Hebbian Potentiation)** — insights accessed within 5 minutes of each other strengthen their link; strength decays on an Ebbinghaus forgetting curve
+- **🔄 Daily analytics refresh (24h)** — recalculates trend + `valueScore` so stale-but-frequently-cited content still surfaces
+- **🧹 Weekly compaction (7d)** — merges similar insights, archives low-value or falling-trend entries
+- **📉 Retention policy** — 90 days no-access + low score + non-important → soft delete; 180 days → hard delete
+
+The result: every decision the Loop surfaces arrives enriched by a memory layer that's **read on entry, written on exit, and self-evolving in between** — never a static snapshot.
+
+---
+
 ### One-Click Execution
 
 Pick a card and the Loop spawns a fresh Claude session with the full context — sender memory, project notes, the original signal, and the suggested action — all baked into the prompt. OpenLoomi captures the result and moves the card to `done` with the action recorded.
+
+The executing session also **writes back any new people or insights it discovers** via `openloomi-memory`, so the next tick already knows about them. The memory layer never goes cold between decisions — it grows every time you act.
 
 ---
 
@@ -252,6 +295,12 @@ Each card carries the memory refs that explain why it surfaced — click any **�
 - Missing Composio toolkit → falls back to `openloomi-memory list-insights` for that channel
 - Missing memory → the lib-level `loop analyze` + `data/inbox/` drop folder still produce typed decisions
 - Queue never goes silent; the Loop works on day one with zero toolkits connected
+
+**🌱 Self-Evolving Memory**
+
+- Loop reads (`search-all` / `search-memory` / `list-entities` / `list-insights`) and writes (`add-memory` for new senders + projects, `add-insight` for new discoveries) through `openloomi-memory` in the same tick
+- Executing a decision spawns a fresh Claude session that **writes back** any new people or insights it encounters, so the next tick already knows about them
+- Between ticks, memory self-tunes: access counts, Hebbian Living Connections (5-minute co-access), 24h value-score refresh, 7d compaction, 90/180-day retention — the layer that grounds every decision is never frozen
 
 ---
 
