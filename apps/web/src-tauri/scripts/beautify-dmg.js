@@ -244,13 +244,7 @@ function main() {
       // with no custom layout. Stop the build instead of emitting a broken
       // installer.
       console.error(
-        "[beautify-dmg] ERROR: Finder unavailable AND no .DS_Store template " +
-          "found at " +
-          DS_STORE_TEMPLATE +
-          ". The DMG would have NO custom layout. " +
-          "Generate the template on a Mac with a GUI and commit it:\n" +
-          "    node src-tauri/scripts/beautify-dmg.js\n" +
-          "    cp /Volumes/Alloomi/.DS_Store apps/web/src-tauri/resources/dmg_DS_Store",
+        `[beautify-dmg] ERROR: Finder unavailable AND no .DS_Store template found at ${DS_STORE_TEMPLATE}. The DMG would have NO custom layout. Generate the template on a Mac with a GUI and commit it:\n    node src-tauri/scripts/beautify-dmg.js\n    cp /Volumes/Alloomi/.DS_Store apps/web/src-tauri/resources/dmg_DS_Store`,
       );
       process.exit(1);
     }
@@ -481,8 +475,7 @@ function detachStaleVolume(volumeName) {
   }
   // Each attached volume shows a "/Volumes/<name>" mount-point line.
   const re = new RegExp(`(/Volumes/${escapeRegex(volumeName)}(?: \\d+)?)`, "g");
-  let m;
-  while ((m = re.exec(infos)) !== null) {
+  for (const m of infos.matchAll(re)) {
     const mp = m[1];
     try {
       execSync(`hdiutil detach "${mp}" -force`, { stdio: "ignore" });
@@ -511,8 +504,7 @@ function detach(mountPoint) {
     }
   }
   console.warn(
-    `[beautify-dmg] WARNING: could not detach "${mountPoint}" after retries ` +
-      "(it may already be gone). Run `hdiutil detach` manually if it persists.",
+    `[beautify-dmg] WARNING: could not detach "${mountPoint}" after retries (it may already be gone). Run \`hdiutil detach\` manually if it persists.`,
   );
 }
 
@@ -520,7 +512,7 @@ function dirSize(p) {
   // du -k reports size in KB. Guard against a non-numeric parse so we never
   // pass NaN into `hdiutil -size` (which would fail the whole build).
   try {
-    const kb = parseInt(
+    const kb = Number.parseInt(
       execSync(`du -sk "${p}"`, { stdio: ["pipe", "pipe", "ignore"] })
         .toString()
         .split(/\s+/)[0],
