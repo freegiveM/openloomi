@@ -8,7 +8,10 @@ import os from "node:os";
 // Tauri-related imports (dynamic loading, avoid server-side window errors)
 import { getDataDirectory } from "@/lib/tauri";
 import { isTauriMode } from "@/lib/env";
-import { getOrCreateShadowUser } from "@/lib/db/remote-user-queries";
+import {
+  getOrCreateShadowUser,
+  ensureLocalUser,
+} from "@/lib/db/remote-user-queries";
 import { APP_DIR_NAME } from "@/lib/env/config/constants";
 
 // ========== Core environment detection (distinguish client/server/Tauri) ==========
@@ -375,7 +378,22 @@ export function createTauriProductionAuthModule(): AuthModuleLike {
       },
     },
 
-    auth: async () => authStorage.getSession(),
+    auth: async () => {
+      const session = await authStorage.getSession();
+      if (session?.user?.id) {
+        // Safety net: make sure the local User table has a row for this
+        // session's user before any API route runs. Covers cases where the
+        // session was restored from file but the shadow user was never
+        // created (or was wiped). Failures here must not break auth —
+        // the route's own DB call will surface the real error.
+        try {
+          await ensureLocalUser(session);
+        } catch (error) {
+          console.error("[TauriAuth] Failed to ensure local user:", error);
+        }
+      }
+      return session;
+    },
 
     signIn: async (
       provider?: string,

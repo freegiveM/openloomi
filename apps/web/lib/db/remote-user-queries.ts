@@ -111,3 +111,37 @@ export async function getOrCreateShadowUser(
     throw error;
   }
 }
+
+/**
+ * Best-effort safety net: ensure the local User table has a row for the
+ * current session's user. Idempotent; no-op when the user already exists.
+ *
+ * This is meant to be called from the auth entrypoint (Tauri auth() wrapper)
+ * so that any subsequent DB write that has a FK to `User.id` won't fail with
+ * FOREIGN KEY constraint failed — even if the original sign-in flow never
+ * created the shadow user row (e.g., session was restored from file but the
+ * SQLite DB was reset, or the sign-in path skipped `getOrCreateShadowUser`).
+ */
+export async function ensureLocalUser(
+  session:
+    | {
+        user?: {
+          id?: string | null;
+          email?: string | null;
+          name?: string | null;
+          avatarUrl?: string | null;
+        } | null;
+      }
+    | null
+    | undefined,
+): Promise<void> {
+  const userId = session?.user?.id;
+  if (!userId) return;
+
+  await getOrCreateShadowUser({
+    id: userId,
+    email: session.user?.email ?? undefined,
+    name: session.user?.name ?? null,
+    avatarUrl: session.user?.avatarUrl ?? null,
+  });
+}

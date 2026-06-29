@@ -187,10 +187,18 @@ export function EmbeddingApiSettings() {
         method: "PUT",
         body: JSON.stringify(payload()),
       });
-      const data = (await response.json()) as {
+      const data = (await response.json().catch(() => ({}))) as {
         setting?: EmbeddingSetting;
+        code?: string;
+        message?: string;
+        cause?: string;
       };
-      if (!response.ok || !data.setting) throw new Error("save_failed");
+      if (!response.ok || !data.setting) {
+        // Surface the server-side cause so DevTools shows the real failure
+        // instead of an opaque "save_failed". Prefix HTTP status for context.
+        const reason = data.cause || data.message || data.code || "save_failed";
+        throw new Error(`HTTP ${response.status}: ${reason}`);
+      }
 
       setSetting(data.setting);
       setDraft((current) => ({ ...current, apiKey: "" }));
@@ -259,7 +267,16 @@ export function EmbeddingApiSettings() {
       const response = await fetchWithAuth("/api/preferences/embeddings", {
         method: "DELETE",
       });
-      if (!response.ok) throw new Error("reset_failed");
+      if (!response.ok) {
+        const data = (await response.json().catch(() => ({}))) as {
+          code?: string;
+          message?: string;
+          cause?: string;
+        };
+        const reason =
+          data.cause || data.message || data.code || "reset_failed";
+        throw new Error(`HTTP ${response.status}: ${reason}`);
+      }
 
       setSetting(null);
       setDraft(createDraft(null, defaults));

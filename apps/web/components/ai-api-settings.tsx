@@ -265,10 +265,21 @@ export function AiApiSettings() {
         method: "PUT",
         body: JSON.stringify(payload),
       });
-      const data = (await response.json()) as { setting?: AiSetting };
+      const data = (await response.json().catch(() => ({}))) as {
+        setting?: AiSetting;
+        code?: string;
+        message?: string;
+        cause?: string;
+      };
 
       if (!response.ok || !data.setting) {
-        throw new Error("save_failed");
+        // Surface the server-side cause when available so DevTools shows the
+        // real failure instead of an opaque "save_failed". For database
+        // surface errors the body only carries a generic message (cause is
+        // logged to stderr on the server) — we still prefix the HTTP status
+        // to make the failure class obvious.
+        const reason = data.cause || data.message || data.code || "save_failed";
+        throw new Error(`HTTP ${response.status}: ${reason}`);
       }
 
       const savedSetting = data.setting;
