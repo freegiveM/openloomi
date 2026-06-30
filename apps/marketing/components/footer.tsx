@@ -71,19 +71,19 @@ export function Footer({
   const downloadLinks = {
     macOS: {
       arm64:
-        "https://github.com/melandlabs/openloomi/releases/download/v0.6.1/openloomi_0.6.1_macOS_aarch64.dmg",
+        "https://github.com/melandlabs/openloomi/releases/download/v0.6.3/openloomi_0.6.3_macOS_aarch64.dmg",
       amd64:
-        "https://github.com/melandlabs/openloomi/releases/download/v0.6.1/openloomi_0.6.1_macOS_amd64.dmg",
+        "https://github.com/melandlabs/openloomi/releases/download/v0.6.3/openloomi_0.6.3_macOS_amd64.dmg",
     },
     linux: {
       amd64:
-        "https://github.com/melandlabs/openloomi/releases/download/v0.6.1/openloomi_0.6.1_linux_amd64.deb",
+        "https://github.com/melandlabs/openloomi/releases/download/v0.6.3/openloomi_0.6.3_linux_amd64.deb",
       arm64:
-        "https://github.com/melandlabs/openloomi/releases/download/v0.6.1/openloomi_0.6.1_linux_aarch64.deb",
+        "https://github.com/melandlabs/openloomi/releases/download/v0.6.3/openloomi_0.6.3_linux_aarch64.deb",
     },
     windows: {
       amd64:
-        "https://github.com/melandlabs/openloomi/releases/download/v0.6.1/openloomi_0.6.1_windows_amd64.exe",
+        "https://github.com/melandlabs/openloomi/releases/download/v0.6.3/openloomi_0.6.3_windows_amd64.exe",
       arm64: null,
     },
     github: "https://github.com/melandlabs/openloomi/releases",
