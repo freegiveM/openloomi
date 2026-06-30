@@ -685,7 +685,7 @@ function fmtDecision(d, idx = null) {
   if (memPieces.length) lines.push(`${ind}context: ${memPieces.join('  •  ')}`);
   else if (person == null && !memRefs.length) {
     // Hint that memory enrichment was skipped (lib-level tick)
-    lines.push(`${ind}context: (no memory refs — run \`loop tick\` for Claude to enrich)`);
+    lines.push(`${ind}context: (no memory refs — run \`loop tick\`)`);
   }
 
   // Suggested action

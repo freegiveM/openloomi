@@ -14,6 +14,7 @@ import { MobileBackButton } from "@/components/mobile-back-button";
 import { TelegramSelfListenerInit } from "@/components/telegram-self-listener-init";
 import { WhatsAppSelfListenerInit } from "@/components/whatsapp-self-listener-init";
 import { IMessageSelfListenerInit } from "@/components/imessage-self-listener-init";
+import { TokenSync } from "@/components/auth/token-sync";
 import {
   FeishuListenerInit,
   DingTalkListenerInit,
@@ -30,6 +31,7 @@ import { VoiceProvider } from "@/components/audio/voice-provider";
 // Lazy load initialization components - use Suspense boundaries to avoid blocking initial render
 const IntegrationInitComponents = memo(() => (
   <Suspense fallback={null}>
+    <TokenSync />
     <TelegramSelfListenerInit />
     <WhatsAppSelfListenerInit />
     <IMessageSelfListenerInit />

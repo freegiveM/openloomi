@@ -410,7 +410,7 @@ function fmtMemory(d){
     }
     return null;
   }).filter(Boolean);
-  if (!refs.length) return '<div class="card-mem" style="color:var(--text3)">(no memory refs — run `loop tick` for Claude to enrich)</div>';
+  if (!refs.length) return '<div class="card-mem" style="color:var(--text3)">(no memory refs — run `loop tick` to enrich)</div>';
   const items = refs.map(r => {
     if (r.kind === 'insight') {
       return `<span class="m" style="color:var(--pr);text-decoration-color:var(--pr)" data-insight="${escapeHTML(r.id)}">🧠 insight:${escapeHTML(r.id.slice(0,12))}…</span>`;
