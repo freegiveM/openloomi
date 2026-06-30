@@ -10,16 +10,16 @@ icon: "FaBrain"
 
 The average professional has 4 streams of inbound — Gmail, Calendar, GitHub, Slack — and no single place where "what should I do next" lives. You tab-switch all day, re-read the same thread three times, and miss the calendar RSVP until it's already started. Just as often, the real work isn't inbound at all — it's the half-formed thought on your walk, the screenshot of a deadline you noticed in passing, the article you bookmarked for later, the Slack thread someone pinged you about.
 
-OpenLoomi's **Proactive Execution Brain** (`openloomi-loop`) runs inside the desktop app, watches every channel in the background, enriches every new signal through your local memory, and turns each one into a typed decision card ready for a one-keystroke action — or, when you point it at messy input, a structured daily plan that checks back in.
+OpenLoomi's **Proactive Execution Brain** runs inside the desktop app, watches every channel in the background, enriches every new signal through your local memory, and turns each one into a typed decision card ready for a one-keystroke action — or, when you point it at messy input, a structured daily plan that checks back in.
 
 **What it does:**
 
-| Step            | Action                                                                                                                                                                                                |
-| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 👀 **Watch**    | Pulls new signals from Gmail, Calendar, GitHub, and Slack via Composio MCP and accepts voice memos, screenshots, links, pasted notes — every tick, in parallel                                        |
-| 🧠 **Enrich**   | Reads senders / organizers / repos through `openloomi-memory` so the card arrives with full context attached — and **writes back** new senders to `people/` and recurring event titles to `projects/` |
-| 🏷️ **Classify** | Maps each signal to a typed decision: `rsvp`, `draft_reply`, `review_pr`, `todo`, `slack_reply`                                                                                                       |
-| ✅ **Pick**     | Review the queue in OpenLoomi's Loop panel, the local web UI, or the REPL — one keystroke to execute                                                                                                  |
+| Step            | Action                                                                                                                                                                 |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 👀 **Watch**    | Pulls new signals from Gmail, Calendar, GitHub, and Slack via Composio MCP and accepts voice memos, screenshots, links, pasted notes — every tick, in parallel         |
+| 🧠 **Enrich**   | Looks up senders / organizers / repos in your memory so the card arrives with full context attached — and **remembers** new contacts and recurring projects as it goes |
+| 🏷️ **Classify** | Maps each signal to a typed decision: `rsvp`, `draft_reply`, `review_pr`, `todo`, `slack_reply`                                                                        |
+| ✅ **Pick**     | Review the queue in OpenLoomi's Loop panel, the local web UI, or the REPL — one keystroke to execute                                                                   |
 
 ---
 
@@ -29,13 +29,13 @@ OpenLoomi's **Proactive Execution Brain** (`openloomi-loop`) runs inside the des
 
 If you haven't seen it yet, the Loop is OpenLoomi's proactive execution brain — it lives inside the app and watches your tools 24/7. Ask OpenLoomi in chat to bring up the overview:
 
-![OpenLoomi explaining the openloomi-loop skill](/img/use-cases/proactive-decisions-what-is-loop.png)
+![OpenLoomi chat introducing the Proactive Execution Brain](/img/use-cases/proactive-decisions-what-is-loop.png)
 
 ---
 
 ### Decisions Land in the Web View
 
-Once started, the Loop writes new decisions to `~/.openloomi/skills/openloomi-loop/data/decisions.json`. New pending decisions arrive as a desktop notification (top-right) so you see them without opening the view:
+Once started, the Loop queues new decisions locally and surfaces them as desktop notifications (top-right) so you see them without opening the view:
 
 ![OpenLoomi Loop notification surfacing 8 new decisions](/img/use-cases/proactive-decisions-notification.png)
 
@@ -43,7 +43,7 @@ Open the Web View at `http://127.0.0.1:3614/` and the Loop surfaces them as card
 
 ![OpenLoomi Loop web UI — Queue view (PENDING / DONE / DISMISSED kanban)](/img/use-cases/proactive-decisions-kanban.png)
 
-The detail panel slides in from the right with the suggested action (e.g. `calendar_rsvp` with `response: "accepted"`) and four explicit buttons — **▶ RUN** spawns the Claude session with the decision prompt, **DRY RUN** previews the prompt without executing, **✓ MARK DONE** records it as handled, **✕ DISMISS** drops it. Nothing fires automatically; you always pick the action.
+The detail panel slides in from the right with the suggested action (e.g. `calendar_rsvp` with `response: "accepted"`) and four explicit buttons — **▶ RUN** carries out the action, **DRY RUN** previews what would happen, **✓ MARK DONE** records it as handled, **✕ DISMISS** drops it. Nothing fires automatically; you always pick the action.
 
 ![OpenLoomi Loop Kanban with action buttons](/img/use-cases/proactive-decisions-kanban-actions.png)
 
@@ -55,7 +55,7 @@ The Loop is a scheduled task that ticks every 10 minutes by default. Every tick 
 
 ```text
 tick 1  →  Pull (Composio MCP)  →  4 gmail + 1 calendar + 2 PRs + 1 slack
-       →  Enrich (openloomi-memory)  →  sender / org / repo lookup
+       →  Enrich  →  sender / org / repo lookup against your memory
        →  Filter hard rules  →  noreply@*, Gmail Promotions, already-replied
        →  Classify  →  rsvp ×1 · draft_reply ×2 · review_pr ×1 · slack_reply ×1
        →  Queue  →  data/decisions.json (pending bucket)
@@ -85,52 +85,43 @@ The Loop never surfaces raw emails or PRs — every signal becomes a typed decis
 
 ---
 
-### A Mind That Reads, Writes, and Evolves With You
+### A Memory Layer That Reads, Writes, and Evolves With You
 
-`openloomi-memory` isn't a static context dump the Loop reads at the start. It's a living layer the Loop co-writes with you across three phases, so every decision arrives enriched by what's been learned before and writes back what's learned now.
+The Loop's memory isn't a static profile you set up once and forget. It's a living layer the Loop co-writes with you across three phases, so every decision arrives enriched by what's been learned before — and writes back what was learned now.
 
-**1. Watch + Remember — the tick reads AND writes**
+**1. Watch + Remember**
 
 Every tick enriches first, then remembers what was just learned:
 
-- **Read** — `search-all`, `search-memory --directory=people`, `list-entities --type=person`, `list-insights --channel=<gmail|slack|…>`
-- **Remember** — brand-new senders get written to `~/.openloomi/data/memory/people/<email>.md`; recurring calendar event titles become project notes under `~/.openloomi/data/memory/projects/`
+- Looks up senders, organizers, and repos you've worked with before
+- Notes brand-new contacts so they show up by name next time
+- Captures recurring calendar event titles as ongoing projects
 
-The tick itself is **strictly read/derive against external tools** (Gmail, Calendar, GitHub, Slack) — but writing to your own memory is fair game. After a few weeks the Loop has quietly built a contact and project graph you never had to maintain by hand.
+After a few weeks, the Loop has quietly built a contact and project graph you never had to maintain by hand.
 
-**2. Execute + Writeback — the action session re-enters memory**
+**2. Execute + Remember**
 
-When you pick a card, the spawned `claude -p` session runs with the full memory context baked into the prompt. As it does the work, **any new people or insights it discovers are immediately written back via `openloomi-memory`**, so the next tick — and the next decision — already know about them.
+When you pick a card, the Loop carries out the action with the full memory context already loaded. **Any new people or insights the action uncovers are remembered immediately**, so the next decision already knows about them — and the one after that.
 
-```text
-$ loop run dec_a1b2c3d4
-✓ opened session with full memory context
-  … claude reads people/sarah_chen.md, projects/q2_roadmap.md …
-  … drafts reply and sends via GMAIL_SEND_EMAIL …
-  → new person detected (Jamie from design team)
-  → openloomi-memory add-memory "Jamie prefers Loom for async reviews"
-  ✓ decision moved to done (memory already updated for the next tick)
-```
+**3. Self-Evolve**
 
-**3. Self-Evolve — memory tunes itself between ticks**
+Between ticks, your memory layer tunes itself:
 
-Memory doesn't wait for the Loop to update it. Between ticks it self-tunes:
+- **📊 Hot context stays hot** — frequently used notes surface first
+- **🧬 Living connections** — notes accessed close together strengthen their link over time, and fade apart if you stop using them
+- **🔄 Daily refresh (24h)** — recalculates what's still relevant and what's drifting
+- **🧹 Weekly tidy (7d)** — merges similar notes, archives low-value ones
+- **📉 Gentle retention** — long-unused notes fade out so the layer never gets cluttered
 
-- **📊 Usage tracking** — every read increments `accessCountTotal / 7d / 30d` and `lastAccessedAt`, so hot context stays hot
-- **🧬 Living Connections (Hebbian Potentiation)** — insights accessed within 5 minutes of each other strengthen their link; strength decays on an Ebbinghaus forgetting curve
-- **🔄 Daily analytics refresh (24h)** — recalculates trend + `valueScore` so stale-but-frequently-cited content still surfaces
-- **🧹 Weekly compaction (7d)** — merges similar insights, archives low-value or falling-trend entries
-- **📉 Retention policy** — 90 days no-access + low score + non-important → soft delete; 180 days → hard delete
-
-The result: every decision the Loop surfaces arrives enriched by a memory layer that's **read on entry, written on exit, and self-evolving in between** — never a static snapshot.
+The result: every decision the Loop surfaces arrives enriched by a memory layer that's **read before, written after, and self-evolving in between** — never a static snapshot.
 
 ---
 
 ### One-Click Execution
 
-Pick a card and the Loop spawns a fresh Claude session with the full context — sender memory, project notes, the original signal, and the suggested action — all baked into the prompt. OpenLoomi captures the result and moves the card to `done` with the action recorded.
+Pick a card and the Loop carries out the action with the full context — sender memory, project notes, the original signal, and the suggested action — all loaded in. OpenLoomi captures the result and moves the card to `done` with the action recorded.
 
-The executing session also **writes back any new people or insights it discovers** via `openloomi-memory`, so the next tick already knows about them. The memory layer never goes cold between decisions — it grows every time you act.
+The executing session also **remembers any new people or insights it discovers**, so the next tick already knows about them. The memory layer never goes cold between decisions — it grows every time you act.
 
 ---
 
@@ -150,7 +141,7 @@ The executing session also **writes back any new people or insights it discovers
 
 ### Step 1: Configure your API keys in OpenLoomi
 
-> **Prerequisite:** Before this step, finish the AI Configuration in [Getting Started → AI Configuration](/docs/getting-started#ai-configuration) — the OpenLoomi app needs your AI provider's `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`, and `ANTHROPIC_MODEL` set in `~/.claude/settings.json` (or via the on-screen **Settings → API Settings** panel). The Loop builds on top of that foundation.
+> **Prerequisite:** Before this step, finish [Getting Started → AI Configuration](/docs/getting-started#ai-configuration). The Loop runs on top of OpenLoomi's AI provider — one setup powers both the chat and the Loop.
 
 Both keys live in **Settings → API Settings**. OpenLoomi uses them in tandem — one for the local server, one for the Composio MCP toolkit the Loop calls into.
 
@@ -217,7 +208,7 @@ The Loop is a **continuously running execution brain** — it needs a scheduled 
 ```
 Start the openloomi-loop proactive execution brain.
 Run a tick every 10 minutes so new signals from Gmail / Calendar / GitHub / Slack
-get pulled, enriched via openloomi-memory, classified into typed decisions
+get pulled, enriched through your memory, classified into typed decisions
 (rsvp / draft_reply / review_pr / todo / slack_reply), and queued in the Loop panel.
 ```
 
@@ -225,37 +216,19 @@ OpenLoomi handles the rest — it creates the scheduled task, registers it in **
 
 ---
 
-**Optional — terminal control (headless server / CI / debugging)**
-
-If you want to drive the Loop yourself instead of letting OpenLoomi manage it, the bundled helper starts both the schedule and the local web UI:
-
-```bash
-cd ~/.openloomi/skills/openloomi-loop
-./loop-ctl.sh start
-#   ✓ schedule started (pid=…, interval=600s)
-#   ✓ web started (pid=…, http://127.0.0.1:3614/)
-
-./loop-ctl.sh status           # confirm both schedule and web are alive
-open http://127.0.0.1:3614/    # Ink & Circuit UI — Q / T / A views
-```
-
-The web UI binds `127.0.0.1:3614`. Override the defaults with `PORT=4000 INTERVAL=300 ./loop-ctl.sh start` when you need a faster demo.
-
----
-
 ### Step 4: Browse the decision queue
 
 Three ways to inspect what the Loop has queued:
 
-| Surface                  | URL / Command                      | Best for                                     |
-| ------------------------ | ---------------------------------- | -------------------------------------------- |
-| **OpenLoomi Loop panel** | Sidebar → **Loop**                 | Picking cards in-app with full context       |
-| **Web UI (local)**       | `http://127.0.0.1:3614/`           | Kanban + timeline + activity views, REST API |
-| **CLI inbox**            | `loop inbox` / `loop inbox --pick` | Terminal-first workflows, arrow-key picker   |
+| Surface                  | Where                      | Best for                                   |
+| ------------------------ | -------------------------- | ------------------------------------------ |
+| **OpenLoomi Loop panel** | Sidebar → **Loop**         | Picking cards in-app with full context     |
+| **Web view**             | OpenLoomi's local web view | Kanban + timeline + activity views         |
+| **CLI inbox**            | The Loop's terminal picker | Terminal-first workflows, arrow-key picker |
 
-Each card carries the memory refs that explain why it surfaced — click any **🧠 memory_refs** entry to inline-load the person / project / insight note. Screenshots of the web UI's Queue view and the four action buttons on every card live in [See It in Action](#see-it-in-action) — this step stays focused on setup.
+Each card carries the memory refs that explain why it surfaced — click any **🧠 memory_refs** entry to inline-load the person / project / insight note. Screenshots of the web view's Queue tab and the four action buttons on every card live in [See It in Action](#see-it-in-action) — this step stays focused on setup.
 
-> **🔧 Extensible by design.** The four typed actions above (`rsvp`, `draft_reply`, `review_pr`, `slack_reply`) are just the defaults — `openloomi-loop` is a normal skill directory at `~/.openloomi/skills/openloomi-loop/`, so you can iterate on it like any other OpenLoomi skill. Add new decision types, swap in custom classifiers, point at additional toolkits (`composio add linear`, `composio add notion`, `composio add jira`, …), or teach the Loop to handle a brand-new channel by editing the skill's classify / enrich code and reloading. Ask OpenLoomi in chat to evolve it — _"extend openloomi-loop to also classify Linear issues into `linear_review` decisions"_ — and it handles the edit + reload for you.
+> **🔧 Extensible by design.** The four typed actions above (`rsvp`, `draft_reply`, `review_pr`, `slack_reply`) are just the defaults — `openloomi-loop` is a normal OpenLoomi skill, so you can iterate on it like any other. Add new decision types, swap in custom classifiers, point at additional toolkits (`composio add linear`, `composio add notion`, `composio add jira`, …), or teach the Loop to handle a brand-new channel by editing the skill's classify / enrich code and reloading. Ask OpenLoomi in chat to evolve it — _"extend openloomi-loop to also classify Linear issues into `linear_review` decisions"_ — and it handles the edit + reload for you.
 
 ---
 
@@ -271,24 +244,23 @@ Each card carries the memory refs that explain why it surfaced — click any **�
 
 - The Loop ticks every 10 minutes by default; you only open the panel when there is something to do
 - Watch timers run independently — a hung tick never blocks notifications on new decisions
-- Nothing fires automatically; execution is always an explicit `▶ RUN` click or a `loop run <id>` command
+- Nothing fires automatically; execution is always an explicit `▶ RUN` click on the card
 
 **🔄 Graceful Degradation**
 
-- Missing Composio toolkit → falls back to `openloomi-memory list-insights` for that channel
-- Missing memory → the lib-level `loop analyze` + `data/inbox/` drop folder still produce typed decisions
+- Missing Composio toolkit → falls back to your memory layer for that channel's last-known insights
+- A lighter memory state → the Loop still produces typed decisions from raw signals alone
 - Queue never goes silent; the Loop works on day one with zero toolkits connected
 
 **🌱 Self-Evolving Memory**
 
-- Loop reads (`search-all` / `search-memory` / `list-entities` / `list-insights`) and writes (`add-memory` for new senders + projects, `add-insight` for new discoveries) through `openloomi-memory` in the same tick
-- Executing a decision spawns a fresh Claude session that **writes back** any new people or insights it encounters, so the next tick already knows about them
-- Between ticks, memory self-tunes: access counts, Hebbian Living Connections (5-minute co-access), 24h value-score refresh, 7d compaction, 90/180-day retention — the layer that grounds every decision is never frozen
+- Loop reads and writes your memory layer in the same tick — new senders, projects, and insights all land as soon as they're discovered
+- Executing a decision carries out the action and **writes back** any new people or insights it uncovers, so the next tick already knows about them
+- Between ticks, your memory self-tunes: hot context stays hot, related notes strengthen their links, a daily refresh recalculates relevance, weekly compaction trims the noise — the layer that grounds every decision is never frozen
 
 ---
 
 ## See Also
 
-For the full reference — every CLI flag, the lib-level `analyze` / `route` / `notify` APIs, the JSON schema for `decisions.json`, classifier prompt templates, the `loop-ctl.sh` lifecycle, and how to extend the Loop with new decision types and toolkits — see the source-of-truth spec:
-
-**[`openloomi-loop/SKILL.md` on GitHub](https://github.com/melandlabs/openloomi/blob/main/skills/openloomi-loop/SKILL.md)**
+- [OpenLoomi Quickstart](/docs/getting-started) — set up the app, connect AI, and meet the Loop
+- [OpenLoomi Connectors](/docs/connectors) — OAuth guide for each tool the Loop watches
