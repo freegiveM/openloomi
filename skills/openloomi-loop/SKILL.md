@@ -3,7 +3,7 @@ name: openloomi-loop
 description: "Use this when the user asks about openloomi's Loop — openloomi's proactive execution brain. It actively and continuously pulls external signals (Gmail, Calendar, GitHub, Slack) via any of three Composio surfaces — **MCP** (`mcp__composio__*`), the **`composio-cli` skill**, or the **`composio` CLI** — enriches them through openloomi-memory, **converts every actionable signal into a typed decision** (`rsvp` / `draft_reply` / `review_pr` / `todo` / `slack_reply` / …), queues it in `data/decisions.json`, and **executes via the openloomi native agent API by default** (`POST http://127.0.0.1:3414/api/native/agent`, the same agentic endpoint the locomo benchmark uses — supports tool use, memory writes, multi-round reasoning; no agent install needed) — with a pluggable spawned-CLI fallback (`claude -p` / `codex` / `aider` / anything via `LOOP_AGENT_BIN`). Triggers: 'openloomi loop', 'loop tick', 'loop schedule', 'loop inbox', 'loop run', 'proactive decisions', 'signal → decision → execute', 'pull signals', 'decision queue', 'loop serve'"
 allowed-tools: Bash(node $SKILL_DIR/scripts/openloomi-loop.cjs *), Bash(node $SKILL_DIR/scripts/loop-tick.cjs *), Bash(node ../../openloomi-memory/scripts/openloomi-memory.cjs *), Bash(curl *), Bash(claude *), Bash(codex *), Bash(aider *), Bash(tail -f $SKILL_DIR/data/daemon.log), Bash(cat >> $SKILL_DIR/data/signals.jsonl), Bash(echo *), Bash(ls *)
 metadata:
-  version: 0.6.3
+  version: 0.6.4
 ---
 
 > **Note:** If you haven't downloaded or installed openloomi yet, please refer to [Getting Started](https://openloomi.ai/docs/getting-started) for installation instructions.
