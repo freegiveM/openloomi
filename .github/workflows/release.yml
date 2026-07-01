@@ -3,24 +3,24 @@ name: Release CI
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
   workflow_dispatch:
     inputs:
       commit_sha:
-        description: 'Specific commit SHA to build (optional)'
+        description: "Specific commit SHA to build (optional)"
         required: false
         type: string
 
 env:
-  NODE_VERSION: '22.14'
-  RUST_VERSION: '1.93'
+  NODE_VERSION: "22.14"
+  RUST_VERSION: "1.93"
 
 jobs:
   # ─── macOS ARM64 CI ─────────────────────────────────────────────────────────
   release-macos-arm64:
     runs-on: macos-14
     env:
-      SKIP_SIGNING: 'false'
+      SKIP_SIGNING: "false"
     steps:
       - name: Checkout openloomi source code
         uses: actions/checkout@v4
@@ -49,7 +49,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: "3.12"
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -135,7 +135,11 @@ jobs:
           APPLE_CERTIFICATE_PASSWORD: "${{ secrets.ED_APPLE_CERTIFICATE_PASSWORD }}"
           APPLE_SIGNING_IDENTITY: "${{ secrets.ED_APPLE_SIGNING_IDENTITY }}"
           SIGNING_IDENTITY: "${{ secrets.ED_APPLE_SIGNING_IDENTITY }}"
-          SKIP_SIGNING: 'false'
+          SKIP_SIGNING: "false"
+
+      - name: Verify bundled CLI (macOS ARM64)
+        working-directory: ./apps/web
+        run: node scripts/check-cli-bundled.js src-tauri/target/release/bundle/macos/openloomi.app --platform macos
 
       - name: Sign app bundle with Developer ID
         if: env.SKIP_SIGNING != 'true'
@@ -253,7 +257,7 @@ jobs:
   release-macos-intel:
     runs-on: macos-15-intel
     env:
-      SKIP_SIGNING: 'false'
+      SKIP_SIGNING: "false"
     steps:
       - name: Checkout openloomi source code
         uses: actions/checkout@v4
@@ -282,7 +286,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: "3.12"
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -377,7 +381,11 @@ jobs:
           APPLE_CERTIFICATE_PASSWORD: "${{ secrets.ED_APPLE_CERTIFICATE_PASSWORD }}"
           APPLE_SIGNING_IDENTITY: "${{ secrets.ED_APPLE_SIGNING_IDENTITY }}"
           SIGNING_IDENTITY: "${{ secrets.ED_APPLE_SIGNING_IDENTITY }}"
-          SKIP_SIGNING: 'false'
+          SKIP_SIGNING: "false"
+
+      - name: Verify bundled CLI (macOS x64)
+        working-directory: ./apps/web
+        run: node scripts/check-cli-bundled.js src-tauri/target/release/bundle/macos/openloomi.app --platform macos
 
       - name: Sign app bundle with Developer ID
         if: env.SKIP_SIGNING != 'true'
@@ -522,7 +530,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: "3.12"
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -605,6 +613,10 @@ jobs:
         working-directory: ./apps/web
         run: pnpm tauri:build
 
+      - name: Verify bundled CLI in Linux package
+        working-directory: ./apps/web
+        run: node scripts/check-cli-bundled.js "$(ls src-tauri/target/release/bundle/deb/*.deb | head -1)" --platform linux
+
       - name: Upload Linux AMD64 packages
         uses: actions/upload-artifact@v4
         with:
@@ -645,7 +657,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: "3.12"
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -726,6 +738,43 @@ jobs:
           RUSTUP_WINDOWS_PATH: 1
           TAURI_BUNDLE_TARGET: nsis
 
+      - name: Verify bundled CLI in Windows installer
+        working-directory: ./apps/web
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem src-tauri\target\release\bundle\nsis\*.exe | Select-Object -First 1
+          if (-not $installer) {
+            throw "NSIS installer not found"
+          }
+
+          $extract = Join-Path $env:RUNNER_TEMP "openloomi-nsis"
+          Remove-Item -Recurse -Force $extract -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force $extract | Out-Null
+
+          $sevenZipCandidates = @()
+          if ($env:ProgramFiles) {
+            $sevenZipCandidates += Join-Path $env:ProgramFiles "7-Zip\7z.exe"
+          }
+          if (${env:ProgramFiles(x86)}) {
+            $sevenZipCandidates += Join-Path ${env:ProgramFiles(x86)} "7-Zip\7z.exe"
+          }
+          $pathSevenZip = Get-Command 7z -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source -First 1
+          if ($pathSevenZip) {
+            $sevenZipCandidates += $pathSevenZip
+          }
+          $sevenZip = $sevenZipCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+          $sevenZip = $sevenZipCandidates | Select-Object -First 1
+          if (-not $sevenZip) {
+            throw "7-Zip is required to verify NSIS installer contents"
+          }
+
+          & $sevenZip x $installer.FullName "-o$extract" -y
+          if ($LASTEXITCODE -ne 0) {
+            throw "Failed to extract NSIS installer with 7-Zip"
+          }
+
+          node scripts/check-cli-bundled.js $extract --platform windows
+
       - name: Upload Windows NSIS installer
         uses: actions/upload-artifact@v4
         with:
@@ -763,7 +812,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: "3.12"
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -841,6 +890,10 @@ jobs:
         working-directory: ./apps/web
         run: pnpm tauri:build
 
+      - name: Verify bundled CLI in Linux ARM64 package
+        working-directory: ./apps/web
+        run: node scripts/check-cli-bundled.js "$(ls src-tauri/target/release/bundle/deb/*.deb | head -1)" --platform linux
+
       - name: Upload Linux ARM64 packages
         uses: actions/upload-artifact@v4
         with:
@@ -851,7 +904,15 @@ jobs:
 
   # ─── Create Release ─────────────────────────────────────────────────────────
   create-release:
-    needs: [release-macos-arm64, release-macos-intel, release-linux-amd64, release-windows, release-linux-arm64]
+    if: github.event_name != 'workflow_dispatch'
+    needs:
+      [
+        release-macos-arm64,
+        release-macos-intel,
+        release-linux-amd64,
+        release-windows,
+        release-linux-arm64,
+      ]
     runs-on: ubuntu-22.04
     permissions:
       contents: write
@@ -907,6 +968,7 @@ jobs:
 
   # ─── Update Homebrew Cask ────────────────────────────────────────────────────
   update-homebrew-cask:
+    if: github.event_name != 'workflow_dispatch'
     needs: [create-release]
     runs-on: ubuntu-latest
     permissions:
