@@ -17,22 +17,47 @@
         "minWidth": 450,
         "minHeight": 600,
         "dragDropEnabled": false,
-        "url": "http://localhost:3515"
+        "url": "http://localhost:3515",
+        "visible": false,
+        "focus": false
+      },
+      {
+        "label": "loomi-pet",
+        "title": "Loomi",
+        "url": "loomi-widget.html",
+        "width": 168,
+        "height": 168,
+        "minWidth": 168,
+        "minHeight": 168,
+        "maxWidth": 168,
+        "maxHeight": 168,
+        "resizable": false,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "shadow": false,
+        "visible": true,
+        "focus": false,
+        "dragDropEnabled": false
       }
     ],
     "security": {
-      "csp": null
+      "csp": null,
+      "capabilities": ["default", "loomi-pet"]
     }
   },
   "bundle": {
     "active": true,
     "targets": "all",
     "icon": [
-      "icons/32x32.png",
-      "icons/128x128.png",
-      "icons/128x128@2x.png",
+      "icons/icon.iconset/icon_512x512@2x.png",
+      "icons/icon.iconset/icon_256x256.png",
+      "icons/icon.iconset/icon_128x128.png",
       "icons/icon.icns",
-      "icons/icon.ico"
+      "icons/icon.ico",
+      "icons/128x128.png",
+      "icons/32x32.png"
     ],
     "category": "Productivity",
     "shortDescription": "openloomi AI Assistant",
