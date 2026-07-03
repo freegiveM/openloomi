@@ -4,7 +4,7 @@
 // flows (tray "Quit", Cmd+Q, explicit exit) funnel through here, so cleanup
 // steps have exactly one place to live.
 
-use crate::{js_scheduler, node};
+use crate::{js_scheduler, node, pet};
 use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::AppHandle;
 
@@ -51,6 +51,14 @@ pub fn run_cleanup() {
         .is_ok()
     {
         println!("📴 Shutting down background services...");
+
+        // Close the pet webview *before* killing Node: the pet's
+        // bundled HTML can issue `invoke()` calls on close, and we
+        // don't want it racing a sidecar that's about to die. The pet
+        // has no persistent state on the Tauri side (positions live
+        // in its own localStorage), so a hard close is safe here.
+        println!("📴 Closing Loomi pet window...");
+        pet::close_pet_for_exit_if_open();
 
         println!("📴 Stopping scheduler...");
         js_scheduler::stop_js_scheduler();

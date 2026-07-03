@@ -68,6 +68,13 @@ pub fn execute(app: &AppHandle, window: &WebviewWindow, action: CloseAction) {
             if let Err(e) = window.hide() {
                 eprintln!("⚠️  Failed to hide window: {}", e);
             }
+            // Re-sync the macOS Dock icon now that main is hidden. If the
+            // pet is still on screen we want Accessory (no Dock icon),
+            // otherwise we fall back to Regular so the user can relaunch
+            // via the Dock. This complements the deferred sync that fires
+            // on the show path: without it, closing main would leave the
+            // Dock stuck on Regular even though only the pet is visible.
+            crate::pet::sync_dock_policy(app);
         }
         CloseAction::Quit => {
             // Just signal exit; the real cleanup runs once in the

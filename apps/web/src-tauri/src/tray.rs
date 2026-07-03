@@ -18,8 +18,10 @@ use tauri::{
 /// Build and register the system tray icon and its menu.
 pub fn build_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
     let show = MenuItem::with_id(app, "tray-show", "Show openloomi", true, None::<&str>)?;
+    let show_loomi = MenuItem::with_id(app, "tray-show-loomi", "Show Loomi", true, None::<&str>)?;
+    let hide_loomi = MenuItem::with_id(app, "tray-hide-loomi", "Hide Loomi", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "tray-quit", "Quit openloomi", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&show, &quit])?;
+    let menu = Menu::with_items(app, &[&show, &show_loomi, &hide_loomi, &quit])?;
 
     let icon = app
         .default_window_icon()
@@ -33,6 +35,14 @@ pub fn build_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id().as_ref() {
             "tray-show" => show_main_window(app),
+            "tray-show-loomi" => {
+                crate::pet::show_pet_window(app);
+                crate::pet::sync_dock_policy(app);
+            }
+            "tray-hide-loomi" => {
+                crate::pet::hide_pet_window(app);
+                crate::pet::sync_dock_policy(app);
+            }
             "tray-quit" => lifecycle::request_exit(app),
             _ => {}
         })
@@ -57,7 +67,10 @@ pub fn build_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
 }
 
 /// Bring the main window back to the foreground.
-fn show_main_window(app: &tauri::AppHandle) {
+///
+/// `pub` so the pet can ask us to do this from its own
+/// `pet:open-dashboard` event without going through a second `#[command]`.
+pub fn show_main_window(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.unminimize();
         let _ = window.show();

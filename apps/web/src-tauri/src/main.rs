@@ -17,6 +17,7 @@ mod menu;
 mod node;
 mod notify;
 mod panic_guard;
+mod pet;
 mod render_runtime;
 mod runtime_components;
 mod storage;
@@ -447,6 +448,64 @@ fn main() {
                 );
             }
 
+            // Build the Loomi desktop pet window. The pet is the
+            // always-resident entry point — it shows on first launch
+            // (visible: true in tauri.conf.json). A failure here is
+            // non-fatal: the rest of the app is still useful without
+            // the pet.
+            if let Err(e) = pet::build_pet_window(&app_handle) {
+                eprintln!("⚠️  Warning: Failed to build Loomi pet window: {}", e);
+            }
+
+            // Defensively hide the main window even though the config
+            // already sets `visible: false`. On some macOS builds the
+            // config alone is not enough — Tauri shows the window when
+            // it finishes mounting the webview, regardless of the
+            // initial flag. Hiding here is idempotent and cheap, so we
+            // re-assert the intent every cold boot. The pet is the
+            // always-visible entry point; the main stays hidden until
+            // the user (or `pet:open-dashboard`) asks for it.
+            if let Some(main_window) = app.get_webview_window("main") {
+                let _ = main_window.hide();
+            }
+
+            // Make sure the pet is on screen and on top. `build_pet_window`
+            // already sets `visible(true)` on the builder, but
+            // re-applying `show_pet_window` is a cheap way to also
+            // re-assert alwaysOnTop and focus order in case the OS
+            // demoted the window during cold boot.
+            pet::show_pet_window(&app_handle);
+
+            // Sync the macOS Dock policy to the new visibility: the
+            // main window is hidden by default and the pet is up, so
+            // the app should run as an `Accessory` (no Dock icon).
+            pet::sync_dock_policy(&app_handle);
+
+            // Watch the loop skill's decisions.json on a background
+            // thread and push state transitions into the pet window.
+            // Cheap mtime poll — no extra deps, easy to reason about.
+            pet::spawn_decision_watcher(app_handle.clone());
+
+            // Pet can ask the host to surface the main dashboard. We
+            // listen globally (not on a single webview) so the pet is
+            // not required to re-emit when its own webview is rebuilt.
+            let pet_to_main = app_handle.clone();
+            app_handle.listen("pet:open-dashboard", move |_event| {
+                tray::show_main_window(&pet_to_main);
+                // Defer the dock sync by a tick. `sync_dock_policy` reads
+                // `is_visible()` to decide between Regular and Accessory;
+                // on macOS that flag lags one frame after `.show()`
+                // returns, so syncing immediately would observe stale
+                // `false`, pick Accessory (no Dock icon), and then never
+                // re-evaluate. A short background-thread sleep lets the
+                // NSWindow settle before we ask the OS about its state.
+                let app_for_deferred = pet_to_main.clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_millis(80));
+                    pet::sync_dock_policy(&app_for_deferred);
+                });
+            });
+
             Ok(())
         })
         .build(tauri::generate_context!())
@@ -461,6 +520,11 @@ fn main() {
             } = event
             {
                 tray::handle_reopen(app_handle, has_visible_windows);
+                // Sync Dock visibility with whichever window is now in
+                // front: if the main is showing, become a regular app;
+                // if only the pet is showing, demote to Accessory so the
+                // Dock reflects the lighter footprint.
+                pet::sync_dock_policy(app_handle);
             }
 
             // Single funnel point for real shutdown: any exit path (Cmd+Q,
@@ -480,6 +544,13 @@ fn main() {
                 api.prevent_exit();
                 let app_handle = app_handle.clone();
                 std::thread::spawn(move || {
+                    // Close the pet *before* tearing down the Node sidecar
+                    // so the pet's webview doesn't try to talk to a dead
+                    // backend on the way out. `lifecycle::run_cleanup`
+                    // does the same on its own end via
+                    // `pet::close_pet_for_exit`, but doing it here is
+                    // a no-op safety net if cleanup order ever changes.
+                    pet::close_pet_for_exit(&app_handle);
                     lifecycle::run_cleanup();
                     // Re-issue exit; this next ExitRequested sees cleanup_done()
                     // == true and lets the process exit.
