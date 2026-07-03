@@ -1088,6 +1088,61 @@ pub fn get_host_os() -> Result<String, String> {
 // ============ Screen Capture (Chronicle) ============
 
 #[cfg(target_os = "macos")]
+/// Retry an xcap `capture_image()` a few times before giving up.
+///
+/// The macOS Window Server occasionally fails `CGDataProviderCopyData`
+/// with errors like "Failed to copy data" while a window is mid-animation,
+/// mid-focus-change, or being created/torn down. These are transient — a
+/// short sleep almost always lets the Window Server reconcile. Without
+/// retry, the user sees an intermittent "capture failed" toast right at
+/// the moment they pressed the shortcut.
+///
+/// We deliberately don't re-enumerate windows between attempts (focus can
+/// shift even more during the backoff, making a fresh query not strictly
+/// safer); the Window Server's reconcile is a CG-side concern, not a
+/// listing-side one. Backoff is 60 / 120 ms — total worst-case ~180 ms,
+/// acceptable since this already runs on `spawn_blocking`.
+///
+/// Identify attempts in logs so we can tell after the fact whether retries
+/// are actually fixing the issue or we need to switch strategy (e.g.
+/// re-querying focus, or skipping capture entirely).
+fn capture_image_with_retry<F>(mut capture: F) -> Result<image::RgbaImage, String>
+where
+    F: FnMut() -> Result<image::RgbaImage, String>,
+{
+    use std::time::Duration;
+    const MAX_ATTEMPTS: u32 = 3;
+    let mut last_err: Option<String> = None;
+    for attempt in 1..=MAX_ATTEMPTS {
+        match capture() {
+            Ok(img) => {
+                if attempt > 1 {
+                    log::info!(
+                        "[Chronicle] capture_image recovered on attempt {}/{}",
+                        attempt,
+                        MAX_ATTEMPTS
+                    );
+                }
+                return Ok(img);
+            }
+            Err(e) => {
+                log::warn!(
+                    "[Chronicle] capture_image attempt {}/{} failed: {}",
+                    attempt,
+                    MAX_ATTEMPTS,
+                    e
+                );
+                last_err = Some(e);
+                if attempt < MAX_ATTEMPTS {
+                    std::thread::sleep(Duration::from_millis(60 * attempt as u64));
+                }
+            }
+        }
+    }
+    Err(last_err.unwrap_or_else(|| "Unknown capture failure".to_string()))
+}
+
+#[cfg(target_os = "macos")]
 /// Capture the currently focused (frontmost) window and return its PNG bytes.
 ///
 /// Strategy:
@@ -1141,9 +1196,11 @@ fn capture_screen_impl() -> Result<Vec<u8>, String> {
                 window.app_name().ok(),
                 window.title().ok()
             );
-            let img = window
-                .capture_image()
-                .map_err(|e| format!("Failed to capture window: {e}"))?;
+            let img = capture_image_with_retry(|| {
+                window
+                    .capture_image()
+                    .map_err(|e| format!("Failed to capture window: {e}"))
+            })?;
 
             // Heuristic (H1): on macOS, CGWindowList sometimes returns an
             // icon-sized placeholder for GPU-accelerated / off-screen /
@@ -1161,9 +1218,11 @@ fn capture_screen_impl() -> Result<Vec<u8>, String> {
                 let monitor = window
                     .current_monitor()
                     .map_err(|e| format!("Failed to resolve window's monitor: {e}"))?;
-                monitor
-                    .capture_image()
-                    .map_err(|e| format!("Failed to capture monitor: {e}"))?
+                capture_image_with_retry(|| {
+                    monitor
+                        .capture_image()
+                        .map_err(|e| format!("Failed to capture monitor: {e}"))
+                })?
             } else {
                 img
             }
@@ -1178,9 +1237,11 @@ fn capture_screen_impl() -> Result<Vec<u8>, String> {
                 .find(|m| m.is_primary().unwrap_or(false))
                 .or_else(|| Monitor::from_point(0, 0).ok())
                 .ok_or_else(|| "No monitor available for fallback capture".to_string())?;
-            primary
-                .capture_image()
-                .map_err(|e| format!("Failed to capture monitor: {e}"))?
+            capture_image_with_retry(|| {
+                primary
+                    .capture_image()
+                    .map_err(|e| format!("Failed to capture monitor: {e}"))
+            })?
         }
     };
 
