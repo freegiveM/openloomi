@@ -1,0 +1,384 @@
+<!doctype html>
+<!--
+  Loomi · the pet widget
+
+  Minimal frameless pet. No deck, no monologue panel, no tray — just a
+  draggable fox on the desktop that:
+    · listens to `loop:state` events from the Tauri host and swaps the
+      displayed fox image to match the current state
+    · uses the native Tauri `startDragging()` API so the whole 168×168
+      window follows the pointer (not the image inside the window)
+    · emits `pet:open-dashboard` on a real click (pointerup with no
+      significant drag) so the host can show the main window
+
+  The drag-vs-click distinction matters: without it, every release
+  after a reposition would re-open the main window. We track total
+  pointer travel between down and up; >4px = drag, ≤4px = click.
+
+  State key → image filename is a flat lookup table. Anything not in
+  the table falls back to `fox-idle.png` so a typo'd state name from
+  the host can never paint a blank frame.
+
+  This file lives at the public root (not under loomi-pet/) so the
+  loomi-pet/ directory stays purely a static asset bag. The Tauri
+  `tauri.conf.json` window URL points here.
+
+  In standalone preview (open this file in a browser without Tauri),
+  the body grows to fill the viewport so the user can see the whole
+  pet at a useful size, and the drop shadow is dropped (it would
+  stack against the page background).
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Loomi</title>
+    <style>
+      :root {
+        /* Visual size in CSS px. The Tauri window is 168×168 logical, so
+       this matches what the user sees on the desktop. In standalone
+       preview the body grows to 100vw × 100vh, so this still keeps
+       the fox at its natural size. */
+        --size: 168px;
+      }
+
+      /* Standalone-preview fallback: when the page is opened in a plain
+     browser (no Tauri), the body fills the viewport and the pet
+     sits in the middle. The Tauri window has its own 168×168 box
+     so this style only kicks in when `__TAURI__` is missing. */
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: transparent;
+        -webkit-user-select: none;
+        user-select: none;
+        font-family: system-ui, sans-serif;
+      }
+      body {
+        width: var(--size);
+        height: var(--size);
+        overflow: hidden;
+        cursor: grab;
+        /* Soft drop shadow gives the fox weight against any wallpaper.
+       Matching the demo: 18px y-offset, 26px blur, 20% navy. */
+        filter: drop-shadow(0 18px 26px rgba(24, 50, 84, 0.2));
+      }
+      body.dragging {
+        cursor: grabbing;
+      }
+
+      /* The fox image. Per-state wobble animations are applied via the
+     `[data-state]` attribute set by the JS bridge — each state
+     triggers a different keyframe (wave / hop / tilt / nod / ...).
+     The image is centered in its container; in Tauri the container
+     is the whole window, in standalone it is the centered stage. */
+      .fox {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: var(--size);
+        height: var(--size);
+        transform: translate(-50%, -50%);
+        transform-origin: 50% 95%;
+        display: block;
+        pointer-events: auto;
+        -webkit-user-drag: none;
+        user-drag: none;
+        animation: pet-bob 3.4s ease-in-out infinite;
+      }
+
+      /* State-specific animations — kept in sync with the demo's
+     keyframes. If you add a new state, add a rule here AND an entry
+     in the STATE_IMAGES map below. */
+      .fox[data-state="greet"] {
+        animation: pet-wave 2.4s ease-in-out infinite;
+      }
+      .fox[data-state="happy"] {
+        animation: pet-hop 2.2s ease-in-out infinite;
+      }
+      .fox[data-state="thinking"] {
+        animation: pet-tilt 2.6s ease-in-out infinite;
+      }
+      .fox[data-state="sweeping"] {
+        animation: pet-sweep 2.8s ease-in-out infinite;
+      }
+      .fox[data-state="juggling"] {
+        animation: pet-juggle 2.2s ease-in-out infinite;
+      }
+      .fox[data-state="working"] {
+        animation: pet-nod 3.4s ease-in-out infinite;
+      }
+      .fox[data-state="needsinput"] {
+        animation: pet-lean 2.6s ease-in-out infinite;
+      }
+      .fox[data-state="sleeping"] {
+        animation: pet-breathe 4s ease-in-out infinite;
+      }
+
+      @keyframes pet-bob {
+        0%,
+        100% {
+          transform: translate(-50%, -50%) translateY(0) rotate(-1deg);
+        }
+        50% {
+          transform: translate(-50%, -50%) translateY(-4px) rotate(1deg);
+        }
+      }
+      @keyframes pet-breathe {
+        0%,
+        100% {
+          transform: translate(-50%, -50%) scale(1);
+        }
+        50% {
+          transform: translate(-50%, -50%) scale(1.015);
+        }
+      }
+      @keyframes pet-tilt {
+        0%,
+        100% {
+          transform: translate(-50%, -50%) rotate(-3deg);
+        }
+        50% {
+          transform: translate(-50%, -50%) rotate(3deg);
+        }
+      }
+      @keyframes pet-sweep {
+        0%,
+        100% {
+          transform: translate(-50%, -50%) rotate(-2deg) translateX(0);
+        }
+        50% {
+          transform: translate(-50%, -50%) rotate(2deg) translateX(2px);
+        }
+      }
+      @keyframes pet-juggle {
+        0%,
+        100% {
+          transform: translate(-50%, -50%) translateY(0) rotate(-2deg);
+        }
+        50% {
+          transform: translate(-50%, -50%) translateY(-5px) rotate(2deg);
+        }
+      }
+      @keyframes pet-nod {
+        0%,
+        100% {
+          transform: translate(-50%, -50%) translateY(0);
+        }
+        50% {
+          transform: translate(-50%, -50%) translateY(1px);
+        }
+      }
+      @keyframes pet-lean {
+        0%,
+        100% {
+          transform: translate(-50%, -50%) rotate(0);
+        }
+        50% {
+          transform: translate(-50%, -50%) rotate(3deg);
+        }
+      }
+      @keyframes pet-hop {
+        0%,
+        100% {
+          transform: translate(-50%, -50%) translateY(0) rotate(0) scale(1);
+        }
+        35% {
+          transform: translate(-50%, -50%) translateY(-10px) rotate(-3deg)
+            scale(1.03);
+        }
+        70% {
+          transform: translate(-50%, -50%) translateY(-2px) rotate(2deg)
+            scale(0.99);
+        }
+      }
+      @keyframes pet-wave {
+        0%,
+        100% {
+          transform: translate(-50%, -50%) rotate(0);
+        }
+        25% {
+          transform: translate(-50%, -50%) rotate(-2deg);
+        }
+        75% {
+          transform: translate(-50%, -50%) rotate(2deg);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <img class="fox" id="fox" data-state="idle" alt="Loomi" draggable="false" />
+
+    <script>
+      (function () {
+        "use strict";
+
+        // Map loop state key → asset filename. Falls back to idle for any
+        // unknown key. Files live under /loomi-pet/assets/ which is bundled
+        // alongside this HTML by the public/ resource pattern in
+        // tauri.conf.json: `../.next/standalone/apps/web/public/**/*`.
+        const STATE_IMAGES = {
+          check: "loomi-pet/assets/fox-idle.png",
+          thinking: "loomi-pet/assets/fox-thinking.png",
+          sweeping: "loomi-pet/assets/fox-sweeping.png",
+          working: "loomi-pet/assets/fox-working.png",
+          needsinput: "loomi-pet/assets/fox-needsinput.png",
+          greet: "loomi-pet/assets/fox-greet.png",
+          sleeping: "loomi-pet/assets/fox-sleeping.png",
+          juggling: "loomi-pet/assets/fox-juggling.png",
+          happy: "loomi-pet/assets/fox-happy.png",
+          idle: "loomi-pet/assets/fox-idle.png",
+        };
+        const FALLBACK = "loomi-pet/assets/fox-idle.png";
+
+        const fox = document.getElementById("fox");
+
+        // Standalone-preview detection. When the page is opened in a plain
+        // browser, `__TAURI__` is undefined and the body grows to 100vw ×
+        // 100vh so the 168×168 fox sits in a comfortable stage rather than
+        // being squeezed into a tiny box.
+        const inTauri = !!(window.__TAURI__ && window.__TAURI__.window);
+        if (!inTauri) {
+          document.body.style.width = "100vw";
+          document.body.style.height = "100vh";
+          // Drop the drop-shadow in preview mode; against a page background
+          // it would be visible as a soft halo, not the desktop feel.
+          document.body.style.filter = "none";
+        }
+
+        function setState(key) {
+          if (!key || typeof key !== "string") return;
+          fox.dataset.state = key;
+          const src = STATE_IMAGES[key] || FALLBACK;
+          if (fox.getAttribute("src") !== src) {
+            // Cross-fade the swap so the eye doesn't catch the load flicker.
+            fox.style.opacity = "0";
+            // Preload the next frame before flipping src, so we paint
+            // completed pixels in one step.
+            const img = new Image();
+            img.onload = function () {
+              fox.src = src;
+              // rAF ensures the new src is committed before we re-fade in.
+              requestAnimationFrame(() => {
+                fox.style.opacity = "";
+              });
+            };
+            img.onerror = function () {
+              // If a state has no asset (e.g. demo-only ones not bundled),
+              // fall back to idle so we never paint a broken image icon.
+              fox.src = FALLBACK;
+              fox.style.opacity = "";
+            };
+            img.src = src;
+          }
+        }
+
+        // ---- Drag (whole window) vs click (no drag) --------------------
+        // In Tauri: call `getCurrentWebviewWindow().startDragging()` so the
+        //   168×168 window itself follows the pointer. The native drag is
+        //   OS-mediated and survives the cursor leaving the window, so the
+        //   user can fling the pet across multiple monitors.
+        // In standalone: no-op drag (the page is the stage). The click
+        //   branch is silently disabled because there is nothing to open.
+        let downX = 0,
+          downY = 0;
+        let dragged = false;
+        const DRAG_THRESHOLD = 4; // px
+
+        function getCurrentWindow() {
+          const t = window.__TAURI__;
+          if (!t) return null;
+          // Tauri 2.x with `withGlobalTauri: true` exposes the current
+          // webview's owning window under `__TAURI__.webviewWindow`. The
+          // older `__TAURI__.window` (manager) only has helpers like
+          // getCurrent() which returns a Window, not a WebviewWindow —
+          // startDragging is on Window, but the getCurrent() call returns
+          // a *plain* Window, not the webview, and the OS may refuse the
+          // drag if the call doesn't match the focused webview's window.
+          // webviewWindow.getCurrentWebviewWindow() is the precise match.
+          if (t.webviewWindow && t.webviewWindow.getCurrentWebviewWindow) {
+            return t.webviewWindow.getCurrentWebviewWindow();
+          }
+          // Older Tauri 1.x fallback. Removed in 2.x but kept here in case
+          // the bundle is older than the host.
+          if (t.window && t.window.getCurrent) {
+            return t.window.getCurrent();
+          }
+          return null;
+        }
+
+        function onPointerDown(e) {
+          if (e.button !== 0) return; // primary button only
+          downX = e.clientX;
+          downY = e.clientY;
+          dragged = false;
+          document.body.classList.add("dragging");
+          // Immediately hand off to Tauri's native drag. The OS will move
+          // the window and dispatch the corresponding pointermove/up events
+          // on the new position. If the user releases without moving, the
+          // pointerup distance will be ~0 and we treat it as a click.
+          const w = getCurrentWindow();
+          if (w && typeof w.startDragging === "function") {
+            // startDragging returns a Promise; we don't await — the
+            // pointermove/up handlers will pick up the new position via
+            // the window's natural event flow.
+            try {
+              w.startDragging();
+            } catch (_) {
+              /* fall through */
+            }
+          }
+          try {
+            fox.setPointerCapture(e.pointerId);
+          } catch (_) {}
+        }
+
+        function onPointerMove(e) {
+          if (dragged) return;
+          if (
+            Math.hypot(e.clientX - downX, e.clientY - downY) > DRAG_THRESHOLD
+          ) {
+            dragged = true;
+          }
+        }
+
+        function onPointerUp(e) {
+          document.body.classList.remove("dragging");
+          try {
+            fox.releasePointerCapture(e.pointerId);
+          } catch (_) {}
+          // Click only fires if the pointer didn't travel far — anything
+          // beyond DRAG_THRESHOLD counts as a drag, not a click.
+          if (dragged) return;
+          if (Math.hypot(e.clientX - downX, e.clientY - downY) > DRAG_THRESHOLD)
+            return;
+
+          const t = window.__TAURI__;
+          if (t && t.event && t.event.emit) {
+            t.event.emit("pet:open-dashboard");
+          }
+        }
+
+        fox.addEventListener("pointerdown", onPointerDown);
+        fox.addEventListener("pointermove", onPointerMove);
+        fox.addEventListener("pointerup", onPointerUp);
+        fox.addEventListener("pointercancel", onPointerUp);
+
+        // ---- Tauri bridge ----------------------------------------------
+        // Only attach the listener when running inside Tauri. When the
+        // widget is opened standalone in a browser tab for preview, the
+        // `__TAURI__` global is undefined and we silently no-op.
+        const t = window.__TAURI__;
+        if (t && t.event && t.event.listen) {
+          t.event.listen("loop:state", (e) => {
+            const p = (e && e.payload) || {};
+            if (p.state) setState(p.state);
+          });
+        }
+
+        // ---- Boot -------------------------------------------------------
+        setState("idle");
+      })();
+    </script>
+  </body>
+</html>
