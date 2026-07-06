@@ -332,7 +332,6 @@ export function AppSidebar() {
       currentPage === "ai-api-settings" ||
       currentPage === "account-settings" ||
       currentPage === "profile-edit" ||
-      pathname === "/inbox" ||
       pathname === "/skills";
     return isProfileSettingsPage;
   }, [pathname, searchParams]);
@@ -356,13 +355,6 @@ export function AppSidebar() {
         icon: "key_2",
         type: "internal" as const,
         href: "/?page=ai-api-settings",
-      },
-      {
-        key: "insight-tracking",
-        title: "nav.insights",
-        icon: "radar",
-        type: "internal" as const,
-        href: "/inbox",
       },
       {
         key: "skills",
@@ -676,8 +668,7 @@ export function AppSidebar() {
                           searchParams?.get("page") === "ai-api-settings") ||
                         (item.href === "/?page=account-settings" &&
                           (searchParams?.get("page") === "account-settings" ||
-                            searchParams?.get("page") === "profile-edit")) ||
-                        (item.href === "/inbox" && pathname === "/inbox");
+                            searchParams?.get("page") === "profile-edit"));
 
                       return (
                         <Tooltip key={item.key}>
