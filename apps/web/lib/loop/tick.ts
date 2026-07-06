@@ -151,7 +151,10 @@ async function runAgentic(opts: TickOptions): Promise<LoopTickResult> {
 
   const t0 = Date.now();
   const prompt = buildTickPrompt({
-    sinceDays: Math.max(1, Math.ceil((opts.sinceMs ?? TICK_LOOKBACK_MS) / 86_400_000)),
+    sinceDays: Math.max(
+      1,
+      Math.ceil((opts.sinceMs ?? TICK_LOOKBACK_MS) / 86_400_000),
+    ),
     // Obsidian vault scan lives in the Chronicle subsystem, not the loop —
     // the watcher already consumes its `obsidian_note_changed` signals from
     // signals.jsonl. The original skill's `obsidian-scan.cjs` reference is
@@ -163,8 +166,10 @@ async function runAgentic(opts: TickOptions): Promise<LoopTickResult> {
   // that the CLI doesn't need. Mirrors the pattern in tick's legacy path.
   const { invokeAgentPrompt } = await import("./runner");
 
-  log(`tick (agentic): dispatching prompt (${prompt.length} chars) to /api/native/agent`);
-  let res;
+  log(
+    `tick (agentic): dispatching prompt (${prompt.length} chars) to /api/native/agent`,
+  );
+  let res: Awaited<ReturnType<typeof invokeAgentPrompt>>;
   try {
     res = await invokeAgentPrompt(prompt, {
       timeoutMs: 15 * 60 * 1000,

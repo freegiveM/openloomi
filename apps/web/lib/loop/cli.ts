@@ -120,7 +120,9 @@ async function main(): Promise<number> {
         // /api/native/agent; legacy uses the in-process rules + DB enrich.
         const modeFlag = args.flags.mode;
         const mode =
-          modeFlag === "agentic" || modeFlag === "legacy" ? modeFlag : undefined;
+          modeFlag === "agentic" || modeFlag === "legacy"
+            ? modeFlag
+            : undefined;
         const out = await runTick({ userId, ...(mode ? { mode } : {}) });
         process.stdout.write(JSON.stringify(out, null, 2));
         return 0;
@@ -253,7 +255,9 @@ async function main(): Promise<number> {
           const dec = decisions.add(
             p as unknown as Parameters<typeof decisions.add>[0],
           );
-          process.stdout.write(JSON.stringify({ ok: true, decision: dec }, null, 2));
+          process.stdout.write(
+            JSON.stringify({ ok: true, decision: dec }, null, 2),
+          );
           return 0;
         } catch (e) {
           process.stderr.write(

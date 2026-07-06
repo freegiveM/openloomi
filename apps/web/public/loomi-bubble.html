@@ -105,7 +105,9 @@
         backdrop-filter: blur(8px);
         -webkit-backdrop-filter: blur(8px);
         transform-origin: 50% calc(100% + 12px);
-        transition: opacity 180ms ease, transform 220ms ease;
+        transition:
+          opacity 180ms ease,
+          transform 220ms ease;
       }
       body.idle .speech {
         opacity: 0.55;
@@ -140,7 +142,9 @@
           0 0 0 6px rgba(43, 138, 247, 0.12),
           0 8px 16px rgba(43, 138, 247, 0.28);
         transform: translateX(-50%);
-        transition: opacity 220ms ease, transform 220ms ease;
+        transition:
+          opacity 220ms ease,
+          transform 220ms ease;
       }
       body.idle .dot {
         opacity: 0;
@@ -187,11 +191,26 @@
         // aha-moment-demo tone: a friendly "what's Loomi doing" line on
         // top, a softer sub line describing the prepared action.
         const TYPE_PHRASES = {
-          rsvp: { lead: "This RSVP needs your call", sub: "draft ready to send" },
-          draft_reply: { lead: "This email is waiting on you", sub: "reply drafted" },
-          review_pr: { lead: "PR is waiting for review", sub: "I've already taken a look" },
-          slack_reply: { lead: "Someone @-mentioned you", sub: "pulling context first" },
-          release_plan: { lead: "Plan needs your sign-off", sub: "small change" },
+          rsvp: {
+            lead: "This RSVP needs your call",
+            sub: "draft ready to send",
+          },
+          draft_reply: {
+            lead: "This email is waiting on you",
+            sub: "reply drafted",
+          },
+          review_pr: {
+            lead: "PR is waiting for review",
+            sub: "I've already taken a look",
+          },
+          slack_reply: {
+            lead: "Someone @-mentioned you",
+            sub: "pulling context first",
+          },
+          release_plan: {
+            lead: "Plan needs your sign-off",
+            sub: "small change",
+          },
         };
 
         // Pet-state driven phrases. Surfaced when there's no pending
@@ -203,7 +222,10 @@
         const STATE_PHRASES = {
           idle: { lead: "All clear", sub: "" },
           sleeping: { lead: "zzz", sub: "circle back in the morning" },
-          sweeping: { lead: "Cleaning up noise", sub: "only the real ones left" },
+          sweeping: {
+            lead: "Cleaning up noise",
+            sub: "only the real ones left",
+          },
           happy: { lead: "Nice — that worked", sub: "tap to review" },
           juggling: { lead: "Lots open", sub: "pick one when you're ready" },
           needsinput: { lead: "Hey — I need a call", sub: "tap to decide" },

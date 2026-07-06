@@ -39,13 +39,17 @@ export async function GET() {
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
   // List the scenes so the dev panel can render its buttons without
-  // having to hard-code the keys. Cheap: 8 entries, no I/O.
+  // having to hard-code the keys. Cheap: 8 entries, no I/O. `hintState`
+  // is included so `onSceneClick` can fire `emitPetState(...)` on click —
+  // the dev panel only reads it client-side and never persists it, so
+  // it's safe to ship through this dev-only endpoint.
   return NextResponse.json({
     scenes: DEV_SCENE_LIST.map((s) => ({
       key: s.key,
       slide: s.slide,
       label: s.label,
       caption: s.caption,
+      ...(s.hintState ? { hintState: s.hintState } : {}),
     })),
   });
 }
@@ -64,23 +68,22 @@ export async function POST(req: Request) {
 
   const key = (body.scene ?? "").trim();
   if (!key) {
-    return NextResponse.json(
-      { error: "scene key required" },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: "scene key required" }, { status: 400 });
   }
   const scene = getScene(key);
   if (!scene) {
     return NextResponse.json(
       {
         error: `unknown scene '${key}'`,
-        known: Object.keys(DEV_SCENE_LIST.reduce(
-          (acc, s) => {
-            acc[s.key] = true;
-            return acc;
-          },
-          {} as Record<string, boolean>,
-        )),
+        known: Object.keys(
+          DEV_SCENE_LIST.reduce(
+            (acc, s) => {
+              acc[s.key] = true;
+              return acc;
+            },
+            {} as Record<string, boolean>,
+          ),
+        ),
       },
       { status: 400 },
     );
@@ -108,4 +111,3 @@ export async function POST(req: Request) {
     ...(scene.hintState ? { hintState: scene.hintState } : {}),
   });
 }
-

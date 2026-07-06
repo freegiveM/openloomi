@@ -262,3 +262,8 @@ commands.allow = ["register_voice_input_shortcut"]
 identifier = "allow-unregister-voice-input-shortcut"
 description = "Allow the unregister_voice_input_shortcut command"
 commands.allow = ["unregister_voice_input_shortcut"]
+
+[[permission]]
+identifier = "allow-emit-dev-state"
+description = "Allow the emit_dev_state command (dev panel → pet state flip)"
+commands.allow = ["emit_dev_state"]

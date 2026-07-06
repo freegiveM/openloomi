@@ -33,7 +33,7 @@
     <style>
       :root {
         --w: 340px;
-        --h: 720px;
+        --h: 800px;
         --bg: rgba(15, 23, 42, 0.94);
         --bg-2: rgba(15, 23, 42, 0.86);
         --border: rgba(255, 255, 255, 0.08);
@@ -342,6 +342,117 @@
         color: var(--muted);
       }
 
+      /* Form 2 — judgment-system: 4-step pipeline strip
+         (watch → enrich → classify → execute). Mirrors the
+         `01 / 02 / 03 / 04` cards on the demo's system-slide. */
+      .pipeline {
+        margin: 6px 8px 0;
+        padding: 8px 8px 6px;
+        border-radius: 10px;
+        background: rgba(167, 139, 250, 0.06);
+        border: 1px solid rgba(167, 139, 250, 0.18);
+        display: none;
+      }
+      .pipeline.visible {
+        display: block;
+      }
+      .pipeline-strip {
+        display: flex;
+        align-items: stretch;
+        gap: 2px;
+      }
+      .pipeline-step {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 4px 2px;
+        border-radius: 6px;
+        background: rgba(255, 255, 255, 0.04);
+        min-width: 0;
+      }
+      .pipeline-step .step-num {
+        font-size: 8px;
+        color: var(--muted);
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+      .pipeline-step .step-label {
+        font-size: 10px;
+        color: var(--text);
+        font-weight: 500;
+        margin-top: 1px;
+      }
+      .pipeline-arrow {
+        display: flex;
+        align-items: center;
+        font-size: 10px;
+        color: var(--muted);
+        padding: 0 1px;
+      }
+      .pipeline-note {
+        font-size: 9px;
+        color: var(--muted);
+        text-align: center;
+        margin-top: 6px;
+        font-style: italic;
+        line-height: 1.3;
+      }
+
+      /* Form 3 — noise-reduction: trashed message + context pills +
+         action log. Mirrors the demo's triage-slide ("unknown sender /
+         no project match / no deadline / repeated promo"). */
+      .triage {
+        margin: 6px 8px 0;
+        padding: 8px 10px;
+        border-radius: 10px;
+        background: rgba(248, 113, 113, 0.06);
+        border: 1px solid rgba(248, 113, 113, 0.18);
+        display: none;
+      }
+      .triage.visible {
+        display: block;
+      }
+      .triage-msg-title {
+        font-size: 10px;
+        font-weight: 600;
+        color: var(--text);
+        margin-bottom: 2px;
+        line-height: 1.25;
+      }
+      .triage-msg {
+        font-size: 9px;
+        color: var(--muted);
+        margin-bottom: 6px;
+        line-height: 1.3;
+      }
+      .triage-pills {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 3px;
+        margin-bottom: 6px;
+      }
+      .triage-pills .pill {
+        font-size: 9px;
+        padding: 2px 6px;
+        border-radius: 999px;
+        background: rgba(248, 113, 113, 0.16);
+        color: #fca5a5;
+        letter-spacing: 0.02em;
+      }
+      .triage-log {
+        font-size: 9px;
+        color: var(--muted);
+        border-top: 1px dashed rgba(248, 113, 113, 0.2);
+        padding-top: 4px;
+        line-height: 1.3;
+      }
+      .triage-log strong {
+        color: #fca5a5;
+        font-weight: 600;
+      }
+
       footer {
         flex: 0 0 auto;
         display: flex;
@@ -462,11 +573,25 @@
         <!-- 8 scene buttons populated from GET /api/loop/dev/scene. -->
       </main>
 
+      <!-- Form 1 (connection-check) — mirrors the demo's
+           connector-list (Slack / Email / WhatsApp) plus Calendar +
+           GitHub so devs see real wired-up state alongside the demo
+           trio. -->
       <div class="connectors" id="connectors">
         <div class="row">
+          <span class="dot" id="dot-slack"></span>
+          <span class="label">Slack</span>
+          <span class="meta" id="meta-slack">—</span>
+        </div>
+        <div class="row" style="margin-top: 6px">
           <span class="dot" id="dot-gmail"></span>
           <span class="label">Email / gmail</span>
           <span class="meta" id="meta-gmail">—</span>
+        </div>
+        <div class="row" style="margin-top: 6px">
+          <span class="dot" id="dot-whatsapp"></span>
+          <span class="label">WhatsApp</span>
+          <span class="meta" id="meta-whatsapp">—</span>
         </div>
         <div class="row" style="margin-top: 6px">
           <span class="dot" id="dot-calendar"></span>
@@ -477,6 +602,62 @@
           <span class="dot" id="dot-github"></span>
           <span class="label">GitHub</span>
           <span class="meta" id="meta-github">—</span>
+        </div>
+      </div>
+
+      <!-- Form 2 (judgment-system) — 4-step pipeline strip mirroring
+           the demo's `01 / watch · 02 / enrich · 03 / classify ·
+           04 / execute` cards. Pure decoration; lets the dev panel
+           stand in for the demo slide without rebuilding the full
+           `system-map` grid. -->
+      <div class="pipeline" id="pipeline">
+        <div class="pipeline-strip">
+          <div class="pipeline-step">
+            <span class="step-num">01</span>
+            <span class="step-label">watch</span>
+          </div>
+          <span class="pipeline-arrow">→</span>
+          <div class="pipeline-step">
+            <span class="step-num">02</span>
+            <span class="step-label">enrich</span>
+          </div>
+          <span class="pipeline-arrow">→</span>
+          <div class="pipeline-step">
+            <span class="step-num">03</span>
+            <span class="step-label">classify</span>
+          </div>
+          <span class="pipeline-arrow">→</span>
+          <div class="pipeline-step">
+            <span class="step-num">04</span>
+            <span class="step-label">execute</span>
+          </div>
+        </div>
+        <div class="pipeline-note">
+          see signal → read state → triage attention → wait for approval
+        </div>
+      </div>
+
+      <!-- Form 3 (noise-reduction) — trashed-message card mirroring
+           the demo's triage-slide: a low-priority notification with
+           the four context pills (unknown sender / no project match /
+           no deadline / repeated promo) and an `Action: trash quietly`
+           log line. The pet says "这条不重要，我先扔掉了"; this block
+           makes the trashed payload visible without leaving the panel. -->
+      <div class="triage" id="triage">
+        <div class="triage-msg-title">
+          “Try this productivity bundle tonight”
+        </div>
+        <div class="triage-msg">
+          Cold sender · repeated promo · no active project · no deadline
+        </div>
+        <div class="triage-pills">
+          <span class="pill">unknown sender</span>
+          <span class="pill">no project match</span>
+          <span class="pill">no deadline</span>
+          <span class="pill">repeated promo</span>
+        </div>
+        <div class="triage-log">
+          <strong>Action: trash quietly.</strong> Reason saved for audit.
         </div>
       </div>
 
@@ -535,7 +716,10 @@
           toastEl.classList.add("show");
           if (kind) toastEl.classList.add(kind);
           clearTimeout(flashToast._t);
-          flashToast._t = setTimeout(() => toastEl.classList.remove("show"), 1800);
+          flashToast._t = setTimeout(
+            () => toastEl.classList.remove("show"),
+            1800,
+          );
         }
 
         function setBanner(state, text) {
@@ -565,17 +749,44 @@
           );
         }
 
-        function emitPetState(stateKey) {
+        async function emitPetState(stateKey) {
           const t = window.__TAURI__;
-          if (!t || !t.event || !t.event.emit) {
+          if (!t || !t.core || !t.core.invoke) {
             flashToast(
               "Tauri bridge missing — open via the desktop app, not a browser.",
               "error",
             );
             return false;
           }
-          t.event.emit("loop:state", { state: stateKey });
-          return true;
+          // Routes through the host (`pet::emit_dev_state` in
+          // dev_panel.rs) which `emit_to`s PET_LABEL + PET_BUBBLE_LABEL
+          // with `loop:state`. Same wire path the watcher uses —
+          // proven reliable. Earlier `t.event.emit("loop:state", ...)`
+          // updated the bubble but never the pet sprite, so the dev
+          // panel switched to invoke().
+          try {
+            await t.core.invoke("emit_dev_state", { state: stateKey });
+            return true;
+          } catch (e) {
+            flashToast(
+              "emit_dev_state failed: " + (e && e.message ? e.message : e),
+              "error",
+            );
+            return false;
+          }
+        }
+
+        async function handleStateChipClick(chip, stateKey) {
+          const ok = await emitPetState(stateKey);
+          if (!ok) return;
+          activeState = stateKey;
+          // Highlight the active chip so devs can see which state the
+          // pet is in without watching the window itself.
+          for (const el of statesEl.querySelectorAll(".state-chip")) {
+            el.classList.toggle("active", el.dataset.state === stateKey);
+          }
+          flashChip(chip);
+          flashToast("Pet → " + stateKey, "success");
         }
 
         function makeStateChip(stateKey) {
@@ -584,17 +795,9 @@
           chip.type = "button";
           chip.dataset.state = stateKey;
           chip.textContent = stateKey;
-          chip.addEventListener("click", () => {
-            if (!emitPetState(stateKey)) return;
-            activeState = stateKey;
-            // Highlight the active chip so devs can see which state the
-            // pet is in without watching the window itself.
-            for (const el of statesEl.querySelectorAll(".state-chip")) {
-              el.classList.toggle("active", el.dataset.state === stateKey);
-            }
-            flashChip(chip);
-            flashToast("Pet → " + stateKey, "success");
-          });
+          chip.addEventListener("click", () =>
+            handleStateChipClick(chip, stateKey),
+          );
           return chip;
         }
 
@@ -627,7 +830,10 @@
             setBanner("bad", "dev API HTTP " + res.status);
             return false;
           } catch (e) {
-            setBanner("bad", "fetch failed: " + (e && e.message ? e.message : e));
+            setBanner(
+              "bad",
+              "fetch failed: " + (e && e.message ? e.message : e),
+            );
             return false;
           }
         }
@@ -685,13 +891,16 @@
           // a visible pet flip even before the API round-trip resolves.
           // Forms 4–8 also flip, but the watcher will overwrite within
           // ~2s once the real decision is on disk.
-          if (scene.hintState && emitPetState(scene.hintState)) {
-            activeState = scene.hintState;
-            for (const el of statesEl.querySelectorAll(".state-chip")) {
-              el.classList.toggle(
-                "active",
-                el.dataset.state === scene.hintState,
-              );
+          if (scene.hintState) {
+            const ok = await emitPetState(scene.hintState);
+            if (ok) {
+              activeState = scene.hintState;
+              for (const el of statesEl.querySelectorAll(".state-chip")) {
+                el.classList.toggle(
+                  "active",
+                  el.dataset.state === scene.hintState,
+                );
+              }
             }
           }
           try {
@@ -715,7 +924,13 @@
             flashScene(btn, "ok");
             flashToast(
               n > 0
-                ? "Form " + scene.slide + ": " + n + " decision" + (n === 1 ? "" : "s") + " queued"
+                ? "Form " +
+                    scene.slide +
+                    ": " +
+                    n +
+                    " decision" +
+                    (n === 1 ? "" : "s") +
+                    " queued"
                 : "Form " + scene.slide + ": " + (scene.hintState || "applied"),
               "success",
             );
@@ -764,7 +979,9 @@
           if (entry && entry.connected) {
             dot.classList.add("ok");
             meta.textContent =
-              entry.accountCount + " acct · " + (entry.lastError ? "err" : "ok");
+              entry.accountCount +
+              " acct · " +
+              (entry.lastError ? "err" : "ok");
           } else {
             dot.classList.remove("ok");
             meta.textContent = entry ? entry.lastError || "off" : "off";
@@ -804,7 +1021,7 @@
             flashToast("Reset · " + data.dropped + " → dismissed", "success");
             // Returning to idle is a state change — flip the pet chip
             // back so the picker reflects reality.
-            emitPetState("idle");
+            await emitPetState("idle");
             activeState = "idle";
             for (const el of statesEl.querySelectorAll(".state-chip")) {
               el.classList.toggle("active", el.dataset.state === "idle");

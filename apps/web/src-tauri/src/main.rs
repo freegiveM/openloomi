@@ -368,6 +368,12 @@ fn main() {
             permissions::request_notification_access,
             permissions::request_folder_access,
             permissions::open_system_settings,
+            // Pet (dev panel → state flip). Registered unconditionally
+            // (not gated on OPENLOOMI_PET_DEV): even if the panel isn't
+            // built, an external caller can invoke the command without
+            // any side effects beyond emitting to (possibly-absent)
+            // PET_LABEL / PET_BUBBLE_LABEL windows.
+            pet::emit_dev_state,
         ])
         .setup(|app| {
             // Deliver AppHandle to the background server thread immediately

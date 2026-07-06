@@ -5,14 +5,14 @@
  *
  * Each form corresponds to one slide in
  * `/Users/timi/Downloads/openloomi-aha-moment-demo/index.html`:
- *   1. connection-check  · 接口在线，开始判断
- *   2. judgment-system   · 看见信号 → 读当前状态 → 分流注意力 → 等待批准
- *   3. noise-reduction   · 无效信息，不进入你的注意力
- *   4. low-priority-todo · 低优进队列，高优才唤醒
- *   5. decision-briefing · 高优立刻出现，但不是空提醒
- *   6. morning-brief     · 早安：新闻 + 今日 todo
- *   7. night-wrap        · 今日达成 + 明日安排
- *   8. proactive-cases   · 一次跑出来 6 个 typed decisions
+ *   1. connection-check  · endpoints online, starting to judge
+ *   2. judgment-system   · see signal → read state → triage attention → wait for approval
+ *   3. noise-reduction   · invalid info, doesn't enter your attention
+ *   4. low-priority-todo · low priority to queue, high priority to wake
+ *   5. decision-briefing · high priority appears immediately, but not as an empty reminder
+ *   6. morning-brief     · good morning: news + today's todo
+ *   7. night-wrap        · today's wins + tomorrow's plan
+ *   8. proactive-cases   · produce 6 typed decisions in one run
  *
  * Forms 4–8 map 1:1 to existing `DecisionType`s and are wired through
  * `store::decisions.add()` — the watcher picks them up on its next 2s
@@ -113,9 +113,7 @@ function decision(input: {
     confidence: input.confidence,
     ...(input.context ? { context: input.context } : {}),
     ...(input.source ? { source_signal: input.source } : {}),
-    ...(input.needsUser !== undefined
-      ? { needs_user: input.needsUser }
-      : {}),
+    ...(input.needsUser !== undefined ? { needs_user: input.needsUser } : {}),
   };
 }
 
@@ -132,8 +130,7 @@ function todoDecision(): LoopDecision {
         source: "manual:dev-scene",
       },
     },
-    dialogue:
-      "I'll queue this for later — urgent noise will still wake you.",
+    dialogue: "I'll queue this for later — urgent noise will still wake you.",
     nextStep:
       "Stays on the todo lane; urgent events keep their lane and will pop the bubble.",
     confidence: 0.62,
@@ -272,7 +269,7 @@ export const DEV_SCENES: Record<SceneKey, DevScene> = {
     slide: 2,
     label: "Form 2 · Judgment system",
     caption:
-      "Pipeline: 看见信号 → 读当前状态 → 分流注意力 → 等待批准再执行.",
+      "Pipeline: see signal → read state → triage attention → wait for approval before executing.",
     hintState: "thinking",
     build: () => [],
   },
@@ -418,8 +415,7 @@ export const DEV_SCENES: Record<SceneKey, DevScene> = {
           },
         },
         dialogue: "PR is waiting for review — you've been tagged as reviewer.",
-        nextStep:
-          "Tap Run to have the agent produce a review checklist first.",
+        nextStep: "Tap Run to have the agent produce a review checklist first.",
         confidence: 0.79,
         needsUser: true,
         context: {
@@ -458,10 +454,7 @@ export const DEV_SCENES: Record<SceneKey, DevScene> = {
         confidence: 0.81,
         needsUser: true,
         context: {
-          why: [
-            "Direct @-mention",
-            "Thread already scanned by the agent",
-          ],
+          why: ["Direct @-mention", "Thread already scanned by the agent"],
         },
         source: {
           id: "sig_dev_slack",
@@ -516,10 +509,7 @@ export const DEV_SCENES: Record<SceneKey, DevScene> = {
         nextStep: "Tap Run to draft a PR/FAQ and queue approvals.",
         confidence: 0.74,
         context: {
-          why: [
-            "Last edit was 8 days ago",
-            "Deploy window opens in 4 days",
-          ],
+          why: ["Last edit was 8 days ago", "Deploy window opens in 4 days"],
         },
         source: {
           id: "sig_dev_plan",
@@ -536,9 +526,7 @@ export const DEV_SCENES: Record<SceneKey, DevScene> = {
 export const DEV_SCENE_LIST: DevScene[] = (
   Object.keys(DEV_SCENES) as SceneKey[]
 )
-  .sort(
-    (a, b) => DEV_SCENES[a].slide - DEV_SCENES[b].slide,
-  )
+  .sort((a, b) => DEV_SCENES[a].slide - DEV_SCENES[b].slide)
   .map((k) => DEV_SCENES[k]);
 
 /**

@@ -184,8 +184,8 @@ Also skip signals whose \`_insightId\` matches an existing signal — protects a
 duplicates when toggling composio on/off between ticks.
 
 ${
-    includeObsidian
-      ? `## 3.5 Obsidian vault scan (optional)
+  includeObsidian
+    ? `## 3.5 Obsidian vault scan (optional)
 
 If \`$OBSIDIAN_VAULT\` is set, scan the user's local Obsidian vault as an
 additional signal source. The scan is incremental — it diffs each \`.md\`
@@ -216,8 +216,8 @@ signal as a memory note indexed by path — future \`linear_review\` /
 \`projects/<y>.md\`, \`ideas/<z>.md\` by path to fold the same evidence into
 typed decisions.
 `
-      : ""
-  }
+    : ""
+}
 
 ## 4. Enrich with openloomi-memory
 

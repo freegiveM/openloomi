@@ -6,6 +6,8 @@
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use tauri::Emitter;
+
 mod aux_position;
 mod bubble;
 mod card;
@@ -91,4 +93,42 @@ pub const PET_DEV_LABEL: &str = "loomi-dev";
 /// space between the aux window's bottom and the pet's top. Picked to
 /// match the visual weight of the tail in the HTML.
 pub const PET_AUX_GAP: f64 = 4.0;
+
+/// Tauri command invoked by the dev panel (`loomi-dev.html`) when a
+/// state chip or a Forms 1–3 button is clicked. Re-emits
+/// `{ "state": <key> }` to PET_LABEL + PET_BUBBLE_LABEL via
+/// `emit_to` so the pet sprite + bubble text update.
+///
+/// Defined at `pet::` scope (not in `dev_panel`) on purpose —
+/// `tauri::generate_handler!` resolves the `__cmd__...` /
+/// `__tauri_command_name_...` siblings that `#[tauri::command]`
+/// emits via the path written in the macro arg list. Re-exporting
+/// the function across modules compiles fine, but the runtime
+/// invoke fails with `command not found`. Keeping the command here
+/// (alongside PET_LABEL / PET_BUBBLE_LABEL, which it uses) keeps the
+/// macro's symbol resolution working.
+///
+/// The signature mirrors the rest of the codebase (no generic
+/// `R: tauri::Runtime` — the macro registers the command under the
+/// bare name `emit_dev_state` and matches the JS call site
+/// `t.core.invoke("emit_dev_state", { state })`).
+///
+/// The command is registered unconditionally — the only callers in
+/// the codebase are the dev panel (which only exists when
+/// `OPENLOOMI_PET_DEV=1`) and tests. Invoking it without those
+/// sinks just no-ops the `emit_to` calls.
+#[tauri::command]
+pub async fn emit_dev_state(
+    app: tauri::AppHandle,
+    state: String,
+) -> Result<(), String> {
+    let trimmed = state.trim();
+    if trimmed.is_empty() {
+        return Err("state key required".into());
+    }
+    let payload = serde_json::json!({ "state": trimmed });
+    let _ = app.emit_to(PET_LABEL, "loop:state", payload.clone());
+    let _ = app.emit_to(PET_BUBBLE_LABEL, "loop:state", payload);
+    Ok(())
+}
 

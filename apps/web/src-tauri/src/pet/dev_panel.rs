@@ -27,19 +27,17 @@ use std::sync::{Mutex, OnceLock};
 
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 
-use super::PET_DEV_LABEL;
+use super::{PET_BUBBLE_LABEL, PET_DEV_LABEL, PET_LABEL};
 
 /// Logical (CSS) width of the dev panel window. Matches `--w` in
 /// `loomi-dev.html`. Wider than the bubble so the pet-state chip grid
 /// (3 cols × 3 rows + the 8 scene buttons) fits without cramping.
 pub const DEV_PANEL_W: f64 = 340.0;
-/// Logical (CSS) height. 720px keeps the panel inside 13"-class
-/// screens (typical usable 720-770px after a 28px macOS title bar) so
-/// no part of the panel slides below the screen edge. The HTML body
-/// is `overflow: auto`, so any scenes + the footer that fall below
-/// 720 are reachable by scrolling inside the panel — Form 8 + Reset
-/// stay accessible without making the window taller than the screen.
-pub const DEV_PANEL_H: f64 = 720.0;
+/// Logical (CSS) height. 800px keeps the panel inside 13"-class
+/// screens (typical usable 770-820px after a 28px macOS title bar) so
+/// the footer + Form 8 are visible without scrolling, and no part of
+/// the panel slides below the screen edge (880 slipped below).
+pub const DEV_PANEL_H: f64 = 800.0;
 
 static DEV_PANEL_APP_HANDLE: OnceLock<Mutex<Option<AppHandle>>> =
     OnceLock::new();
