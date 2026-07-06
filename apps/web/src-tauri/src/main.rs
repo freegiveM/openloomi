@@ -457,6 +457,56 @@ fn main() {
                 eprintln!("⚠️  Warning: Failed to build Loomi pet window: {}", e);
             }
 
+            // B2: build the bubble + card aux windows eagerly so the
+            // watcher can `show()` them as soon as a decision lands,
+            // without paying the (small) build cost on the critical
+            // path. Both are created `visible(false)` — visibility is
+            // driven by watcher state (`bubble`) or user gesture
+            // (`card`).
+            if let Err(e) = pet::build_bubble_window(&app_handle) {
+                eprintln!(
+                    "⚠️  Warning: Failed to build Loomi bubble window: {}",
+                    e
+                );
+            }
+            if let Err(e) = pet::build_card_window(&app_handle) {
+                eprintln!(
+                    "⚠️  Warning: Failed to build Loomi card window: {}",
+                    e
+                );
+            }
+            pet::reposition_bubble_to_pet(&app_handle);
+            pet::reposition_card_to_pet(&app_handle);
+
+            // Dev scene panel: only exists when OPENLOOMI_PET_DEV=1.
+            // Production builds never see this code path because the
+            // env check short-circuits in the builder. We log a one-
+            // liner so a developer can confirm the gate from stdout.
+            if pet::dev_panel_requested() {
+                match pet::build_dev_panel_window(&app_handle) {
+                    Ok(Some(_)) => log::info!(
+                        "[loop-pet] dev panel built (OPENLOOMI_PET_DEV=1)"
+                    ),
+                    Ok(None) => {
+                        // No-op — should not happen because we just
+                        // checked the env flag, but kept for symmetry.
+                    }
+                    Err(e) => eprintln!(
+                        "⚠️  Warning: Failed to build Loomi dev panel: {}",
+                        e
+                    ),
+                }
+            }
+
+            // B2-fix: Tauri's `WindowEvent::Moved` only fires on release of a
+            // native drag, not continuously. To make the bubble + card
+            // follow the pet smoothly while the user is dragging it, we run
+            // a 20Hz background poller that re-asserts aux window positions
+            // based on the pet's current `outer_position`. The poller exits
+            // when the process exits — work is idempotent and `set_position`
+            // is cheap.
+            pet::spawn_position_poller(app_handle.clone());
+
             // Defensively hide the main window even though the config
             // already sets `visible: false`. On some macOS builds the
             // config alone is not enough — Tauri shows the window when
@@ -506,6 +556,42 @@ fn main() {
                 });
             });
 
+            // B2: bubble click → open the card (which the user can act
+            // on). If the card doesn't have a current decision payload
+            // (e.g. everything got dismissed in flight), the card
+            // window will just show its empty state — the user can still
+            // use the × to close.
+            let open_card_app = app_handle.clone();
+            app_handle.listen("pet:open-card", move |_event| {
+                pet::hide_bubble_window(&open_card_app);
+                pet::show_card_window(&open_card_app);
+            });
+
+            // B2: card × button → close card, restore bubble only if there's still
+            // a pending decision surfacing. Without this gate the bubble
+            // pops up empty ("All clear") when the user dismissed the
+            // last pending decision inside the card.
+            let close_card_app = app_handle.clone();
+            app_handle.listen("pet:close-card", move |_event| {
+                pet::hide_card_window(&close_card_app);
+                pet::show_bubble_window_if_pending(&close_card_app);
+            });
+
+            // B2: "Open in dashboard" inside the card jumps to a
+            // specific decision detail page. The webview side dispatches
+            // this with `{ id: <dec_id> }` so the dashboard can land on
+            // the right card.
+            let open_decision_app = app_handle.clone();
+            app_handle.listen("pet:open-decision", move |event| {
+                // Best-effort: payload is a small JSON `{ id }`. The
+                // dashboard page (LoopDetailPage) already polls for
+                // state, so a navigation to /loop/<id> is enough — the
+                // dashboard will read the path itself. We just need to
+                // make sure the main window is up.
+                let _ = event.payload(); // parsed by tray::show_main_window via state
+                tray::show_main_window(&open_decision_app);
+            });
+
             // Pet right-click menu's "Quit" entry funnels into the same
             // ExitRequested -> cleanup -> exit pipeline as the tray's
             // "Quit" item. Calling `exit(0)` re-fires ExitRequested;
@@ -513,6 +599,31 @@ fn main() {
             let pet_to_quit = app_handle.clone();
             app_handle.listen("pet:quit", move |_event| {
                 pet_to_quit.exit(0);
+            });
+
+            // Dev panel × button → hide the window (don't destroy).
+            // Mirrors the `pet:close-card` pattern.
+            let close_dev_app = app_handle.clone();
+            app_handle.listen("pet:close-dev-panel", move |_event| {
+                pet::hide_dev_panel_window(&close_dev_app);
+            });
+
+            // Dev panel toggle — emitted by future "Dev" menu items on
+            // the pet right-click menu / tray. Show if currently
+            // hidden, hide otherwise. Cheap because the window is built
+            // at boot (when env var is set).
+            let toggle_dev_app = app_handle.clone();
+            app_handle.listen("pet:toggle-dev-panel", move |_event| {
+                use tauri::Manager;
+                let visible = toggle_dev_app
+                    .get_webview_window(pet::PET_DEV_LABEL)
+                    .and_then(|w| w.is_visible().ok())
+                    .unwrap_or(false);
+                if visible {
+                    pet::hide_dev_panel_window(&toggle_dev_app);
+                } else {
+                    pet::show_dev_panel_window(&toggle_dev_app);
+                }
             });
 
             Ok(())
@@ -560,6 +671,10 @@ fn main() {
                     // `pet::close_pet_for_exit`, but doing it here is
                     // a no-op safety net if cleanup order ever changes.
                     pet::close_pet_for_exit(&app_handle);
+                    // Tear down the dev panel if it was built. No-op when
+                    // OPENLOOMI_PET_DEV was unset at boot, so safe to
+                    // call unconditionally.
+                    pet::close_dev_panel_for_exit(&app_handle);
                     lifecycle::run_cleanup();
                     // Re-issue exit; this next ExitRequested sees cleanup_done()
                     // == true and lets the process exit.

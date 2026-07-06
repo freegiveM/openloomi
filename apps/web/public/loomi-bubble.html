@@ -1,0 +1,297 @@
+<!doctype html>
+<!--
+  Loomi · speech bubble (above the pet)
+
+  Visual style mirrors the demo at
+  /Users/timi/Downloads/openloomi-aha-moment-demo: a light, orange-bordered
+  glass bubble with a downward-pointing tail that anchors the bubble to
+  the pet's top. A small blue dot below the tail acts as the "needs
+  input" notification indicator — visible only when there's a pending
+  decision; the bubble itself hides when the pending bucket is empty.
+
+  Layout (400×110 logical):
+    · The window is 400×110 to fit a 2-line speech (with 28px
+      border-radius and 14px×22px padding), the 22×22 downward tail,
+      and the 14px blue dot. The tail tip sits ~17px below the
+      speech's bottom, so a 2-line speech lands its tip at y≈106
+      (within the 110px window); the dot's `bottom: 6px` lands its
+      center at y≈97, which slightly overlaps the tail's body —
+      acceptable since both are small accents around the same
+      downward axis.
+    · The body is transparent; only `.speech` and `.dot` paint.
+    · Tail is rendered as a rotated square (CSS `::after`), matching the
+      demo's `.speech::after` (rgba(255, 161, 73, 0.28) border on
+      rgba(255, 255, 255, 0.94) bg).
+    · Position: above the pet, horizontally centered. Tauri-side
+      `aux_position::position_above_pet` computes this from the pet's
+      outer_position; on cold boot the bubble's tail tip sits ~13px
+      above the pet's top (BUBBLE_H=110, PET_AUX_GAP=4).
+
+  State contract:
+    · Listens for `loop:decision` events. Payload shape:
+        { id, type, title, dialogue, priority, has_pending }
+    · When `has_pending` is true, renders the dialogue (or a short
+      type-specific phrase if no dialogue is provided). When false,
+      the body becomes empty and `.dot` fades out — visibility is
+      actually controlled by the host (hides the window entirely when
+      pending is empty), so this client-side fade is just for the brief
+      race between payload arrival and the host's hide.
+    · Click → emit `pet:open-card`. The host shows the larger card
+      window in its place. The pet's own click handler also routes
+      here when there's a pending decision.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Loomi · bubble</title>
+    <style>
+      :root {
+        --bubble-w: 400px;
+        --bubble-h: 110px;
+        --orange: rgba(255, 161, 73, 0.28);
+        --ink: #1f2937;
+        --muted: #6b7280;
+        --bubble-bg: rgba(255, 255, 255, 0.94);
+        --blue: #2b8af7;
+        --shadow:
+          0 22px 48px rgba(255, 161, 73, 0.12),
+          0 6px 14px rgba(15, 23, 42, 0.08);
+      }
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: transparent;
+        -webkit-user-select: none;
+        user-select: none;
+        font-family:
+          system-ui,
+          -apple-system,
+          "PingFang SC",
+          "Segoe UI",
+          sans-serif;
+      }
+      body {
+        width: var(--bubble-w);
+        height: var(--bubble-h);
+        overflow: visible;
+        cursor: pointer;
+      }
+      .stage {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: flex-start;
+        justify-content: center;
+        padding-top: 8px;
+      }
+
+      /* The bubble itself — light, orange-bordered, generous radius.
+         Matches `.speech` in the demo. */
+      .speech {
+        position: relative;
+        max-width: 360px;
+        padding: 14px 22px;
+        border: 2px solid var(--orange);
+        border-radius: 28px;
+        background: var(--bubble-bg);
+        box-shadow: var(--shadow);
+        color: var(--ink);
+        font-size: 20px;
+        font-weight: 800;
+        line-height: 1.32;
+        text-align: center;
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        transform-origin: 50% calc(100% + 12px);
+        transition: opacity 180ms ease, transform 220ms ease;
+      }
+      body.idle .speech {
+        opacity: 0.55;
+      }
+
+      /* Downward-pointing tail (matches `.speech::after` in the demo).
+         The rotated square shares the bubble's bg + border. */
+      .speech::after {
+        content: "";
+        position: absolute;
+        bottom: -13px;
+        left: 50%;
+        width: 22px;
+        height: 22px;
+        border-right: 2px solid var(--orange);
+        border-bottom: 2px solid var(--orange);
+        background: var(--bubble-bg);
+        transform: translateX(-50%) rotate(45deg);
+      }
+
+      /* Blue notification dot (matches `.speech::before` in the demo).
+         Fades out when the bubble is in the idle / no-pending state. */
+      .dot {
+        position: absolute;
+        bottom: 6px;
+        left: 50%;
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background: var(--blue);
+        box-shadow:
+          0 0 0 6px rgba(43, 138, 247, 0.12),
+          0 8px 16px rgba(43, 138, 247, 0.28);
+        transform: translateX(-50%);
+        transition: opacity 220ms ease, transform 220ms ease;
+      }
+      body.idle .dot {
+        opacity: 0;
+        transform: translateX(-50%) scale(0.6);
+      }
+
+      /* Compact text mode for short lines (e.g. "早安" or "All clear"). */
+      .speech .lead {
+        display: block;
+        font-size: 18px;
+        letter-spacing: 0.02em;
+      }
+      .speech .lead b {
+        font-weight: 800;
+      }
+      .speech .sub {
+        display: block;
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--muted);
+        margin-top: 2px;
+      }
+    </style>
+  </head>
+  <body class="idle">
+    <div class="stage" id="stage">
+      <div class="speech" id="speech" role="button" tabindex="0">
+        <span class="lead" id="lead">All clear</span>
+        <span class="sub" id="sub"></span>
+      </div>
+      <span class="dot" id="dot" aria-hidden="true"></span>
+    </div>
+
+    <script>
+      (function () {
+        "use strict";
+
+        const body = document.body;
+        const lead = document.getElementById("lead");
+        const sub = document.getElementById("sub");
+
+        // Short, demo-style phrases keyed by decision type. Used when the
+        // server doesn't ship a tailored `dialogue` string. Mirror the
+        // aha-moment-demo tone: a friendly "what's Loomi doing" line on
+        // top, a softer sub line describing the prepared action.
+        const TYPE_PHRASES = {
+          rsvp: { lead: "This RSVP needs your call", sub: "draft ready to send" },
+          draft_reply: { lead: "This email is waiting on you", sub: "reply drafted" },
+          review_pr: { lead: "PR is waiting for review", sub: "I've already taken a look" },
+          slack_reply: { lead: "Someone @-mentioned you", sub: "pulling context first" },
+          release_plan: { lead: "Plan needs your sign-off", sub: "small change" },
+        };
+
+        // Pet-state driven phrases. Surfaced when there's no pending
+        // decision so the bubble still has something on-screen while the
+        // pet sweeps / thinks / sleeps — without it the watcher would
+        // flip the pet's mood but the bubble would stay frozen on
+        // "All clear" until a decision showed up. Updated together with
+        // the STATE_PHRASES definition in the dev panel; keep in sync.
+        const STATE_PHRASES = {
+          idle: { lead: "All clear", sub: "" },
+          sleeping: { lead: "zzz", sub: "circle back in the morning" },
+          sweeping: { lead: "Cleaning up noise", sub: "only the real ones left" },
+          happy: { lead: "Nice — that worked", sub: "tap to review" },
+          juggling: { lead: "Lots open", sub: "pick one when you're ready" },
+          needsinput: { lead: "Hey — I need a call", sub: "tap to decide" },
+          thinking: { lead: "Just a sec", sub: "reading the room" },
+          working: { lead: "On it", sub: "I'll ping you when ready" },
+          greet: { lead: "Hey", sub: "I see you" },
+        };
+
+        // A pending decision wins over state — once `loop:decision`
+        // arrives with an id we keep showing it until the watcher
+        // explicitly clears (empty payload) or the user acts. State
+        // events update the *fallback* phrasing only.
+        let currentDecision = null;
+        let currentState = "idle";
+
+        function renderState() {
+          body.classList.add("idle");
+          const phrase = STATE_PHRASES[currentState] || STATE_PHRASES.idle;
+          lead.textContent = phrase.lead;
+          sub.textContent = phrase.sub || "";
+        }
+
+        function applyDecision(p) {
+          if (!p || !p.id) {
+            currentDecision = null;
+            renderState();
+            return;
+          }
+          currentDecision = p;
+          body.classList.remove("idle");
+          const phrase = TYPE_PHRASES[p.type];
+          if (p.dialogue && p.dialogue.trim()) {
+            // If the server provided a tailored dialogue, prefer it but
+            // split on the first sentence so the sub line can carry the
+            // call-to-action verb.
+            const split = p.dialogue.split(/[—\.\!\?]/);
+            lead.textContent = (split[0] || p.dialogue).trim();
+            sub.textContent = (split[1] || "").trim();
+          } else if (phrase) {
+            lead.textContent = phrase.lead;
+            sub.textContent = phrase.sub;
+          } else {
+            lead.textContent = p.title || "Needs your call";
+            sub.textContent = "";
+          }
+        }
+
+        function applyState(p) {
+          // Accept either `{ state, monologue }` (watcher) or a bare
+          // string (dev-panel chips), gracefully.
+          const next =
+            (p && typeof p === "object" && p.state) ||
+            (typeof p === "string" ? p : null) ||
+            "idle";
+          currentState = next;
+          if (!currentDecision) {
+            renderState();
+          }
+        }
+
+        const speech = document.getElementById("speech");
+        speech.addEventListener("click", () => {
+          const t = window.__TAURI__;
+          if (!t || !t.event || !t.event.emit) return;
+          t.event.emit("pet:open-card");
+        });
+        speech.addEventListener("keydown", (e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            speech.click();
+          }
+        });
+
+        const tauri = window.__TAURI__;
+        if (tauri && tauri.event && tauri.event.listen) {
+          tauri.event.listen("loop:decision", (e) =>
+            applyDecision((e && e.payload) || {}),
+          );
+          // Mirror the watcher's `loop:state` emissions so flipping
+          // thinking / sweeping / sleeping / etc. actually changes the
+          // bubble content. See `pet::watcher::map_state_to_pet`.
+          tauri.event.listen("loop:state", (e) =>
+            applyState((e && e.payload) || null),
+          );
+        }
+
+        applyDecision(null);
+      })();
+    </script>
+  </body>
+</html>

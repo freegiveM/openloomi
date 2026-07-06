@@ -6,6 +6,10 @@
 // adding the `notify` crate buys us little here (mtime granularity is
 // fine for a human-driven decision flow) and pulls in a transitive set of
 // platform-specific deps we don't otherwise need.
+//
+// B2: also emits `loop:decision` to the bubble + card windows so the
+// speech bubble tracks the latest pending decision and the larger card
+// window stays in sync with whatever the user most recently opened.
 
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
@@ -13,7 +17,7 @@ use std::time::{Duration, SystemTime};
 use serde::Deserialize;
 use tauri::{AppHandle, Emitter, Manager};
 
-use super::PET_LABEL;
+use super::{PET_BUBBLE_LABEL, PET_CARD_LABEL, PET_LABEL, set_pending_decision_count};
 
 const POLL_MS: u64 = 2000;
 
@@ -41,6 +45,7 @@ fn watch_loop(app: &AppHandle) {
     let mut last_mtime: Option<SystemTime> = None;
     let mut last_buckets: (usize, usize, usize) = (0, 0, 0);
     let mut last_decision_ts: Option<String> = None;
+    let mut last_top_id: Option<String> = None;
 
     loop {
         std::thread::sleep(Duration::from_millis(POLL_MS));
@@ -58,6 +63,12 @@ fn watch_loop(app: &AppHandle) {
         };
 
         let buckets = (snap.pending.len(), snap.done.len(), snap.dismissed.len());
+        // Publish pending count on every successful poll (not just on
+        // change) so handlers like `pet:close-card` always see fresh
+        // data when they ask `pending_decision_count()`. Cheap atomic
+        // store — happens on the watcher thread, off the UI critical
+        // path.
+        set_pending_decision_count(snap.pending.len());
         let newest_ts = snap
             .pending
             .iter()
@@ -66,18 +77,81 @@ fn watch_loop(app: &AppHandle) {
             .filter_map(|d| d.created_at.clone().or(d.completed_at.clone()))
             .max();
         let needs_user = snap.pending.iter().any(|d| d.needs_user.unwrap_or(false));
+        let top_pending_id = snap.pending.first().and_then(|d| d.id.clone());
 
-        let changed = buckets != last_buckets || newest_ts != last_decision_ts;
+        let changed = buckets != last_buckets
+            || newest_ts != last_decision_ts
+            || top_pending_id != last_top_id;
         if !changed {
             continue;
         }
         last_buckets = buckets;
         last_decision_ts = newest_ts.clone();
+        last_top_id = top_pending_id.clone();
 
         let (state, monologue) = map_state_to_pet(&snap, &newest_ts, needs_user);
-        let payload = serde_json::json!({ "state": state, "monologue": monologue });
-        let _ = app.emit_to(PET_LABEL, "loop:state", payload);
+        let state_payload = serde_json::json!({ "state": state, "monologue": monologue });
+        // Pet widget flips its sprite/animation, bubble swaps to a
+        // state-specific phrase — both listen on `loop:state`. We
+        // mirror to the bubble so watcher-driven flips (sweeping /
+        // happy / sleeping / etc.) actually change the bubble text;
+        // without this the bubble would stay frozen on the last
+        // decision's dialogue until a new decision arrives.
+        let _ = app.emit_to(PET_LABEL, "loop:state", state_payload.clone());
+        let _ = app.emit_to(PET_BUBBLE_LABEL, "loop:state", state_payload);
+
+        // B2: keep bubble + card windows in sync. The bubble auto-shows
+        // when the latest pending decision changes and auto-hides when
+        // the pending bucket empties; the card only renders, it doesn't
+        // change visibility from here (the user opens it explicitly).
+        if let Some(top) = snap.pending.first() {
+            let decision_payload = build_decision_payload(top);
+            let _ = app.emit_to(PET_BUBBLE_LABEL, "loop:decision", decision_payload.clone());
+            let _ = app.emit_to(PET_CARD_LABEL, "loop:decision", decision_payload);
+            if app.get_webview_window(PET_BUBBLE_LABEL).is_some() {
+                let _ = app
+                    .get_webview_window(PET_BUBBLE_LABEL)
+                    .map(|w| w.show().ok());
+            }
+        } else {
+            let empty = serde_json::json!({});
+            let _ = app.emit_to(PET_BUBBLE_LABEL, "loop:decision", empty);
+            if let Some(w) = app.get_webview_window(PET_BUBBLE_LABEL) {
+                let _ = w.hide();
+            }
+        }
     }
+}
+
+/// Build the `loop:decision` payload that the bubble + card webviews
+/// listen for. Mirrors the shape consumed by `loomi-bubble.html` /
+/// `loomi-card.html` (id, type, title, dialogue, priority, source chain,
+/// why bullets).
+fn build_decision_payload(d: &DecItem) -> serde_json::Value {
+    let priority = match d.confidence {
+        Some(c) if c >= 0.85 => "p0",
+        Some(c) if c >= 0.75 => "p1",
+        _ => "p2",
+    };
+    let (source, source_type, source_ts) = match d.source_signal.as_ref() {
+        Some(s) => (
+            Some(s.source.clone()),
+            Some(s.r#type.clone()),
+            s.ts.clone(),
+        ),
+        None => (None, None, None),
+    };
+    serde_json::json!({
+        "id": d.id,
+        "type": d.r#type,
+        "title": d.title,
+        "dialogue": d.dialogue,
+        "priority": priority,
+        "source": source,
+        "source_type": source_type,
+        "source_ts": source_ts,
+        "why": d.context.as_ref().and_then(|c| c.why.clone()).unwrap_or_default(),
+    })
 }
 
 /// Resolve where the loop skill writes its decision JSON.
@@ -116,6 +190,24 @@ pub struct DecisionsSnap {
 #[derive(Deserialize)]
 pub struct DecItem {
     #[serde(default)]
+    pub id: Option<String>,
+    #[serde(default)]
+    pub r#type: Option<String>,
+    #[serde(default)]
+    pub title: Option<String>,
+    /// `defaultDialogue` and `defaultNextStep` in `lib/loop/server.ts`
+    /// populate this when the card is built, but decisions written by
+    /// the tick pipeline may leave it empty. The bubble / card fall
+    /// back to a generic line in that case.
+    #[serde(default)]
+    pub dialogue: Option<String>,
+    #[serde(default)]
+    pub confidence: Option<f32>,
+    #[serde(default)]
+    pub source_signal: Option<SourceSignal>,
+    #[serde(default)]
+    pub context: Option<DecContext>,
+    #[serde(default)]
     pub created_at: Option<String>,
     #[serde(default)]
     pub completed_at: Option<String>,
@@ -124,6 +216,22 @@ pub struct DecItem {
     /// `false` so missing-field behavior is well-defined.
     #[serde(default)]
     pub needs_user: Option<bool>,
+}
+
+#[derive(Deserialize)]
+pub struct SourceSignal {
+    #[serde(default)]
+    pub source: String,
+    #[serde(default)]
+    pub r#type: String,
+    #[serde(default)]
+    pub ts: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct DecContext {
+    #[serde(default)]
+    pub why: Option<Vec<String>>,
 }
 
 /// Map a decision snapshot to `(pet_state, optional_monologue_hint)`.
@@ -241,6 +349,13 @@ mod tests {
         DecisionsSnap {
             pending: (0..pending)
                 .map(|i| DecItem {
+                    id: Some(format!("dec_test_pending_{i}")),
+                    r#type: Some("draft_reply".into()),
+                    title: Some(format!("pending {i}")),
+                    dialogue: None,
+                    confidence: Some(0.8),
+                    source_signal: None,
+                    context: None,
                     created_at: Some(format!("2026-01-01T00:00:0{i}Z")),
                     completed_at: None,
                     needs_user: None,
@@ -248,6 +363,13 @@ mod tests {
                 .collect(),
             done: (0..done)
                 .map(|i| DecItem {
+                    id: Some(format!("dec_test_done_{i}")),
+                    r#type: Some("draft_reply".into()),
+                    title: Some(format!("done {i}")),
+                    dialogue: None,
+                    confidence: Some(0.8),
+                    source_signal: None,
+                    context: None,
                     created_at: None,
                     completed_at: Some(format!("2026-01-01T00:00:0{i}Z")),
                     needs_user: None,
@@ -255,6 +377,13 @@ mod tests {
                 .collect(),
             dismissed: (0..dismissed)
                 .map(|i| DecItem {
+                    id: Some(format!("dec_test_dismissed_{i}")),
+                    r#type: Some("draft_reply".into()),
+                    title: Some(format!("dismissed {i}")),
+                    dialogue: None,
+                    confidence: Some(0.8),
+                    source_signal: None,
+                    context: None,
                     created_at: Some(format!("2026-01-01T00:00:0{i}Z")),
                     completed_at: None,
                     needs_user: None,

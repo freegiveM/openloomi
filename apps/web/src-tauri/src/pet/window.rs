@@ -136,10 +136,38 @@ fn wire_pet_window_events(app: &AppHandle) {
         return;
     };
     let app_handle = app.clone();
-    w.on_window_event(move |ev| {
-        if let tauri::WindowEvent::CloseRequested { api, .. } = ev {
+    w.on_window_event(move |ev| match ev {
+        tauri::WindowEvent::CloseRequested { api, .. } => {
             api.prevent_close();
             hide_pet_window(&app_handle);
         }
+        // Drag-to-reposition lands here on the pet window because the
+        // HTML calls `startDragging()` directly (no `draggable=true` on
+        // the titlebar). The aux windows (bubble + card) are anchored
+        // above the pet, so re-emit a position update so they follow
+        // along. Logging at `info` so the user can see in stdout whether
+        // the handler is firing at all — if drag-stop is the symptom,
+        // the absence of these lines tells us Tauri's tao backend
+        // isn't dispatching `Moved` for the native drag and we need to
+        // attach a position poller instead.
+        tauri::WindowEvent::Moved(pos) => {
+            log::info!(
+                "[loop-pet] Moved → ({},{}) — repositioning aux windows",
+                pos.x,
+                pos.y
+            );
+            on_pet_moved_reposition_aux(&app_handle);
+        }
+        _ => {}
     });
+}
+
+/// Reposition the bubble and card windows so they stay anchored above
+/// the pet. Idempotent and safe to call on every `Moved` event (Tauri
+/// emits these throughout the drag, so we want the work to be cheap —
+/// `set_position` is a no-op when the new value matches the cached
+/// one).
+pub fn on_pet_moved_reposition_aux(app: &AppHandle) {
+    super::aux_position::reposition_bubble_to_pet(app);
+    super::aux_position::reposition_card_to_pet(app);
 }

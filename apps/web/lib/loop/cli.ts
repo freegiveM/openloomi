@@ -81,8 +81,9 @@ function usage(): string {
   return `Usage: loop <command> [args]
 
 Commands:
-  tick [--userId <id>]       run one tick
-  analyze                    alias for tick
+  tick [--userId <id>] [--mode=agentic|legacy]
+                              run one tick (default: agentic; LOOP_LEGACY=1 forces legacy)
+  analyze                    alias for tick (legacy naming)
   inbox [--status=X]         list decisions (default: all)
   run <id> [--dry]           invoke agent on a decision
   dismiss <id> [reason]      dismiss a decision
@@ -91,6 +92,7 @@ Commands:
   brief [--force]            build morning brief + enqueue card
   wrap [--force]             build evening wrap + enqueue card
   inject <file|->            append a signal (JSON file or stdin for -)
+  ingest-decision <file|->   persist an agent-built decision (agentic tick only)
   config [show|set k=v]      read/write preferences
   doctor                     health check
 `;
@@ -113,7 +115,13 @@ async function main(): Promise<number> {
         const userId =
           typeof args.flags.userId === "string" ? args.flags.userId : undefined;
         if (userId) setActiveUser(userId);
-        const out = await runTick({ userId });
+        // `--mode=agentic|legacy` overrides the LOOP_LEGACY=1 default. In
+        // agentic mode the tick dispatches the full pipeline prompt to
+        // /api/native/agent; legacy uses the in-process rules + DB enrich.
+        const modeFlag = args.flags.mode;
+        const mode =
+          modeFlag === "agentic" || modeFlag === "legacy" ? modeFlag : undefined;
+        const out = await runTick({ userId, ...(mode ? { mode } : {}) });
         process.stdout.write(JSON.stringify(out, null, 2));
         return 0;
       }
@@ -209,6 +217,50 @@ async function main(): Promise<number> {
         );
         process.stdout.write(JSON.stringify({ ok: true, id: sig.id }, null, 2));
         return 0;
+      }
+      case "ingest-decision": {
+        // Persist a decision that the agent built. Used by the agentic tick
+        // (tick-prompt.ts §5) — the agent runs the full pipeline then POSTs
+        // each typed decision here. Decisions go through `decisions.add()`,
+        // which normalizes memory_refs/insight_refs placement and writes
+        // atomically.
+        const file = args._[1] || "-";
+        const raw =
+          file === "-"
+            ? readStdin()
+            : existsSync(file)
+              ? readFileSync(file, "utf8")
+              : null;
+        if (raw === null) {
+          process.stderr.write(`ingest-decision: ${file} not found\n`);
+          return 3;
+        }
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(raw);
+        } catch {
+          process.stderr.write("ingest-decision: invalid json\n");
+          return 3;
+        }
+        const p = parsed as Record<string, unknown>;
+        if (!p.type || !p.title || !p.action) {
+          process.stderr.write(
+            "ingest-decision: required fields missing (type, title, action)\n",
+          );
+          return 3;
+        }
+        try {
+          const dec = decisions.add(
+            p as unknown as Parameters<typeof decisions.add>[0],
+          );
+          process.stdout.write(JSON.stringify({ ok: true, decision: dec }, null, 2));
+          return 0;
+        } catch (e) {
+          process.stderr.write(
+            `ingest-decision: failed to persist: ${(e as Error).message}\n`,
+          );
+          return 1;
+        }
       }
       case "config": {
         const sub = args._[1] || "show";

@@ -1,27 +1,27 @@
 /**
  * Loop tick — one pass through the signal → enrich → classify → enqueue
- * pipeline.
+ * pipeline. Two execution modes are supported:
  *
- * Reads the recent signals buffer, runs each through:
- *   1. hard-skip filters (configurable via preferences)
- *   2. classifier → typed decision candidate
- *   3. memory enrichment (best-effort, see note below)
- *   4. enqueue via decisions.add()
+ *   - **agentic** (default): builds the prompt in `tick-prompt.ts` and
+ *     POSTs it to `/api/native/agent`. The agent does the full pipeline:
+ *     signal pull (Composio MCP / Skill / CLI / openloomi-memory insights
+ *     fallback), Obsidian vault scan, memory enrichment, classification,
+ *     and decision persistence. Matches the original `loop-daemon.cjs`
+ *     "agentic mode" 1:1 — the loop is the prompt, the agent does the work.
+ *     Set `LOOP_LEGACY=1` (or pass `mode: "legacy"`) to opt out.
  *
- * Memory enrichment: full openloomi-memory lookups (sender / project) are
- * performed by the AGENT when it later "runs" a decision. The tick itself
- * only attaches a minimal `context.why` blob referencing the source signal.
- * This keeps the tick fast and avoids a hard dependency on the memory
- * subsystem during the loop's hot path.
+ *   - **legacy**: in-process rules-based classifier + DB-backed enrich.
+ *     Fast, deterministic, no LLM cost. Useful for offline / headless /
+ *     no-MCP environments and for unit tests that need a stable pipeline.
  *
- * Idempotency: every signal already in `signals.jsonl` is processed once.
- * Use `signals.list({ since })` to re-classify on demand (the dedupe is
- * driven by `signal.id` on the stored decision — duplicates collapse).
+ * Either path returns a `LoopTickResult` so the caller (cron, CLI, HTTP
+ * route) doesn't care which mode ran.
  */
 
 import { classify, isHardSkipped } from "./classify";
 import { LOOP_PATHS, ensureDirs, migrate } from "./paths";
 import { decisions, log, signals, writeStatus } from "./store";
+import { buildTickPrompt } from "./tick-prompt";
 import type {
   LoopDecision,
   LoopPreferences,
@@ -83,6 +83,8 @@ function alreadyProcessed(key: string): boolean {
   return false;
 }
 
+export type TickMode = "agentic" | "legacy";
+
 export interface TickOptions {
   /** Override preferences for this tick only. Defaults to DEFAULT_LOOP_PREFERENCES. */
   preferences?: Partial<LoopPreferences>;
@@ -99,6 +101,14 @@ export interface TickOptions {
    * to a no-op and decisions land with the base 0.6 confidence.
    */
   userId?: string;
+  /**
+   * Execution mode. Defaults to `"agentic"`; falls back to `"legacy"`
+   * when `LOOP_LEGACY=1` is set in the environment. `"agentic"` is
+   * gated on the native-agent endpoint being reachable; if the POST
+   * fails with a transport-level error we surface it (don't silently
+   * fall back — the operator should know).
+   */
+  mode?: TickMode;
 }
 
 /**
@@ -106,6 +116,160 @@ export interface TickOptions {
  * that were newly enqueued. Errors per-signal are collected, not thrown.
  */
 export async function run(opts: TickOptions = {}): Promise<LoopTickResult> {
+  const mode: TickMode =
+    opts.mode ?? (process.env.LOOP_LEGACY === "1" ? "legacy" : "agentic");
+  if (mode === "agentic") return runAgentic(opts);
+  return runLegacy(opts);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Agentic mode — full-pipeline prompt → /api/native/agent                   */
+/* -------------------------------------------------------------------------- */
+
+interface AgentTickResultPayload {
+  scanned?: number;
+  surfaced?: number;
+  muted?: number;
+  errors?: number;
+  duration_ms?: number;
+  surfaces_used?: string[];
+}
+
+function emptyResult(): LoopTickResult {
+  return {
+    scanned: 0,
+    surfaced: 0,
+    muted: 0,
+    newDecisions: [],
+    errors: [],
+  };
+}
+
+async function runAgentic(opts: TickOptions): Promise<LoopTickResult> {
+  ensureDirs();
+  migrate();
+
+  const t0 = Date.now();
+  const prompt = buildTickPrompt({
+    sinceDays: Math.max(1, Math.ceil((opts.sinceMs ?? TICK_LOOKBACK_MS) / 86_400_000)),
+    // Obsidian vault scan lives in the Chronicle subsystem, not the loop —
+    // the watcher already consumes its `obsidian_note_changed` signals from
+    // signals.jsonl. The original skill's `obsidian-scan.cjs` reference is
+    // therefore omitted from the agentic prompt by default.
+    includeObsidian: false,
+  });
+
+  // Lazy import — runner transitively pulls node:http + auth-token logic
+  // that the CLI doesn't need. Mirrors the pattern in tick's legacy path.
+  const { invokeAgentPrompt } = await import("./runner");
+
+  log(`tick (agentic): dispatching prompt (${prompt.length} chars) to /api/native/agent`);
+  let res;
+  try {
+    res = await invokeAgentPrompt(prompt, {
+      timeoutMs: 15 * 60 * 1000,
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    log(`tick (agentic) failed: ${msg}`);
+    writeStatus({
+      lastTickAt: new Date().toISOString(),
+      lastError: `agentic tick failed: ${msg}`,
+    });
+    return {
+      ...emptyResult(),
+      errors: [msg],
+    };
+  }
+
+  if (!res.ok) {
+    const msg = res.error ?? `HTTP ${res.status ?? "?"}`;
+    log(`tick (agentic) native-agent error: ${msg}`);
+    writeStatus({
+      lastTickAt: new Date().toISOString(),
+      lastError: `agentic tick: ${msg}`,
+    });
+    return {
+      ...emptyResult(),
+      errors: [msg],
+    };
+  }
+
+  // The agent emits a structured `result` event at the end of the prompt;
+  // pull counts from there when present. Fall back to re-reading the
+  // decision store (decisions.json diff vs. before-tick snapshot) so the
+  // caller still gets honest numbers even if the agent's result event
+  // was missing or malformed.
+  const before = snapshotCounts();
+  const payload = (res.result ?? {}) as AgentTickResultPayload;
+  const scanned = payload.scanned ?? 0;
+  const agentSurfaced = payload.surfaced;
+  const muted = payload.muted ?? 0;
+  const errors = payload.errors ?? 0;
+  const surfaces = payload.surfaces_used ?? [];
+
+  let surfaced: number;
+  let newDecisions: LoopDecision[] = [];
+  if (typeof agentSurfaced !== "number") {
+    // Re-derive from disk.
+    const after = snapshotCounts();
+    surfaced = Math.max(0, after.pending - before.pending);
+    newDecisions = pendingAddedSince(before);
+  } else {
+    surfaced = agentSurfaced;
+    // Even when the agent reports the count, surface the freshly-added
+    // decisions so the caller can return them.
+    newDecisions = pendingAddedSince(before);
+  }
+
+  const result: LoopTickResult = {
+    scanned,
+    surfaced,
+    muted,
+    newDecisions,
+    errors: errors > 0 ? [`agent reported ${errors} per-signal errors`] : [],
+  };
+
+  const dur = Date.now() - t0;
+  log(
+    `tick (agentic) done: scanned=${result.scanned} surfaced=${result.surfaced} muted=${result.muted} errors=${result.errors.length} surfaces=${surfaces.join(",") || "?"} dur=${dur}ms`,
+  );
+  writeStatus({
+    lastTickAt: new Date().toISOString(),
+    lastSignalCount: result.scanned,
+    lastDecisionCount: result.surfaced,
+    ...(result.errors[0] ? { lastError: result.errors[0] } : {}),
+  });
+  return result;
+}
+
+interface CountsSnapshot {
+  pending: number;
+  done: number;
+  dismissed: number;
+  pendingIds: Set<string>;
+}
+
+function snapshotCounts(): CountsSnapshot {
+  const pending = decisions.list("pending");
+  return {
+    pending: pending.length,
+    done: decisions.list("done").length,
+    dismissed: decisions.list("dismissed").length,
+    pendingIds: new Set(pending.map((d) => d.id)),
+  };
+}
+
+function pendingAddedSince(before: CountsSnapshot): LoopDecision[] {
+  const after = decisions.list("pending");
+  return after.filter((d) => !before.pendingIds.has(d.id));
+}
+
+/* -------------------------------------------------------------------------- */
+/* Legacy mode — rules-based classify + DB enrich (LOOP_LEGACY=1)           */
+/* -------------------------------------------------------------------------- */
+
+async function runLegacy(opts: TickOptions): Promise<LoopTickResult> {
   ensureDirs();
   // Lazy migrate on first tick so legacy data shows up before any decision
   // is enqueued. Safe to call repeatedly — no-op after the first run.
@@ -198,11 +362,11 @@ export async function run(opts: TickOptions = {}): Promise<LoopTickResult> {
       });
       result.newDecisions.push(dec);
       result.surfaced += 1;
-      log(`tick: ${sig.source}:${sig.type} → ${dec.id} (${dec.type})`);
+      log(`tick (legacy): ${sig.source}:${sig.type} → ${dec.id} (${dec.type})`);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       result.errors.push(`${sig.id}: ${msg}`);
-      log(`tick error: ${sig.id}: ${msg}`);
+      log(`tick (legacy) error: ${sig.id}: ${msg}`);
     }
   }
 
@@ -213,7 +377,7 @@ export async function run(opts: TickOptions = {}): Promise<LoopTickResult> {
     ...(result.errors[0] ? { lastError: result.errors[0] } : {}),
   });
   log(
-    `tick done: scanned=${result.scanned} surfaced=${result.surfaced} muted=${result.muted} errors=${result.errors.length}`,
+    `tick (legacy) done: scanned=${result.scanned} surfaced=${result.surfaced} muted=${result.muted} errors=${result.errors.length}`,
   );
   return result;
 }

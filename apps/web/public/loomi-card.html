@@ -1,0 +1,495 @@
+<!doctype html>
+<!--
+  Loomi · decision card
+
+  Larger "card" mode for the pet widget. Shows the latest pending
+  decision with enough context (type / source chain / why) for the
+  user to act without opening the dashboard. Replaces the bubble
+  visually when opened — the host hides the bubble before showing the
+  card so we don't double-stack glass on the screen.
+
+  Layout (360×420):
+    header  · type icon · priority pill · dismiss ×
+    title   · decision title (clamp 2 lines)
+    source  · source · type · timestamp
+    why     · up to 3 why bullets
+    footer  · Run · Dismiss (reason) · Open in dashboard
+
+  Actions:
+    · Run / Dismiss POST /api/loop/decision/[id] directly. The webview
+      shares the main app's cookie jar (same Tauri origin) so the
+      session is honored. On success, emit `loop:decision-cleared` so
+      the watcher picks it up and the pet returns to idle.
+    · Open in dashboard emits `pet:open-dashboard` and the host shows
+      the main window.
+    · The × (close) emits `pet:close-card` so the host hides the card
+      and re-shows the bubble.
+
+  State contract:
+    · Listens for `loop:decision` to populate. If the payload is empty
+      or has no `id`, the card shows the "all clear" empty state.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Loomi · card</title>
+    <style>
+      :root {
+        --card-w: 360px;
+        --card-h: 420px;
+        --bg: rgba(15, 23, 42, 0.94);
+        --border: rgba(255, 255, 255, 0.08);
+        --text: #f1f5f9;
+        --muted: rgba(241, 245, 249, 0.6);
+        --accent: #60a5fa;
+        --danger: #f87171;
+        --good: #34d399;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: transparent;
+        -webkit-user-select: none;
+        user-select: none;
+        font-family:
+          system-ui,
+          -apple-system,
+          "Segoe UI",
+          sans-serif;
+        font-size: 12px;
+        line-height: 1.4;
+        color: var(--text);
+      }
+      body {
+        width: var(--card-w);
+        height: var(--card-h);
+        overflow: hidden;
+      }
+      .card {
+        width: var(--card-w);
+        height: var(--card-h);
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        box-shadow: 0 18px 32px rgba(0, 0, 0, 0.45);
+        backdrop-filter: blur(18px) saturate(140%);
+        -webkit-backdrop-filter: blur(18px) saturate(140%);
+        padding: 14px 14px 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        position: relative;
+      }
+      /* Tail pointing left toward the pet (same shape as bubble). */
+      .card::before {
+        content: "";
+        position: absolute;
+        left: -7px;
+        top: 36px;
+        width: 12px;
+        height: 12px;
+        transform: rotate(45deg);
+        background: var(--bg);
+        border-left: 1px solid var(--border);
+        border-bottom: 1px solid var(--border);
+        border-radius: 2px;
+      }
+      .header {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 10px;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        color: var(--muted);
+        flex: 0 0 auto;
+      }
+      .header .icon {
+        font-size: 14px;
+        line-height: 1;
+        color: var(--accent);
+        font-style: normal;
+      }
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+        padding: 1px 6px;
+        border-radius: 999px;
+        font-size: 9px;
+        font-weight: 600;
+        background: rgba(255, 255, 255, 0.08);
+        color: var(--text);
+      }
+      .pill.p0 {
+        background: rgba(248, 113, 113, 0.18);
+        color: #fca5a5;
+      }
+      .pill.p1 {
+        background: rgba(251, 191, 36, 0.18);
+        color: #fcd34d;
+      }
+      .pill.p2 {
+        background: rgba(148, 163, 184, 0.18);
+        color: #cbd5e1;
+      }
+      .spacer {
+        flex: 1 1 auto;
+      }
+      .close {
+        width: 20px;
+        height: 20px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 6px;
+        background: transparent;
+        border: 0;
+        color: var(--muted);
+        cursor: pointer;
+        font-size: 14px;
+        padding: 0;
+      }
+      .close:hover {
+        background: rgba(255, 255, 255, 0.08);
+        color: var(--text);
+      }
+      .title {
+        font-size: 14px;
+        font-weight: 600;
+        line-height: 1.3;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+      .meta {
+        font-size: 10px;
+        color: var(--muted);
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+      .dialogue {
+        font-size: 11px;
+        line-height: 1.4;
+        color: rgba(241, 245, 249, 0.85);
+        padding: 8px 10px;
+        background: rgba(255, 255, 255, 0.04);
+        border-radius: 8px;
+        border-left: 2px solid var(--accent);
+      }
+      .why {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        font-size: 10px;
+        color: var(--muted);
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow: auto;
+      }
+      .why-item {
+        display: flex;
+        align-items: flex-start;
+        gap: 6px;
+      }
+      .why-item::before {
+        content: "";
+        flex: 0 0 auto;
+        margin-top: 5px;
+        width: 4px;
+        height: 4px;
+        border-radius: 50%;
+        background: var(--accent);
+        opacity: 0.7;
+      }
+      .footer {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 6px;
+        flex: 0 0 auto;
+      }
+      button {
+        font: inherit;
+        cursor: pointer;
+        padding: 7px 8px;
+        border-radius: 8px;
+        border: 1px solid transparent;
+        background: rgba(255, 255, 255, 0.06);
+        color: var(--text);
+        font-size: 11px;
+        font-weight: 500;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
+      }
+      button:hover {
+        background: rgba(255, 255, 255, 0.1);
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+      button.primary {
+        background: var(--good);
+        color: #0f172a;
+        border-color: rgba(255, 255, 255, 0.2);
+      }
+      button.primary:hover {
+        background: #4ade80;
+      }
+      button.danger {
+        background: rgba(248, 113, 113, 0.18);
+        color: #fca5a5;
+      }
+      button.danger:hover {
+        background: rgba(248, 113, 113, 0.28);
+      }
+      button.ghost {
+        background: transparent;
+        border-color: rgba(255, 255, 255, 0.1);
+      }
+      .empty {
+        display: none;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        height: 100%;
+        text-align: center;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .empty .big {
+        font-size: 28px;
+        opacity: 0.6;
+      }
+      body.empty .card .title,
+      body.empty .card .meta,
+      body.empty .card .dialogue,
+      body.empty .card .why,
+      body.empty .card .footer,
+      body.empty .card .header {
+        display: none;
+      }
+      body.empty .empty {
+        display: flex;
+      }
+      .toast {
+        position: absolute;
+        left: 12px;
+        right: 12px;
+        bottom: 64px;
+        padding: 8px 10px;
+        background: rgba(15, 23, 42, 0.96);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        font-size: 10px;
+        color: var(--text);
+        opacity: 0;
+        transform: translateY(4px);
+        transition:
+          opacity 180ms ease,
+          transform 180ms ease;
+        pointer-events: none;
+      }
+      .toast.show {
+        opacity: 1;
+        transform: translateY(0);
+      }
+      .toast.error {
+        border-color: rgba(248, 113, 113, 0.4);
+        color: #fca5a5;
+      }
+    </style>
+  </head>
+  <body class="empty">
+    <div class="card" id="card">
+      <div class="header">
+        <span class="icon" id="icon">●</span>
+        <span id="type-label">…</span>
+        <span class="pill" id="pill">p2</span>
+        <span class="spacer"></span>
+        <button class="close" id="close" type="button" aria-label="Close">
+          ×
+        </button>
+      </div>
+      <div class="title" id="title">All clear</div>
+      <div class="meta" id="meta">—</div>
+      <div class="dialogue" id="dialogue">…</div>
+      <div class="why" id="why"></div>
+      <div class="footer">
+        <button class="primary" id="run" type="button">▶ Run</button>
+        <button class="danger" id="dismiss" type="button">✕ Dismiss</button>
+        <button class="ghost" id="open" type="button">↗ Open</button>
+      </div>
+      <div class="empty" id="empty-state">
+        <div class="big">◌</div>
+        <div>Nothing pending — Loomi is idling.</div>
+        <div style="opacity: 0.5; font-size: 10px">
+          New decisions show up here automatically.
+        </div>
+      </div>
+      <div class="toast" id="toast"></div>
+    </div>
+
+    <script>
+      (function () {
+        "use strict";
+
+        const body = document.body;
+        const icon = document.getElementById("icon");
+        const typeLabel = document.getElementById("type-label");
+        const pill = document.getElementById("pill");
+        const title = document.getElementById("title");
+        const meta = document.getElementById("meta");
+        const dialogue = document.getElementById("dialogue");
+        const why = document.getElementById("why");
+        const runBtn = document.getElementById("run");
+        const dismissBtn = document.getElementById("dismiss");
+        const openBtn = document.getElementById("open");
+        const closeBtn = document.getElementById("close");
+        const toast = document.getElementById("toast");
+
+        let currentId = null;
+        let currentTitle = null;
+        let busy = false;
+
+        const TYPE_ICONS = {
+          rsvp: "◐",
+          draft_reply: "✎",
+          review_pr: "◇",
+          slack_reply: "▷",
+          release_plan: "❖",
+        };
+
+        function showToast(text, isError) {
+          toast.textContent = text;
+          toast.classList.toggle("error", !!isError);
+          toast.classList.add("show");
+          clearTimeout(showToast._t);
+          showToast._t = setTimeout(() => toast.classList.remove("show"), 2200);
+        }
+
+        function renderWhy(items) {
+          why.innerHTML = "";
+          if (!Array.isArray(items) || items.length === 0) return;
+          const limit = Math.min(items.length, 3);
+          for (let i = 0; i < limit; i++) {
+            const d = document.createElement("div");
+            d.className = "why-item";
+            d.textContent = items[i];
+            why.appendChild(d);
+          }
+        }
+
+        function setBusy(b) {
+          busy = b;
+          runBtn.disabled = b;
+          dismissBtn.disabled = b;
+          openBtn.disabled = b;
+        }
+
+        function apply(p) {
+          if (!p || !p.id) {
+            body.classList.add("empty");
+            currentId = null;
+            currentTitle = null;
+            return;
+          }
+          body.classList.remove("empty");
+          currentId = p.id;
+          currentTitle = p.title || p.type || "Pending";
+          const t = p.type || "decision";
+          typeLabel.textContent = t;
+          icon.textContent = TYPE_ICONS[t] || "●";
+          const pri = (p.priority || "p2").toLowerCase();
+          pill.textContent = pri;
+          pill.className = "pill " + pri;
+          title.textContent = currentTitle;
+          const metaBits = [];
+          if (p.source) metaBits.push(p.source);
+          if (p.source_type) metaBits.push(p.source_type);
+          if (p.source_ts) {
+            try {
+              metaBits.push(new Date(p.source_ts).toLocaleString());
+            } catch (_) {
+              metaBits.push(p.source_ts);
+            }
+          }
+          meta.textContent = metaBits.length ? metaBits.join(" · ") : "—";
+          dialogue.textContent = p.dialogue || "Open Loop to decide.";
+          renderWhy(p.why);
+        }
+
+        async function postAction(action, body) {
+          if (!currentId) return;
+          setBusy(true);
+          try {
+            const res = await fetch(`/api/loop/decision/${currentId}`, {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              credentials: "include",
+              body: JSON.stringify({ action, ...(body || {}) }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || !data?.ok) {
+              throw new Error(data?.error || res.statusText || "failed");
+            }
+            showToast(
+              action === "run"
+                ? "Ran · check Loop for the result."
+                : "Dismissed",
+              false,
+            );
+            const t = window.__TAURI__;
+            if (t && t.event && t.event.emit) {
+              t.event.emit("loop:decision-cleared", { id: currentId });
+            }
+          } catch (e) {
+            showToast(
+              action === "run"
+                ? `Run failed: ${e.message || e}`
+                : `Dismiss failed: ${e.message || e}`,
+              true,
+            );
+          } finally {
+            setBusy(false);
+          }
+        }
+
+        runBtn.addEventListener("click", () => postAction("run"));
+        dismissBtn.addEventListener("click", () => postAction("dismiss"));
+        openBtn.addEventListener("click", () => {
+          const t = window.__TAURI__;
+          if (t && t.event && t.event.emit) {
+            t.event.emit("pet:open-dashboard");
+            if (currentId) t.event.emit("pet:open-decision", { id: currentId });
+          }
+        });
+        closeBtn.addEventListener("click", () => {
+          const t = window.__TAURI__;
+          if (t && t.event && t.event.emit) {
+            t.event.emit("pet:close-card");
+          }
+        });
+
+        const tauri = window.__TAURI__;
+        if (tauri && tauri.event && tauri.event.listen) {
+          tauri.event.listen("loop:decision", (e) =>
+            apply((e && e.payload) || {}),
+          );
+        }
+
+        apply(null);
+      })();
+    </script>
+  </body>
+</html>

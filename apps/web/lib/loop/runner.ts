@@ -52,9 +52,34 @@ interface NativeAgentResponse {
   error?: string;
 }
 
-interface SseEvent {
+export interface SseEvent {
   type?: string;
   content?: unknown;
+}
+
+export interface InvokeAgentOptions {
+  timeoutMs?: number;
+  onEvent?: (e: SseEvent) => void;
+}
+
+/**
+ * Public agent-entry point used by the loop's agentic tick. Resolves the
+ * native-agent URL (env override → default) and POSTs the prompt as
+ * `{ prompt }`. Returns the parsed SSE response — caller can read
+ * `result` for a structured payload (when the agent emits a `result` event)
+ * or fall back to `text` / `events` for streaming output.
+ *
+ * `LOOP_LEGACY=1` opts into spawning `claude -p` instead (Surface B in the
+ * original skill). Surface B is intentionally NOT exposed here — the tick
+ * is full-agentic by design; legacy callers should set `LOOP_LEGACY=1`
+ * globally to route through Surface B.
+ */
+export async function invokeAgentPrompt(
+  prompt: string,
+  opts: InvokeAgentOptions = {},
+): Promise<NativeAgentResponse> {
+  const url = resolveNativeAgentUrl();
+  return postNativeAgent(url, { prompt }, opts);
 }
 
 async function postNativeAgent(
