@@ -562,6 +562,22 @@ fn main() {
                 });
             });
 
+            // Pet right-click "Settings" → show the main window and ask
+            // the Next.js side to client-side navigate to the General
+            // settings page. We use a custom DOM event (rather than
+            // window.location.href) so Next.js's router.push handles the
+            // query-param change without a full reload, preserving
+            // client state.
+            let open_settings_app = app_handle.clone();
+            app_handle.listen("pet:open-settings", move |_event| {
+                tray::show_main_window(&open_settings_app);
+                if let Some(window) = open_settings_app.get_webview_window("main") {
+                    let _ = window.eval(
+                        "window.dispatchEvent(new CustomEvent('openloomi:navigate-settings'))",
+                    );
+                }
+            });
+
             // B2: bubble click → open the card (which the user can act
             // on). If the card doesn't have a current decision payload
             // (e.g. everything got dismissed in flight), the card

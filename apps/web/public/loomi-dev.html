@@ -686,6 +686,8 @@
         const statesEl = document.getElementById("states");
         const scenesEl = document.getElementById("scenes");
         const connectorsEl = document.getElementById("connectors");
+        const pipelineEl = document.getElementById("pipeline");
+        const triageEl = document.getElementById("triage");
         const countEl = document.getElementById("count");
         const toastEl = document.getElementById("toast");
         const resetBtn = document.getElementById("reset");
@@ -937,8 +939,20 @@
             if (scene.key === "connection-check") {
               await loadConnectors();
               connectorsEl.classList.add("visible");
+              pipelineEl.classList.remove("visible");
+              triageEl.classList.remove("visible");
+            } else if (scene.key === "judgment-system") {
+              pipelineEl.classList.add("visible");
+              connectorsEl.classList.remove("visible");
+              triageEl.classList.remove("visible");
+            } else if (scene.key === "noise-reduction") {
+              triageEl.classList.add("visible");
+              connectorsEl.classList.remove("visible");
+              pipelineEl.classList.remove("visible");
             } else {
               connectorsEl.classList.remove("visible");
+              pipelineEl.classList.remove("visible");
+              triageEl.classList.remove("visible");
             }
             refreshCount();
           } catch (e) {
@@ -961,7 +975,22 @@
             const data = await res.json();
             const byId = {};
             for (const c of data.connectors || []) byId[c.id] = c;
+            // Per the demo's connection-check slide, Slack / Email /
+            // WhatsApp are the canonical trio — they're not in the
+            // real connector state (no Slack/WhatsApp integration
+            // yet), so we paint them as always-green demo entries.
+            // Calendar + GitHub show real state from /api/loop/state.
+            paintConnector("slack", {
+              connected: true,
+              accountCount: 1,
+              lastError: null,
+            });
             paintConnector("gmail", byId["gmail"]);
+            paintConnector("whatsapp", {
+              connected: true,
+              accountCount: 1,
+              lastError: null,
+            });
             paintConnector(
               "calendar",
               byId["googlecalendar"] || byId["calendar"],
@@ -1020,12 +1049,17 @@
             }
             flashToast("Reset · " + data.dropped + " → dismissed", "success");
             // Returning to idle is a state change — flip the pet chip
-            // back so the picker reflects reality.
+            // back so the picker reflects reality, and collapse any
+            // form-specific inline block so the panel returns to its
+            // default state.
             await emitPetState("idle");
             activeState = "idle";
             for (const el of statesEl.querySelectorAll(".state-chip")) {
               el.classList.toggle("active", el.dataset.state === "idle");
             }
+            connectorsEl.classList.remove("visible");
+            pipelineEl.classList.remove("visible");
+            triageEl.classList.remove("visible");
             refreshCount();
           } catch (e) {
             flashToast("Reset failed: " + (e.message || e), "error");

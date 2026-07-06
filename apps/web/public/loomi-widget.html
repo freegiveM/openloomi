@@ -265,6 +265,7 @@
 
     <div id="pet-menu" role="menu" aria-hidden="true">
       <button type="button" data-op="open" role="menuitem">Open Loomi</button>
+      <button type="button" data-op="settings" role="menuitem">Settings</button>
       <hr />
       <button type="button" data-op="quit" role="menuitem">Quit</button>
     </div>
@@ -390,6 +391,7 @@
           const t = window.__TAURI__;
           if (!t || !t.event || !t.event.emit) return;
           if (op === "open") t.event.emit("pet:open-dashboard");
+          else if (op === "settings") t.event.emit("pet:open-settings");
           else if (op === "quit") t.event.emit("pet:quit");
         });
 

@@ -139,6 +139,19 @@ export function Home() {
       window.removeEventListener("openloomi:request-integration", handler);
   }, [router]);
 
+  // Pet right-click "Settings" → open the General settings panel via
+  // client-side navigation. Mirrors the openloomi:request-integration
+  // pattern; the Rust host dispatches this DOM event after showing the
+  // main window (see main.rs `pet:open-settings` listener).
+  useEffect(() => {
+    const handler = () => {
+      router.push("/?page=account-settings");
+    };
+    window.addEventListener("openloomi:navigate-settings", handler);
+    return () =>
+      window.removeEventListener("openloomi:navigate-settings", handler);
+  }, [router]);
+
   // Listen for integration authorization completion → retry the tool call
   useEffect(() => {
     const handler = () => {
