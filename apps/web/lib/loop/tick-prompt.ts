@@ -334,12 +334,22 @@ The tick caller parses a \`result\` event from your SSE stream. Emit exactly one
   "muted": <int — signals skipped by hard rules or dedupe>,
   "errors": <int — per-signal errors>,
   "duration_ms": <int — wall clock from start to now>,
-  "surfaces_used": ["<mcp|skill|cli|insights|obsidian>", ...]
+  "surfaces_used": ["<mcp|skill|cli|insights|obsidian>", ...],
+  "connectors": [
+    { "id": "gmail",           "label": "Gmail",           "connected": <bool>, "accountCount": <int>, "lastError": "<optional>" },
+    { "id": "google_calendar", "label": "Google Calendar", "connected": <bool>, "accountCount": <int>, "lastError": "<optional>" },
+    { "id": "github",          "label": "GitHub",          "connected": <bool>, "accountCount": <int>, "lastError": "<optional>" },
+    { "id": "slack",           "label": "Slack",           "connected": <bool>, "accountCount": <int>, "lastError": "<optional>" },
+    { "id": "linear",          "label": "Linear",          "connected": <bool>, "accountCount": <int>, "lastError": "<optional>" },
+    { "id": "obsidian",        "label": "Obsidian",        "connected": false,  "accountCount": 0,     "lastError": "local-only" }
+  ]
 }
 \`\`\`
 
-Wrap it as the SSE \`result\` event with that object as \`content\`. The runner
-will pick it up and surface it as the tick's return value.
+Wrap the whole object as the SSE \`result\` event with \`content = {...}\`. The
+runner will pick it up, surface it as the tick's return value, and persist the
+\`connectors\` block to \`~/.openloomi/loop/connectors.json\` so the UI pill row
+stays honest between ticks.
 
 # Constraints
 

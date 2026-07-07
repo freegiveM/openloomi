@@ -599,6 +599,16 @@ fn main() {
                 pet::show_bubble_window_if_pending(&close_card_app);
             });
 
+            // The bubble owns its own auto-dismiss lifecycle (see
+            // `loomi-bubble.html::scheduleAutoHide`). When the JS timer
+            // fires, the bubble emits this event asking the host to
+            // hide the window. The host's `hide_bubble_window` is
+            // idempotent, so a stale or duplicate request is a no-op.
+            let auto_close_app = app_handle.clone();
+            app_handle.listen("pet:bubble-auto-close", move |_event| {
+                pet::hide_bubble_window(&auto_close_app);
+            });
+
             // B2: "Open in dashboard" inside the card jumps to a
             // specific decision detail page. The webview side dispatches
             // this with `{ id: <dec_id> }` so the dashboard can land on

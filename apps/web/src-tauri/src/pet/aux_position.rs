@@ -81,6 +81,42 @@ fn pet_scale_factor(app: &AppHandle) -> Option<f64> {
         .map(|s| s)
 }
 
+/// Compute the logical (left, top) for the card anchored to the LEFT of
+/// the pet, vertically centered on it. The bubble sits above the pet
+/// (separately, via `position_above_pet`); the card lives beside the
+/// pet so the two never compete for the same vertical slot. The card's
+/// tail is rendered on its right side (see `.card::before` in
+/// `loomi-card.html`) and points back toward the pet.
+///
+/// `left = pet_left - PET_AUX_GAP - card_w`  (card's left edge)
+/// `top  = pet_center_y - card_h / 2`        (vertically centered)
+fn position_left_of_pet(
+    app: &AppHandle,
+    pet: PhysicalPosition<i32>,
+    card_w_logical: f64,
+    card_h_logical: f64,
+) -> LogicalPosition<f64> {
+    let scale = pet_scale_factor(app).unwrap_or(1.0);
+    let (_pet_w_phys, pet_h_phys) =
+        pet_outer_size_physical(app).unwrap_or((168.0 * scale, 168.0 * scale));
+
+    let card_w_phys = card_w_logical * scale;
+    let card_h_phys = card_h_logical * scale;
+
+    // Card's right edge sits PET_AUX_GAP to the left of the pet's left
+    // edge. Clamp to a 4px screen margin so the card stays on-screen
+    // when the user drags the pet to the far left of the desktop.
+    let raw_left_phys = pet.x as f64 - PET_AUX_GAP * scale - card_w_phys;
+    let clamped_left_phys = raw_left_phys.max(4.0 * scale);
+    let left_logical = clamped_left_phys / scale;
+
+    // Vertically center the card on the pet.
+    let pet_center_y_phys = pet.y as f64 + pet_h_phys / 2.0;
+    let top_logical = (pet_center_y_phys - card_h_phys / 2.0) / scale;
+
+    LogicalPosition::new(left_logical, top_logical)
+}
+
 fn reposition(
     app: &AppHandle,
     label: &str,
@@ -129,15 +165,40 @@ pub fn reposition_bubble_to_pet(app: &AppHandle) {
     );
 }
 
-/// Reposition the card so it stays anchored above the pet.
+/// Reposition the card so it stays anchored to the LEFT of the pet,
+/// vertically centered. Called by the pet's `Moved` event and after
+/// `build_card_window`. The bubble lives above the pet (via
+/// `reposition_bubble_to_pet`); the card lives beside the pet so the
+/// two occupy different vertical real estate, and the bubble's
+/// z-order keeps it on top of the card in the slim overlap region.
 pub fn reposition_card_to_pet(app: &AppHandle) {
-    reposition(
-        app,
-        PET_CARD_LABEL,
+    let Some(pet) = pet_position_physical(app) else {
+        log::debug!("[loop-pet] reposition {PET_CARD_LABEL}: pet position not ready");
+        return;
+    };
+    let target = position_left_of_pet(app, pet, card::CARD_W, card::CARD_H);
+    log::debug!(
+        "[loop-pet] reposition {PET_CARD_LABEL}: pet=({:.0},{:.0}) card=({:.0}x{:.0}) → ({:.0},{:.0})",
+        pet.x,
+        pet.y,
         card::CARD_W,
         card::CARD_H,
-        card::build_card_window,
+        target.x,
+        target.y,
     );
+    let win = match app.get_webview_window(PET_CARD_LABEL) {
+        Some(w) => w,
+        None => match card::build_card_window(app) {
+            Ok(w) => w,
+            Err(e) => {
+                log::warn!("[loop-pet] could not build aux window {PET_CARD_LABEL}: {e}");
+                return;
+            }
+        },
+    };
+    if let Err(e) = win.set_position(target) {
+        log::warn!("[loop-pet] set_position failed for {PET_CARD_LABEL}: {e}");
+    }
 }
 
 /// Spawn a background thread that continuously re-asserts the bubble +

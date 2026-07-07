@@ -7,20 +7,20 @@
 
 use std::sync::{Mutex, OnceLock};
 
-use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 
 use super::PET_BUBBLE_LABEL;
 
 /// Logical (CSS) width of the bubble window. Matches `--bubble-w` in
 /// `loomi-bubble.html`. The host reads this to anchor the bubble above
 /// the pet, horizontally centered on it.
-pub const BUBBLE_W: f64 = 400.0;
+pub const BUBBLE_W: f64 = 320.0;
 /// Logical (CSS) height of the bubble window. Matches `--bubble-h` in
-/// `loomi-bubble.html`. 110px to fit a 2-line speech + the downward
-/// tail + a small overlap with the blue dot; the dot's CSS `bottom: 6px`
+/// `loomi-bubble.html`. 84px to fit a 2-line speech + the downward
+/// tail + a small overlap with the blue dot; the dot's CSS `bottom: 4px`
 /// keeps it near the window's bottom edge so the tail tip still anchors
-/// to the pet (~13px above pet top with `PET_AUX_GAP = 4`).
-pub const BUBBLE_H: f64 = 110.0;
+/// to the pet (~7px above pet top with `PET_AUX_GAP = 4`).
+pub const BUBBLE_H: f64 = 84.0;
 
 static BUBBLE_APP_HANDLE: OnceLock<Mutex<Option<AppHandle>>> = OnceLock::new();
 
@@ -88,10 +88,26 @@ pub fn build_bubble_window(app: &AppHandle) -> tauri::Result<tauri::WebviewWindo
 /// `aux_position::reposition_bubble_to_pet`). If the window hasn't been
 /// built yet this is a no-op — the watcher's first show call will
 /// trigger the build.
+///
+/// Both the bubble and the card are `always_on_top(true)`, so they sit
+/// in the same OS float layer and their relative z-order is whatever
+/// was touched last. The bubble is a transient notification and must
+/// visually sit on top of the card, so we `set_focus()` after show —
+/// on macOS / Windows that brings the bubble to the front of the float
+/// layer; on Linux (depending on WM) the same is true for most
+/// compositors. The bubble has no focusable inputs, so the focus grab
+/// is harmless.
 pub fn show_bubble_window(app: &AppHandle) {
     if let Some(w) = app.get_webview_window(PET_BUBBLE_LABEL) {
         let _ = w.show();
         let _ = w.set_always_on_top(true);
+        let _ = w.set_focus();
+        // Tell the bubble's JS to (re)arm its auto-dismiss timer. The
+        // bubble owns the dismiss lifecycle (see
+        // `loomi-bubble.html::scheduleAutoHide`) because JS-side
+        // `setTimeout` is more robust than a Rust thread when the
+        // watcher re-emits `loop:decision` rapidly.
+        let _ = w.emit("pet:bubble-shown", ());
     }
 }
 

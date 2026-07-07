@@ -20,15 +20,29 @@ import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
+import { DEV_PORT, PROD_PORT } from "@openloomi/shared";
+
 import { decisions, log } from "./store";
 import type { LoopDecision } from "./types";
 
-const NATIVE_AGENT_DEFAULT_URL = "http://127.0.0.1:3414/api/native/agent";
-
+/**
+ * Resolve the URL of the native agent endpoint.
+ *
+ * The Loop runs *inside* the Next.js process that also serves
+ * `/api/native/agent` — so the agent is always on the same host:port as
+ * the Next.js dev/release server itself. Port comes from `@openloomi/shared`
+ * (`DEV_PORT` / `PROD_PORT`) so we stay in sync with the rest of the app.
+ * `LOOP_NATIVE_AGENT_URL` stays as the escape hatch for split-host setups
+ * (e.g. agent behind a reverse proxy on another machine).
+ */
 function resolveNativeAgentUrl(): string {
-  return (
-    process.env.LOOP_NATIVE_AGENT_URL || NATIVE_AGENT_DEFAULT_URL
-  ).replace(/\/+$/, "");
+  if (process.env.LOOP_NATIVE_AGENT_URL) {
+    return process.env.LOOP_NATIVE_AGENT_URL.replace(/\/+$/, "");
+  }
+  const port =
+    process.env.PORT ||
+    (process.env.NODE_ENV === "development" ? DEV_PORT : PROD_PORT);
+  return `http://127.0.0.1:${port}/api/native/agent`;
 }
 
 function readToken(): string | null {

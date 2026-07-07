@@ -102,17 +102,33 @@ fn watch_loop(app: &AppHandle) {
 
         // B2: keep bubble + card windows in sync. The bubble auto-shows
         // when the latest pending decision changes and auto-hides when
-        // the pending bucket empties; the card only renders, it doesn't
-        // change visibility from here (the user opens it explicitly).
+        // the pending bucket empties. The card was historically
+        // user-opened only, but the connector-status strip on the card
+        // is the user's primary at-a-glance "is the loop healthy" view
+        // — the user shouldn't have to click the bubble to see it. We
+        // auto-show the card the first time a pending decision lands
+        // (so the user immediately sees the decision + connector dots)
+        // and otherwise leave its visibility alone (the × / click
+        // handlers drive subsequent toggles).
         if let Some(top) = snap.pending.first() {
             let decision_payload = build_decision_payload(top);
             let _ = app.emit_to(PET_BUBBLE_LABEL, "loop:decision", decision_payload.clone());
             let _ = app.emit_to(PET_CARD_LABEL, "loop:decision", decision_payload);
-            if app.get_webview_window(PET_BUBBLE_LABEL).is_some() {
-                let _ = app
-                    .get_webview_window(PET_BUBBLE_LABEL)
-                    .map(|w| w.show().ok());
-            }
+            // Auto-show the card so the connector strip is visible
+            // without an extra click. `show_card_window` is idempotent
+            // and re-focuses the existing window. We do this BEFORE
+            // showing the bubble so the bubble's `set_focus` call ends
+            // up as the last focus event — which is what determines the
+            // z-order in the OS float layer (both windows are
+            // `always_on_top(true)`). If we did it in the opposite
+            // order, the card would end up on top of the bubble and
+            // obscure the speech text.
+            super::show_card_window(app);
+            // Show the bubble as a transient notification on top of
+            // the card. The bubble's JS owns the auto-dismiss
+            // lifecycle — see `loomi-bubble.html::scheduleAutoHide`.
+            // We just need to show + focus.
+            super::show_bubble_window(app);
         } else {
             let empty = serde_json::json!({});
             let _ = app.emit_to(PET_BUBBLE_LABEL, "loop:decision", empty);
@@ -120,6 +136,25 @@ fn watch_loop(app: &AppHandle) {
                 let _ = w.hide();
             }
         }
+
+        // C: emit a slim pending-list to the card so connection-check
+        // (Form 1) and any layout that wants to render a queue can
+        // subscribe. Top 5 entries is plenty for a 360×420 window —
+        // the user can dismiss / open to see more in the dashboard.
+        let pending_list = serde_json::json!({
+            "items": snap.pending.iter().take(5).map(|d| {
+                serde_json::json!({
+                    "id": d.id,
+                    "type": d.r#type,
+                    "title": d.title,
+                    "source": d.source_signal.as_ref().map(|s| s.source.clone()),
+                    "source_type": d.source_signal.as_ref().map(|s| s.r#type.clone()),
+                    "source_ts": d.source_signal.as_ref().and_then(|s| s.ts.clone()),
+                    "confidence": d.confidence,
+                })
+            }).collect::<Vec<_>>()
+        });
+        let _ = app.emit_to(PET_CARD_LABEL, "loop:pending-list", pending_list);
     }
 }
 
@@ -159,22 +194,192 @@ fn build_decision_payload(d: &DecItem) -> serde_json::Value {
 /// Precedence:
 /// 1. `LOOMI_PET_DECISIONS_PATH` env var — useful for tests and for
 ///    pointing at a non-default skill install.
-/// 2. `<app_data_dir>/skills/openloomi-loop/data/decisions.json` —
-///    matches the layout used by the bundled skill install.
-/// 3. Repo-relative fallback `skills/openloomi-loop/data/decisions.json`
-///    so dev runs that don't have a populated `app_data_dir` still work.
+/// 2. Tauri-resolved home directory — handles macOS, Linux, and Windows
+///    correctly so the watcher reads the same file the Next.js loop
+///    writes on every platform. Must match the layout written by
+///    `apps/web/lib/loop/paths.ts` (`LOOP_HOME = homedir()/.openloomi/loop`)
+///    or the watcher will be looking at a stale file.
+/// 3. Env-var fallback. On POSIX shells `HOME` is set; on Windows it's
+///    typically `USERPROFILE`, and older Windows shells only have the
+///    `HOMEDRIVE` + `HOMEPATH` pair. Mirrors what the `dirs` crate does.
+/// 4. Relative `".openloomi/loop/decisions.json"` — preserved as a last
+///    resort so unit tests that don't go through the Tauri runtime still
+///    produce a usable path.
 pub fn resolve_decisions_path(app: &AppHandle) -> PathBuf {
     if let Ok(p) = std::env::var("LOOMI_PET_DECISIONS_PATH") {
         return PathBuf::from(p);
     }
-    if let Ok(base) = app.path().app_data_dir() {
-        return base
-            .join("skills")
-            .join("openloomi-loop")
-            .join("data")
-            .join("decisions.json");
+    if let Ok(home) = app.path().home_dir() {
+        return home.join(".openloomi").join("loop").join("decisions.json");
     }
-    PathBuf::from("skills/openloomi-loop/data/decisions.json")
+    if let Some(p) = resolve_home_from_env() {
+        return p;
+    }
+    PathBuf::from(".openloomi/loop/decisions.json")
+}
+
+/// Pure env-var home resolution. Extracted so unit tests can exercise the
+/// non-Tauri fallback chain without fabricating an `AppHandle`. Behavior:
+///   - Prefers `HOME` (POSIX).
+///   - Falls back to `USERPROFILE` (modern Windows).
+///   - Falls back to `HOMEDRIVE` + `HOMEPATH` (legacy Windows shells that
+///     split the profile across two env vars).
+fn resolve_home_from_env() -> Option<PathBuf> {
+    if let Some(home) = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")) {
+        return Some(
+            PathBuf::from(home)
+                .join(".openloomi")
+                .join("loop")
+                .join("decisions.json"),
+        );
+    }
+    let drive = std::env::var_os("HOMEDRIVE")?;
+    let path = std::env::var_os("HOMEPATH")?;
+    Some(
+        PathBuf::from(drive)
+            .join(PathBuf::from(path))
+            .join(".openloomi")
+            .join("loop")
+            .join("decisions.json"),
+    )
+}
+
+#[cfg(test)]
+mod path_tests {
+    use super::*;
+    use std::sync::Mutex;
+
+    /// Env-var mutation is process-global. We serialize the path tests
+    /// behind a single mutex so they can't race each other (and can't
+    /// leak state into the rest of the suite if a panic occurs).
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    fn with_env<F: FnOnce()>(vars: &[&str], f: F) {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let saved: Vec<_> = vars
+            .iter()
+            .map(|k| (k.to_string(), std::env::var_os(k)))
+            .collect();
+        for k in vars {
+            std::env::remove_var(k);
+        }
+        f();
+        for (k, v) in saved {
+            match v {
+                Some(v) => std::env::set_var(&k, v),
+                None => std::env::remove_var(&k),
+            }
+        }
+    }
+
+    #[test]
+    fn home_env_var_wins() {
+        with_env(
+            &[
+                "LOOMI_PET_DECISIONS_PATH",
+                "HOME",
+                "USERPROFILE",
+                "HOMEDRIVE",
+                "HOMEPATH",
+            ],
+            || {
+                std::env::set_var("HOME", "/home/alice");
+                let resolved = resolve_home_from_env().expect("HOME set");
+                assert_eq!(
+                    resolved,
+                    PathBuf::from("/home/alice")
+                        .join(".openloomi")
+                        .join("loop")
+                        .join("decisions.json")
+                );
+            },
+        );
+    }
+
+    #[test]
+    fn userprofile_is_used_when_home_missing() {
+        with_env(
+            &[
+                "LOOMI_PET_DECISIONS_PATH",
+                "HOME",
+                "USERPROFILE",
+                "HOMEDRIVE",
+                "HOMEPATH",
+            ],
+            || {
+                std::env::set_var("USERPROFILE", r"C:\Users\Alice");
+                let resolved = resolve_home_from_env().expect("USERPROFILE set");
+                let expected = PathBuf::from(r"C:\Users\Alice")
+                    .join(".openloomi")
+                    .join("loop")
+                    .join("decisions.json");
+                // PathBuf equality is OS-aware: backslashes on Windows,
+                // forward slashes on POSIX. Compare component-wise so the
+                // assertion works on both.
+                assert_eq!(resolved.components().count(), expected.components().count());
+                for (a, b) in resolved.components().zip(expected.components()) {
+                    assert_eq!(a, b);
+                }
+            },
+        );
+    }
+
+    #[test]
+    fn homedrive_and_homepath_combine_when_present() {
+        with_env(
+            &[
+                "LOOMI_PET_DECISIONS_PATH",
+                "HOME",
+                "USERPROFILE",
+                "HOMEDRIVE",
+                "HOMEPATH",
+            ],
+            || {
+                std::env::set_var("HOMEDRIVE", "C:");
+                std::env::set_var("HOMEPATH", r"\Users\Alice");
+                let resolved = resolve_home_from_env().expect("HOME* set");
+                assert!(resolved.starts_with(PathBuf::from("C:")));
+                assert!(resolved.to_string_lossy().contains("Alice"));
+                assert!(resolved.ends_with(PathBuf::from(".openloomi/loop/decisions.json")));
+            },
+        );
+    }
+
+    #[test]
+    fn returns_none_when_no_env_set() {
+        with_env(
+            &[
+                "LOOMI_PET_DECISIONS_PATH",
+                "HOME",
+                "USERPROFILE",
+                "HOMEDRIVE",
+                "HOMEPATH",
+            ],
+            || {
+                assert!(resolve_home_from_env().is_none());
+            },
+        );
+    }
+
+    #[test]
+    fn homedrive_alone_does_not_combine() {
+        // HOMEDRIVE without HOMEPATH shouldn't fabricate a profile —
+        // matching the dirs crate's behavior. Either both must be set or
+        // the function returns None and lets the caller fall through.
+        with_env(
+            &[
+                "LOOMI_PET_DECISIONS_PATH",
+                "HOME",
+                "USERPROFILE",
+                "HOMEDRIVE",
+                "HOMEPATH",
+            ],
+            || {
+                std::env::set_var("HOMEDRIVE", "C:");
+                assert!(resolve_home_from_env().is_none());
+            },
+        );
+    }
 }
 
 #[derive(Deserialize)]

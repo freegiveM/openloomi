@@ -936,6 +936,21 @@
                 : "Form " + scene.slide + ": " + (scene.hintState || "applied"),
               "success",
             );
+            // Also broadcast the scene key so the pet card can pin the
+            // matching layout (Form 1 → connection, Form 2 → pipeline,
+            // Form 3 → noise, etc.). Without this, the card has to guess
+            // from pet state alone, which collapses Form 1's connection
+            // view into Form 2's pipeline strip because both hint the
+            // same `thinking` state.
+            const tDev = window.__TAURI__;
+            if (tDev && tDev.event && tDev.event.emit) {
+              try {
+                tDev.event.emit("pet:dev-form", {
+                  key: scene.key,
+                  slide: scene.slide,
+                });
+              } catch (_) {}
+            }
             if (scene.key === "connection-check") {
               await loadConnectors();
               connectorsEl.classList.add("visible");

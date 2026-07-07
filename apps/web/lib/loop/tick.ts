@@ -133,6 +133,19 @@ interface AgentTickResultPayload {
   errors?: number;
   duration_ms?: number;
   surfaces_used?: string[];
+  /**
+   * Agent-reported snapshot of Composio connection state, captured at
+   * tick time via the active MCP surface. When present, we persist it
+   * to `~/.openloomi/loop/connectors.json` so the UI pill row stays
+   * honest between ticks (see `connectors.ts::writeConnectorSnapshot`).
+   */
+  connectors?: Array<{
+    id: string;
+    label?: string;
+    connected?: boolean;
+    accountCount?: number;
+    lastError?: string;
+  }>;
 }
 
 function emptyResult(): LoopTickResult {
@@ -150,6 +163,7 @@ async function runAgentic(opts: TickOptions): Promise<LoopTickResult> {
   migrate();
 
   const t0 = Date.now();
+
   const prompt = buildTickPrompt({
     sinceDays: Math.max(
       1,
@@ -234,6 +248,37 @@ async function runAgentic(opts: TickOptions): Promise<LoopTickResult> {
     newDecisions,
     errors: errors > 0 ? [`agent reported ${errors} per-signal errors`] : [],
   };
+
+  // If the agent's result event carried a `connectors` snapshot, persist it
+  // so the UI pill row (`/api/loop/connectors`) reflects the agent's
+  // MCP-probed reality. Best-effort — failure here must not poison the
+  // tick result.
+  if (Array.isArray(payload.connectors) && payload.connectors.length > 0) {
+    try {
+      const { writeConnectorSnapshot } = await import("./connectors");
+      const stamp = new Date().toISOString();
+      writeConnectorSnapshot(
+        payload.connectors.map((c) => ({
+          id: String(c.id ?? "unknown"),
+          label:
+            typeof c.label === "string" ? c.label : String(c.id ?? "unknown"),
+          connected: Boolean(c.connected),
+          accountCount: Number(c.accountCount ?? 0),
+          ...(c.lastError ? { lastError: String(c.lastError) } : {}),
+          fetchedAt: stamp,
+        })),
+      );
+      log(
+        `tick (agentic): persisted ${payload.connectors.length} connector snapshot entries`,
+      );
+    } catch (e) {
+      log(
+        `tick (agentic): failed to persist connector snapshot: ${
+          e instanceof Error ? e.message : String(e)
+        }`,
+      );
+    }
+  }
 
   const dur = Date.now() - t0;
   log(

@@ -46,16 +46,16 @@
     <title>Loomi · bubble</title>
     <style>
       :root {
-        --bubble-w: 400px;
-        --bubble-h: 110px;
+        --bubble-w: 320px;
+        --bubble-h: 84px;
         --orange: rgba(255, 161, 73, 0.28);
         --ink: #1f2937;
         --muted: #6b7280;
         --bubble-bg: rgba(255, 255, 255, 0.94);
         --blue: #2b8af7;
         --shadow:
-          0 22px 48px rgba(255, 161, 73, 0.12),
-          0 6px 14px rgba(15, 23, 42, 0.08);
+          0 14px 30px rgba(255, 161, 73, 0.12),
+          0 4px 10px rgba(15, 23, 42, 0.08);
       }
       html,
       body {
@@ -88,23 +88,25 @@
       }
 
       /* The bubble itself — light, orange-bordered, generous radius.
-         Matches `.speech` in the demo. */
+         Matches `.speech` in the demo. Sized small (max-width 280px,
+         padding 10×16, font 14-15px) so the bubble doesn't dominate
+         the desktop and the pet stays the visual anchor. */
       .speech {
         position: relative;
-        max-width: 360px;
-        padding: 14px 22px;
-        border: 2px solid var(--orange);
-        border-radius: 28px;
+        max-width: 280px;
+        padding: 9px 16px;
+        border: 1.5px solid var(--orange);
+        border-radius: 18px;
         background: var(--bubble-bg);
         box-shadow: var(--shadow);
         color: var(--ink);
-        font-size: 20px;
-        font-weight: 800;
-        line-height: 1.32;
+        font-size: 14px;
+        font-weight: 700;
+        line-height: 1.3;
         text-align: center;
         backdrop-filter: blur(8px);
         -webkit-backdrop-filter: blur(8px);
-        transform-origin: 50% calc(100% + 12px);
+        transform-origin: 50% calc(100% + 10px);
         transition:
           opacity 180ms ease,
           transform 220ms ease;
@@ -118,12 +120,12 @@
       .speech::after {
         content: "";
         position: absolute;
-        bottom: -13px;
+        bottom: -8px;
         left: 50%;
-        width: 22px;
-        height: 22px;
-        border-right: 2px solid var(--orange);
-        border-bottom: 2px solid var(--orange);
+        width: 14px;
+        height: 14px;
+        border-right: 1.5px solid var(--orange);
+        border-bottom: 1.5px solid var(--orange);
         background: var(--bubble-bg);
         transform: translateX(-50%) rotate(45deg);
       }
@@ -132,15 +134,15 @@
          Fades out when the bubble is in the idle / no-pending state. */
       .dot {
         position: absolute;
-        bottom: 6px;
+        bottom: 4px;
         left: 50%;
-        width: 14px;
-        height: 14px;
+        width: 10px;
+        height: 10px;
         border-radius: 50%;
         background: var(--blue);
         box-shadow:
-          0 0 0 6px rgba(43, 138, 247, 0.12),
-          0 8px 16px rgba(43, 138, 247, 0.28);
+          0 0 0 4px rgba(43, 138, 247, 0.12),
+          0 4px 10px rgba(43, 138, 247, 0.28);
         transform: translateX(-50%);
         transition:
           opacity 220ms ease,
@@ -154,18 +156,18 @@
       /* Compact text mode for short lines (e.g. "早安" or "All clear"). */
       .speech .lead {
         display: block;
-        font-size: 18px;
-        letter-spacing: 0.02em;
+        font-size: 14px;
+        letter-spacing: 0.01em;
       }
       .speech .lead b {
         font-weight: 800;
       }
       .speech .sub {
         display: block;
-        font-size: 14px;
+        font-size: 11px;
         font-weight: 600;
         color: var(--muted);
-        margin-top: 2px;
+        margin-top: 1px;
       }
     </style>
   </head>
@@ -299,17 +301,57 @@
           }
         });
 
+        // Auto-dismiss the bubble after a short window so it doesn't
+        // sit on top of the card or block the user's view of other
+        // windows. We use a JS `setTimeout` here (rather than a Rust
+        // timer thread) because the bubble already owns the "is there
+        // a fresh decision?" lifecycle — every `loop:decision` event
+        // resets the timer, so a stream of watcher re-emits doesn't
+        // cancel the dismiss. The host listens for the auto-close
+        // event and hides the bubble window.
+        const AUTO_DISMISS_MS = 4500;
+        let autoHideTimer = null;
+        function scheduleAutoHide() {
+          if (autoHideTimer) clearTimeout(autoHideTimer);
+          autoHideTimer = setTimeout(() => {
+            autoHideTimer = null;
+            const t = window.__TAURI__;
+            if (t && t.event && t.event.emit) {
+              t.event.emit("pet:bubble-auto-close");
+            }
+          }, AUTO_DISMISS_MS);
+        }
+        function cancelAutoHide() {
+          if (autoHideTimer) {
+            clearTimeout(autoHideTimer);
+            autoHideTimer = null;
+          }
+        }
+
         const tauri = window.__TAURI__;
         if (tauri && tauri.event && tauri.event.listen) {
-          tauri.event.listen("loop:decision", (e) =>
-            applyDecision((e && e.payload) || {}),
-          );
+          tauri.event.listen("loop:decision", (e) => {
+            applyDecision((e && e.payload) || {});
+            scheduleAutoHide();
+          });
           // Mirror the watcher's `loop:state` emissions so flipping
           // thinking / sweeping / sleeping / etc. actually changes the
           // bubble content. See `pet::watcher::map_state_to_pet`.
-          tauri.event.listen("loop:state", (e) =>
-            applyState((e && e.payload) || null),
-          );
+          tauri.event.listen("loop:state", (e) => {
+            applyState((e && e.payload) || null);
+            // State flips alone shouldn't keep the bubble up forever —
+            // they don't carry a decision, so the decision-driven timer
+            // doesn't restart. Arm one here too so a pure state change
+            // (e.g. "thinking" → "happy") still fades the bubble.
+            scheduleAutoHide();
+          });
+          // Host-driven re-show (e.g. after the user closes the card,
+          // `pet:close-card` re-shows the bubble). The content is
+          // already on-screen; we just need to re-arm the dismiss
+          // timer so the bubble doesn't outlive its welcome.
+          tauri.event.listen("pet:bubble-shown", () => {
+            scheduleAutoHide();
+          });
         }
 
         applyDecision(null);

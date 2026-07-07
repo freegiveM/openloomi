@@ -1,49 +1,68 @@
 <!doctype html>
 <!--
-  Loomi · decision card
+  Loomi · decision card (router)
 
-  Larger "card" mode for the pet widget. Shows the latest pending
-  decision with enough context (type / source chain / why) for the
-  user to act without opening the dashboard. Replaces the bubble
-  visually when opened — the host hides the bubble before showing the
-  card so we don't double-stack glass on the screen.
+  Switches between 6 layouts based on pet state + top pending decision.
+  Each layout mirrors a card from
+  /Users/timi/Downloads/openloomi-aha-moment-demo so the user can demo
+  every form in the deck from one floating window next to the pet.
 
-  Layout (360×420):
-    header  · type icon · priority pill · dismiss ×
-    title   · decision title (clamp 2 lines)
-    source  · source · type · timestamp
-    why     · up to 3 why bullets
-    footer  · Run · Dismiss (reason) · Open in dashboard
+  Routing:
+    no pending                              → state-driven
+      thinking / working / greet            → pipeline      (Form 2)
+      sweeping                              → noise         (Form 3)
+      anything else (idle, sleeping, ...)   → connection    (Form 1)
+    pending                                 → type-driven
+      type == "brief"                       → brief         (Form 6)
+      type == "wrap"                        → wrap          (Form 7, dark)
+      else                                  → decision      (Forms 4/5/8)
 
-  Actions:
-    · Run / Dismiss POST /api/loop/decision/[id] directly. The webview
-      shares the main app's cookie jar (same Tauri origin) so the
-      session is honored. On success, emit `loop:decision-cleared` so
-      the watcher picks it up and the pet returns to idle.
-    · Open in dashboard emits `pet:open-dashboard` and the host shows
-      the main window.
-    · The × (close) emits `pet:close-card` so the host hides the card
-      and re-shows the bubble.
+  Layouts are stacked, only one is `.active` at a time. Switching is
+  instant on state / decision / pending-list / connectors events.
 
-  State contract:
-    · Listens for `loop:decision` to populate. If the payload is empty
-      or has no `id`, the card shows the "all clear" empty state.
+  Window is 360×420 (matches `card.rs`). Demo font sizes scaled by
+  ~0.55×; layouts that were originally multi-column are collapsed to
+  single column to fit (A 方案).
 -->
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
     <title>Loomi · card</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Funnel+Display:wght@600;700;800;900&family=IBM+Plex+Mono:wght@600;700;800&family=Noto+Sans+SC:wght@400;500;700;900&display=swap"
+      rel="stylesheet"
+    />
     <style>
       :root {
         --card-w: 360px;
         --card-h: 420px;
-        --bg: rgba(15, 23, 42, 0.94);
-        --border: rgba(255, 255, 255, 0.08);
-        --text: #f1f5f9;
-        --muted: rgba(241, 245, 249, 0.6);
-        --accent: #60a5fa;
-        --danger: #f87171;
-        --good: #34d399;
+        --ink: #101827;
+        --muted: #5b6980;
+        --blue: #2b8af7;
+        --blue-dark: #1467c8;
+        --orange: #ffa149;
+        --orange-soft: rgba(255, 161, 73, 0.18);
+        --orange-softer: rgba(255, 161, 73, 0.12);
+        --orange-border: rgba(255, 161, 73, 0.28);
+        --orange-text: #9d5200;
+        --blue-soft: rgba(43, 138, 247, 0.12);
+        --blue-border: rgba(43, 138, 247, 0.14);
+        --blue-line: rgba(43, 138, 247, 0.18);
+        --panel: rgba(255, 255, 255, 0.96);
+        --panel-soft: rgba(248, 251, 255, 0.94);
+        --line: rgba(43, 138, 247, 0.15);
+        --green: #20b486;
+        --green-soft: rgba(32, 180, 134, 0.12);
+        --green-border: rgba(32, 180, 134, 0.28);
+        --green-text: #087957;
+        --red: #ff4924;
+        --shadow: 0 18px 36px rgba(24, 50, 84, 0.18);
+        --font-display: "Funnel Display", "Noto Sans SC", system-ui, sans-serif;
+        --font-body:
+          "Noto Sans SC", system-ui, -apple-system, "Segoe UI", sans-serif;
+        --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", monospace;
       }
       * {
         box-sizing: border-box;
@@ -55,94 +74,144 @@
         background: transparent;
         -webkit-user-select: none;
         user-select: none;
-        font-family:
-          system-ui,
-          -apple-system,
-          "Segoe UI",
-          sans-serif;
+        font-family: var(--font-body);
         font-size: 12px;
         line-height: 1.4;
-        color: var(--text);
+        color: var(--ink);
       }
       body {
         width: var(--card-w);
         height: var(--card-h);
         overflow: hidden;
       }
+
       .card {
         width: var(--card-w);
         height: var(--card-h);
-        background: var(--bg);
-        border: 1px solid var(--border);
+        background: var(--panel);
+        border: 1px solid var(--line);
         border-radius: 16px;
-        box-shadow: 0 18px 32px rgba(0, 0, 0, 0.45);
-        backdrop-filter: blur(18px) saturate(140%);
-        -webkit-backdrop-filter: blur(18px) saturate(140%);
-        padding: 14px 14px 12px;
+        box-shadow: var(--shadow);
+        padding: 14px;
         display: flex;
         flex-direction: column;
-        gap: 10px;
+        gap: 8px;
         position: relative;
       }
-      /* Tail pointing left toward the pet (same shape as bubble). */
+      /* Dark theme variant for the wrap layout. Switches the whole
+         card into the demo's night-slide palette. */
+      .card.dark {
+        background: #0d1528;
+        border-color: rgba(255, 255, 255, 0.12);
+        color: #f7fbff;
+      }
+
+      /* Tail pointing right toward the pet (the card sits to the LEFT
+         of the pet, vertically centered). Inherits card background so
+         it blends with whichever theme is active. */
       .card::before {
         content: "";
         position: absolute;
-        left: -7px;
-        top: 36px;
+        right: -7px;
+        top: 50%;
+        margin-top: -6px;
         width: 12px;
         height: 12px;
         transform: rotate(45deg);
-        background: var(--bg);
-        border-left: 1px solid var(--border);
-        border-bottom: 1px solid var(--border);
+        background: var(--panel);
+        border-right: 1px solid var(--line);
+        border-top: 1px solid var(--line);
         border-radius: 2px;
       }
+      .card.dark::before {
+        background: #0d1528;
+        border-color: rgba(255, 255, 255, 0.12);
+      }
+
+      /* Layout switching — only one section is visible at a time. */
+      [data-layout] {
+        display: none;
+        flex-direction: column;
+        gap: 8px;
+        flex: 1 1 auto;
+        min-height: 0;
+      }
+      [data-layout].active {
+        display: flex;
+      }
+
+      /* ---------- Common header / chrome ---------- */
       .header {
         display: flex;
         align-items: center;
         gap: 6px;
-        font-size: 10px;
-        letter-spacing: 0.05em;
-        text-transform: uppercase;
-        color: var(--muted);
         flex: 0 0 auto;
       }
       .header .icon {
         font-size: 14px;
         line-height: 1;
-        color: var(--accent);
+        color: var(--blue);
         font-style: normal;
+        font-family: var(--font-mono);
+      }
+      .card.dark .header .icon {
+        color: #d9e9ff;
+      }
+      .type-label {
+        font-family: var(--font-mono);
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--blue-dark);
+      }
+      .card.dark .type-label {
+        color: #d9e9ff;
       }
       .pill {
         display: inline-flex;
         align-items: center;
         gap: 3px;
-        padding: 1px 6px;
+        padding: 1px 7px;
         border-radius: 999px;
+        font-family: var(--font-mono);
         font-size: 9px;
-        font-weight: 600;
-        background: rgba(255, 255, 255, 0.08);
-        color: var(--text);
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        background: var(--orange-soft);
+        color: var(--orange-text);
       }
       .pill.p0 {
-        background: rgba(248, 113, 113, 0.18);
-        color: #fca5a5;
+        background: rgba(255, 73, 36, 0.16);
+        color: #b53115;
       }
       .pill.p1 {
-        background: rgba(251, 191, 36, 0.18);
-        color: #fcd34d;
+        background: var(--orange-soft);
+        color: var(--orange-text);
       }
       .pill.p2 {
         background: rgba(148, 163, 184, 0.18);
-        color: #cbd5e1;
+        color: #475569;
+      }
+      .pill.green {
+        background: var(--green-soft);
+        color: var(--green-text);
+      }
+      .pill.blue {
+        background: var(--blue-soft);
+        color: var(--blue-dark);
+      }
+      .card.dark .pill {
+        background: rgba(255, 255, 255, 0.12);
+        color: #d9e9ff;
       }
       .spacer {
         flex: 1 1 auto;
       }
       .close {
-        width: 20px;
-        height: 20px;
+        width: 22px;
+        height: 22px;
         display: inline-flex;
         align-items: center;
         justify-content: center;
@@ -155,188 +224,1198 @@
         padding: 0;
       }
       .close:hover {
+        background: var(--blue-soft);
+        color: var(--ink);
+      }
+      .card.dark .close {
+        color: rgba(247, 251, 255, 0.6);
+      }
+      .card.dark .close:hover {
         background: rgba(255, 255, 255, 0.08);
-        color: var(--text);
+        color: #fff;
       }
-      .title {
-        font-size: 14px;
-        font-weight: 600;
-        line-height: 1.3;
-        display: -webkit-box;
-        -webkit-line-clamp: 2;
-        -webkit-box-orient: vertical;
-        overflow: hidden;
-      }
-      .meta {
-        font-size: 10px;
-        color: var(--muted);
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        flex-wrap: wrap;
-      }
-      .dialogue {
-        font-size: 11px;
-        line-height: 1.4;
-        color: rgba(241, 245, 249, 0.85);
-        padding: 8px 10px;
-        background: rgba(255, 255, 255, 0.04);
-        border-radius: 8px;
-        border-left: 2px solid var(--accent);
-      }
-      .why {
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-        font-size: 10px;
-        color: var(--muted);
-        flex: 1 1 auto;
-        min-height: 0;
-        overflow: auto;
-      }
-      .why-item {
-        display: flex;
-        align-items: flex-start;
-        gap: 6px;
-      }
-      .why-item::before {
-        content: "";
-        flex: 0 0 auto;
-        margin-top: 5px;
-        width: 4px;
-        height: 4px;
-        border-radius: 50%;
-        background: var(--accent);
-        opacity: 0.7;
-      }
+
+      /* ---------- Action buttons (shared by decision / brief / wrap) ---------- */
       .footer {
         display: grid;
         grid-template-columns: 1fr 1fr 1fr;
         gap: 6px;
         flex: 0 0 auto;
       }
+      .footer.two-col {
+        grid-template-columns: 1fr 1fr;
+      }
       button {
         font: inherit;
         cursor: pointer;
-        padding: 7px 8px;
+        height: 32px;
+        padding: 0 10px;
         border-radius: 8px;
-        border: 1px solid transparent;
-        background: rgba(255, 255, 255, 0.06);
-        color: var(--text);
+        border: 1px solid var(--blue-line);
+        background: #fff;
+        color: var(--ink);
         font-size: 11px;
-        font-weight: 500;
+        font-weight: 800;
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        gap: 4px;
+        gap: 3px;
+        letter-spacing: 0.02em;
       }
       button:hover {
-        background: rgba(255, 255, 255, 0.1);
+        background: rgba(43, 138, 247, 0.04);
       }
       button:disabled {
         opacity: 0.5;
         cursor: not-allowed;
       }
       button.primary {
-        background: var(--good);
-        color: #0f172a;
-        border-color: rgba(255, 255, 255, 0.2);
+        border-color: var(--blue);
+        background: var(--blue);
+        color: #fff;
+        box-shadow: 0 6px 14px rgba(43, 138, 247, 0.24);
       }
       button.primary:hover {
-        background: #4ade80;
+        background: var(--blue-dark);
       }
       button.danger {
-        background: rgba(248, 113, 113, 0.18);
-        color: #fca5a5;
+        border-color: rgba(255, 73, 36, 0.4);
+        background: #fff;
+        color: var(--red);
       }
       button.danger:hover {
-        background: rgba(248, 113, 113, 0.28);
+        background: rgba(255, 73, 36, 0.06);
       }
       button.ghost {
         background: transparent;
-        border-color: rgba(255, 255, 255, 0.1);
       }
-      .empty {
-        display: none;
+
+      /* Dark-theme button variants for the wrap layout. */
+      .card.dark button {
+        background: rgba(255, 255, 255, 0.08);
+        color: #fff;
+        border-color: rgba(255, 255, 255, 0.18);
+      }
+      .card.dark button:hover {
+        background: rgba(255, 255, 255, 0.14);
+      }
+      .card.dark button.primary {
+        background: var(--blue);
+        border-color: var(--blue);
+      }
+      .card.dark button.danger {
+        background: rgba(255, 73, 36, 0.18);
+        border-color: rgba(255, 73, 36, 0.4);
+        color: #ffd5cc;
+      }
+
+      /* ============================================================
+         Layout: CONNECTION  (Form 1 · connection-check)
+         Demo: .connection-panel + .connector-list + .connector-row
+               + .pet-status + .queue-row
+         ============================================================ */
+      .brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .status-light {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: var(--green);
+        box-shadow: 0 0 0 5px rgba(32, 180, 134, 0.1);
+      }
+      .brand-text {
+        font-family: var(--font-mono);
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--green);
+      }
+      .connection-title {
+        font-family: var(--font-display);
+        font-size: 17px;
+        font-weight: 800;
+        line-height: 1.18;
+        color: var(--ink);
+        margin: 2px 0 0;
+      }
+      .connection-sub {
+        color: var(--muted);
+        font-size: 10px;
+        font-weight: 600;
+        line-height: 1.34;
+        margin: 2px 0 0;
+      }
+      .connector-list {
+        display: grid;
+        gap: 5px;
+        flex: 0 0 auto;
+        max-height: 110px;
+        overflow: auto;
+      }
+      .connector-row {
+        display: grid;
+        grid-template-columns: 14px 1fr auto;
+        gap: 8px;
+        align-items: center;
+        padding: 6px 8px;
+        border: 1px solid var(--blue-soft);
+        border-radius: 6px;
+        background: var(--panel-soft);
+      }
+      .connector-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--muted);
+        opacity: 0.35;
+      }
+      .connector-dot.on {
+        background: var(--green);
+        opacity: 1;
+        box-shadow:
+          0 0 0 4px rgba(32, 180, 134, 0.1),
+          0 0 10px rgba(32, 180, 134, 0.3);
+      }
+      .connector-name {
+        display: block;
+        font-size: 11px;
+        font-weight: 800;
+        color: var(--ink);
+        line-height: 1.1;
+      }
+      .connector-meta {
+        display: block;
+        font-size: 9px;
+        color: var(--muted);
+        font-weight: 600;
+        line-height: 1.2;
+      }
+      .connector-status {
+        font-family: var(--font-mono);
+        font-size: 9px;
+        font-weight: 800;
+        color: var(--green);
+      }
+      .connector-status.off {
+        color: var(--muted);
+      }
+
+      .queue-section {
+        display: flex;
         flex-direction: column;
+        gap: 4px;
+        flex: 1 1 auto;
+        min-height: 0;
+      }
+      .queue-label {
+        font-family: var(--font-mono);
+        font-size: 9px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--blue-dark);
+      }
+      .queue-rows {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow: auto;
+      }
+      .queue-row {
+        display: grid;
+        grid-template-columns: 22px 1fr auto;
+        gap: 6px;
+        align-items: center;
+        padding: 5px 7px;
+        border: 1px solid var(--blue-soft);
+        border-radius: 6px;
+        background: var(--panel-soft);
+        min-height: 28px;
+      }
+      .queue-row .qicon {
+        width: 22px;
+        height: 22px;
+        display: inline-flex;
         align-items: center;
         justify-content: center;
-        gap: 10px;
-        height: 100%;
-        text-align: center;
+        border-radius: 5px;
+        background: var(--blue-soft);
+        color: var(--blue-dark);
+        font-family: var(--font-mono);
+        font-size: 10px;
+        font-weight: 800;
+      }
+      .queue-row .qtitle {
+        font-size: 10px;
+        font-weight: 700;
+        color: var(--ink);
+        line-height: 1.2;
+        display: -webkit-box;
+        -webkit-line-clamp: 1;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+      .queue-row .qpri {
+        font-family: var(--font-mono);
+        font-size: 9px;
+        font-weight: 800;
+        color: var(--orange-text);
+      }
+      .queue-row .qpri.p0 {
+        color: #b53115;
+      }
+      .queue-row .qpri.p2 {
         color: var(--muted);
-        font-size: 12px;
       }
-      .empty .big {
-        font-size: 28px;
-        opacity: 0.6;
+
+      /* ============================================================
+         Layout: PIPELINE  (Form 2 · judgment-system)
+         Demo: .scene-note × 4 (see signal → read state → triage → wait)
+         ============================================================ */
+      .pipeline-title {
+        font-family: var(--font-display);
+        font-size: 17px;
+        font-weight: 800;
+        line-height: 1.18;
+        color: var(--ink);
+        margin: 2px 0 0;
       }
-      body.empty .card .title,
-      body.empty .card .meta,
-      body.empty .card .dialogue,
-      body.empty .card .why,
-      body.empty .card .footer,
-      body.empty .card .header {
-        display: none;
+      .pipeline-sub {
+        font-family: var(--font-mono);
+        font-size: 9px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--blue-dark);
       }
-      body.empty .empty {
+      .pipeline-steps {
         display: flex;
+        flex-direction: column;
+        gap: 6px;
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow: auto;
       }
+      .pipeline-step {
+        display: grid;
+        grid-template-columns: 28px 1fr;
+        gap: 8px;
+        align-items: start;
+        padding: 8px;
+        border: 1px solid var(--blue-soft);
+        border-radius: 6px;
+        background: var(--panel-soft);
+      }
+      .pipeline-step.active {
+        background: rgba(255, 161, 73, 0.1);
+        border-color: var(--orange-border);
+      }
+      .pipeline-step .num {
+        width: 28px;
+        height: 28px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 6px;
+        background: var(--blue-soft);
+        color: var(--blue-dark);
+        font-family: var(--font-mono);
+        font-size: 11px;
+        font-weight: 800;
+      }
+      .pipeline-step.active .num {
+        background: var(--orange-soft);
+        color: var(--orange-text);
+      }
+      .pipeline-step .step-title {
+        display: block;
+        color: var(--ink);
+        font-size: 12px;
+        font-weight: 800;
+        line-height: 1.2;
+      }
+      .pipeline-step .step-desc {
+        display: block;
+        margin-top: 2px;
+        color: var(--muted);
+        font-size: 10px;
+        font-weight: 600;
+        line-height: 1.3;
+      }
+      .pipeline-progress {
+        font-family: var(--font-mono);
+        font-size: 9px;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--orange-text);
+        text-align: right;
+      }
+
+      /* ============================================================
+         Layout: NOISE  (Form 3 · noise-reduction)
+         Demo: .trash-zone + .context-pill × 4 (2x2 grid, red dots) +
+               .triage-log
+         ============================================================ */
+      .noise-title {
+        font-family: var(--font-display);
+        font-size: 17px;
+        font-weight: 800;
+        line-height: 1.18;
+        color: var(--ink);
+        margin: 2px 0 0;
+      }
+      .trash-message {
+        padding: 8px 10px;
+        border: 1px solid rgba(255, 73, 36, 0.22);
+        border-radius: 8px;
+        background: rgba(255, 73, 36, 0.06);
+      }
+      .trash-message .tag-trashed {
+        display: inline-block;
+        font-family: var(--font-mono);
+        font-size: 9px;
+        font-weight: 900;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--red);
+        margin-bottom: 4px;
+      }
+      .trash-message .msg-from {
+        display: block;
+        font-size: 10px;
+        font-weight: 700;
+        color: var(--muted);
+        font-family: var(--font-mono);
+      }
+      .trash-message .msg-subject {
+        display: block;
+        font-size: 12px;
+        font-weight: 800;
+        color: var(--ink);
+        line-height: 1.25;
+        margin-top: 2px;
+      }
+      .context-checks {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 4px;
+        flex: 0 0 auto;
+      }
+      .context-pill {
+        display: grid;
+        grid-template-columns: 10px 1fr;
+        gap: 6px;
+        align-items: center;
+        padding: 5px 7px;
+        border: 1px solid rgba(88, 101, 128, 0.14);
+        border-radius: 6px;
+        background: var(--panel-soft);
+        color: rgba(16, 24, 39, 0.72);
+        font-family: var(--font-mono);
+        font-size: 9px;
+        font-weight: 800;
+        line-height: 1.2;
+      }
+      .context-pill::before {
+        content: "";
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--red);
+        box-shadow: 0 0 0 3px rgba(255, 73, 36, 0.1);
+      }
+      .triage-log {
+        padding: 7px 10px;
+        border: 1px solid var(--green-border);
+        border-radius: 8px;
+        background: var(--green-soft);
+        flex: 0 0 auto;
+      }
+      .triage-log .log-title {
+        font-family: var(--font-display);
+        font-size: 12px;
+        font-weight: 800;
+        color: var(--green-text);
+        line-height: 1.2;
+      }
+      .triage-log .log-sub {
+        font-family: var(--font-mono);
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--green-text);
+        margin-top: 2px;
+      }
+
+      /* ============================================================
+         Layout: DECISION  (Forms 4/5/8 · todo / draft_reply /
+                                       review_pr / slack_reply /
+                                       rsvp / release_plan)
+         Demo: .decision-card full structure (source-chain,
+               recommendation-line, confidence-row, dialogue-strip,
+               evidence-pills, action-button)
+         ============================================================ */
+      .title {
+        font-family: var(--font-display);
+        font-size: 18px;
+        font-weight: 800;
+        line-height: 1.18;
+        color: var(--ink);
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        flex: 0 0 auto;
+      }
+      .source-chain {
+        position: relative;
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 4px;
+        flex: 0 0 auto;
+      }
+      .source-chain::before {
+        content: "";
+        position: absolute;
+        left: 14px;
+        right: 14px;
+        top: 14px;
+        height: 2px;
+        border-radius: 2px;
+        background: linear-gradient(
+          90deg,
+          rgba(43, 138, 247, 0.24),
+          rgba(255, 161, 73, 0.3)
+        );
+        z-index: 0;
+      }
+      .meta-node {
+        position: relative;
+        z-index: 1;
+        min-height: 44px;
+        padding: 5px 6px 4px;
+        border: 1px solid var(--blue-soft);
+        border-radius: 6px;
+        background: var(--panel-soft);
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+        overflow: hidden;
+      }
+      .meta-node .label {
+        font-family: var(--font-mono);
+        font-size: 8px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--blue-dark);
+      }
+      .meta-node .value {
+        font-size: 10px;
+        font-weight: 700;
+        color: var(--ink);
+        line-height: 1.18;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+      .recommendation {
+        padding: 8px 10px;
+        border: 1px solid var(--orange-border);
+        border-radius: 8px;
+        background: linear-gradient(
+          90deg,
+          rgba(43, 138, 247, 0.08),
+          rgba(255, 161, 73, 0.12)
+        );
+        flex: 0 0 auto;
+      }
+      .recommendation .label {
+        display: block;
+        font-family: var(--font-mono);
+        font-size: 9px;
+        font-weight: 900;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--blue-dark);
+      }
+      .recommendation .body {
+        display: block;
+        margin-top: 4px;
+        color: var(--ink);
+        font-size: 12px;
+        font-weight: 700;
+        line-height: 1.32;
+      }
+      .confidence-row {
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        gap: 8px;
+        align-items: center;
+        flex: 0 0 auto;
+      }
+      .confidence-row .label {
+        font-family: var(--font-mono);
+        font-size: 9px;
+        font-weight: 900;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--blue-dark);
+      }
+      .confidence-track {
+        height: 6px;
+        overflow: hidden;
+        border-radius: 4px;
+        background: var(--blue-soft);
+      }
+      .confidence-fill {
+        display: block;
+        height: 100%;
+        width: var(--confidence, 72%);
+        border-radius: inherit;
+        background: linear-gradient(90deg, var(--blue), var(--orange));
+      }
+      .confidence-row .value {
+        font-family: var(--font-mono);
+        font-size: 10px;
+        font-weight: 900;
+        color: var(--ink);
+      }
+      .dialogue {
+        padding: 7px 10px;
+        border: 1px solid var(--blue-border);
+        border-radius: 8px;
+        background: var(--panel-soft);
+        flex: 0 0 auto;
+      }
+      .dialogue .label {
+        display: block;
+        font-family: var(--font-mono);
+        font-size: 8px;
+        font-weight: 900;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--blue-dark);
+        margin-bottom: 2px;
+      }
+      .dialogue .body {
+        font-size: 11px;
+        line-height: 1.4;
+        color: var(--ink);
+      }
+      .evidence-pills {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 4px;
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow: auto;
+      }
+      .evidence-pill {
+        padding: 6px 7px;
+        border: 1px solid var(--blue-soft);
+        border-radius: 6px;
+        background: var(--panel-soft);
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        min-height: 56px;
+      }
+      .evidence-pill .label {
+        font-family: var(--font-mono);
+        font-size: 7px;
+        font-weight: 900;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--blue-dark);
+      }
+      .evidence-pill strong {
+        font-size: 10px;
+        font-weight: 800;
+        color: var(--ink);
+        line-height: 1.2;
+        display: -webkit-box;
+        -webkit-line-clamp: 3;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+
+      /* ============================================================
+         Layout: BRIEF  (Form 6 · morning-brief)
+         Demo: .brief-window + .brief-header (h3 + orange tag) +
+               .brief-metrics (3 chips → 1 column) +
+               .brief-list (.brief-item + .brief-priority)
+         ============================================================ */
+      .brief-header {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        flex: 0 0 auto;
+      }
+      .brief-title {
+        font-family: var(--font-display);
+        font-size: 17px;
+        font-weight: 800;
+        line-height: 1.16;
+        color: var(--ink);
+        margin: 2px 0 0;
+      }
+      .brief-tag {
+        display: inline-flex;
+        align-self: flex-start;
+        font-family: var(--font-mono);
+        font-size: 9px;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--orange-text);
+        background: var(--orange-soft);
+        padding: 2px 7px;
+        border-radius: 999px;
+      }
+      .brief-metrics {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 4px;
+        flex: 0 0 auto;
+      }
+      .metric-chip {
+        padding: 6px 7px;
+        border: 1px solid var(--blue-soft);
+        border-radius: 6px;
+        background: var(--panel-soft);
+        text-align: center;
+      }
+      .metric-chip strong {
+        display: block;
+        color: var(--ink);
+        font-family: var(--font-mono);
+        font-size: 14px;
+        font-weight: 900;
+        line-height: 1;
+      }
+      .metric-chip span {
+        display: block;
+        margin-top: 3px;
+        color: var(--muted);
+        font-family: var(--font-mono);
+        font-size: 7px;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+      .brief-list {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow: auto;
+      }
+      .brief-item {
+        display: grid;
+        grid-template-columns: 28px 1fr auto;
+        gap: 6px;
+        align-items: center;
+        padding: 5px 7px;
+        border: 1px solid var(--blue-soft);
+        border-radius: 6px;
+        background: rgba(255, 255, 255, 0.75);
+        min-height: 34px;
+      }
+      .brief-priority {
+        width: 28px;
+        height: 24px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 5px;
+        background: rgba(255, 73, 36, 0.11);
+        color: var(--red);
+        font-family: var(--font-mono);
+        font-size: 10px;
+        font-weight: 900;
+      }
+      .brief-priority.p1 {
+        background: var(--orange-soft);
+        color: var(--orange-text);
+      }
+      .brief-priority.p2 {
+        background: var(--blue-soft);
+        color: var(--blue-dark);
+      }
+      .brief-item .bi-title {
+        font-size: 10px;
+        font-weight: 800;
+        color: var(--ink);
+        line-height: 1.18;
+        display: -webkit-box;
+        -webkit-line-clamp: 1;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+      .brief-item .bi-sub {
+        font-size: 9px;
+        color: var(--muted);
+        font-weight: 600;
+        line-height: 1.2;
+        display: -webkit-box;
+        -webkit-line-clamp: 1;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+      .brief-item .bi-time {
+        font-family: var(--font-mono);
+        font-size: 9px;
+        font-weight: 800;
+        color: var(--muted);
+      }
+
+      /* ============================================================
+         Layout: WRAP  (Form 7 · night-wrap, dark theme)
+         Demo: .review-board + .review-card × 3 (1 column in pet) +
+               .memory-ledger + .ledger-rows × 3
+         ============================================================ */
+      /* The wrap layout carries the most content of any card (3 review
+         rows + ledger + footer), so it is the tightest fit inside 392px
+         of usable height. Everything here is intentionally compact: the
+         review "cards" are single horizontal rows (pill + label + detail)
+         rather than the demo's stacked blocks, and the section runs a
+         smaller inter-row gap so the footer never clips. */
+      [data-layout="wrap"] {
+        gap: 6px;
+      }
+      .wrap-title {
+        font-family: var(--font-display);
+        font-size: 15px;
+        font-weight: 800;
+        line-height: 1.14;
+        color: #fff;
+        margin: 0;
+      }
+      .wrap-sub {
+        font-family: var(--font-mono);
+        font-size: 8.5px;
+        font-weight: 700;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+        color: rgba(247, 251, 255, 0.6);
+      }
+      .review-columns {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        flex: 0 0 auto;
+      }
+      .review-card {
+        display: flex;
+        align-items: flex-start;
+        gap: 7px;
+        padding: 6px 8px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 7px;
+        background: rgba(255, 255, 255, 0.06);
+      }
+      .review-card .pill {
+        flex: 0 0 auto;
+        margin-top: 1px;
+      }
+      .review-card .rc-body {
+        min-width: 0;
+        flex: 1 1 auto;
+      }
+      .review-card strong {
+        display: block;
+        color: #fff;
+        font-size: 11px;
+        font-weight: 800;
+        line-height: 1.2;
+      }
+      .review-card p {
+        margin: 1px 0 0;
+        color: rgba(247, 251, 255, 0.66);
+        font-size: 9.5px;
+        font-weight: 600;
+        line-height: 1.28;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .memory-ledger {
+        padding: 6px 8px;
+        border: 1px solid rgba(43, 138, 247, 0.32);
+        border-radius: 7px;
+        background: rgba(43, 138, 247, 0.12);
+      }
+      .memory-ledger-title {
+        font-family: var(--font-mono);
+        font-size: 8.5px;
+        font-weight: 900;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+        color: #d9e9ff;
+        margin-bottom: 4px;
+      }
+      .ledger-rows {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+      }
+      .ledger-row {
+        padding: 4px 7px;
+        border-radius: 5px;
+        background: rgba(255, 255, 255, 0.08);
+        color: rgba(247, 251, 255, 0.82);
+        font-size: 9.5px;
+        font-weight: 700;
+        line-height: 1.2;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      /* ============================================================
+         Toast + empty (shared chrome)
+         ============================================================ */
       .toast {
         position: absolute;
         left: 12px;
         right: 12px;
-        bottom: 64px;
-        padding: 8px 10px;
-        background: rgba(15, 23, 42, 0.96);
-        border: 1px solid var(--border);
+        bottom: 50px;
+        padding: 7px 10px;
+        background: rgba(255, 255, 255, 0.98);
+        border: 1px solid var(--line);
         border-radius: 8px;
         font-size: 10px;
-        color: var(--text);
+        color: var(--ink);
         opacity: 0;
         transform: translateY(4px);
         transition:
           opacity 180ms ease,
           transform 180ms ease;
         pointer-events: none;
+        box-shadow: 0 8px 18px rgba(24, 50, 84, 0.12);
       }
       .toast.show {
         opacity: 1;
         transform: translateY(0);
       }
       .toast.error {
-        border-color: rgba(248, 113, 113, 0.4);
-        color: #fca5a5;
+        border-color: rgba(255, 73, 36, 0.4);
+        color: var(--red);
       }
     </style>
   </head>
-  <body class="empty">
+  <body>
     <div class="card" id="card">
-      <div class="header">
-        <span class="icon" id="icon">●</span>
-        <span id="type-label">…</span>
-        <span class="pill" id="pill">p2</span>
-        <span class="spacer"></span>
-        <button class="close" id="close" type="button" aria-label="Close">
-          ×
-        </button>
-      </div>
-      <div class="title" id="title">All clear</div>
-      <div class="meta" id="meta">—</div>
-      <div class="dialogue" id="dialogue">…</div>
-      <div class="why" id="why"></div>
-      <div class="footer">
-        <button class="primary" id="run" type="button">▶ Run</button>
-        <button class="danger" id="dismiss" type="button">✕ Dismiss</button>
-        <button class="ghost" id="open" type="button">↗ Open</button>
-      </div>
-      <div class="empty" id="empty-state">
-        <div class="big">◌</div>
-        <div>Nothing pending — Loomi is idling.</div>
-        <div style="opacity: 0.5; font-size: 10px">
-          New decisions show up here automatically.
+      <!-- ============================================================
+           LAYOUT: CONNECTION  (Form 1)
+           ============================================================ -->
+      <section data-layout="connection">
+        <div class="header">
+          <div class="brand">
+            <span class="status-light"></span>
+            <span class="brand-text">LOOMI ONLINE</span>
+          </div>
+          <span class="spacer"></span>
+          <button
+            class="close"
+            data-action="close"
+            type="button"
+            aria-label="Close"
+          >
+            ×
+          </button>
         </div>
-      </div>
+        <div class="connection-title">All endpoints reachable</div>
+        <div class="connection-sub" id="connection-sub">
+          Pipeline ready · watching for signal
+        </div>
+        <div class="connector-list" id="connection-connectors"></div>
+        <div class="queue-section">
+          <div class="queue-label" id="queue-label">PENDING QUEUE · 0</div>
+          <div class="queue-rows" id="connection-queue"></div>
+        </div>
+      </section>
+
+      <!-- ============================================================
+           LAYOUT: PIPELINE  (Form 2)
+           ============================================================ -->
+      <section data-layout="pipeline">
+        <div class="header">
+          <span class="icon">⚙</span>
+          <span class="type-label">JUDGMENT</span>
+          <span class="pill blue">PIPELINE</span>
+          <span class="spacer"></span>
+          <button
+            class="close"
+            data-action="close"
+            type="button"
+            aria-label="Close"
+          >
+            ×
+          </button>
+        </div>
+        <div class="pipeline-title">Judgment system</div>
+        <div class="pipeline-sub">
+          see signal → read state → triage → wait for approval
+        </div>
+        <div class="pipeline-steps" id="pipeline-steps">
+          <div class="pipeline-step active" data-step="1">
+            <span class="num">01</span>
+            <div>
+              <strong class="step-title">See signal</strong>
+              <span class="step-desc"
+                >Pull the latest event from the right channel</span
+              >
+            </div>
+          </div>
+          <div class="pipeline-step" data-step="2">
+            <span class="num">02</span>
+            <div>
+              <strong class="step-title">Read state</strong>
+              <span class="step-desc"
+                >Load context — contacts, memory, recent decisions</span
+              >
+            </div>
+          </div>
+          <div class="pipeline-step" data-step="3">
+            <span class="num">03</span>
+            <div>
+              <strong class="step-title">Triage attention</strong>
+              <span class="step-desc"
+                >Score urgency, pick the right lane (queue / wake)</span
+              >
+            </div>
+          </div>
+          <div class="pipeline-step" data-step="4">
+            <span class="num">04</span>
+            <div>
+              <strong class="step-title">Wait for approval</strong>
+              <span class="step-desc"
+                >Hold for your Run / Dismiss — never auto-fire</span
+              >
+            </div>
+          </div>
+        </div>
+        <div class="pipeline-progress" id="pipeline-progress">
+          Step 1 of 4 · see signal
+        </div>
+      </section>
+
+      <!-- ============================================================
+           LAYOUT: NOISE  (Form 3)
+           ============================================================ -->
+      <section data-layout="noise">
+        <div class="header">
+          <span class="icon">🗑</span>
+          <span class="type-label">TRIAGE</span>
+          <span class="pill">SWEEPING</span>
+          <span class="spacer"></span>
+          <button
+            class="close"
+            data-action="close"
+            type="button"
+            aria-label="Close"
+          >
+            ×
+          </button>
+        </div>
+        <div class="noise-title">Trashing the noise</div>
+        <div class="trash-message">
+          <span class="tag-trashed">▼ Trashed</span>
+          <span class="msg-from" id="noise-from">newsletter@trythis.app</span>
+          <span class="msg-subject" id="noise-subject"
+            >"Try this bundle — 50% off!"</span
+          >
+        </div>
+        <div class="context-checks" id="context-checks">
+          <div class="context-pill">Not in contacts</div>
+          <div class="context-pill">Newsletter tag</div>
+          <div class="context-pill">No thread</div>
+          <div class="context-pill">Off-hours send</div>
+        </div>
+        <div class="triage-log">
+          <div class="log-title" id="triage-log-title">
+            12 sent to trash today
+          </div>
+          <div class="log-sub">Urgent noise still wakes you · lane kept</div>
+        </div>
+      </section>
+
+      <!-- ============================================================
+           LAYOUT: DECISION  (Forms 4/5/8)
+           ============================================================ -->
+      <section data-layout="decision">
+        <div class="header">
+          <span class="icon" id="dec-icon">●</span>
+          <span class="type-label" id="dec-type-label">DECISION</span>
+          <span class="pill" id="dec-pill">p2</span>
+          <span class="spacer"></span>
+          <button
+            class="close"
+            data-action="close"
+            type="button"
+            aria-label="Close"
+          >
+            ×
+          </button>
+        </div>
+        <div class="title" id="dec-title">Pending</div>
+        <div class="source-chain" id="dec-source-chain"></div>
+        <div class="recommendation" id="dec-recommendation">
+          <span class="label">RECOMMEND</span>
+          <span class="body" id="dec-recommendation-body">…</span>
+        </div>
+        <div class="confidence-row">
+          <span class="label">CONFIDENCE</span>
+          <div class="confidence-track">
+            <div
+              class="confidence-fill"
+              id="dec-confidence-fill"
+              style="--confidence: 72%"
+            ></div>
+          </div>
+          <span class="value" id="dec-confidence-value">72%</span>
+        </div>
+        <div class="dialogue" id="dec-dialogue">
+          <span class="label">LOOMI</span>
+          <span class="body" id="dec-dialogue-body">…</span>
+        </div>
+        <div class="evidence-pills" id="dec-evidence"></div>
+        <div class="footer">
+          <button class="primary" data-action="run" type="button">▶ Run</button>
+          <button class="danger" data-action="dismiss" type="button">
+            ✕ Dismiss
+          </button>
+          <button class="ghost" data-action="open" type="button">↗ Open</button>
+        </div>
+      </section>
+
+      <!-- ============================================================
+           LAYOUT: BRIEF  (Form 6 · morning-brief)
+           ============================================================ -->
+      <section data-layout="brief">
+        <div class="header">
+          <span class="icon">☀</span>
+          <span class="type-label">BRIEF</span>
+          <span
+            class="pill orange"
+            id="brief-pill"
+            style="background: var(--orange-soft); color: var(--orange-text)"
+            >MORNING</span
+          >
+          <span class="spacer"></span>
+          <button
+            class="close"
+            data-action="close"
+            type="button"
+            aria-label="Close"
+          >
+            ×
+          </button>
+        </div>
+        <div class="brief-header">
+          <div class="brief-title" id="brief-title">
+            Good morning. Start here.
+          </div>
+          <div class="brief-tag" id="brief-tag">3 unread · 2 conflicts</div>
+        </div>
+        <div class="brief-metrics" id="brief-metrics">
+          <div class="metric-chip">
+            <strong id="brief-m1">0</strong><span>UNREAD MAIL</span>
+          </div>
+          <div class="metric-chip">
+            <strong id="brief-m2">0</strong><span>CONFLICTS</span>
+          </div>
+          <div class="metric-chip">
+            <strong id="brief-m3">0</strong><span>PR REVIEWS</span>
+          </div>
+        </div>
+        <div class="brief-list" id="brief-list"></div>
+        <div class="footer two-col">
+          <button class="primary" data-action="open" type="button">
+            ▶ Open brief
+          </button>
+          <button class="danger" data-action="dismiss" type="button">
+            ✕ Dismiss
+          </button>
+        </div>
+      </section>
+
+      <!-- ============================================================
+           LAYOUT: WRAP  (Form 7 · night-wrap, dark)
+           ============================================================ -->
+      <section data-layout="wrap">
+        <div class="header">
+          <span class="icon">☾</span>
+          <span class="type-label">WRAP</span>
+          <span class="pill">NIGHT</span>
+          <span class="spacer"></span>
+          <button
+            class="close"
+            data-action="close"
+            type="button"
+            aria-label="Close"
+          >
+            ×
+          </button>
+        </div>
+        <div class="wrap-title" id="wrap-title">
+          Today wrapped. Tomorrow staged.
+        </div>
+        <div class="wrap-sub" id="wrap-sub">
+          end of day · 4 done · 1 dismissed · 2 carried
+        </div>
+        <div class="review-columns" id="wrap-columns">
+          <div class="review-card">
+            <span class="pill green">DONE 4</span>
+            <div class="rc-body">
+              <strong>Resolved</strong>
+              <p>Mira · BigCo · PR #482 · RSVP Wed</p>
+            </div>
+          </div>
+          <div class="review-card">
+            <span class="pill">SKIP 1</span>
+            <div class="rc-body">
+              <strong>Dismissed</strong>
+              <p>Newsletter bundle (off-circle)</p>
+            </div>
+          </div>
+          <div class="review-card">
+            <span class="pill blue">CARRY 2</span>
+            <div class="rc-body">
+              <strong>Tomorrow</strong>
+              <p>Security review · Triage api-clients inbox</p>
+            </div>
+          </div>
+        </div>
+        <div class="memory-ledger">
+          <div class="memory-ledger-title">Tomorrow starts with</div>
+          <div class="ledger-rows" id="wrap-ledger">
+            <div class="ledger-row">Security review with Mira (10:00)</div>
+            <div class="ledger-row">Triage api-clients inbox</div>
+          </div>
+        </div>
+        <div class="footer two-col">
+          <button class="primary" data-action="open" type="button">
+            ▶ Open wrap
+          </button>
+          <button class="danger" data-action="dismiss" type="button">
+            ✕ Dismiss
+          </button>
+        </div>
+      </section>
+
       <div class="toast" id="toast"></div>
     </div>
 
@@ -344,23 +1423,23 @@
       (function () {
         "use strict";
 
-        const body = document.body;
-        const icon = document.getElementById("icon");
-        const typeLabel = document.getElementById("type-label");
-        const pill = document.getElementById("pill");
-        const title = document.getElementById("title");
-        const meta = document.getElementById("meta");
-        const dialogue = document.getElementById("dialogue");
-        const why = document.getElementById("why");
-        const runBtn = document.getElementById("run");
-        const dismissBtn = document.getElementById("dismiss");
-        const openBtn = document.getElementById("open");
-        const closeBtn = document.getElementById("close");
+        const card = document.getElementById("card");
         const toast = document.getElementById("toast");
+        const layouts = document.querySelectorAll("[data-layout]");
 
-        let currentId = null;
-        let currentTitle = null;
+        // ---------- State store ----------
+        let state = "idle";
+        let decision = null;
+        let pendingList = [];
+        let connectors = [];
         let busy = false;
+        // Dev-panel override: when the user clicks a Form button, the dev
+        // panel broadcasts `pet:dev-form` with the scene key. The card
+        // pins the matching layout regardless of pet state — without this
+        // Form 1 (connection-check) and Form 2 (judgment-system) would
+        // collide on `thinking`. Cleared when the user dismisses the
+        // triggering decision, so the card returns to natural routing.
+        let devForm = null;
 
         const TYPE_ICONS = {
           rsvp: "◐",
@@ -368,8 +1447,35 @@
           review_pr: "◇",
           slack_reply: "▷",
           release_plan: "❖",
+          todo: "▤",
+          brief: "☀",
+          wrap: "☾",
+        };
+        const TYPE_RECOMMENDATIONS = {
+          rsvp: "Send RSVP yes",
+          draft_reply: "Send the drafted reply",
+          review_pr: "Post review summary",
+          slack_reply: "Reply in thread",
+          release_plan: "Open release plan",
+          todo: "Add to today's todos",
+        };
+        const TYPE_LABELS = {
+          rsvp: "RSVP",
+          draft_reply: "DRAFT_REPLY",
+          review_pr: "REVIEW_PR",
+          slack_reply: "SLACK_REPLY",
+          release_plan: "RELEASE_PLAN",
+          todo: "TODO",
+          brief: "BRIEF",
+          wrap: "WRAP",
+        };
+        const PRIORITY_FROM_CONFIDENCE = {
+          p0: 0.85,
+          p1: 0.75,
+          p2: 0,
         };
 
+        // ---------- Toast ----------
         function showToast(text, isError) {
           toast.textContent = text;
           toast.classList.toggle("error", !!isError);
@@ -378,62 +1484,433 @@
           showToast._t = setTimeout(() => toast.classList.remove("show"), 2200);
         }
 
-        function renderWhy(items) {
-          why.innerHTML = "";
-          if (!Array.isArray(items) || items.length === 0) return;
-          const limit = Math.min(items.length, 3);
-          for (let i = 0; i < limit; i++) {
-            const d = document.createElement("div");
-            d.className = "why-item";
-            d.textContent = items[i];
-            why.appendChild(d);
+        // ---------- Helpers ----------
+        function fmtTs(ts) {
+          if (!ts) return "—";
+          try {
+            const d = new Date(ts);
+            const now = new Date();
+            const sameDay = d.toDateString() === now.toDateString();
+            const hh = String(d.getHours()).padStart(2, "0");
+            const mm = String(d.getMinutes()).padStart(2, "0");
+            if (sameDay) return `${hh}:${mm}`;
+            const mo = String(d.getMonth() + 1).padStart(2, "0");
+            const dd = String(d.getDate()).padStart(2, "0");
+            return `${mo}-${dd} ${hh}:${mm}`;
+          } catch (_) {
+            return ts;
           }
         }
-
-        function setBusy(b) {
-          busy = b;
-          runBtn.disabled = b;
-          dismissBtn.disabled = b;
-          openBtn.disabled = b;
+        function priorityFor(d) {
+          const c = typeof d.confidence === "number" ? d.confidence : 0;
+          if (c >= PRIORITY_FROM_CONFIDENCE.p0) return "p0";
+          if (c >= PRIORITY_FROM_CONFIDENCE.p1) return "p1";
+          return "p2";
         }
 
-        function apply(p) {
-          if (!p || !p.id) {
-            body.classList.add("empty");
-            currentId = null;
-            currentTitle = null;
-            return;
+        // ---------- Router ----------
+        // Maps dev panel scene keys to layout names. Used when the dev
+        // panel has explicitly told the card which form is being demoed
+        // (via `pet:dev-form`). Empty devForm means "natural routing".
+        const DEV_FORM_LAYOUT = {
+          "connection-check": "connection",
+          "judgment-system": "pipeline",
+          "noise-reduction": "noise",
+          "low-priority-todo": "decision",
+          "decision-briefing": "decision",
+          "morning-brief": "brief",
+          "night-wrap": "wrap",
+          "proactive-cases": "decision",
+        };
+
+        function chooseLayout() {
+          // 1. Dev panel override wins. Lets the user demo any form
+          //    regardless of whether the watcher would agree.
+          if (devForm && DEV_FORM_LAYOUT[devForm])
+            return DEV_FORM_LAYOUT[devForm];
+          // 2. Decision-driven layouts.
+          if (decision && decision.id) {
+            if (decision.type === "brief") return "brief";
+            if (decision.type === "wrap") return "wrap";
+            return "decision";
           }
-          body.classList.remove("empty");
-          currentId = p.id;
-          currentTitle = p.title || p.type || "Pending";
-          const t = p.type || "decision";
-          typeLabel.textContent = t;
-          icon.textContent = TYPE_ICONS[t] || "●";
-          const pri = (p.priority || "p2").toLowerCase();
-          pill.textContent = pri;
-          pill.className = "pill " + pri;
-          title.textContent = currentTitle;
-          const metaBits = [];
-          if (p.source) metaBits.push(p.source);
-          if (p.source_type) metaBits.push(p.source_type);
-          if (p.source_ts) {
-            try {
-              metaBits.push(new Date(p.source_ts).toLocaleString());
-            } catch (_) {
-              metaBits.push(p.source_ts);
+          // 3. State-driven fallback.
+          if (state === "thinking" || state === "working" || state === "greet")
+            return "pipeline";
+          if (state === "sweeping") return "noise";
+          return "connection";
+        }
+
+        function apply() {
+          const layout = chooseLayout();
+          layouts.forEach((el) =>
+            el.classList.toggle("active", el.dataset.layout === layout),
+          );
+          card.classList.toggle("dark", layout === "wrap");
+          // Hide footer / pills on layouts that don't use them — but the
+          // footer lives inside each section, so layout-level switching
+          // already hides them. Nothing global to do here.
+          // Re-render all layouts with current data so layout switches
+          // never show stale content.
+          renderConnection();
+          renderPipeline();
+          renderNoise();
+          renderDecision();
+          renderBrief();
+          renderWrap();
+        }
+
+        // ---------- Connection layout (Form 1) ----------
+        function renderConnection() {
+          const queueLabel = document.getElementById("queue-label");
+          const queue = document.getElementById("connection-queue");
+          const cl = document.getElementById("connection-connectors");
+          // Connectors
+          cl.innerHTML = "";
+          if (!connectors.length) {
+            const empty = document.createElement("div");
+            empty.className = "connector-row";
+            empty.innerHTML =
+              '<span class="connector-dot"></span><div><span class="connector-name">Loading…</span><span class="connector-meta">Fetching from /api/loop/connectors</span></div><span class="connector-status off">—</span>';
+            cl.appendChild(empty);
+          } else {
+            for (const c of connectors) {
+              const row = document.createElement("div");
+              row.className = "connector-row";
+              const account =
+                c.accountCount > 1 ? " · " + c.accountCount + " accounts" : "";
+              const status = c.connected ? "OK" : "OFF";
+              row.innerHTML = `
+                <span class="connector-dot ${c.connected ? "on" : ""}"></span>
+                <div>
+                  <span class="connector-name">${esc(c.label || c.id)}</span>
+                  <span class="connector-meta">${c.connected ? "Reachable" + esc(account) : c.lastError || "Offline"}</span>
+                </div>
+                <span class="connector-status ${c.connected ? "" : "off"}">${status}</span>
+              `;
+              cl.appendChild(row);
             }
           }
-          meta.textContent = metaBits.length ? metaBits.join(" · ") : "—";
-          dialogue.textContent = p.dialogue || "Open Loop to decide.";
-          renderWhy(p.why);
+          // Queue rows from pending list
+          queue.innerHTML = "";
+          queueLabel.textContent = "PENDING QUEUE · " + pendingList.length;
+          if (pendingList.length === 0) {
+            const empty = document.createElement("div");
+            empty.className = "queue-row";
+            empty.innerHTML =
+              '<span class="qicon">∅</span><span class="qtitle">Nothing pending — Loomi is idling.</span><span></span>';
+            queue.appendChild(empty);
+          } else {
+            for (const d of pendingList) {
+              const row = document.createElement("div");
+              row.className = "queue-row";
+              const icon = TYPE_ICONS[d.type] || "●";
+              const pri = priorityFor(d);
+              const src = d.source
+                ? d.source + (d.source_type ? " · " + d.source_type : "")
+                : d.type || "—";
+              row.innerHTML = `
+                <span class="qicon">${icon}</span>
+                <div>
+                  <div class="qtitle">${esc(d.title || d.type || "Pending")}</div>
+                  <div style="font-size: 9px; color: var(--muted); margin-top: 1px;">${esc(src)}</div>
+                </div>
+                <span class="qpri ${pri}">${pri}</span>
+              `;
+              queue.appendChild(row);
+            }
+          }
         }
 
+        // ---------- Pipeline layout (Form 2) ----------
+        function renderPipeline() {
+          // Active step picks the pet state's hint if available. Without
+          // extra watcher context we default to step 1; the user can
+          // see the rest of the pipeline at a glance.
+          const stepMap = {
+            greet: 1,
+            thinking: 1,
+            working: 2,
+            needsinput: 4,
+            juggling: 2,
+            sweeping: 3,
+            happy: 4,
+            idle: 1,
+            sleeping: 1,
+          };
+          const step = stepMap[state] || 1;
+          document
+            .querySelectorAll("#pipeline-steps .pipeline-step")
+            .forEach((el) => {
+              el.classList.toggle("active", Number(el.dataset.step) === step);
+            });
+          const labels = [
+            "see signal",
+            "read state",
+            "triage attention",
+            "wait for approval",
+          ];
+          const progress = document.getElementById("pipeline-progress");
+          if (progress)
+            progress.textContent =
+              "Step " + step + " of 4 · " + labels[step - 1];
+        }
+
+        // ---------- Noise layout (Form 3) ----------
+        function renderNoise() {
+          // Top dismissed item, if any, becomes the trashed message
+          // shown in the demo. Otherwise we show a representative
+          // newsletter.
+          const noiseSamples = [
+            {
+              from: "newsletter@trythis.app",
+              subject: "Try this bundle — 50% off!",
+            },
+            {
+              from: "digest@producthunt.com",
+              subject: "Today's top 5 launches",
+            },
+            {
+              from: "promo@stripe-news.com",
+              subject: "Webinar replay — payments 2026",
+            },
+          ];
+          const sample =
+            noiseSamples[
+              Math.floor((Date.now() / 60000) % noiseSamples.length)
+            ];
+          const fromEl = document.getElementById("noise-from");
+          const subEl = document.getElementById("noise-subject");
+          if (fromEl) fromEl.textContent = sample.from;
+          if (subEl) subEl.textContent = '"' + sample.subject + '"';
+        }
+
+        // ---------- Decision layout (Forms 4/5/8) ----------
+        function renderDecision() {
+          const icon = document.getElementById("dec-icon");
+          const typeLabel = document.getElementById("dec-type-label");
+          const pill = document.getElementById("dec-pill");
+          const titleEl = document.getElementById("dec-title");
+          const sc = document.getElementById("dec-source-chain");
+          const recBody = document.getElementById("dec-recommendation-body");
+          const confFill = document.getElementById("dec-confidence-fill");
+          const confVal = document.getElementById("dec-confidence-value");
+          const dlgBody = document.getElementById("dec-dialogue-body");
+          const ev = document.getElementById("dec-evidence");
+          const dlgWrap = document.getElementById("dec-dialogue");
+
+          if (!decision || !decision.id) return;
+
+          const t = decision.type || "decision";
+          icon.textContent = TYPE_ICONS[t] || "●";
+          typeLabel.textContent = TYPE_LABELS[t] || t.toUpperCase();
+          const pri = (
+            decision.priority || priorityFor(decision)
+          ).toLowerCase();
+          pill.textContent = pri;
+          pill.className = "pill " + pri;
+          titleEl.textContent = decision.title || t;
+
+          // Source chain
+          sc.innerHTML = "";
+          const conf =
+            typeof decision.confidence === "number"
+              ? decision.confidence
+              : null;
+          const nodes = [
+            { label: "SIGNAL", value: decision.source || "—" },
+            { label: "TYPE", value: decision.source_type || t },
+            { label: "TIMING", value: fmtTs(decision.source_ts) },
+            {
+              label: "CONFIDENCE",
+              value: conf != null ? Math.round(conf * 100) + "%" : "—",
+            },
+          ];
+          for (const n of nodes) {
+            const w = document.createElement("div");
+            w.className = "meta-node";
+            const lab = document.createElement("span");
+            lab.className = "label";
+            lab.textContent = n.label;
+            const val = document.createElement("span");
+            val.className = "value";
+            val.textContent = n.value;
+            w.appendChild(lab);
+            w.appendChild(val);
+            sc.appendChild(w);
+          }
+
+          // Recommendation
+          recBody.textContent =
+            decision.recommendation ||
+            TYPE_RECOMMENDATIONS[t] ||
+            "Open " + t.replace(/_/g, " ");
+
+          // Confidence bar
+          const pct = conf != null ? Math.round(conf * 100) : 72;
+          confFill.style.setProperty("--confidence", pct + "%");
+          confVal.textContent = pct + "%";
+
+          // Dialogue
+          if (decision.dialogue && decision.dialogue.trim()) {
+            dlgWrap.style.display = "";
+            dlgBody.textContent = decision.dialogue;
+          } else {
+            dlgWrap.style.display = "none";
+          }
+
+          // Evidence pills — up to 3 from `why[]`
+          ev.innerHTML = "";
+          const whys = Array.isArray(decision.why)
+            ? decision.why.slice(0, 3)
+            : [];
+          // Pad with placeholder if fewer than 3 to keep the 3-col grid balanced.
+          while (whys.length < 3) whys.push(null);
+          whys.forEach((w, i) => {
+            const pill = document.createElement("div");
+            pill.className = "evidence-pill";
+            if (w) {
+              const lab = document.createElement("span");
+              lab.className = "label";
+              lab.textContent = ["WHY · 1", "WHY · 2", "WHY · 3"][i];
+              const txt = document.createElement("strong");
+              txt.textContent = w;
+              pill.appendChild(lab);
+              pill.appendChild(txt);
+            } else {
+              pill.style.opacity = "0.4";
+              const lab = document.createElement("span");
+              lab.className = "label";
+              lab.textContent = ["WHY · 1", "WHY · 2", "WHY · 3"][i];
+              const txt = document.createElement("strong");
+              txt.textContent = "—";
+              pill.appendChild(lab);
+              pill.appendChild(txt);
+            }
+            ev.appendChild(pill);
+          });
+        }
+
+        // ---------- Brief layout (Form 6) ----------
+        function renderBrief() {
+          // Metrics pull from the brief payload if present, else derive
+          // from pendingList + a small constant for conflicts.
+          let unread = 0,
+            conflicts = 0,
+            prs = 0;
+          for (const d of pendingList) {
+            if (d.source === "gmail" && d.type === "draft_reply") unread++;
+            if (d.source === "github" && d.type === "review_pr") prs++;
+          }
+          if (typeof decision?.metrics === "object" && decision.metrics) {
+            unread = decision.metrics.unread ?? unread;
+            conflicts = decision.metrics.conflicts ?? conflicts;
+            prs = decision.metrics.prs ?? prs;
+          }
+          document.getElementById("brief-m1").textContent = unread;
+          document.getElementById("brief-m2").textContent = conflicts;
+          document.getElementById("brief-m3").textContent = prs;
+
+          const tag = document.getElementById("brief-tag");
+          tag.textContent =
+            unread + " unread · " + conflicts + " conflicts · " + prs + " PRs";
+
+          const list = document.getElementById("brief-list");
+          list.innerHTML = "";
+          const items = pendingList.slice(0, 4);
+          if (!items.length) {
+            const empty = document.createElement("div");
+            empty.className = "brief-item";
+            empty.innerHTML =
+              '<span class="brief-priority p2">·</span><div><div class="bi-title">No items in today\'s brief</div><div class="bi-sub">All caught up — go touch grass</div></div><span></span>';
+            list.appendChild(empty);
+            return;
+          }
+          for (const d of items) {
+            const pri = priorityFor(d);
+            const row = document.createElement("div");
+            row.className = "brief-item";
+            row.innerHTML = `
+              <span class="brief-priority ${pri}">${pri}</span>
+              <div>
+                <div class="bi-title">${esc(d.title || d.type || "—")}</div>
+                <div class="bi-sub">${esc(d.source_type || d.type || "")}${d.source ? " · " + esc(d.source) : ""}</div>
+              </div>
+              <span class="bi-time">${fmtTs(d.source_ts)}</span>
+            `;
+            list.appendChild(row);
+          }
+        }
+
+        // ---------- Wrap layout (Form 7) ----------
+        function renderWrap() {
+          // Pull counts from a `wrap_summary` field on the decision if
+          // present, else from the recent done/dismissed buckets — we
+          // only have the pending list here, so we fall back to a
+          // reasonable demo summary.
+          const summary = decision?.wrap_summary;
+          const doneCount = summary?.done ?? 4;
+          const dismissedCount = summary?.dismissed ?? 1;
+          const carriedCount =
+            summary?.carried ?? Math.min(pendingList.length, 2);
+          const sub = document.getElementById("wrap-sub");
+          if (sub)
+            sub.textContent =
+              "end of day · " +
+              doneCount +
+              " done · " +
+              dismissedCount +
+              " dismissed · " +
+              carriedCount +
+              " carried";
+
+          // Optional: pre-render the carried rows from pendingList when
+          // we have them, otherwise keep the static demo copy.
+          const ledger = document.getElementById("wrap-ledger");
+          if (ledger && pendingList.length) {
+            ledger.innerHTML = "";
+            for (const d of pendingList.slice(0, 3)) {
+              const row = document.createElement("div");
+              row.className = "ledger-row";
+              row.textContent =
+                (d.title || d.type || "—") +
+                (d.source_ts ? " · " + fmtTs(d.source_ts) : "");
+              ledger.appendChild(row);
+            }
+          }
+        }
+
+        // ---------- Misc ----------
+        function esc(s) {
+          return String(s == null ? "" : s)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;");
+        }
+        function setBusy(b) {
+          busy = b;
+          document
+            .querySelectorAll(
+              "[data-action='run'], [data-action='dismiss'], [data-action='open']",
+            )
+            .forEach((el) => (el.disabled = b));
+        }
+
+        // ---------- Action handlers ----------
         async function postAction(action, body) {
-          if (!currentId) return;
+          if (!decision || !decision.id) return;
+          if (action === "open") {
+            const t = window.__TAURI__;
+            if (t && t.event && t.event.emit) {
+              t.event.emit("pet:open-dashboard");
+              if (decision.id)
+                t.event.emit("pet:open-decision", { id: decision.id });
+            }
+            return;
+          }
           setBusy(true);
           try {
-            const res = await fetch(`/api/loop/decision/${currentId}`, {
+            const res = await fetch(`/api/loop/decision/${decision.id}`, {
               method: "POST",
               headers: { "content-type": "application/json" },
               credentials: "include",
@@ -451,8 +1928,9 @@
             );
             const t = window.__TAURI__;
             if (t && t.event && t.event.emit) {
-              t.event.emit("loop:decision-cleared", { id: currentId });
+              t.event.emit("loop:decision-cleared", { id: decision.id });
             }
+            refreshConnectors();
           } catch (e) {
             showToast(
               action === "run"
@@ -465,30 +1943,91 @@
           }
         }
 
-        runBtn.addEventListener("click", () => postAction("run"));
-        dismissBtn.addEventListener("click", () => postAction("dismiss"));
-        openBtn.addEventListener("click", () => {
-          const t = window.__TAURI__;
-          if (t && t.event && t.event.emit) {
-            t.event.emit("pet:open-dashboard");
-            if (currentId) t.event.emit("pet:open-decision", { id: currentId });
-          }
+        document.querySelectorAll("[data-action='close']").forEach((el) => {
+          el.addEventListener("click", () => {
+            const t = window.__TAURI__;
+            if (t && t.event && t.event.emit) t.event.emit("pet:close-card");
+          });
         });
-        closeBtn.addEventListener("click", () => {
-          const t = window.__TAURI__;
-          if (t && t.event && t.event.emit) {
-            t.event.emit("pet:close-card");
-          }
-        });
-
-        const tauri = window.__TAURI__;
-        if (tauri && tauri.event && tauri.event.listen) {
-          tauri.event.listen("loop:decision", (e) =>
-            apply((e && e.payload) || {}),
+        document
+          .querySelectorAll("[data-action='run']")
+          .forEach((el) =>
+            el.addEventListener("click", () => postAction("run")),
           );
+        document
+          .querySelectorAll("[data-action='dismiss']")
+          .forEach((el) =>
+            el.addEventListener("click", () => postAction("dismiss")),
+          );
+        document
+          .querySelectorAll("[data-action='open']")
+          .forEach((el) =>
+            el.addEventListener("click", () => postAction("open")),
+          );
+
+        // ---------- Connector refresh ----------
+        async function refreshConnectors() {
+          try {
+            const res = await fetch("/api/loop/connectors", {
+              credentials: "include",
+            });
+            if (!res.ok) return;
+            const data = await res.json().catch(() => ({}));
+            connectors = Array.isArray(data?.items) ? data.items : [];
+            apply();
+          } catch (_) {}
         }
 
-        apply(null);
+        // ---------- Tauri event wiring ----------
+        const tauri = window.__TAURI__;
+        if (tauri && tauri.event && tauri.event.listen) {
+          tauri.event.listen("loop:decision", (e) => {
+            const p = (e && e.payload) || {};
+            decision = p && p.id ? p : null;
+            apply();
+          });
+          tauri.event.listen("loop:state", (e) => {
+            const p = (e && e.payload) || {};
+            state =
+              (typeof p === "object" && p.state) ||
+              (typeof p === "string" ? p : "idle");
+            apply();
+          });
+          tauri.event.listen("loop:pending-list", (e) => {
+            const p = (e && e.payload) || {};
+            pendingList = Array.isArray(p.items) ? p.items : [];
+            apply();
+          });
+          tauri.event.listen("loop:connectors", (e) => {
+            const p = (e && e.payload) || {};
+            connectors = Array.isArray(p.items || p.connectors)
+              ? p.items || p.connectors
+              : [];
+            apply();
+          });
+          // Dev-panel override: pin the layout that matches the form the
+          // user just clicked. Stays sticky across subsequent state
+          // changes until cleared (on dismiss / next form click).
+          tauri.event.listen("pet:dev-form", (e) => {
+            const p = (e && e.payload) || {};
+            devForm = p.key || null;
+            apply();
+          });
+        }
+
+        // Clear devForm when the user dismisses the decision that the
+        // dev panel injected, so the card returns to natural routing.
+        function clearDevFormIfMatches(clearedId) {
+          if (!devForm) return;
+          // For Forms 4/5/6/7/8 the cleared decision came from a known
+          // scene. After it goes, drop the override — let the watcher
+          // drive the next state naturally.
+          if (decision && decision.id === clearedId) devForm = null;
+        }
+
+        // Initial fetch + render
+        refreshConnectors();
+        apply();
       })();
     </script>
   </body>

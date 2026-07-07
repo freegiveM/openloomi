@@ -1,20 +1,34 @@
 /**
- * Loop connector status — derived from the main app's integrations module.
+ * Loop connector status — surface-only.
  *
- * Caches results to ~/.openloomi/loop/connectors.json with a 60s TTL so the
- * pet / CLI / web UI can poll without hitting the underlying auth surface on
- * every request. Cache miss falls through to a synchronous best-effort probe.
+ * The Loop is fully agentic: the agent at `/api/native/agent` has the
+ * Composio MCP server loaded and probes connection state itself at tick
+ * time. The Loop's local module no longer hits Composio's REST API
+ * directly — that would require a parallel `COMPOSIO_API_KEY` env var and
+ * duplicate the agent's discovery work.
  *
- * The Loop currently only needs a coarse "is this connected + how many
- * accounts" view per integration; deep health probing happens in the
- * integration's own adapter when an action runs.
+ * `listConnectors()` returns the canonical 6-entry shape (gmail /
+ * google_calendar / github / slack / linear / obsidian), all marked
+ * `connected: false`. The agent's tick result can write an authoritative
+ * snapshot to `~/.openloomi/loop/connectors.json`; if that file exists
+ * (and is fresh enough), we honour it instead. The UI pill row is
+ * therefore "last agent-reported" rather than "live" — fine because the
+ * pill is decorative, not a control surface.
+ *
+ * Cache TTL is 24h: ticks run every `intervalSec` (default 600s = 10min),
+ * and the agent's MCP probe is the ground truth — there's no point
+ * thrashing the cache between ticks. Force-refresh is available via
+ * `refreshConnectors()` and the `/api/loop/connectors?force=1` query.
+ *
+ * Obsidian is file-system based and has no Composio adapter — it's
+ * reported as `connected: false` here; Chronicle owns its watch state.
  */
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { ensureDirs, LOOP_PATHS } from "./paths";
 import type { ConnectorEntry } from "./types";
 
-const CACHE_TTL_MS = 60_000;
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
 interface ConnectorCache {
   fetchedAt: string;
@@ -81,7 +95,12 @@ function readCache(): ConnectorCache | null {
   }
 }
 
-function writeCache(connectors: ConnectorEntry[]): void {
+/**
+ * Public API — write the agent-reported connector snapshot. Called by the
+ * tick handler when the agent's `result` event carries a `connectors`
+ * block (see `tick-prompt.ts` §0 hook).
+ */
+export function writeConnectorSnapshot(connectors: ConnectorEntry[]): void {
   ensureDirs();
   try {
     writeFileSync(
@@ -101,10 +120,10 @@ function writeCache(connectors: ConnectorEntry[]): void {
 }
 
 /**
- * Returns the live (or cached) connector status. Best-effort — when the
- * integrations module can't be probed synchronously (e.g. it depends on
- * async session context), returns the fallback connector list with all
- * entries marked `connected: false` so the UI can still render.
+ * Returns the agent-reported (or cached) connector status. When no
+ * snapshot has been written yet, returns the FALLBACK list with all
+ * entries marked `connected: false` so the UI can still render the pill
+ * row.
  */
 export async function listConnectors(
   opts: { force?: boolean } = {},
@@ -113,51 +132,11 @@ export async function listConnectors(
     const cached = readCache();
     if (cached) return cached.connectors;
   }
-  const entries = await probeConnectors();
-  writeCache(entries);
-  return entries;
-}
-
-async function probeConnectors(): Promise<ConnectorEntry[]> {
   const stamp = new Date().toISOString();
-  // Best-effort: query the integrationAccounts table directly. When the DB
-  // is unavailable (CLI scripts running outside the Next.js runtime, missing
-  // DATABASE_URL, etc.) we fall back to the FALLBACK list so the UI can
-  // still render. Counts are best-effort — the pet / web UI does not gate
-  // any decision on this number, only uses it for the status row.
-  const snapshot: ConnectorEntry[] = FALLBACK_CONNECTORS.map((c) => ({
-    ...c,
-    fetchedAt: stamp,
-  }));
-  try {
-    const { db } = await import("@/lib/db/index");
-    const { integrationAccounts } = await import("@/lib/db/schema");
-    const { sql } = await import("drizzle-orm");
-    const rows = await db
-      .select({
-        platform: integrationAccounts.platform,
-        count: sql<number>`count(*)::int`,
-      })
-      .from(integrationAccounts)
-      .groupBy(integrationAccounts.platform);
-    const map = new Map<string, number>();
-    for (const r of rows) {
-      map.set(
-        String((r as { platform?: string }).platform ?? ""),
-        Number((r as { count?: number }).count ?? 0),
-      );
-    }
-    return snapshot.map((entry) => {
-      const count = map.get(entry.id) ?? 0;
-      return { ...entry, accountCount: count, connected: count > 0 };
-    });
-  } catch {
-    /* DB unavailable — keep fallback shape */
-    return snapshot;
-  }
+  return FALLBACK_CONNECTORS.map((c) => ({ ...c, fetchedAt: stamp }));
 }
 
-/** Force-refresh the connector cache. Used by the /api/loop/connectors route. */
+/** Force-refresh by clearing the cache and returning FALLBACK. */
 export async function refreshConnectors(): Promise<ConnectorEntry[]> {
   return listConnectors({ force: true });
 }
