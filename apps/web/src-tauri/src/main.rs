@@ -654,6 +654,35 @@ fn main() {
                 }
             });
 
+            // B2b: "Open brief" / "Open wrap" inside the card. Brief and
+            // wrap are not decisions — they're aggregate views
+            // (morning brief, evening wrap) persisted to
+            // ~/.openloomi/loop/brief.json / wrap.json. Routing these
+            // through the decision flow used to land the user on a
+            // filtered scheduled-jobs list ("tasks page") which had
+            // nothing to do with the brief/wrap content. Now we
+            // surface the main window and dispatch a flat DOM event —
+            // the chat layout listens and pushes `/brief` or `/wrap`
+            // (dedicated pages that read the JSON directly).
+            let open_brief_app = app_handle.clone();
+            app_handle.listen("pet:open-brief", move |_event| {
+                tray::show_main_window(&open_brief_app);
+                if let Some(window) = open_brief_app.get_webview_window("main") {
+                    let _ = window.eval(
+                        "window.dispatchEvent(new CustomEvent('openloomi:navigate-brief'))",
+                    );
+                }
+            });
+            let open_wrap_app = app_handle.clone();
+            app_handle.listen("pet:open-wrap", move |_event| {
+                tray::show_main_window(&open_wrap_app);
+                if let Some(window) = open_wrap_app.get_webview_window("main") {
+                    let _ = window.eval(
+                        "window.dispatchEvent(new CustomEvent('openloomi:navigate-wrap'))",
+                    );
+                }
+            });
+
             // Pet right-click menu's "Quit" entry funnels into the same
             // ExitRequested -> cleanup -> exit pipeline as the tray's
             // "Quit" item. Calling `exit(0)` re-fires ExitRequested;

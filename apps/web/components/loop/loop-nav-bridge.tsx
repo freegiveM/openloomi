@@ -56,5 +56,22 @@ export function LoopNavBridge() {
     return () =>
       window.removeEventListener("openloomi:navigate-decision", handler);
   }, [router]);
+
+  // Brief / wrap cards aren't decisions — they're aggregate views stored
+  // at ~/.openloomi/loop/brief.json / wrap.json. The Rust host fires
+  // these events after the user clicks "Open brief" / "Open wrap" so we
+  // push the dedicated pages that read the JSON directly. The pages
+  // (`/brief`, `/wrap`) handle the "no snapshot yet" case with an empty
+  // state pointing at the trigger endpoint.
+  useEffect(() => {
+    const onBrief = () => router.push("/brief");
+    const onWrap = () => router.push("/wrap");
+    window.addEventListener("openloomi:navigate-brief", onBrief);
+    window.addEventListener("openloomi:navigate-wrap", onWrap);
+    return () => {
+      window.removeEventListener("openloomi:navigate-brief", onBrief);
+      window.removeEventListener("openloomi:navigate-wrap", onWrap);
+    };
+  }, [router]);
   return null;
 }

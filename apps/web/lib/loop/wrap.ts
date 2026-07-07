@@ -41,7 +41,7 @@ function today(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-function readWrap(): WrapSnapshot | null {
+export function readWrap(): WrapSnapshot | null {
   try {
     if (!existsSync(WRAP_PATH)) return null;
     return JSON.parse(readFileSync(WRAP_PATH, "utf8")) as WrapSnapshot;

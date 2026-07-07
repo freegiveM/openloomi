@@ -54,7 +54,7 @@ function today(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-function readBrief(): BriefSnapshot | null {
+export function readBrief(): BriefSnapshot | null {
   try {
     if (!existsSync(BRIEF_PATH)) return null;
     return JSON.parse(readFileSync(BRIEF_PATH, "utf8")) as BriefSnapshot;

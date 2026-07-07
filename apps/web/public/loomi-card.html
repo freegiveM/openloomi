@@ -1419,12 +1419,9 @@
           </div>
         </div>
         <div class="brief-list" id="brief-list"></div>
-        <div class="footer two-col">
+        <div class="footer">
           <button class="primary" data-action="open" type="button">
-            ▶ Open brief
-          </button>
-          <button class="danger" data-action="dismiss" type="button">
-            ✕ Dismiss
+            View details
           </button>
         </div>
       </section>
@@ -1483,12 +1480,9 @@
             <div class="ledger-row">Triage api-clients inbox</div>
           </div>
         </div>
-        <div class="footer two-col">
+        <div class="footer">
           <button class="primary" data-action="open" type="button">
-            ▶ Open wrap
-          </button>
-          <button class="danger" data-action="dismiss" type="button">
-            ✕ Dismiss
+            View details
           </button>
         </div>
       </section>
@@ -1628,11 +1622,11 @@
             { action: "dismiss", label: "Skip", variant: "danger" },
           ],
           brief: [
-            { action: "open", label: "▶ Open brief", variant: "primary" },
+            { action: "open", label: "View details", variant: "primary" },
             { action: "dismiss", label: "Dismiss", variant: "danger" },
           ],
           wrap: [
-            { action: "open", label: "▶ Open wrap", variant: "primary" },
+            { action: "open", label: "View details", variant: "primary" },
             { action: "dismiss", label: "Dismiss", variant: "danger" },
           ],
         };
@@ -2333,26 +2327,38 @@
           if (action === "open") {
             // Open doesn't need the agent — it's a pure UI navigation.
             // Routes through Tauri events (preferred) or in-webview
-            // navigation (webview fallback). The user's intuition that
-            // "everything should go through the agent" applies to
-            // run/dismiss where the agent does real work; for open we
-            // keep the synchronous UI hop.
+            // navigation (webview fallback).
             //
-            // The Rust host's `pet:open-decision` listener parses the
-            // payload, shows the main window, then dispatches
-            // `openloomi:navigate-decision` with `{ id }` as detail — the
-            // chat layout listens for this and calls
-            // `router.push('/loop/<id>')` so Next.js's client router
-            // takes over (no full reload). Without that DOM-event hookup
-            // the click would land on a generic main page with no
-            // decision context.
-            const id = decision.id;
+            // We branch on the active layout because brief / wrap cards
+            // are not decisions — routing them through
+            // `pet:open-decision` lands the user on the (filtered)
+            // scheduled-jobs list ("tasks page"), which is not what the
+            // brief / wrap content is. For those we emit
+            // `pet:open-brief` / `pet:open-wrap`, the Rust host surfaces
+            // the main window, and the chat layout navigates to
+            // `/brief` / `/wrap` (the dedicated pages that read
+            // brief.json / wrap.json directly).
             const t = window.__TAURI__;
+            const activeLayout = document.querySelector("[data-layout].active")
+              ?.dataset.layout;
             if (t && t.event && t.event.emit) {
               t.event.emit("pet:open-dashboard");
-              t.event.emit("pet:open-decision", { id });
+              if (activeLayout === "brief") {
+                t.event.emit("pet:open-brief");
+              } else if (activeLayout === "wrap") {
+                t.event.emit("pet:open-wrap");
+              } else {
+                t.event.emit("pet:open-decision", { id: decision.id });
+              }
             } else {
-              window.location.href = "/loop/" + encodeURIComponent(id);
+              if (activeLayout === "brief") {
+                window.location.href = "/brief";
+              } else if (activeLayout === "wrap") {
+                window.location.href = "/wrap";
+              } else {
+                window.location.href =
+                  "/loop/" + encodeURIComponent(decision.id);
+              }
             }
             return;
           }
