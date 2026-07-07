@@ -16,7 +16,7 @@
   pointer travel between down and up; >4px = drag, ≤4px = click.
 
   State key → image filename is a flat lookup table. Anything not in
-  the table falls back to `fox-idle.png` so a typo'd state name from
+  the table falls back to `loomi-idle.png` so a typo'd state name from
   the host can never paint a blank frame.
 
   This file lives at the public root (not under loomi-pet/) so the
@@ -279,18 +279,18 @@
         // alongside this HTML by the public/ resource pattern in
         // tauri.conf.json: `../.next/standalone/apps/web/public/**/*`.
         const STATE_IMAGES = {
-          check: "loomi-pet/assets/fox-idle.png",
-          thinking: "loomi-pet/assets/fox-thinking.png",
-          sweeping: "loomi-pet/assets/fox-sweeping.png",
-          working: "loomi-pet/assets/fox-working.png",
-          needsinput: "loomi-pet/assets/fox-needsinput.png",
-          greet: "loomi-pet/assets/fox-greet.png",
-          sleeping: "loomi-pet/assets/fox-sleeping.png",
-          juggling: "loomi-pet/assets/fox-juggling.png",
-          happy: "loomi-pet/assets/fox-happy.png",
-          idle: "loomi-pet/assets/fox-idle.png",
+          check: "loomi-pet/assets/loomi-idle.png",
+          thinking: "loomi-pet/assets/loomi-thinking.png",
+          sweeping: "loomi-pet/assets/loomi-sweeping.png",
+          working: "loomi-pet/assets/loomi-working.png",
+          needsinput: "loomi-pet/assets/loomi-needsinput.png",
+          greet: "loomi-pet/assets/loomi-greet.png",
+          sleeping: "loomi-pet/assets/loomi-sleeping.png",
+          juggling: "loomi-pet/assets/loomi-juggling.png",
+          happy: "loomi-pet/assets/loomi-happy.png",
+          idle: "loomi-pet/assets/loomi-idle.png",
         };
-        const FALLBACK = "loomi-pet/assets/fox-idle.png";
+        const FALLBACK = "loomi-pet/assets/loomi-idle.png";
 
         const fox = document.getElementById("fox");
 
