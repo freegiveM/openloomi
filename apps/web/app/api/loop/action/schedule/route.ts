@@ -36,11 +36,7 @@
 
 import { NextResponse } from "next/server";
 import { auth } from "@/app/(auth)/auth";
-import {
-  createJob,
-  decisions,
-  registerLoopHandlers,
-} from "@/lib/loop";
+import { createJob, decisions, registerLoopHandlers } from "@/lib/loop";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
