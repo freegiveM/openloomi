@@ -874,73 +874,6 @@ export function AppSidebar() {
                           );
                         })()}
 
-                      {/* Connectors (linked accounts / integrations) — same unlock as Library */}
-                      {isNavVisible("workspace") && (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              className={cn(
-                                "w-full gap-2 px-3 py-2 h-auto rounded-md transition-colors",
-                                pathname === "/connectors"
-                                  ? "text-primary bg-sidebar-hover"
-                                  : "text-sidebar-foreground hover:bg-sidebar-hover hover:text-sidebar-hover-foreground",
-                                isCollapsed
-                                  ? "justify-center"
-                                  : "justify-start",
-                              )}
-                              aria-current={
-                                pathname === "/connectors" ? "page" : undefined
-                              }
-                              asChild
-                            >
-                              <Link
-                                href="/connectors"
-                                onClick={() => {
-                                  if (isMobile) {
-                                    setIsCollapsed(true);
-                                    window.dispatchEvent(
-                                      new CustomEvent(
-                                        "openloomi:close-sidebar",
-                                      ),
-                                    );
-                                  }
-                                }}
-                                className={cn(
-                                  "flex items-center w-full min-h-0",
-                                  isCollapsed
-                                    ? "justify-center"
-                                    : "gap-2 justify-start",
-                                )}
-                              >
-                                <RemixIcon
-                                  name="connector"
-                                  size={SIDEBAR_NAV_ICON_SIZE}
-                                  filled={pathname === "/connectors"}
-                                  className={
-                                    pathname === "/connectors"
-                                      ? "text-primary"
-                                      : ""
-                                  }
-                                />
-                                {!isCollapsed && (
-                                  <span
-                                    className={cn(
-                                      "truncate font-normal",
-                                      pathname === "/connectors"
-                                        ? "text-primary"
-                                        : "text-sidebar-foreground",
-                                    )}
-                                  >
-                                    {t("nav.connectors", "Connectors")}
-                                  </span>
-                                )}
-                              </Link>
-                            </Button>
-                          </TooltipTrigger>
-                        </Tooltip>
-                      )}
-
                       {/* Scheduled Jobs - above search, use router.push to ensure reliable Tauri/client navigation */}
                       {isNavVisible("scheduled-jobs") && (
                         <Tooltip>
@@ -1003,24 +936,29 @@ export function AppSidebar() {
                         </Tooltip>
                       )}
 
-                      {/* Loop - proactive execution dashboard */}
-                      {isNavVisible("loop") && (
+                      {/* Connectors (linked accounts / integrations) — same unlock as Library */}
+                      {isNavVisible("workspace") && (
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <Button
                               variant="ghost"
                               className={cn(
-                                "w-full gap-2 px-3 py-2 h-auto rounded-md transition-colors flex items-center",
+                                "w-full gap-2 px-3 py-2 h-auto rounded-md transition-colors",
+                                pathname === "/connectors"
+                                  ? "text-primary bg-sidebar-hover"
+                                  : "text-sidebar-foreground hover:bg-sidebar-hover hover:text-sidebar-hover-foreground",
                                 isCollapsed
                                   ? "justify-center"
                                   : "justify-start",
-                                pathname === "/loop"
-                                  ? "text-primary"
-                                  : "text-sidebar-foreground hover:bg-sidebar-hover hover:text-sidebar-hover-foreground",
                               )}
-                              onClick={() => {
-                                startTransition(() => {
-                                  router.push("/loop");
+                              aria-current={
+                                pathname === "/connectors" ? "page" : undefined
+                              }
+                              asChild
+                            >
+                              <Link
+                                href="/connectors"
+                                onClick={() => {
                                   if (isMobile) {
                                     setIsCollapsed(true);
                                     window.dispatchEvent(
@@ -1029,32 +967,37 @@ export function AppSidebar() {
                                       ),
                                     );
                                   }
-                                });
-                              }}
-                              aria-current={
-                                pathname === "/loop" ? "page" : undefined
-                              }
-                            >
-                              <RemixIcon
-                                name="robot_2"
-                                size={SIDEBAR_NAV_ICON_SIZE}
-                                filled={pathname === "/loop"}
-                                className={
-                                  pathname === "/loop" ? "text-primary" : ""
-                                }
-                              />
-                              {!isCollapsed && (
-                                <span
-                                  className={cn(
-                                    "truncate font-normal",
-                                    pathname === "/loop"
+                                }}
+                                className={cn(
+                                  "flex items-center w-full min-h-0",
+                                  isCollapsed
+                                    ? "justify-center"
+                                    : "gap-2 justify-start",
+                                )}
+                              >
+                                <RemixIcon
+                                  name="connector"
+                                  size={SIDEBAR_NAV_ICON_SIZE}
+                                  filled={pathname === "/connectors"}
+                                  className={
+                                    pathname === "/connectors"
                                       ? "text-primary"
-                                      : "text-sidebar-foreground",
-                                  )}
-                                >
-                                  {t("nav.loop", "Loop")}
-                                </span>
-                              )}
+                                      : ""
+                                  }
+                                />
+                                {!isCollapsed && (
+                                  <span
+                                    className={cn(
+                                      "truncate font-normal",
+                                      pathname === "/connectors"
+                                        ? "text-primary"
+                                        : "text-sidebar-foreground",
+                                    )}
+                                  >
+                                    {t("nav.connectors", "Connectors")}
+                                  </span>
+                                )}
+                              </Link>
                             </Button>
                           </TooltipTrigger>
                         </Tooltip>
