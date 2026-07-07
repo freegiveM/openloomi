@@ -176,9 +176,7 @@ async function writeConversationChunks(
       id: `${conv.entry_id}__chunk_${chunkIndex}`,
       userId: "benchmark_user",
       timestamp:
-        parseTimestampMs(firstTs) ??
-        parseTimestampMs(lastTs) ??
-        Date.now(),
+        parseTimestampMs(firstTs) ?? parseTimestampMs(lastTs) ?? Date.now(),
       text,
       tier: "long",
       dimensions: {
@@ -328,9 +326,7 @@ export class BeamEvaluator {
     return join(this.checkpointDir, `${questionId}.json`);
   }
 
-  private async loadCheckpoint(
-    questionId: string,
-  ): Promise<Prediction | null> {
+  private async loadCheckpoint(questionId: string): Promise<Prediction | null> {
     if (!this.resume) return null;
     try {
       const data = await readFile(this.getCheckpointPath(questionId), "utf-8");

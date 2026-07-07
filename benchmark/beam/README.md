@@ -9,12 +9,12 @@ this runner exists to make that case airtight for the investor deck.
 
 ## Why BEAM (vs LoCoMo / LongMemEval / CLBench)
 
-| Benchmark | Year | Question types | Scoring | Verdict |
-|-----------|------|---------------:|---------|---------|
-| LoCoMo | 2024 | 6 | binary | outdated |
-| LongMemEval | 2024 | 6 | binary | outdated |
-| CLBench | 2024 | 4 | F1 | outdated |
-| **BEAM** | **2026** | **10** | **nugget (0/0.5/1)** | **standard** |
+| Benchmark   | Year     | Question types | Scoring              | Verdict      |
+| ----------- | -------- | -------------: | -------------------- | ------------ |
+| LoCoMo      | 2024     |              6 | binary               | outdated     |
+| LongMemEval | 2024     |              6 | binary               | outdated     |
+| CLBench     | 2024     |              4 | F1                   | outdated     |
+| **BEAM**    | **2026** |         **10** | **nugget (0/0.5/1)** | **standard** |
 
 BEAM is also the most-cited agent-memory benchmark of 2025–2026.
 SOTA numbers are tracked at the BEAM leaderboard (see paper §6).
@@ -25,18 +25,18 @@ Each BEAM category is wired to a specific Alloomi product claim in
 `src/scorer.ts → ALLOOMI_CLAIM_MAP`. The CLI prints this mapping in the
 per-category summary table.
 
-| BEAM category | What it tests | Alloomi claim |
-|---------------|---------------|---------------|
-| **abstention** | "Knows when NOT to answer" | **Active forgetting** — the system knows when NOT to answer |
-| **contradiction_resolution** | Reconciles conflicting prior statements | **Cross-session attribution** |
-| **event_ordering** | Sequences events correctly | Cross-session attribution |
-| **information_extraction** | Pulls a specific fact | Long-term recall |
-| **instruction_following** | Honors user-stated rules | User-defined rules & commitments |
-| **knowledge_update** | Refreshes stale memory with new info | **Active reinforcement** — update stale memory |
-| **multi_session_reasoning** | Combines info across distinct sessions | **Cross-session attribution** |
-| **preference_following** | Tracks user preferences over time | **Knows you better over time** |
-| **summarization** | Compresses long contexts | Long-context compression |
-| **temporal_reasoning** | Dates, durations, ordering | Time-aware retrieval |
+| BEAM category                | What it tests                           | Alloomi claim                                               |
+| ---------------------------- | --------------------------------------- | ----------------------------------------------------------- |
+| **abstention**               | "Knows when NOT to answer"              | **Active forgetting** — the system knows when NOT to answer |
+| **contradiction_resolution** | Reconciles conflicting prior statements | **Cross-session attribution**                               |
+| **event_ordering**           | Sequences events correctly              | Cross-session attribution                                   |
+| **information_extraction**   | Pulls a specific fact                   | Long-term recall                                            |
+| **instruction_following**    | Honors user-stated rules                | User-defined rules & commitments                            |
+| **knowledge_update**         | Refreshes stale memory with new info    | **Active reinforcement** — update stale memory              |
+| **multi_session_reasoning**  | Combines info across distinct sessions  | **Cross-session attribution**                               |
+| **preference_following**     | Tracks user preferences over time       | **Knows you better over time**                              |
+| **summarization**            | Compresses long contexts                | Long-context compression                                    |
+| **temporal_reasoning**       | Dates, durations, ordering              | Time-aware retrieval                                        |
 
 For deck / blog demos, run the **Alloomi highlight subset** with
 `--type knowledge_update,preference_following,contradiction_resolution,multi_session_reasoning`.
@@ -69,16 +69,16 @@ benchmark/beam/
 
 ## Architecture (what differs from longmemeval)
 
-| Concern | LongMemEval | BEAM |
-|---------|-------------|------|
-| Data format | JSON | parquet → JSON (via `dataset/convert.py`) |
-| Scale | 1 (~115K) | **4 buckets**: 128K / 500K / 1M / 10M |
-| Conversation size | Multi-session arrays, ~50 turns total | Single chat, **avg 842 turns @ 1M / 7,757 @ 10M** |
-| Scoring | binary CORRECT/WRONG | **nugget 0.0/0.5/1.0 per atom** |
-| Judge | 1 binary prompt | **rubric + 1-shot** (`BEAM_NUGGET_JUDGE_PROMPT`) |
-| File write | 1 `.md` per session | **20 turns per `.md`** + 1 `chunk_index.md` |
-| Resume | on error or wrong | on error only (judge re-runs) |
-| Per-question score | `correct: bool` | `nugget_mean + nugget_pass (≥0.5)` |
+| Concern            | LongMemEval                           | BEAM                                              |
+| ------------------ | ------------------------------------- | ------------------------------------------------- |
+| Data format        | JSON                                  | parquet → JSON (via `dataset/convert.py`)         |
+| Scale              | 1 (~115K)                             | **4 buckets**: 128K / 500K / 1M / 10M             |
+| Conversation size  | Multi-session arrays, ~50 turns total | Single chat, **avg 842 turns @ 1M / 7,757 @ 10M** |
+| Scoring            | binary CORRECT/WRONG                  | **nugget 0.0/0.5/1.0 per atom**                   |
+| Judge              | 1 binary prompt                       | **rubric + 1-shot** (`BEAM_NUGGET_JUDGE_PROMPT`)  |
+| File write         | 1 `.md` per session                   | **20 turns per `.md`** + 1 `chunk_index.md`       |
+| Resume             | on error or wrong                     | on error only (judge re-runs)                     |
+| Per-question score | `correct: bool`                       | `nugget_mean + nugget_pass (≥0.5)`                |
 
 ## CLI
 
@@ -105,18 +105,18 @@ pnpm --filter @openloomi/benchmark-beam benchmark -- \
 
 ### All CLI flags
 
-| Flag | Description |
-|------|-------------|
-| `-d, --dataset <path>` | (required) BEAM JSON dataset path |
-| `-c, --conversations <n>` | Cap conversations (default: all) |
-| `-qpc, --questions-per-conv <n>` | Cap questions per conversation (default: all) |
-| `-t, --type <csv>` | Filter categories (csv of the 10 names) |
-| `--scale <128k\|500k\|1m\|10m>` | Validate dataset scale tag |
-| `--quick` | First 5 questions only |
-| `--resume` / `--no-resume` | Reuse cached judge results (default: resume) |
-| `-p, --port <n>` | OpenLoomi API port (default: auto-discover on 3515) |
-| `--token <path>` | Auth token file (default: `~/.openloomi/token`) |
-| `-o, --output <path>` | Write results JSON to this path |
+| Flag                             | Description                                         |
+| -------------------------------- | --------------------------------------------------- |
+| `-d, --dataset <path>`           | (required) BEAM JSON dataset path                   |
+| `-c, --conversations <n>`        | Cap conversations (default: all)                    |
+| `-qpc, --questions-per-conv <n>` | Cap questions per conversation (default: all)       |
+| `-t, --type <csv>`               | Filter categories (csv of the 10 names)             |
+| `--scale <128k\|500k\|1m\|10m>`  | Validate dataset scale tag                          |
+| `--quick`                        | First 5 questions only                              |
+| `--resume` / `--no-resume`       | Reuse cached judge results (default: resume)        |
+| `-p, --port <n>`                 | OpenLoomi API port (default: auto-discover on 3515) |
+| `--token <path>`                 | Auth token file (default: `~/.openloomi/token`)     |
+| `-o, --output <path>`            | Write results JSON to this path                     |
 
 ## Output JSON shape
 
@@ -188,13 +188,13 @@ pnpm --filter @openloomi/benchmark-beam benchmark -- \
 
 ## Cost & wall-clock (estimate)
 
-| Scale | Convos | Qs | Wall clock | $ |
-|-------|-------:|----:|-----------:|--:|
-| sample | 1 | 1 | <1 min | ~$0.02 |
-| 128k | 20 | 400 | 1–2 h | ~$5 |
-| 500k | 35 | 700 | 3–5 h | ~$15 |
-| 1m | 35 | 700 | 5–9 h | ~$25 |
-| 10m | 10 | 200 | 8–15 h | ~$40 |
+| Scale  | Convos |  Qs | Wall clock |      $ |
+| ------ | -----: | --: | ---------: | -----: |
+| sample |      1 |   1 |     <1 min | ~$0.02 |
+| 128k   |     20 | 400 |      1–2 h |    ~$5 |
+| 500k   |     35 | 700 |      3–5 h |   ~$15 |
+| 1m     |     35 | 700 |      5–9 h |   ~$25 |
+| 10m    |     10 | 200 |     8–15 h |   ~$40 |
 
 Estimate uses `qwen/qwen3.7-max` as judge + Claude (via OpenLoomi API)
 as the answering agent. Judge retries are bounded at 3 attempts.

@@ -297,7 +297,9 @@ async function main() {
   let activeSamples = samples;
   if (args.quick) {
     activeSamples = samples.slice(0, 5);
-    console.log(`⚡ Quick mode: limiting to first ${activeSamples.length} questions`);
+    console.log(
+      `⚡ Quick mode: limiting to first ${activeSamples.length} questions`,
+    );
   }
   console.log(`🎯 Evaluating ${activeSamples.length} questions\n`);
 
@@ -341,9 +343,7 @@ async function main() {
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
-      console.error(
-        `Error on ${sample.question.question_id}: ${errorMessage}`,
-      );
+      console.error(`Error on ${sample.question.question_id}: ${errorMessage}`);
 
       const failedPred: Prediction = {
         question_id: sample.question.question_id,
@@ -413,15 +413,15 @@ async function main() {
       Object.values(predictionsByCategory).flat(),
     ),
     per_category: Object.fromEntries(
-      QUESTION_TYPES.filter(
-        (c) => predictionsByCategory[c].length > 0,
-      ).map((c) => [
-        c,
-        {
-          alloomi_claim: ALLOOMI_CLAIM_MAP[c],
-          ...calculateNuggetCategoryMetrics(predictionsByCategory[c]),
-        },
-      ]),
+      QUESTION_TYPES.filter((c) => predictionsByCategory[c].length > 0).map(
+        (c) => [
+          c,
+          {
+            alloomi_claim: ALLOOMI_CLAIM_MAP[c],
+            ...calculateNuggetCategoryMetrics(predictionsByCategory[c]),
+          },
+        ],
+      ),
     ),
     per_entry: Array.from(perEntry.values()),
     predictions: Object.values(predictionsByCategory).flat(),

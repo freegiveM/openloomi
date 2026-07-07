@@ -112,7 +112,17 @@
           transform 220ms ease;
       }
       body.idle .speech {
-        opacity: 0.55;
+        /* Fully hide the bubble in idle / no-pending state. Previously
+           this only dimmed to 0.55, which still surfaced the "All clear"
+           text on every cold boot — feedback that the bubble has no
+           useful info before the first decision arrives. The text is
+           kept in STATE_PHRASES so the dev panel can still flip into it
+           for visual testing; we just don't render it visibly. */
+        opacity: 0;
+        pointer-events: none;
+      }
+      body.idle .speech::after {
+        opacity: 0;
       }
 
       /* Downward-pointing tail (matches `.speech::after` in the demo).
@@ -217,10 +227,11 @@
 
         // Pet-state driven phrases. Surfaced when there's no pending
         // decision so the bubble still has something on-screen while the
-        // pet sweeps / thinks / sleeps — without it the watcher would
-        // flip the pet's mood but the bubble would stay frozen on
-        // "All clear" until a decision showed up. Updated together with
-        // the STATE_PHRASES definition in the dev panel; keep in sync.
+        // pet sweeps / thinks / sleeps. The `idle` entry is intentionally
+        // present (for dev-panel testing + accessibility / a11y fallback)
+        // but the bubble's idle class makes it invisible in the idle
+        // state — see `renderState` below. Updated together with the
+        // STATE_PHRASES definition in the dev panel; keep in sync.
         const STATE_PHRASES = {
           idle: { lead: "All clear", sub: "" },
           sleeping: { lead: "zzz", sub: "circle back in the morning" },
@@ -244,7 +255,14 @@
         let currentState = "idle";
 
         function renderState() {
-          body.classList.add("idle");
+          // The "idle" CSS class is used to dim/hide the bubble. We only
+          // apply it when the pet's *state* is literally idle — i.e. there's
+          // genuinely nothing to say. Other states (thinking / sweeping /
+          // working / etc.) still surface their phrases even when there's no
+          // pending decision, so the bubble keeps the user oriented while
+          // the pet is doing background work.
+          const noContent = currentState === "idle";
+          body.classList.toggle("idle", noContent);
           const phrase = STATE_PHRASES[currentState] || STATE_PHRASES.idle;
           lead.textContent = phrase.lead;
           sub.textContent = phrase.sub || "";

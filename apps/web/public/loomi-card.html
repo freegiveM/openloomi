@@ -1554,9 +1554,24 @@
         // they actually want to take, not a generic proxy.
         const TYPE_ACTIONS = {
           rsvp: [
-            { action: "run", label: "✓ Yes", variant: "primary", body: { response: "yes" } },
-            { action: "run", label: "✗ No", variant: "ghost", body: { response: "no" } },
-            { action: "run", label: "◐ Maybe", variant: "ghost", body: { response: "maybe" } },
+            {
+              action: "run",
+              label: "✓ Yes",
+              variant: "primary",
+              body: { response: "yes" },
+            },
+            {
+              action: "run",
+              label: "✗ No",
+              variant: "ghost",
+              body: { response: "no" },
+            },
+            {
+              action: "run",
+              label: "◐ Maybe",
+              variant: "ghost",
+              body: { response: "maybe" },
+            },
             { action: "dismiss", label: "Skip", variant: "danger" },
           ],
           draft_reply: [
@@ -1975,8 +1990,8 @@
             actions.length === 4
               ? "footer four-col"
               : actions.length === 2
-              ? "footer two-col"
-              : "footer";
+                ? "footer two-col"
+                : "footer";
           footer.className = cls;
           footer.innerHTML = "";
           for (const a of actions) {
@@ -2220,8 +2235,7 @@
             );
           } else if (action === "run") {
             const toolHints = {
-              rsvp:
-                "RSVP — use GOOGLECALENDAR_RSVP (or similar calendar tool) with the user's response from `sub_action.response`.",
+              rsvp: "RSVP — use GOOGLECALENDAR_RSVP (or similar calendar tool) with the user's response from `sub_action.response`.",
               draft_reply:
                 "Send the drafted email — use GMAIL_SEND_MESSAGE with the subject/body from the decision's `context.draft` if present, otherwise draft from `decision.title`.",
               review_pr:
@@ -2230,8 +2244,7 @@
                 "Post the Slack reply — use SLACK_SEND_MESSAGE in the channel from `context.channel`.",
               release_plan:
                 "Don't actually release — just produce a concrete plan summary in the result event.",
-              todo:
-                "Add the todo — use TODO_WRITE (or any todo tool available) with the decision's `title`.",
+              todo: "Add the todo — use TODO_WRITE (or any todo tool available) with the decision's `title`.",
             };
             const hint =
               toolHints[dec.type] ||

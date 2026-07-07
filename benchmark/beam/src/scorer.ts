@@ -10,7 +10,8 @@ import type { BeamQuestionCategory } from "./types";
 
 export const QUESTION_TYPE_NAMES: Record<BeamQuestionCategory, string> = {
   abstention: "Abstention (know when NOT to answer)",
-  contradiction_resolution: "Contradiction Resolution (handle conflicting facts)",
+  contradiction_resolution:
+    "Contradiction Resolution (handle conflicting facts)",
   event_ordering: "Event Ordering (sequence of events)",
   information_extraction: "Information Extraction (recall specific facts)",
   instruction_following: "Instruction Following (user-stated rules)",

@@ -152,7 +152,9 @@ export function looksLikeAbstention(answer: string): boolean {
   if (!answer) return false;
   const lowered = answer.toLowerCase();
   return (
-    /\bi (?:do not|don't|can't|cannot) (?:know|have|remember)\b/.test(lowered) ||
+    /\bi (?:do not|don't|can't|cannot) (?:know|have|remember)\b/.test(
+      lowered,
+    ) ||
     /\bno (?:information|record|mention|evidence)\b/.test(lowered) ||
     /\bnot (?:available|provided|mentioned)\b/.test(lowered) ||
     /\bi'?d (?:rather )?(?:decline|refuse|not )?\b/.test(lowered) ||

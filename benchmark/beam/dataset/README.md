@@ -5,10 +5,10 @@ TypeScript runner expects (one JSON file per scale).
 
 ## Files
 
-| File | Purpose |
-|------|---------|
-| `convert.py` | Downloads BEAM parquet from HuggingFace, normalizes, writes JSON. |
-| `sample_conversation.json` | Bundled sample (1 conv × 1 question) for smoke tests. |
+| File                       | Purpose                                                           |
+| -------------------------- | ----------------------------------------------------------------- |
+| `convert.py`               | Downloads BEAM parquet from HuggingFace, normalizes, writes JSON. |
+| `sample_conversation.json` | Bundled sample (1 conv × 1 question) for smoke tests.             |
 
 ## Quickstart
 

@@ -97,7 +97,9 @@ const VALID_CATEGORIES = new Set<BeamQuestionCategory>([
   "temporal_reasoning",
 ]);
 
-function normalizeCategory(raw: string | undefined): BeamQuestionCategory | null {
+function normalizeCategory(
+  raw: string | undefined,
+): BeamQuestionCategory | null {
   if (!raw) return null;
   const normalized = raw.toLowerCase().replace(/[\s-]+/g, "_");
   if (VALID_CATEGORIES.has(normalized as BeamQuestionCategory)) {
@@ -223,9 +225,7 @@ export async function loadBeamDatasetFromJson(
       }
       return { ...conv, probing_questions: filteredQuestions };
     });
-    conversations = conversations.filter(
-      (c) => c.probing_questions.length > 0,
-    );
+    conversations = conversations.filter((c) => c.probing_questions.length > 0);
   }
 
   return conversations;
