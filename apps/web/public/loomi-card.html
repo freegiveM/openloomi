@@ -1510,6 +1510,13 @@
         let pendingList = [];
         let connectors = [];
         let busy = false;
+        // One-shot action scheduled via /api/loop/action/schedule. Set
+        // when the user clicks Run / Dismiss / Send / Approve / etc.;
+        // cleared when the cron fires (loop:decision arrives with
+        // non-pending status) or when the user hits Cancel. Renders the
+        // footer with an extra Cancel button + countdown banner so the
+        // user knows what's about to happen.
+        let pendingAction = null;
         // Dev-panel override: when the user clicks a Form button, the dev
         // panel broadcasts `pet:dev-form` with the scene key. The card
         // pins the matching layout regardless of pet state — without this
@@ -1517,6 +1524,14 @@
         // collide on `thinking`. Cleared when the user dismisses the
         // triggering decision, so the card returns to natural routing.
         let devForm = null;
+
+        /** Seconds from `now` until the given ISO timestamp (clamped >= 0). */
+        function secondsUntil(iso) {
+          if (!iso) return 0;
+          const t = Date.parse(iso);
+          if (Number.isNaN(t)) return 0;
+          return Math.max(0, Math.round((t - Date.now()) / 1000));
+        }
 
         const TYPE_ICONS = {
           rsvp: "◐",
@@ -1983,6 +1998,22 @@
             footer.className = "footer";
             return;
           }
+          // If an action is scheduled and waiting to fire, render only
+          // a Cancel button + a live countdown. The Run/Dismiss buttons
+          // are gone because the action has already been queued — the
+          // user can either let it fire or cancel it.
+          if (pendingAction && pendingAction.decision_id === decision.id) {
+            footer.className = "footer";
+            footer.innerHTML = "";
+            const cancel = document.createElement("button");
+            cancel.type = "button";
+            cancel.className = "danger";
+            cancel.dataset.action = "cancel-pending";
+            const inS = secondsUntil(pendingAction.fire_at);
+            cancel.textContent = `Cancel · fires in ~${Math.max(inS, 0)}s`;
+            footer.appendChild(cancel);
+            return;
+          }
           const actions =
             (decision.type && TYPE_ACTIONS[decision.type]) || DEFAULT_ACTIONS;
           // 2 → two-col, 3 → default 3-col, 4 → four-col.
@@ -2282,7 +2313,7 @@
                   decision_id: dec.id,
                   action: "open",
                   status: "navigate",
-                  url: `/loop/decisions/${dec.id}`,
+                  url: `/loop/${dec.id}`,
                 },
                 null,
                 2,
@@ -2306,126 +2337,99 @@
             // "everything should go through the agent" applies to
             // run/dismiss where the agent does real work; for open we
             // keep the synchronous UI hop.
+            //
+            // The Rust host's `pet:open-decision` listener parses the
+            // payload, shows the main window, then dispatches
+            // `openloomi:navigate-decision` with `{ id }` as detail — the
+            // chat layout listens for this and calls
+            // `router.push('/loop/<id>')` so Next.js's client router
+            // takes over (no full reload). Without that DOM-event hookup
+            // the click would land on a generic main page with no
+            // decision context.
             const id = decision.id;
             const t = window.__TAURI__;
             if (t && t.event && t.event.emit) {
               t.event.emit("pet:open-dashboard");
               t.event.emit("pet:open-decision", { id });
             } else {
-              window.location.href =
-                "/loop/decisions/" + encodeURIComponent(id);
+              window.location.href = "/loop/" + encodeURIComponent(id);
             }
             return;
           }
+          // Run / Dismiss / Dry / Promote: route through the one-shot
+          // scheduler (POST /api/loop/action/schedule). The card no
+          // longer drives the agent directly — instead it creates a
+          // cron job, surfaces the scheduled state with a Cancel
+          // button, and waits for the watcher to emit `loop:decision`
+          // with the new (done | dismissed | error) status.
+          //
+          // Why this is better than the old SSE-streaming flow:
+          //   - every action gets an execution record (jobExecutions)
+          //   - the user can cancel within the 30s grace window
+          //   - no client-side fetch timeout / "Load failed" errors
+          //   - failures are written to the row, not lost on refresh
+          //   - status survives UI reloads (it lives in the DB)
+          // The cost: 30–90s before the action actually fires
+          // (local-scheduler polls every 60s). For one-click actions
+          // this feels live; for power users the Cancel covers the
+          // "I changed my mind" case.
           setBusy(true);
-          setStatus(
-            "running",
-            action === "run" ? "Agent executing…" : "Agent dismissing…",
-          );
-          const prompt = buildActionPrompt(decision, action, body);
-          let resultEvent = null;
-          let lastErr = null;
+          const id = decision.id;
+          const apiAction =
+            action === "run" || action === "dismiss" ? action : "dismiss";
+          let schedule = null;
           try {
-            const res = await fetch("/api/native/agent", {
+            const res = await fetch("/api/loop/action/schedule", {
               method: "POST",
               headers: { "content-type": "application/json" },
               credentials: "include",
-              body: JSON.stringify({ prompt }),
+              body: JSON.stringify({
+                decision_id: id,
+                action: apiAction,
+                ...(body && typeof body === "object" ? { body } : {}),
+              }),
             });
             if (!res.ok) {
-              throw new Error(`agent HTTP ${res.status}`);
-            }
-            if (!res.body) {
-              throw new Error("agent stream missing body");
-            }
-            const reader = res.body.getReader();
-            const decoder = new TextDecoder();
-            let buf = "";
-            let textBuf = "";
-            // Walk the SSE stream chunk by chunk. We surface text /
-            // tool_use events into the status banner so the user sees
-            // the agent working in real time ("Calling GMAIL_SEND_MESSAGE…"
-            // rather than a hung spinner). The `result` event is the
-            // success signal — we capture it and break the loop.
-            for (;;) {
-              const { value, done } = await reader.read();
-              if (done) break;
-              buf += decoder.decode(value, { stream: true });
-              let nl;
-              while ((nl = buf.indexOf("\n")) >= 0) {
-                const line = buf.slice(0, nl).replace(/\r$/, "");
-                buf = buf.slice(nl + 1);
-                if (!line.startsWith("data:")) continue;
-                const payload = line.slice(5).trim();
-                if (!payload) continue;
-                try {
-                  const evt = JSON.parse(payload);
-                  if (evt.type === "text" && typeof evt.content === "string") {
-                    textBuf += evt.content;
-                    const tail = textBuf.slice(-60).replace(/\s+/g, " ").trim();
-                    if (tail) setStatus("running", tail);
-                  } else if (evt.type === "tool_use" && evt.content) {
-                    const name =
-                      (evt.content && (evt.content.name || evt.content.tool)) ||
-                      "tool";
-                    setStatus("running", `Calling ${name}…`);
-                  } else if (evt.type === "result" && evt.content) {
-                    resultEvent = evt.content;
-                  } else if (evt.type === "error") {
-                    lastErr =
-                      (evt.content && (evt.content.message || evt.content)) ||
-                      "agent error";
-                  }
-                } catch {
-                  /* skip malformed */
-                }
-              }
-            }
-            if (lastErr) throw new Error(lastErr);
-            if (!resultEvent) {
-              throw new Error("agent stream ended without result event");
-            }
-            if (resultEvent.status === "error") {
+              const text = await res.text().catch(() => "");
               throw new Error(
-                resultEvent.error ||
-                  resultEvent.summary ||
-                  "agent reported error",
+                `schedule HTTP ${res.status}${text ? `: ${text.slice(0, 120)}` : ""}`,
               );
             }
-            // Success — reflect the agent's status into the toast, fire
-            // the cleared event so the watcher / dev panel / loop:state
-            // machinery updates, then auto-close after a beat.
-            const summary =
-              (resultEvent && resultEvent.summary) ||
-              (action === "run" ? "Sent" : "Dismissed");
-            setStatus("success", `${summary} · closing…`);
-            showToast(`${summary} · check Loop for the result.`, false);
-            const t = window.__TAURI__;
-            if (t && t.event && t.event.emit) {
-              t.event.emit("loop:decision-cleared", { id: decision.id });
+            schedule = await res.json().catch(() => ({}));
+            if (!schedule?.action_id) {
+              throw new Error("schedule response missing action_id");
             }
-            refreshConnectors();
-            setTimeout(() => {
-              const t2 = window.__TAURI__;
-              if (t2 && t2.event && t2.event.emit) {
-                t2.event.emit("pet:close-card");
-              }
-            }, 1200);
-          } catch (e) {
-            const msg = e instanceof Error ? e.message : String(e);
+            // Stash on the card so the cancel-button click handler can
+            // find it without re-fetching.
+            pendingAction = {
+              action_id: schedule.action_id,
+              fire_at: schedule.fire_at,
+              action: apiAction,
+              decision_id: id,
+            };
+            const verb = apiAction === "dismiss" ? "Dismissal" : "Action";
+            const inS = secondsUntil(schedule.fire_at);
             setStatus(
-              "error",
-              `${action === "run" ? "Run" : "Dismiss"} failed: ${msg}`,
+              "running",
+              `${verb} scheduled · fires in ~${Math.max(inS, 0)}s · Cancel below`,
             );
             showToast(
-              action === "run"
-                ? `Run failed: ${msg}`
-                : `Dismiss failed: ${msg}`,
-              true,
+              `${verb} scheduled · you can cancel before it fires.`,
+              false,
             );
-          } finally {
+            renderDecisionFooter();
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            setStatus("error", `Schedule failed: ${msg}`);
+            showToast(`Schedule failed: ${msg}`, true);
             setBusy(false);
+            return;
           }
+          // Hand off — the watcher will emit `loop:decision` when the
+          // job fires and the decision moves to done/dismissed. From
+          // here the user just sees the spinner-style banner with the
+          // Cancel button. setBusy stays true until the success path
+          // (or error path) resets it.
         }
 
         // Delegated click handler — one listener on the card root that
@@ -2456,9 +2460,56 @@
           // Per-type action body is stashed on the button DOM node by
           // renderDecisionFooter(); read it here so the delegated
           // handler doesn't need to know about per-type bodies.
+          if (action === "cancel-pending") {
+            cancelPendingAction();
+            return;
+          }
           const body = btn._actionBody;
           postAction(action, body);
         });
+
+        // ---------- Cancel a scheduled action ----------
+        async function cancelPendingAction() {
+          if (!pendingAction) return;
+          const target = pendingAction;
+          setBusy(true);
+          setStatus("running", "Cancelling…");
+          try {
+            const res = await fetch(
+              "/api/loop/action/" + encodeURIComponent(target.action_id),
+              { method: "DELETE", credentials: "include" },
+            );
+            const data = await res.json().catch(() => ({}));
+            if (res.status === 409 && data?.reason === "already_fired") {
+              // The job fired between schedule and cancel. Don't try to
+              // roll back — let the loop:decision listener surface the
+              // result.
+              setStatus("running", "Already fired — waiting for result…");
+              showToast("Action already fired — waiting for result.", false);
+              return;
+            }
+            if (!res.ok) {
+              throw new Error(data?.error || `cancel HTTP ${res.status}`);
+            }
+            pendingAction = null;
+            setStatus("idle", "Cancelled");
+            showToast("Action cancelled.", false);
+            renderDecisionFooter();
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            setStatus("error", `Cancel failed: ${msg}`);
+            showToast(`Cancel failed: ${msg}`, true);
+          } finally {
+            setBusy(false);
+          }
+        }
+
+        // Periodically refresh the Cancel button label so the countdown
+        // ticks down. The button text re-renders via renderDecisionFooter;
+        // we only need to call it every ~1s while a pending action exists.
+        setInterval(() => {
+          if (pendingAction) renderDecisionFooter();
+        }, 1000);
 
         // ---------- Connector refresh ----------
         async function refreshConnectors() {
@@ -2478,7 +2529,26 @@
         if (tauri && tauri.event && tauri.event.listen) {
           tauri.event.listen("loop:decision", (e) => {
             const p = (e && e.payload) || {};
-            decision = p && p.id ? p : null;
+            const next = p && p.id ? p : null;
+            // If we had a scheduled action for THIS decision and the
+            // watcher just emitted a non-pending status (done /
+            // dismissed), the action fired — surface success and clear
+            // the scheduled state. Note: we keep `decision` populated
+            // for a beat so the user sees the result, then the existing
+            // `loop:decision-cleared` listener drops it.
+            if (
+              pendingAction &&
+              pendingAction.decision_id === next?.id &&
+              next?.status &&
+              next.status !== "pending"
+            ) {
+              const verb = next.status === "dismissed" ? "Dismissed" : "Done";
+              setStatus("success", `${verb} · closing…`);
+              showToast(`${verb} · check Loop for the result.`, false);
+              pendingAction = null;
+              setBusy(false);
+            }
+            decision = next;
             apply();
           });
           tauri.event.listen("loop:state", (e) => {

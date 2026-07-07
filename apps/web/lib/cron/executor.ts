@@ -259,7 +259,14 @@ export async function executeJob(
       customJobHandlers[handlerName]
     ) {
       console.log(`[JobExecutor] Using custom handler: ${handlerName}`);
-      const result = await customJobHandlers[handlerName](context);
+      // Hand the parsed jobConfig to the handler via a context field.
+      // JobExecutionContext.jobConfig is optional so legacy handlers
+      // don't break; handlers that need action-specific payload
+      // (e.g. loop.action) read it back via context.jobConfig.
+      const result = await customJobHandlers[handlerName]({
+        ...context,
+        jobConfig: jobConfig as Record<string, unknown>,
+      });
       result.duration = Date.now() - startTime;
       return result;
     }

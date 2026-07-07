@@ -8,6 +8,8 @@
 use tauri::Manager;
 use tauri::{Emitter, Listener};
 
+use serde_json;
+
 mod audio_capture;
 mod close_behavior;
 mod constants;
@@ -610,18 +612,46 @@ fn main() {
             });
 
             // B2: "Open in dashboard" inside the card jumps to a
-            // specific decision detail page. The webview side dispatches
-            // this with `{ id: <dec_id> }` so the dashboard can land on
-            // the right card.
+            // specific decision detail page (`/loop/<id>`). The webview
+            // side dispatches this with `{ id: <dec_id> }`. We:
+            //   1. show the main window (tray::show_main_window)
+            //   2. dispatch a `openloomi:navigate-decision` DOM event with
+            //      `{ id }` as detail — the chat layout listens for this
+            //      and calls `router.push('/loop/<id>')` so Next.js's
+            //      client-side router handles the transition (no full
+            //      reload, preserves client state). Mirrors the
+            //      `pet:open-settings` pattern above.
             let open_decision_app = app_handle.clone();
             app_handle.listen("pet:open-decision", move |event| {
-                // Best-effort: payload is a small JSON `{ id }`. The
-                // dashboard page (LoopDetailPage) already polls for
-                // state, so a navigation to /loop/<id> is enough — the
-                // dashboard will read the path itself. We just need to
-                // make sure the main window is up.
-                let _ = event.payload(); // parsed by tray::show_main_window via state
+                let payload = event.payload();
+                let id = payload
+                    .as_ref()
+                    .and_then(|p| serde_json::from_str::<serde_json::Value>(p).ok())
+                    .and_then(|v| {
+                        v.get("id")
+                            .and_then(|x| x.as_str().map(|s| s.to_string()))
+                    })
+                    .unwrap_or_default();
                 tray::show_main_window(&open_decision_app);
+                if !id.is_empty() {
+                    if let Some(window) =
+                        open_decision_app.get_webview_window("main")
+                    {
+                        // Escape backslashes / quotes / newlines so the JS
+                        // literal stays well-formed even with weird ids
+                        // (decision ids are uuid-shaped in practice —
+                        // defense in depth).
+                        let escaped = id
+                            .replace('\\', "\\\\")
+                            .replace('"', "\\\"")
+                            .replace('\n', "\\n");
+                        let js = format!(
+                            "window.dispatchEvent(new CustomEvent('openloomi:navigate-decision', {{ detail: {{ id: \"{}\" }} }}))",
+                            escaped
+                        );
+                        let _ = window.eval(&js);
+                    }
+                }
             });
 
             // Pet right-click menu's "Quit" entry funnels into the same

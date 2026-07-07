@@ -53,6 +53,13 @@ export interface JobExecutionContext {
   characterId?: string;
   /** User's timezone for date/time operations */
   timezone?: string;
+  /**
+   * Parsed jobConfig JSON for the executing job. Custom handlers
+   * (e.g. `loop.action`) read this to recover action-specific
+   * payloads the schedule API stuffed into the row. Optional —
+   * non-custom-job callers may leave it undefined.
+   */
+  jobConfig?: Record<string, unknown>;
 }
 
 /**

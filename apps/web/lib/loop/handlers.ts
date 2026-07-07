@@ -1,11 +1,14 @@
 /**
  * Loop cron handlers — registered into the cron executor's custom-handler
  * registry so the existing local-scheduler (lib/cron/local-scheduler.ts)
- * drives our tick / brief / wrap jobs the same way it drives character
- * agent-tasks. We intentionally do NOT maintain our own Croner/setInterval
- * loop here; the schedule for each job is configured on the corresponding
- * ScheduledJob row in `scheduled_jobs` (handler: "loop.tick" / "loop.brief"
- * / "loop.wrap"), and lib/loop/scheduler.ts ensures those rows exist.
+ * drives our tick / brief / wrap / action jobs the same way it drives
+ * character agent-tasks. We intentionally do NOT maintain our own
+ * Croner/setInterval loop here; the schedule for each job is configured
+ * on the corresponding ScheduledJob row in `scheduled_jobs`
+ * (handler: "loop.tick" / "loop.brief" / "loop.wrap" / "loop.action"),
+ * and lib/loop/scheduler.ts ensures the recurring rows exist. One-shot
+ * `loop.action` rows are inserted on-demand by
+ * /api/loop/action/schedule when the user clicks a card button.
  */
 
 import { log } from "./store";
@@ -84,6 +87,76 @@ async function handleWrap(
   );
 }
 
+/**
+ * Handler for `loop.action` — execute a single Loop decision action
+ * scheduled by the pet card (or any other UI surface) via
+ * /api/loop/action/schedule.
+ *
+ * The ScheduledJob's `jobConfig.payload` carries:
+ *   { decision_id: string, action: 'run'|'dry'|'dismiss', body?: object }
+ *
+ * We delegate to `applyDecisionAction` (the same entry point
+ * /api/loop/decision/[id] uses) so the existing tooling — runner.ts,
+ * dismissDecision, the agent SSE call — is exercised once. The handler
+ * never throws; failures are wrapped into `{status: "error"}` so the
+ * executor can write a jobExecutions row consistently.
+ *
+ * After the decision moves, the watcher picks up the new
+ * decisions.jsonl state on its next poll and emits `loop:decision` to
+ * the bubble + card webviews — that's how the card learns the action
+ * completed. No need for a bespoke completion event.
+ */
+async function handleAction(
+  context: JobExecutionContext,
+): Promise<JobExecutionResult> {
+  const { applyDecisionAction } = await import("./server");
+  const { decisions } = await import("./store");
+  return runAsJob(async () => {
+    const cfg =
+      typeof context.jobConfig === "string"
+        ? JSON.parse(context.jobConfig)
+        : (context.jobConfig ?? {});
+    const payload = cfg?.payload ?? {};
+    const decisionId = String(payload.decision_id ?? "").trim();
+    const action = String(payload.action ?? "").trim();
+    if (!decisionId) {
+      throw new Error("missing decision_id in jobConfig.payload");
+    }
+    if (!action) {
+      throw new Error("missing action in jobConfig.payload");
+    }
+    // Stash the per-click sub-action body (e.g. { response: "yes" }
+    // for RSVP, { verdict: "approve" } for PR review) on the
+    // decision's context. The runner's buildPrompt already
+    // serializes `context` into the JSON the agent reads, so the
+    // agent gets the user's specific sub-action without us having to
+    // fork the prompt template.
+    if (action === "run" && payload.body && typeof payload.body === "object") {
+      const current = decisions.get(decisionId);
+      if (current) {
+        decisions.update(decisionId, {
+          context: {
+            ...(current.context ?? {}),
+            sub_action: payload.body,
+          },
+        });
+      }
+    }
+    const out = await applyDecisionAction(decisionId, {
+      action: action as "run" | "dry" | "dismiss" | "promote",
+    });
+    if (!out.ok) {
+      throw new Error(out.error ?? `${action} failed`);
+    }
+    return {
+      decision_id: decisionId,
+      action,
+      status: out.status,
+      ...(out.result !== undefined ? { result: out.result } : {}),
+    };
+  }, context);
+}
+
 let registered = false;
 
 /**
@@ -95,6 +168,7 @@ export function registerLoopHandlers(): void {
   registerCustomHandler("loop.tick", handleTick);
   registerCustomHandler("loop.brief", handleBrief);
   registerCustomHandler("loop.wrap", handleWrap);
+  registerCustomHandler("loop.action", handleAction);
   registered = true;
 }
 
@@ -102,5 +176,6 @@ export const LOOP_HANDLER_NAMES = [
   "loop.tick",
   "loop.brief",
   "loop.wrap",
+  "loop.action",
 ] as const;
 export type LoopHandlerName = (typeof LOOP_HANDLER_NAMES)[number];

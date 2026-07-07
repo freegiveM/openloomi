@@ -47,3 +47,9 @@ export type {
   DecisionActionInput,
   LoopCardPayload,
 } from "./server";
+/**
+ * Re-exports from lib/cron/service so the loop's action-scheduling API
+ * (/api/loop/action/schedule + DELETE /api/loop/action/[id]) has a
+ * single import surface. Server-only — never imported from client code.
+ */
+export { createJob, deleteJob, getJob } from "@/lib/cron/service";
