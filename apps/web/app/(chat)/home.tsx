@@ -152,23 +152,13 @@ export function Home() {
       window.removeEventListener("openloomi:navigate-settings", handler);
   }, [router]);
 
-  // Pet card "Open brief / Open wrap / Open plan / ↗ Edit" → navigate
-  // to the Loop decision detail page at `/loop/<id>`. The Rust host
-  // dispatches `openloomi:navigate-decision` with `{ id }` as detail
-  // after showing the main window (see main.rs `pet:open-decision`
-  // listener). Without this listener the click would silently leave the
-  // user on the same page — no actual navigation despite the event.
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const ce = e as CustomEvent<{ id?: string }>;
-      const id = ce.detail?.id;
-      if (!id) return;
-      router.push(`/loop/${encodeURIComponent(id)}`);
-    };
-    window.addEventListener("openloomi:navigate-decision", handler);
-    return () =>
-      window.removeEventListener("openloomi:navigate-decision", handler);
-  }, [router]);
+  // The pet card's "Open brief / Open wrap / Open plan / ↗ Edit" buttons
+  // route through `openloomi:navigate-decision` and are handled by
+  // <LoopNavBridge /> in the (chat) layout — that listener resolves the
+  // decision to its most recent ScheduledJob and pushes to
+  // /scheduled-jobs/<id> (or the filtered list if no job yet). Mounting
+  // it at the layout level keeps the navigation working from any (chat)
+  // route, not only the home page.
 
   // Listen for integration authorization completion → retry the tool call
   useEffect(() => {

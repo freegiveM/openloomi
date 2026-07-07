@@ -3178,7 +3178,7 @@ const zhHans = {
     inbox: "Insight 追踪",
     files: "文件",
     chat: "对话",
-    agent: "代理",
+    agent: "任务",
     scheduledJobs: "定时任务",
     automation: "自动化",
     skills: "技能",

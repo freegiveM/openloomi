@@ -928,7 +928,7 @@ export function AppSidebar() {
                                       : "text-sidebar-foreground",
                                   )}
                                 >
-                                  {t("nav.agent", "Agent")}
+                                  {t("nav.agent", "Tasks")}
                                 </span>
                               )}
                             </Button>

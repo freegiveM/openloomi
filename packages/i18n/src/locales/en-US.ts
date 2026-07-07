@@ -3392,7 +3392,7 @@ const enUS = {
   nav: {
     messageHub: "openloomi",
     chat: "Chats",
-    agent: "Agents",
+    agent: "Tasks",
     newChat: "Chats",
     favorites: "Collection",
     scheduledJobs: "Scheduled Jobs",

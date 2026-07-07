@@ -36,13 +36,25 @@
 
 import { NextResponse } from "next/server";
 import { auth } from "@/app/(auth)/auth";
-import { createJob, registerLoopHandlers } from "@/lib/loop";
+import {
+  createJob,
+  decisions,
+  registerLoopHandlers,
+} from "@/lib/loop";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 const GRACE_MS = 30_000;
 const ALLOWED_ACTIONS = new Set(["run", "dry", "dismiss", "promote"]);
+
+/** Human-friendly verb per action, used in the scheduled-job name. */
+const ACTION_VERB: Record<string, string> = {
+  run: "Run",
+  dry: "Dry-run",
+  dismiss: "Dismiss",
+  promote: "Promote",
+};
 
 export async function POST(req: Request) {
   try {
@@ -81,6 +93,13 @@ export async function POST(req: Request) {
       action,
       body: body.body ?? null,
     };
+    // Look up the decision so the scheduled-jobs list shows a name a
+    // human can actually read. Fall back to the bare id when the
+    // decision is gone (stale row, manual payload, etc.) — the handler
+    // will still surface a useful error at fire time.
+    const dec = decisions.get(decisionId);
+    const decisionTitle = (dec?.title ?? "").trim() || decisionId;
+    const verb = ACTION_VERB[action] ?? action;
     // Cast through unknown so we can add a `payload` slot to JobConfig
     // without forking the cron types. The DB column accepts arbitrary
     // JSON; loop.action reads `jobConfig.payload` back at fire time.
@@ -91,8 +110,8 @@ export async function POST(req: Request) {
     } as unknown as Parameters<typeof createJob>[1]["job"];
 
     const job = await createJob(userId, {
-      name: `Loop: action ${action} ${decisionId}`,
-      description: `One-shot ${action} for decision ${decisionId} (fires ${fireAt.toISOString()})`,
+      name: `${verb} "${decisionTitle}"`,
+      description: `${decisionTitle} · fires in ${Math.round(GRACE_MS / 1000)}s`,
       schedule: { type: "once", at: fireAt },
       job: jobConfig,
       enabled: true,

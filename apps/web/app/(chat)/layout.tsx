@@ -15,6 +15,7 @@ import { ChatContextProvider } from "@/components/chat-context";
 import { SessionAuthChecker } from "@/components/session-auth-checker";
 import { ConversationApiOnboardingGuard } from "@/components/conversation-api-onboarding-guard";
 import { ScreenMemoryCaptureProvider } from "@/components/chronicle/screen-memory-provider";
+import { LoopNavBridge } from "@/components/loop/loop-nav-bridge";
 
 export default async function Layout({
   children,
@@ -43,6 +44,15 @@ export default async function Layout({
                   <ChatContextProvider>
                     <GlobalInsightDrawerProvider>
                       <ScreenMemoryCaptureProvider />
+                      {/*
+                        LoopNavBridge mounts the openloomi:navigate-decision
+                        listener at the (chat) layout level so the pet
+                        card's "Open brief / Open wrap / Open plan /
+                        Edit" buttons can land on /loop/<id> from any
+                        (chat) route — not only the home page. See
+                        components/loop/loop-nav-bridge.tsx for the why.
+                      */}
+                      <LoopNavBridge />
                       <SidePanelShell>{children}</SidePanelShell>
                     </GlobalInsightDrawerProvider>
                   </ChatContextProvider>

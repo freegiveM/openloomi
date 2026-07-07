@@ -76,7 +76,7 @@ export default function ScheduledJobsPage() {
     <div className="flex flex-col flex-1 min-h-0 h-full">
       {!tauriEnv ? (
         <>
-          <PageSectionHeader title={t("nav.agent", "Agent")} />
+          <PageSectionHeader title={t("nav.agent", "Tasks")} />
           <div className="flex flex-col gap-4 p-4">
             <p className="text-muted-foreground">
               {t(
@@ -92,7 +92,7 @@ export default function ScheduledJobsPage() {
           onValueChange={setActiveTab}
           className="flex-1 min-h-0 flex flex-col"
         >
-          <PageSectionHeader title={t("nav.agent", "Agent")}>
+          <PageSectionHeader title={t("nav.agent", "Tasks")}>
             <AutomationTabsList
               value={activeTab}
               onValueChange={setActiveTab}
