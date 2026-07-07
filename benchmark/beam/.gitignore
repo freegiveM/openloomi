@@ -1,0 +1,6 @@
+# Benchmark results
+results.json
+results_sample.json
+
+# Converted dataset (parquet → JSON)
+dataset/beam_*.json
