@@ -245,6 +245,78 @@
       .footer.two-col {
         grid-template-columns: 1fr 1fr;
       }
+      /* 4-column footer for RSVP (Yes / No / Maybe / Skip). */
+      .footer.four-col {
+        grid-template-columns: repeat(4, 1fr);
+        gap: 4px;
+      }
+      .footer.four-col button {
+        padding: 0 6px;
+        font-size: 10.5px;
+        height: 30px;
+      }
+
+      /* ---------- Inline status banner (between decision body + footer) ----------
+         Sits one line above the footer so the user sees an unmistakable
+         "Running… → Sent ✓ → closing…" trail without losing the action
+         context. Replaces the bottom toast as the primary feedback channel
+         because the toast sits under the footer and is easy to miss in
+         peripheral vision. The toast remains as a fallback for actions
+         that don't render the banner (e.g. open dashboard). */
+      .status-banner {
+        flex: 0 0 auto;
+        display: none;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 10px;
+        border-radius: 6px;
+        font-size: 10.5px;
+        font-weight: 800;
+        letter-spacing: 0.02em;
+        line-height: 1.2;
+      }
+      .status-banner.show {
+        display: inline-flex;
+      }
+      .status-banner.running {
+        background: rgba(43, 138, 247, 0.08);
+        border: 1px solid var(--blue-soft);
+        color: var(--blue-dark);
+      }
+      .status-banner.success {
+        background: rgba(32, 180, 134, 0.1);
+        border: 1px solid var(--green-border);
+        color: var(--green-text);
+      }
+      .status-banner.error {
+        background: rgba(255, 73, 36, 0.08);
+        border: 1px solid rgba(255, 73, 36, 0.32);
+        color: var(--red);
+      }
+      .status-banner .icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 12px;
+        height: 12px;
+        flex: 0 0 auto;
+        font-family: var(--font-mono);
+        font-size: 11px;
+        font-weight: 900;
+      }
+      .status-banner .spinner {
+        width: 10px;
+        height: 10px;
+        border: 2px solid currentColor;
+        border-top-color: transparent;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
       button {
         font: inherit;
         cursor: pointer;
@@ -1292,13 +1364,18 @@
           <span class="body" id="dec-dialogue-body">…</span>
         </div>
         <div class="evidence-pills" id="dec-evidence"></div>
-        <div class="footer">
-          <button class="primary" data-action="run" type="button">▶ Run</button>
-          <button class="danger" data-action="dismiss" type="button">
-            ✕ Dismiss
-          </button>
-          <button class="ghost" data-action="open" type="button">↗ Open</button>
-        </div>
+        <!-- Inline status banner — shows Running… / Sent ✓ / Failed inline
+             between the evidence pills and the footer so the user sees
+             the trail without losing the action context. The toast still
+             fires for redundancy but the banner is the primary signal. -->
+        <div class="status-banner" id="dec-status"></div>
+        <!-- Footer is JS-rendered per decision.type (see TYPE_ACTIONS in
+             the inline script below). RSVP gets 4 buttons
+             (Yes/No/Maybe/Skip); every other type gets 2-3 typed
+             buttons (Send/Edit/Discard, Approve/Comment/Changes, etc.).
+             A decision without a known type falls back to the legacy
+             Run/Dismiss/Open trio. -->
+        <div class="footer" id="dec-footer"></div>
       </section>
 
       <!-- ============================================================
@@ -1459,6 +1536,84 @@
           release_plan: "Open release plan",
           todo: "Add to today's todos",
         };
+
+        // Per-decision-type action button spec. Each entry maps to one
+        // of the four API actions (`run` / `dry` / `dismiss` / `open`)
+        // defined in `DecisionActionInput`, with optional extra body
+        // fields (e.g. `response: "yes"` for RSVP) that the agent can
+        // pick up when it executes the action. The variant controls the
+        // visual weight — `primary` is the recommended default, `ghost`
+        // is a secondary option, `danger` is the negative path.
+        //
+        // Why this exists: the legacy footer showed the same generic
+        // Run / Dismiss / Open trio for every decision type, which made
+        // RSVP, draft_reply, and review_pr all look identical even though
+        // they ask for very different user input. Mapping each type to
+        // its natural buttons (Yes/No/Maybe, Send/Edit/Discard,
+        // Approve/Comment/Changes, …) means the user sees the action
+        // they actually want to take, not a generic proxy.
+        const TYPE_ACTIONS = {
+          rsvp: [
+            { action: "run", label: "✓ Yes", variant: "primary", body: { response: "yes" } },
+            { action: "run", label: "✗ No", variant: "ghost", body: { response: "no" } },
+            { action: "run", label: "◐ Maybe", variant: "ghost", body: { response: "maybe" } },
+            { action: "dismiss", label: "Skip", variant: "danger" },
+          ],
+          draft_reply: [
+            { action: "run", label: "▶ Send", variant: "primary" },
+            { action: "open", label: "↗ Edit", variant: "ghost" },
+            { action: "dismiss", label: "Discard", variant: "danger" },
+          ],
+          review_pr: [
+            {
+              action: "run",
+              label: "✓ Approve",
+              variant: "primary",
+              body: { verdict: "approve" },
+            },
+            {
+              action: "run",
+              label: "✎ Comment",
+              variant: "ghost",
+              body: { verdict: "comment" },
+            },
+            {
+              action: "run",
+              label: "⚠ Changes",
+              variant: "danger",
+              body: { verdict: "request_changes" },
+            },
+          ],
+          slack_reply: [
+            { action: "run", label: "▶ Send", variant: "primary" },
+            { action: "open", label: "↗ Edit", variant: "ghost" },
+            { action: "dismiss", label: "Skip", variant: "danger" },
+          ],
+          release_plan: [
+            { action: "open", label: "↗ Open plan", variant: "primary" },
+            { action: "dismiss", label: "Dismiss", variant: "danger" },
+          ],
+          todo: [
+            { action: "run", label: "✓ Add", variant: "primary" },
+            { action: "dismiss", label: "Skip", variant: "danger" },
+          ],
+          brief: [
+            { action: "open", label: "▶ Open brief", variant: "primary" },
+            { action: "dismiss", label: "Dismiss", variant: "danger" },
+          ],
+          wrap: [
+            { action: "open", label: "▶ Open wrap", variant: "primary" },
+            { action: "dismiss", label: "Dismiss", variant: "danger" },
+          ],
+        };
+        // Fallback when the decision type isn't a known key (or the
+        // decision payload is missing). Mirrors the legacy trio so
+        // unknown types still respond to clicks.
+        const DEFAULT_ACTIONS = [
+          { action: "run", label: "▶ Run", variant: "primary" },
+          { action: "dismiss", label: "✕ Dismiss", variant: "danger" },
+          { action: "open", label: "↗ Open", variant: "ghost" },
+        ];
         const TYPE_LABELS = {
           rsvp: "RSVP",
           draft_reply: "DRAFT_REPLY",
@@ -1789,6 +1944,95 @@
             }
             ev.appendChild(pill);
           });
+          // Render the action footer per decision.type. Pulled out of the
+          // main renderDecision() body so it stays trivially testable
+          // and re-runnable on every apply().
+          renderDecisionFooter();
+        }
+
+        // ---------- Decision footer (per-type action buttons) ----------
+        // Rebuilds `#dec-footer` from the per-type TYPE_ACTIONS map. The
+        // buttons are static-HTML in the BRIEF/WRAP footers (those
+        // layouts don't vary by decision type), so this only governs the
+        // DECISION layout's footer. We attach the optional `body` field
+        // to the button DOM node as `_actionBody` so the delegated click
+        // handler in postAction can read it without re-parsing the label.
+        function renderDecisionFooter() {
+          const footer = document.getElementById("dec-footer");
+          if (!footer) return;
+          // No decision → clear the footer so a stale Run/Dismiss from a
+          // previous render doesn't sit there waiting for a click that
+          // would now be a silent no-op.
+          if (!decision || !decision.id) {
+            footer.innerHTML = "";
+            footer.className = "footer";
+            return;
+          }
+          const actions =
+            (decision.type && TYPE_ACTIONS[decision.type]) || DEFAULT_ACTIONS;
+          // 2 → two-col, 3 → default 3-col, 4 → four-col.
+          const cls =
+            actions.length === 4
+              ? "footer four-col"
+              : actions.length === 2
+              ? "footer two-col"
+              : "footer";
+          footer.className = cls;
+          footer.innerHTML = "";
+          for (const a of actions) {
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = a.variant || "";
+            btn.dataset.action = a.action;
+            btn.textContent = a.label;
+            // Stash the optional body (e.g. { response: "yes" }) on the
+            // node. Read by the delegated click handler in postAction so
+            // every action — including future ones — flows through the
+            // same code path.
+            if (a.body && Object.keys(a.body).length) {
+              btn._actionBody = a.body;
+            }
+            footer.appendChild(btn);
+          }
+        }
+
+        // ---------- Status banner ----------
+        // Renders an inline state pill above the decision footer. The
+        // banner shows the trail of a click — Running… (with spinner) →
+        // Sent ✓ (green) → "closing…" for ~1.2s, then the card auto-closes.
+        // On failure, shows the error inline so the user can read it
+        // without waiting for the toast.
+        function setStatus(kind, text) {
+          const el = document.getElementById("dec-status");
+          if (!el) return;
+          el.className = "status-banner show " + kind;
+          el.innerHTML = "";
+          const icon = document.createElement("span");
+          icon.className = "icon";
+          if (kind === "running") {
+            const sp = document.createElement("span");
+            sp.className = "spinner";
+            icon.appendChild(sp);
+          } else if (kind === "success") {
+            icon.textContent = "✓";
+          } else if (kind === "error") {
+            icon.textContent = "!";
+          } else {
+            icon.textContent = "•";
+          }
+          const txt = document.createElement("span");
+          txt.textContent = text;
+          el.appendChild(icon);
+          el.appendChild(txt);
+          // Auto-fade success/error banners after a beat so they don't
+          // linger over the next layout render. Running banners stay
+          // until cleared by the next setStatus() call.
+          if (kind !== "running") {
+            clearTimeout(setStatus._t);
+            setStatus._t = setTimeout(() => {
+              el.classList.remove("show");
+            }, 4000);
+          }
         }
 
         // ---------- Brief layout (Form 6) ----------
@@ -1897,45 +2141,273 @@
         }
 
         // ---------- Action handlers ----------
+        // Single delegated handler on the card root. The footer is
+        // re-rendered every time renderDecision() runs (because buttons
+        // are now per-decision-type), so per-button bindings would miss
+        // freshly rendered nodes. Delegation lets one listener catch
+        // every current and future button.
+        //
+        // Recognized `data-action` values:
+        //   `close`   → emit `pet:close-card` so the Rust host hides
+        //               the card and brings the bubble back (if pending).
+        //   `open`    → surface the main dashboard at this decision's
+        //               detail page. Falls back to in-webview navigation
+        //               when the page is loaded without `__TAURI__`.
+        //   `run`     → POST prompt to `/api/native/agent` (SSE stream).
+        //               The agent uses Composio MCP to actually execute
+        //               the action (send email, post PR review, etc.)
+        //               and emits a structured `result` event when done.
+        //   `dismiss` → POST prompt to `/api/native/agent` (SSE stream).
+        //               The agent marks the decision dismissed via the
+        //               loop API and emits a `result` event.
+        //
+        // Why route through /api/native/agent instead of
+        // `/api/loop/decision/:id`?
+        //
+        //   The native-agent endpoint is built for long-running SSE:
+        //   maxDuration=800s and 30s heartbeats keep the connection
+        //   alive across multi-minute tool calls (a draft_reply that
+        //   triggers a Gmail send, an rsvp that walks a calendar event,
+        //   etc.). Direct POST to the loop decision route can hit a
+        //   `TypeError: Load failed` once the underlying `runDecision`
+        //   exceeds the webview's effective fetch timeout — see the
+        //   comment at the top of `apps/web/app/api/native/agent/route.ts`
+        //   for the original reasoning. Streaming through the agent
+        //   sidesteps that ceiling and gives the user live progress
+        //   ("Calling GMAIL_SEND_MESSAGE…") instead of a black box.
+        //
+        //   For "dismiss" this is overkill (mark-dismissed is fast),
+        //   but routing it through the agent keeps every action on the
+        //   same execution path and means we don't need separate
+        //   fast/slow code paths or two failure modes.
+        function buildActionPrompt(dec, action, body) {
+          const payload = {
+            id: dec.id,
+            type: dec.type,
+            title: dec.title,
+            action: dec.action,
+            context: dec.context,
+            confidence: dec.confidence,
+          };
+          const subAction =
+            body && Object.keys(body).length
+              ? ` with sub-action ${JSON.stringify(body)}`
+              : "";
+          const base = [
+            `You are executing a Loop decision for openloomi. The user clicked the \`${action}\` button on the pet card${subAction}.`,
+            ``,
+            `Decision:`,
+            "```json",
+            JSON.stringify(payload, null, 2),
+            "```",
+            ``,
+          ];
+          if (action === "dismiss") {
+            base.push(
+              `Action: mark this decision as dismissed (don't run any external tools).`,
+              ``,
+              `Use the Bash tool to call:`,
+              `  curl -sS -X POST http://localhost:3515/api/loop/decision/${dec.id} -H 'content-type: application/json' -d '{"action":"dismiss"}'`,
+              ``,
+              `Then emit a single SSE \`result\` event whose \`content\` is:`,
+              "```json",
+              JSON.stringify(
+                { decision_id: dec.id, action: "dismiss", status: "dismissed" },
+                null,
+                2,
+              ),
+              "```",
+            );
+          } else if (action === "run") {
+            const toolHints = {
+              rsvp:
+                "RSVP — use GOOGLECALENDAR_RSVP (or similar calendar tool) with the user's response from `sub_action.response`.",
+              draft_reply:
+                "Send the drafted email — use GMAIL_SEND_MESSAGE with the subject/body from the decision's `context.draft` if present, otherwise draft from `decision.title`.",
+              review_pr:
+                "Post a PR review — use GITHUB_POST_REVIEW with the verdict from `sub_action.verdict` (approve / comment / request_changes).",
+              slack_reply:
+                "Post the Slack reply — use SLACK_SEND_MESSAGE in the channel from `context.channel`.",
+              release_plan:
+                "Don't actually release — just produce a concrete plan summary in the result event.",
+              todo:
+                "Add the todo — use TODO_WRITE (or any todo tool available) with the decision's `title`.",
+            };
+            const hint =
+              toolHints[dec.type] ||
+              `Use the most appropriate Composio MCP tool for type "${dec.type}" to carry out the action.`;
+            base.push(
+              `Action: execute this decision by actually performing it via Composio MCP tools.`,
+              ``,
+              `Tool guidance:`,
+              `- ${hint}`,
+              ``,
+              `Then emit a single SSE \`result\` event whose \`content\` is:`,
+              "```json",
+              JSON.stringify(
+                {
+                  decision_id: dec.id,
+                  action: "run",
+                  status: "done",
+                  summary: "<one-line description of what you did>",
+                },
+                null,
+                2,
+              ),
+              "```",
+              ``,
+              `If any tool call fails, still emit a \`result\` event with \`status: "error"\` and a short \`error\` field.`,
+            );
+          } else if (action === "open") {
+            base.push(
+              `Action: navigate the user to the dashboard for this decision.`,
+              ``,
+              `Emit a single SSE \`result\` event whose \`content\` is:`,
+              "```json",
+              JSON.stringify(
+                {
+                  decision_id: dec.id,
+                  action: "open",
+                  status: "navigate",
+                  url: `/loop/decisions/${dec.id}`,
+                },
+                null,
+                2,
+              ),
+              "```",
+            );
+          }
+          return base.join("\n");
+        }
+
         async function postAction(action, body) {
-          if (!decision || !decision.id) return;
+          if (!decision || !decision.id) {
+            setStatus("error", "No pending decision — try refreshing.");
+            showToast("No pending decision loaded.", true);
+            return;
+          }
           if (action === "open") {
+            // Open doesn't need the agent — it's a pure UI navigation.
+            // Routes through Tauri events (preferred) or in-webview
+            // navigation (webview fallback). The user's intuition that
+            // "everything should go through the agent" applies to
+            // run/dismiss where the agent does real work; for open we
+            // keep the synchronous UI hop.
+            const id = decision.id;
             const t = window.__TAURI__;
             if (t && t.event && t.event.emit) {
               t.event.emit("pet:open-dashboard");
-              if (decision.id)
-                t.event.emit("pet:open-decision", { id: decision.id });
+              t.event.emit("pet:open-decision", { id });
+            } else {
+              window.location.href =
+                "/loop/decisions/" + encodeURIComponent(id);
             }
             return;
           }
           setBusy(true);
+          setStatus(
+            "running",
+            action === "run" ? "Agent executing…" : "Agent dismissing…",
+          );
+          const prompt = buildActionPrompt(decision, action, body);
+          let resultEvent = null;
+          let lastErr = null;
           try {
-            const res = await fetch(`/api/loop/decision/${decision.id}`, {
+            const res = await fetch("/api/native/agent", {
               method: "POST",
               headers: { "content-type": "application/json" },
               credentials: "include",
-              body: JSON.stringify({ action, ...(body || {}) }),
+              body: JSON.stringify({ prompt }),
             });
-            const data = await res.json().catch(() => ({}));
-            if (!res.ok || !data?.ok) {
-              throw new Error(data?.error || res.statusText || "failed");
+            if (!res.ok) {
+              throw new Error(`agent HTTP ${res.status}`);
             }
-            showToast(
-              action === "run"
-                ? "Ran · check Loop for the result."
-                : "Dismissed",
-              false,
-            );
+            if (!res.body) {
+              throw new Error("agent stream missing body");
+            }
+            const reader = res.body.getReader();
+            const decoder = new TextDecoder();
+            let buf = "";
+            let textBuf = "";
+            // Walk the SSE stream chunk by chunk. We surface text /
+            // tool_use events into the status banner so the user sees
+            // the agent working in real time ("Calling GMAIL_SEND_MESSAGE…"
+            // rather than a hung spinner). The `result` event is the
+            // success signal — we capture it and break the loop.
+            for (;;) {
+              const { value, done } = await reader.read();
+              if (done) break;
+              buf += decoder.decode(value, { stream: true });
+              let nl;
+              while ((nl = buf.indexOf("\n")) >= 0) {
+                const line = buf.slice(0, nl).replace(/\r$/, "");
+                buf = buf.slice(nl + 1);
+                if (!line.startsWith("data:")) continue;
+                const payload = line.slice(5).trim();
+                if (!payload) continue;
+                try {
+                  const evt = JSON.parse(payload);
+                  if (evt.type === "text" && typeof evt.content === "string") {
+                    textBuf += evt.content;
+                    const tail = textBuf.slice(-60).replace(/\s+/g, " ").trim();
+                    if (tail) setStatus("running", tail);
+                  } else if (evt.type === "tool_use" && evt.content) {
+                    const name =
+                      (evt.content && (evt.content.name || evt.content.tool)) ||
+                      "tool";
+                    setStatus("running", `Calling ${name}…`);
+                  } else if (evt.type === "result" && evt.content) {
+                    resultEvent = evt.content;
+                  } else if (evt.type === "error") {
+                    lastErr =
+                      (evt.content && (evt.content.message || evt.content)) ||
+                      "agent error";
+                  }
+                } catch {
+                  /* skip malformed */
+                }
+              }
+            }
+            if (lastErr) throw new Error(lastErr);
+            if (!resultEvent) {
+              throw new Error("agent stream ended without result event");
+            }
+            if (resultEvent.status === "error") {
+              throw new Error(
+                resultEvent.error ||
+                  resultEvent.summary ||
+                  "agent reported error",
+              );
+            }
+            // Success — reflect the agent's status into the toast, fire
+            // the cleared event so the watcher / dev panel / loop:state
+            // machinery updates, then auto-close after a beat.
+            const summary =
+              (resultEvent && resultEvent.summary) ||
+              (action === "run" ? "Sent" : "Dismissed");
+            setStatus("success", `${summary} · closing…`);
+            showToast(`${summary} · check Loop for the result.`, false);
             const t = window.__TAURI__;
             if (t && t.event && t.event.emit) {
               t.event.emit("loop:decision-cleared", { id: decision.id });
             }
             refreshConnectors();
+            setTimeout(() => {
+              const t2 = window.__TAURI__;
+              if (t2 && t2.event && t2.event.emit) {
+                t2.event.emit("pet:close-card");
+              }
+            }, 1200);
           } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            setStatus(
+              "error",
+              `${action === "run" ? "Run" : "Dismiss"} failed: ${msg}`,
+            );
             showToast(
               action === "run"
-                ? `Run failed: ${e.message || e}`
-                : `Dismiss failed: ${e.message || e}`,
+                ? `Run failed: ${msg}`
+                : `Dismiss failed: ${msg}`,
               true,
             );
           } finally {
@@ -1943,27 +2415,37 @@
           }
         }
 
-        document.querySelectorAll("[data-action='close']").forEach((el) => {
-          el.addEventListener("click", () => {
+        // Delegated click handler — one listener on the card root that
+        // matches any descendant `[data-action]`. Per-button bindings
+        // would need to be re-attached after every renderDecision()
+        // call (since the footer is rebuilt from scratch), so a single
+        // delegation is both shorter and resilient to re-renders.
+        card.addEventListener("click", (e) => {
+          const btn = e.target.closest("[data-action]");
+          if (!btn) return;
+          // Don't double-fire when a button is disabled (e.g. during an
+          // in-flight request). Native <button disabled> blocks click
+          // events, but defensive check costs nothing.
+          if (btn.disabled) return;
+          const action = btn.dataset.action;
+          if (action === "close") {
             const t = window.__TAURI__;
             if (t && t.event && t.event.emit) t.event.emit("pet:close-card");
-          });
+            // Even without Tauri, hide the card locally so the click
+            // produces a visible effect (e.g. when previewing the page
+            // standalone in a browser).
+            card.style.opacity = "0";
+            setTimeout(() => {
+              card.style.display = "none";
+            }, 160);
+            return;
+          }
+          // Per-type action body is stashed on the button DOM node by
+          // renderDecisionFooter(); read it here so the delegated
+          // handler doesn't need to know about per-type bodies.
+          const body = btn._actionBody;
+          postAction(action, body);
         });
-        document
-          .querySelectorAll("[data-action='run']")
-          .forEach((el) =>
-            el.addEventListener("click", () => postAction("run")),
-          );
-        document
-          .querySelectorAll("[data-action='dismiss']")
-          .forEach((el) =>
-            el.addEventListener("click", () => postAction("dismiss")),
-          );
-        document
-          .querySelectorAll("[data-action='open']")
-          .forEach((el) =>
-            el.addEventListener("click", () => postAction("open")),
-          );
 
         // ---------- Connector refresh ----------
         async function refreshConnectors() {
@@ -2011,6 +2493,39 @@
           tauri.event.listen("pet:dev-form", (e) => {
             const p = (e && e.payload) || {};
             devForm = p.key || null;
+            apply();
+          });
+          // Cleared-event listener. The card itself emits
+          // `loop:decision-cleared` after a successful Run / Dismiss
+          // (see postAction above), and the dev panel / test surfaces
+          // can emit it from outside the card too. The original
+          // postAction emitted the event but nothing consumed it —
+          // the cleared decision kept `decision` populated until the
+          // next state push, which made the success state visually
+          // frozen. Now we drop `decision` and clear the devForm
+          // override so the next apply() naturally reverts to the
+          // connection / pipeline layout.
+          tauri.event.listen("loop:decision-cleared", (e) => {
+            const p = (e && e.payload) || {};
+            const id = p && p.id;
+            if (!id) return;
+            // Order matters: clear devForm BEFORE nulling decision.
+            // `clearDevFormIfMatches` checks `decision.id === clearedId`
+            // to decide whether to drop the override, so if we null
+            // `decision` first the check silently misses and the card
+            // stays pinned to whatever devForm scene the user was
+            // walking through — usually harmless but visible during
+            // Form 4-8 demos where the user clicks several "Skip"
+            // buttons in a row.
+            if (decision && decision.id === id) {
+              clearDevFormIfMatches(id);
+              decision = null;
+            }
+            // Force a re-render so the footer clears and the layout
+            // picks the next view. The watcher will publish a fresh
+            // pending list shortly; in the meantime, the connection
+            // layout shows "All endpoints reachable" with an empty
+            // queue, which is the right idle state.
             apply();
           });
         }
