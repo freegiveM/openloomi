@@ -573,35 +573,44 @@
         <!-- 8 scene buttons populated from GET /api/loop/dev/scene. -->
       </main>
 
-      <!-- Form 1 (connection-check) — mirrors the demo's
-           connector-list (Slack / Email / WhatsApp) plus Calendar +
-           GitHub so devs see real wired-up state alongside the demo
-           trio. -->
+      <!-- Form 1 (connection-check) — the canonical 6-connector
+           pill row. All entries paint from the real
+           `/api/loop/connectors` JSON; nothing is hardcoded. If a
+           connector isn't connected the dot is red and the meta line
+           shows the lastError (or "off"). The dev panel Form 1
+           "check connections" button POSTs `{refresh:true}` to the
+           same route so a real agent probe (Composio MCP / Skill /
+           CLI) refreshes the snapshot on demand. -->
       <div class="connectors" id="connectors">
         <div class="row">
-          <span class="dot" id="dot-slack"></span>
-          <span class="label">Slack</span>
-          <span class="meta" id="meta-slack">—</span>
-        </div>
-        <div class="row" style="margin-top: 6px">
           <span class="dot" id="dot-gmail"></span>
-          <span class="label">Email / gmail</span>
+          <span class="label">Gmail</span>
           <span class="meta" id="meta-gmail">—</span>
         </div>
         <div class="row" style="margin-top: 6px">
-          <span class="dot" id="dot-whatsapp"></span>
-          <span class="label">WhatsApp</span>
-          <span class="meta" id="meta-whatsapp">—</span>
-        </div>
-        <div class="row" style="margin-top: 6px">
-          <span class="dot" id="dot-calendar"></span>
+          <span class="dot" id="dot-google_calendar"></span>
           <span class="label">Calendar</span>
-          <span class="meta" id="meta-calendar">—</span>
+          <span class="meta" id="meta-google_calendar">—</span>
         </div>
         <div class="row" style="margin-top: 6px">
           <span class="dot" id="dot-github"></span>
           <span class="label">GitHub</span>
           <span class="meta" id="meta-github">—</span>
+        </div>
+        <div class="row" style="margin-top: 6px">
+          <span class="dot" id="dot-slack"></span>
+          <span class="label">Slack</span>
+          <span class="meta" id="meta-slack">—</span>
+        </div>
+        <div class="row" style="margin-top: 6px">
+          <span class="dot" id="dot-linear"></span>
+          <span class="label">Linear</span>
+          <span class="meta" id="meta-linear">—</span>
+        </div>
+        <div class="row" style="margin-top: 6px">
+          <span class="dot" id="dot-obsidian"></span>
+          <span class="label">Obsidian</span>
+          <span class="meta" id="meta-obsidian">—</span>
         </div>
       </div>
 
@@ -952,7 +961,13 @@
               } catch (_) {}
             }
             if (scene.key === "connection-check") {
-              await loadConnectors();
+              // The "check connections" button is the only place in
+              // the dev panel that should request a live agent
+              // probe. The connector pill row is otherwise a
+              // reflection of the last cached snapshot, which is
+              // fine for every other form that just needs the row
+              // visible.
+              await loadConnectors({ refresh: true });
               connectorsEl.classList.add("visible");
               pipelineEl.classList.remove("visible");
               triageEl.classList.remove("visible");
@@ -981,36 +996,35 @@
           }
         }
 
-        async function loadConnectors() {
+        async function loadConnectors(opts) {
+          const refresh = !!(opts && opts.refresh);
           try {
-            const res = await fetch("/api/loop/state", {
+            const res = await fetch("/api/loop/connectors", {
+              method: refresh ? "POST" : "GET",
               credentials: "include",
+              headers: refresh
+                ? { "Content-Type": "application/json" }
+                : undefined,
+              body: refresh ? JSON.stringify({ refresh: true }) : undefined,
             });
             if (!res.ok) return;
             const data = await res.json();
+            const items = data.items || [];
             const byId = {};
-            for (const c of data.connectors || []) byId[c.id] = c;
-            // Per the demo's connection-check slide, Slack / Email /
-            // WhatsApp are the canonical trio — they're not in the
-            // real connector state (no Slack/WhatsApp integration
-            // yet), so we paint them as always-green demo entries.
-            // Calendar + GitHub show real state from /api/loop/state.
-            paintConnector("slack", {
-              connected: true,
-              accountCount: 1,
-              lastError: null,
-            });
+            for (const c of items) byId[c.id] = c;
+            // The canonical 6-connector catalog — paint each from
+            // real data. Missing entries render red with the
+            // lastError / "off" sentinel so the row never lies about
+            // a real connection state.
             paintConnector("gmail", byId["gmail"]);
-            paintConnector("whatsapp", {
-              connected: true,
-              accountCount: 1,
-              lastError: null,
-            });
             paintConnector(
-              "calendar",
-              byId["googlecalendar"] || byId["calendar"],
+              "google_calendar",
+              byId["google_calendar"] || byId["googlecalendar"],
             );
             paintConnector("github", byId["github"]);
+            paintConnector("slack", byId["slack"]);
+            paintConnector("linear", byId["linear"]);
+            paintConnector("obsidian", byId["obsidian"]);
           } catch (_) {
             /* soft fail */
           }
