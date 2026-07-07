@@ -46,9 +46,7 @@ interface ProbeConnectorPromptOptions {
   }>;
 }
 
-const DEFAULT_TOOLKITS: NonNullable<
-  ProbeConnectorPromptOptions["toolkits"]
-> = [
+const DEFAULT_TOOLKITS: NonNullable<ProbeConnectorPromptOptions["toolkits"]> = [
   { id: "gmail", label: "Gmail" },
   { id: "google_calendar", label: "Google Calendar" },
   { id: "github", label: "GitHub" },
@@ -177,9 +175,7 @@ function extractConnectorsFromResult(
  *
  * Returns `null` if no matching block is found.
  */
-function extractConnectorsFromText(
-  text: string,
-): ConnectorBlockShape | null {
+function extractConnectorsFromText(text: string): ConnectorBlockShape | null {
   if (!text) return null;
 
   // 1. ```json ... ``` block, take the LAST one.
@@ -222,9 +218,7 @@ function tryParseJsonObject(s: string): ConnectorBlockShape | null {
  * object with a `connectors` array, keep it. Returns the LAST such
  * match — agents typically write the final structured payload last.
  */
-function extractLastConnectorsObject(
-  text: string,
-): ConnectorBlockShape | null {
+function extractLastConnectorsObject(text: string): ConnectorBlockShape | null {
   let last: ConnectorBlockShape | null = null;
   for (let i = 0; i < text.length; i++) {
     if (text[i] !== "{") continue;
@@ -337,16 +331,19 @@ export async function probeConnectorState(
   }
 
   if (!raw || !Array.isArray(raw.connectors) || raw.connectors.length === 0) {
-    // Debug: dump the agent's text/reasoning so we can see what shape it
-    // actually emitted. Helps catch prompt-shape drift between the bridge
-    // and the agent runtime.
-    const textPreview = (res.text ?? "").slice(-400);
-    const reasoningPreview = (res.reasoning ?? "").slice(-200);
+    // Both extraction paths failed — the agent didn't emit a `result`
+    // event with the snapshot AND didn't print a parseable JSON block
+    // in its text output. Log the tail of each so we can debug what
+    // shape it actually produced.
     log(
-      `composio-bridge: probe returned no connectors block — agent did not emit the expected result (text-tail="${textPreview}" reasoning-tail="${reasoningPreview}")`,
+      `composio-bridge: probe returned no connectors block — text-tail="${(res.text ?? "").slice(-300)}" reasoning-tail="${(res.reasoning ?? "").slice(-150)}"`,
     );
     return null;
   }
+
+  log(
+    `composio-bridge: extracted ${raw.connectors.length} connectors (path=${raw === fromResult ? "result" : "text-mining"})`,
+  );
 
   const stamp = new Date().toISOString();
   const entries: ConnectorEntry[] = raw.connectors.map((c) => {
@@ -375,8 +372,7 @@ export async function probeConnectorState(
       label: t.label,
       connected: false,
       accountCount: 0,
-      lastError:
-        t.localOnlyMessage ?? "agent did not report this toolkit",
+      lastError: t.localOnlyMessage ?? "agent did not report this toolkit",
       fetchedAt: stamp,
     });
   }
