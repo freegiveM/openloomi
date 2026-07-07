@@ -623,10 +623,10 @@ fn main() {
             //      `pet:open-settings` pattern above.
             let open_decision_app = app_handle.clone();
             app_handle.listen("pet:open-decision", move |event| {
-                let payload = event.payload();
-                let id = payload
-                    .as_ref()
-                    .and_then(|p| serde_json::from_str::<serde_json::Value>(p).ok())
+                // `Event::payload()` returns `&str` in Tauri 2.x, so parse
+                // it directly instead of wrapping in `Option::as_ref()`.
+                let id = serde_json::from_str::<serde_json::Value>(event.payload())
+                    .ok()
                     .and_then(|v| {
                         v.get("id")
                             .and_then(|x| x.as_str().map(|s| s.to_string()))
