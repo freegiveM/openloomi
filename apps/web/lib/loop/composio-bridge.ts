@@ -185,9 +185,8 @@ function extractConnectorsFromText(
   // 1. ```json ... ``` block, take the LAST one.
   const codeBlockRe = /```json\s*([\s\S]*?)```/g;
   let lastJson: string | null = null;
-  let m: RegExpExecArray | null;
-  while ((m = codeBlockRe.exec(text)) !== null) {
-    lastJson = m[1];
+  for (const match of text.matchAll(codeBlockRe)) {
+    lastJson = match[1];
   }
   if (lastJson) {
     const parsed = tryParseJsonObject(lastJson);
@@ -249,14 +248,14 @@ function extractLastConnectorsObject(
 function findMatchingBrace(text: string, start: number): number {
   let depth = 0;
   let inString = false;
-  let escape = false;
+  let isEscaped = false;
   for (let i = start; i < text.length; i++) {
     const c = text[i];
     if (inString) {
-      if (escape) {
-        escape = false;
+      if (isEscaped) {
+        isEscaped = false;
       } else if (c === "\\") {
-        escape = true;
+        isEscaped = true;
       } else if (c === '"') {
         inString = false;
       }
