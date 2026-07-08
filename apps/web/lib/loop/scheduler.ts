@@ -41,11 +41,30 @@ let lastEnsuredAt = 0;
 /* Public job-name constants                                          */
 /* ------------------------------------------------------------------ */
 
+/**
+ * `name` is what's stored in `scheduled_jobs.name` and matched by
+ * `findJobByName`, so it must stay stable per-kind. We keep the `Loop: …`
+ * prefix so the manual recovery script's `WHERE name LIKE 'Loop:%'`
+ * filter (apps/web/scripts/recreate-loop-jobs.mjs) keeps working, then
+ * follow with a short English gloss of what the job actually does.
+ * `LOOP_JOB_DESCRIPTIONS` below carries the long-form explanation that
+ * gets written to `scheduled_jobs.description`.
+ */
 export const LOOP_JOB_NAMES = {
-  tick: "Loop: tick",
-  brief: "Loop: morning brief",
-  wrap: "Loop: evening wrap",
+  tick: "Loop: tick · pull signals & classify decisions",
+  brief: "Loop: brief · build morning brief card",
+  wrap: "Loop: wrap · build evening wrap card",
 } as const;
+
+export const LOOP_JOB_DESCRIPTIONS: Record<
+  keyof typeof LOOP_JOB_NAMES,
+  string
+> = {
+  tick: "Runs the Loop brain on a recurring interval (default 10 minutes, configurable in preferences). Each tick first pulls new events from connected integrations via the watcher and appends them to signals.jsonl, then runs the tick pipeline against a 2-hour lookback — scans incoming signals, classifies them, and surfaces or mutes candidate decisions. Returns a LoopTickResult with scanned / surfaced / muted counts; failures are caught and logged to jobExecutions with status:error.",
+  brief:
+    "Runs daily at the user's configured morning brief time. Reads the day's pending decisions, builds a brief snapshot with the day's priorities, and enqueues a `type:\"brief\"` decision card titled `Morning brief · YYYY-MM-DD` so it shows up in the pet / inbox / web UI. The card lists N priorities with a short dialogue line — `Morning: N priorities queued — top one is X` — plus tap-to-expand affordances and a nextStep hint for the user.",
+  wrap: "Runs daily at the user's configured evening wrap time. Reads today's completed / dismissed / pending decisions, builds a wrap snapshot with the day's highlights, and enqueues a `type:\"wrap\"` decision card titled `Evening wrap · YYYY-MM-DD`. The card summarizes done / dismissed / still-pending counts — `Night: wrapped N today — latest was X` — and points the user at the next morning brief for any leftovers.",
+};
 
 type LoopJobKind = keyof typeof LOOP_JOB_NAMES;
 
@@ -170,7 +189,7 @@ export async function ensureLoopJobs(
     if (!existing) {
       await createJob(uid, {
         name,
-        description: `Loop ${kind} (built-in)`,
+        description: LOOP_JOB_DESCRIPTIONS[kind],
         schedule,
         job,
         enabled: desiredEnabled,

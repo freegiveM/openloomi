@@ -60,19 +60,25 @@ function nextRunSec(schedule) {
 
 const jobs = [
   {
-    name: "Loop: tick",
+    name: "Loop: tick · pull signals & classify decisions",
+    description:
+      "Runs the Loop brain on a recurring interval (default 10 minutes, configurable in preferences). Each tick first pulls new events from connected integrations via the watcher and appends them to signals.jsonl, then runs the tick pipeline against a 2-hour lookback — scans incoming signals, classifies them, and surfaces or mutes candidate decisions. Returns a LoopTickResult with scanned / surfaced / muted counts; failures are caught and logged to jobExecutions with status:error.",
     type: "interval-minutes",
     minutes: tickMin,
     handler: "loop.tick",
   },
   {
-    name: "Loop: morning brief",
+    name: "Loop: brief · build morning brief card",
+    description:
+      "Runs daily at the user's configured morning brief time. Reads the day's pending decisions, builds a brief snapshot with the day's priorities, and enqueues a `type:\"brief\"` decision card titled `Morning brief · YYYY-MM-DD` so it shows up in the pet / inbox / web UI. The card lists N priorities with a short dialogue line — `Morning: N priorities queued — top one is X` — plus tap-to-expand affordances and a nextStep hint for the user.",
     type: "cron",
     expression: cronExpr(prefs.briefTime),
     handler: "loop.brief",
   },
   {
-    name: "Loop: evening wrap",
+    name: "Loop: wrap · build evening wrap card",
+    description:
+      "Runs daily at the user's configured evening wrap time. Reads today's completed / dismissed / pending decisions, builds a wrap snapshot with the day's highlights, and enqueues a `type:\"wrap\"` decision card titled `Evening wrap · YYYY-MM-DD`. The card summarizes done / dismissed / still-pending counts — `Night: wrapped N today — latest was X` — and points the user at the next morning brief for any leftovers.",
     type: "cron",
     expression: cronExpr(prefs.wrapTime),
     handler: "loop.wrap",
@@ -124,7 +130,7 @@ const rows = jobs.map((j) => {
     id: crypto.randomUUID(),
     user_id: userId,
     name: j.name,
-    description: `Loop ${j.name.replace("Loop: ", "")} (built-in)`,
+    description: j.description,
     schedule_type: j.type,
     cron_expression: j.type === "cron" ? j.expression : null,
     interval_minutes: j.type === "interval-minutes" ? j.minutes : null,
