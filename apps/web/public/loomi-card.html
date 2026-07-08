@@ -751,7 +751,7 @@
         position: relative;
         display: grid;
         grid-template-columns: repeat(4, 1fr);
-        gap: 4px;
+        gap: 6px;
         flex: 0 0 auto;
       }
       .source-chain::before {
@@ -772,15 +772,16 @@
       .meta-node {
         position: relative;
         z-index: 1;
-        min-height: 44px;
-        padding: 5px 6px 4px;
+        min-height: 60px;
+        padding: 7px 8px 6px;
         border: 1px solid var(--blue-soft);
         border-radius: 6px;
         background: var(--panel-soft);
         display: flex;
         flex-direction: column;
-        gap: 1px;
+        gap: 2px;
         overflow: hidden;
+        justify-content: center;
       }
       .meta-node .label {
         font-family: var(--font-mono);
@@ -791,10 +792,10 @@
         color: var(--blue-dark);
       }
       .meta-node .value {
-        font-size: 10px;
+        font-size: 11px;
         font-weight: 700;
         color: var(--ink);
-        line-height: 1.18;
+        line-height: 1.25;
         display: -webkit-box;
         -webkit-line-clamp: 2;
         -webkit-box-orient: vertical;
@@ -886,39 +887,51 @@
       }
       .evidence-pills {
         display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 4px;
+        grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+        gap: 6px;
         flex: 1 1 auto;
         min-height: 0;
         overflow: auto;
       }
       .evidence-pill {
-        padding: 6px 7px;
+        padding: 7px 9px 8px;
         border: 1px solid var(--blue-soft);
-        border-radius: 6px;
+        border-radius: 8px;
         background: var(--panel-soft);
         display: flex;
         flex-direction: column;
-        gap: 2px;
+        gap: 4px;
         min-height: 56px;
       }
       .evidence-pill .label {
         font-family: var(--font-mono);
-        font-size: 7px;
-        font-weight: 900;
-        letter-spacing: 0.08em;
+        font-size: 8px;
+        font-weight: 800;
+        letter-spacing: 0.06em;
         text-transform: uppercase;
         color: var(--blue-dark);
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+      }
+      .evidence-pill .label::before {
+        content: "•";
+        color: var(--orange);
+        font-size: 12px;
+        line-height: 1;
       }
       .evidence-pill strong {
-        font-size: 10px;
-        font-weight: 800;
+        font-size: 11px;
+        font-weight: 700;
         color: var(--ink);
-        line-height: 1.2;
-        display: -webkit-box;
-        -webkit-line-clamp: 3;
-        -webkit-box-orient: vertical;
-        overflow: hidden;
+        line-height: 1.3;
+        white-space: pre-wrap;
+        word-break: break-word;
+        /* No line-clamp here: the parent .evidence-pills grid has
+           `overflow: auto`, so a long reason simply makes the pill row
+           grow and the user scrolls the grid. Truncating at 3 lines
+           (the previous behavior) hid the rest with no way to reach
+           it — the user couldn't tell there was more text at all. */
       }
 
       /* ============================================================
@@ -1739,6 +1752,35 @@
           renderWrap();
         }
 
+        // Sort the pending queue so the most important items surface
+        // first. The backend payload order is arbitrary (it's roughly
+        // creation time), but the user expects P0/P1/P2 to be visually
+        // grouped — putting P2 above P1 made the queue look backwards.
+        // Numeric rank (p0=0 < p1=1 < p2=2) ascending + ts desc as
+        // tiebreaker so within a priority bucket newer signals win.
+        function priorityRank(d) {
+          const c = typeof d.confidence === "number" ? d.confidence : 0;
+          if (c >= PRIORITY_FROM_CONFIDENCE.p0) return 0;
+          if (c >= PRIORITY_FROM_CONFIDENCE.p1) return 1;
+          return 2;
+        }
+        function sortedPending(list) {
+          return [...list].sort((a, b) => {
+            const ra = priorityRank(a);
+            const rb = priorityRank(b);
+            if (ra !== rb) return ra - rb;
+            const ta =
+              typeof a.source_ts === "string"
+                ? new Date(a.source_ts).getTime()
+                : 0;
+            const tb =
+              typeof b.source_ts === "string"
+                ? new Date(b.source_ts).getTime()
+                : 0;
+            return tb - ta; // newer first within the same priority
+          });
+        }
+
         // ---------- Connection layout (Form 1) ----------
         function renderConnection() {
           const queueLabel = document.getElementById("queue-label");
@@ -1780,7 +1822,7 @@
               '<span class="qicon">∅</span><span class="qtitle">Nothing pending — Loomi is idling.</span><span></span>';
             queue.appendChild(empty);
           } else {
-            for (const d of pendingList) {
+            for (const d of sortedPending(pendingList)) {
               const row = document.createElement("div");
               row.className = "queue-row";
               const icon = TYPE_ICONS[d.type] || "●";
@@ -1938,36 +1980,38 @@
             dlgWrap.style.display = "none";
           }
 
-          // Evidence pills — up to 3 from `why[]`
+          // Evidence pills — only render non-empty why entries. Empty
+          // pills used to be padded with "—" placeholders so the 3-col
+          // grid stayed balanced; that read as dev-output ("WHY · 3 —")
+          // and confused users. Now we drop empties and let auto-fit
+          // distribute 1–3 cards across the row.
           ev.innerHTML = "";
           const whys = Array.isArray(decision.why)
-            ? decision.why.slice(0, 3)
+            ? decision.why
+                .map((w) => (typeof w === "string" ? w.trim() : ""))
+                .filter((w) => w.length > 0 && w !== "—")
+                .slice(0, 3)
             : [];
-          // Pad with placeholder if fewer than 3 to keep the 3-col grid balanced.
-          while (whys.length < 3) whys.push(null);
-          whys.forEach((w, i) => {
-            const pill = document.createElement("div");
-            pill.className = "evidence-pill";
-            if (w) {
+          if (whys.length === 0) {
+            // No evidence at all — hide the container so the card layout
+            // collapses cleanly instead of leaving an empty grid track.
+            ev.style.display = "none";
+          } else {
+            ev.style.display = "";
+            const ordinal = ["Reason 1", "Reason 2", "Reason 3"];
+            whys.forEach((w, i) => {
+              const pill = document.createElement("div");
+              pill.className = "evidence-pill";
               const lab = document.createElement("span");
               lab.className = "label";
-              lab.textContent = ["WHY · 1", "WHY · 2", "WHY · 3"][i];
+              lab.textContent = ordinal[i] ?? `Reason ${i + 1}`;
               const txt = document.createElement("strong");
               txt.textContent = w;
               pill.appendChild(lab);
               pill.appendChild(txt);
-            } else {
-              pill.style.opacity = "0.4";
-              const lab = document.createElement("span");
-              lab.className = "label";
-              lab.textContent = ["WHY · 1", "WHY · 2", "WHY · 3"][i];
-              const txt = document.createElement("strong");
-              txt.textContent = "—";
-              pill.appendChild(lab);
-              pill.appendChild(txt);
-            }
-            ev.appendChild(pill);
-          });
+              ev.appendChild(pill);
+            });
+          }
           // Render the action footer per decision.type. Pulled out of the
           // main renderDecision() body so it stays trivially testable
           // and re-runnable on every apply().
