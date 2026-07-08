@@ -2,11 +2,11 @@
  * Composio bridge — thin wrapper that turns "ask the agent to probe
  * Composio connection state" into a single async function.
  *
- * The Loop is fully agentic: the agent at `/api/native/agent` has the
- * Composio MCP server loaded and is the only component that talks to
- * Composio. This module does NOT call Composio's REST API directly —
- * doing so would require a parallel `COMPOSIO_API_KEY` and duplicate the
- * agent's discovery work.
+ * The Loop is fully agentic: the agent at `/api/native/agent` is the
+ * only component that talks to Composio (via the `composio` skill and
+ * `composio` CLI). This module does NOT call Composio's REST API
+ * directly — doing so would require a parallel `COMPOSIO_API_KEY` and
+ * duplicate the agent's discovery work.
  *
  * The bridge exists so non-tick callers (the dev panel's "check
  * connections" button, the `?refresh=1` route param) can ask for a
@@ -14,9 +14,9 @@
  * also pulls signals, enriches, classifies, etc.). It does this by
  * posting a small "probe only" prompt to the same `/api/native/agent`
  * endpoint the tick uses; the agent runs the same §1 of the tick
- * prompt (discover active toolkits via the active Composio surface),
- * returns the `connectors` block in its `result` event, and we
- * persist + return it.
+ * prompt (discover which Composio surfaces are reachable), returns
+ * the `connectors` block in its `result` event, and we persist +
+ * return it.
  *
  * The result is shape-compatible with `ConnectorEntry[]` from
  * `types.ts`; persistence is the same `writeConnectorSnapshot` the
@@ -62,11 +62,12 @@ const DEFAULT_TOOLKITS: NonNullable<ProbeConnectorPromptOptions["toolkits"]> = [
 
 /**
  * Build the small prompt that asks the agent to probe the configured
- * toolkits via whatever Composio surface is loaded in the current
- * session (MCP > Skill > CLI > insights-fallback). The prompt is
- * intentionally narrow — no signal pull, no classify, no decision
- * persist. The expected output is a single `result` event whose
- * `content` is a JSON `connectors` block matching `ConnectorEntry[]`.
+ * toolkits via whatever Composio surfaces are reachable in the current
+ * session (composio skill / composio CLI / openloomi-memory insights —
+ * co-equal, run concurrently). The prompt is intentionally narrow —
+ * no signal pull, no classify, no decision persist. The expected
+ * output is a single `result` event whose `content` is a JSON
+ * `connectors` block matching `ConnectorEntry[]`.
  */
 function buildProbePrompt(
   toolkits: NonNullable<ProbeConnectorPromptOptions["toolkits"]>,
@@ -82,12 +83,11 @@ function buildProbePrompt(
 
   return `You are running a **connector probe** for the openloomi Loop. Your job is to inspect the active Composio surface, identify which of the toolkits below have at least one healthy connected account, and emit a single structured \`result\` event. NO signal pull, NO classify, NO decision persist — just the connector snapshot.
 
-# Available Composio surfaces (try in order)
+# Available Composio surfaces (try in parallel)
 
-  1. **Composio MCP** — \`mcp__composio__COMPOSIO_MANAGE_CONNECTIONS\` with action \`list\`. The richest transport.
-  2. **\`composio-cli\` skill** — \`Skill composio-cli connections list\`. The skill fallback.
-  3. **\`composio\` CLI** — \`Bash(composio connections list)\`. The terminal fallback.
-  4. **No surface reachable** — fall back to Surface 4 (insights) and report \`connected: false\` for every entry that isn't a local-only toolkit (see catalog below).
+  1. **\`composio\` skill** — \`Skill composio connections list\`. The skill surface.
+  2. **\`composio\` CLI** — \`Bash(composio connections list)\`. The CLI surface.
+  3. **No surface reachable** — fall back to the insights surface and report \`connected: false\` for every entry that isn't a local-only toolkit (see catalog below).
 
 # Toolkits to probe
 
@@ -104,7 +104,7 @@ Emit exactly one SSE \`result\` event with this content:
   "muted": 0,
   "errors": 0,
   "duration_ms": <int>,
-  "surfaces_used": ["<mcp|skill|cli|insights|local-only>", ...],
+  "surfaces_used": ["<skill|cli|insights|local-only>", ...],
   "connectors": [
     { "id": "<toolkit-id>", "label": "<label>", "connected": <bool>, "accountCount": <int>, "lastError": "<optional: short string>" }
   ]
@@ -286,14 +286,15 @@ export async function probeConnectorState(
   let res: Awaited<ReturnType<typeof invokeAgentPrompt>>;
   try {
     res = await invokeAgentPrompt(prompt, {
-      // Generous timeout — a probe runs the agent's full Composio surface
-      // fallback chain (MCP → Skill → CLI → insights) and pings 5 toolkits.
-      // Cold MCP handshakes, OAuth token refresh, and per-toolkit network
-      // round-trips each add latency; in real environments we've seen the
-      // tail of this distribution land around 60–90s. 120s gives a comfortable
-      // buffer without leaving a hung request alive forever. The full tick
-      // uses 15m because it does much more work (signal pull + enrich +
-      // classify + persist); the probe is intentionally shorter than that.
+      // Generous timeout — a probe runs the agent's composio surface
+      // discovery (skill / CLI / insights) and pings 5 toolkits. Cold
+      // skill loads, OAuth token refresh, and per-toolkit network
+      // round-trips each add latency; in real environments we've seen
+      // the tail of this distribution land around 60–90s. 120s gives a
+      // comfortable buffer without leaving a hung request alive forever.
+      // The full tick uses 15m because it does much more work (signal
+      // pull + enrich + classify + persist); the probe is intentionally
+      // shorter than that.
       timeoutMs: 120 * 1000,
     });
   } catch (e) {

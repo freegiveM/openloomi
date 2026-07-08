@@ -1,34 +1,20 @@
 /**
- * Loop tick — one pass through the signal → enrich → classify → enqueue
- * pipeline. Two execution modes are supported:
+ * Loop tick — one pass through the signal → classify → enqueue pipeline.
  *
- *   - **agentic** (default): builds the prompt in `tick-prompt.ts` and
- *     POSTs it to `/api/native/agent`. The agent does the full pipeline:
- *     signal pull (Composio MCP / Skill / CLI / openloomi-memory insights
- *     fallback), Obsidian vault scan, memory enrichment, classification,
- *     and decision persistence. Matches the original `loop-daemon.cjs`
- *     "agentic mode" 1:1 — the loop is the prompt, the agent does the work.
- *     Set `LOOP_LEGACY=1` (or pass `mode: "legacy"`) to opt out.
+ * The Loop is fully agentic: builds the prompt in `tick-prompt.ts` and POSTs
+ * it to `/api/native/agent`. The agent does the full pipeline — signal pull
+ * (composio skill / composio CLI / openloomi-memory insights as parallel
+ * surfaces), Obsidian vault scan, memory enrichment, classification, and
+ * decision persistence. The loop is the prompt; the agent does the work.
  *
- *   - **legacy**: in-process rules-based classifier + DB-backed enrich.
- *     Fast, deterministic, no LLM cost. Useful for offline / headless /
- *     no-MCP environments and for unit tests that need a stable pipeline.
- *
- * Either path returns a `LoopTickResult` so the caller (cron, CLI, HTTP
- * route) doesn't care which mode ran.
+ * Returns a `LoopTickResult` so the caller (cron, CLI, HTTP route) doesn't
+ * care which surface the agent ended up using.
  */
 
-import { classify, isHardSkipped } from "./classify";
 import { LOOP_PATHS, ensureDirs, migrate } from "./paths";
-import { decisions, log, signals, writeStatus } from "./store";
+import { decisions, log, writeStatus } from "./store";
 import { buildTickPrompt } from "./tick-prompt";
-import type {
-  LoopDecision,
-  LoopPreferences,
-  LoopSignal,
-  LoopTickResult,
-} from "./types";
-import { DEFAULT_LOOP_PREFERENCES } from "./types";
+import type { LoopDecision, LoopTickResult } from "./types";
 
 const TICK_LOOKBACK_MS = 2 * 60 * 60 * 1000; // 2h
 const TICK_BATCH = 200;
@@ -51,64 +37,22 @@ export function getActiveUser(): string | null {
   return activeUserId;
 }
 
-function nowMs(): number {
-  return Date.now();
-}
-
-function sinceIso(ms: number): string {
-  return new Date(nowMs() - ms).toISOString();
-}
-
-function dedupeKey(sig: LoopSignal): string {
-  const p = sig.payload as Record<string, unknown>;
-  return String(
-    p.messageId ??
-      p.eventId ??
-      p.ts ??
-      p.id ??
-      p.path ??
-      `${sig.source}:${sig.type}`,
-  );
-}
-
-function alreadyProcessed(key: string): boolean {
-  // O(N) scan — fine for the few-hundred pending decisions scale.
-  for (const bucket of ["pending", "done", "dismissed"] as const) {
-    for (const dec of decisions.list(bucket)) {
-      if (dec.signal_id === key) return true;
-      if ((dec.source_signal as { id?: string } | undefined)?.id === key)
-        return true;
-    }
-  }
-  return false;
-}
-
-export type TickMode = "agentic" | "legacy";
-
 export interface TickOptions {
   /** Override preferences for this tick only. Defaults to DEFAULT_LOOP_PREFERENCES. */
-  preferences?: Partial<LoopPreferences>;
+  preferences?: Partial<LoopPreferencesForPrompt>;
   /** Only process signals newer than this. Defaults to 2h back. */
   sinceMs?: number;
   /** Force re-classify of all recent signals (skips dedupe). */
   force?: boolean;
   /** Optional: callers can pre-supply a list of signals (for tests). */
-  inputSignals?: LoopSignal[];
+  inputSignals?: LoopSignalForPrompt[];
   /**
    * Explicit userId for enrichment (contact / project / history lookups).
    * Falls back to the module-level `activeUserId` set via `setActiveUser`
-   * (mirrored from scheduler.ts). When neither is set, enrich degrades
-   * to a no-op and decisions land with the base 0.6 confidence.
+   * (mirrored from scheduler.ts). When neither is set, the agent runs
+   * with a no-op user context and decisions land with the base confidence.
    */
   userId?: string;
-  /**
-   * Execution mode. Defaults to `"agentic"`; falls back to `"legacy"`
-   * when `LOOP_LEGACY=1` is set in the environment. `"agentic"` is
-   * gated on the native-agent endpoint being reachable; if the POST
-   * fails with a transport-level error we surface it (don't silently
-   * fall back — the operator should know).
-   */
-  mode?: TickMode;
 }
 
 /**
@@ -116,10 +60,7 @@ export interface TickOptions {
  * that were newly enqueued. Errors per-signal are collected, not thrown.
  */
 export async function run(opts: TickOptions = {}): Promise<LoopTickResult> {
-  const mode: TickMode =
-    opts.mode ?? (process.env.LOOP_LEGACY === "1" ? "legacy" : "agentic");
-  if (mode === "agentic") return runAgentic(opts);
-  return runLegacy(opts);
+  return runAgentic(opts);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -135,9 +76,10 @@ interface AgentTickResultPayload {
   surfaces_used?: string[];
   /**
    * Agent-reported snapshot of Composio connection state, captured at
-   * tick time via the active MCP surface. When present, we persist it
-   * to `~/.openloomi/loop/connectors.json` so the UI pill row stays
-   * honest between ticks (see `connectors.ts::writeConnectorSnapshot`).
+   * tick time via the agent's probe of the active composio surfaces.
+   * When present, we persist it to `~/.openloomi/loop/connectors.json`
+   * so the UI pill row stays honest between ticks (see
+   * `connectors.ts::writeConnectorSnapshot`).
    */
   connectors?: Array<{
     id: string;
@@ -177,7 +119,7 @@ async function runAgentic(opts: TickOptions): Promise<LoopTickResult> {
   });
 
   // Lazy import — runner transitively pulls node:http + auth-token logic
-  // that the CLI doesn't need. Mirrors the pattern in tick's legacy path.
+  // that the CLI doesn't need.
   const { invokeAgentPrompt } = await import("./runner");
 
   log(
@@ -251,7 +193,7 @@ async function runAgentic(opts: TickOptions): Promise<LoopTickResult> {
 
   // If the agent's result event carried a `connectors` snapshot, persist it
   // so the UI pill row (`/api/loop/connectors`) reflects the agent's
-  // MCP-probed reality. Best-effort — failure here must not poison the
+  // probed reality. Best-effort — failure here must not poison the
   // tick result.
   if (Array.isArray(payload.connectors) && payload.connectors.length > 0) {
     try {
@@ -315,163 +257,9 @@ function pendingAddedSince(before: CountsSnapshot): LoopDecision[] {
   return after.filter((d) => !before.pendingIds.has(d.id));
 }
 
-/* -------------------------------------------------------------------------- */
-/* Legacy mode — rules-based classify + DB enrich (LOOP_LEGACY=1)           */
-/* -------------------------------------------------------------------------- */
-
-async function runLegacy(opts: TickOptions): Promise<LoopTickResult> {
-  ensureDirs();
-  // Lazy migrate on first tick so legacy data shows up before any decision
-  // is enqueued. Safe to call repeatedly — no-op after the first run.
-  migrate();
-
-  const prefs: LoopPreferences = {
-    ...DEFAULT_LOOP_PREFERENCES,
-    ...(opts.preferences ?? {}),
-  };
-
-  let recent: LoopSignal[];
-  if (opts.inputSignals) {
-    recent = opts.inputSignals;
-  } else {
-    recent = signals.list({
-      since: sinceIso(opts.sinceMs ?? TICK_LOOKBACK_MS),
-      limit: TICK_BATCH,
-    });
-  }
-
-  const result: LoopTickResult = {
-    scanned: 0,
-    surfaced: 0,
-    muted: 0,
-    newDecisions: [],
-    errors: [],
-  };
-
-  for (const sig of recent) {
-    result.scanned += 1;
-    try {
-      const skip = isHardSkipped(sig, prefs);
-      if (skip) {
-        result.muted += 1;
-        continue;
-      }
-      const key = dedupeKey(sig);
-      if (!opts.force && alreadyProcessed(key)) {
-        // Already surfaced — count as muted so the stats are honest.
-        result.muted += 1;
-        continue;
-      }
-      const candidate = classify(sig);
-      if (!candidate) {
-        result.muted += 1;
-        continue;
-      }
-      // Enrich: ask the memory subsystem for the contact, project, and
-      // related decisions that match this signal. Best-effort — if the
-      // memory call fails the candidate still gets persisted with the
-      // base confidence and a single "Source: …" why-line. Lazy-imported
-      // because enrich transitively pulls `@/lib/insights/search`, which
-      // imports `lib/env/constants` → `server-only` and breaks the CLI
-      // when `--userId` is not provided.
-      const enrichUserId = opts.userId ?? activeUserId;
-      let context: Record<string, unknown> = {
-        why: [`Source: ${sig.source}:${sig.type}`],
-        memory_refs: [],
-      };
-      let confidence = 0.6;
-      if (enrichUserId) {
-        const { enrich, enrichToContext } = await import("./enrich");
-        const enriched = await enrich({
-          userId: enrichUserId,
-          signal: sig,
-          candidate,
-          baseConfidence: 0.6,
-        }).catch((e) => {
-          log(`tick enrich error: ${sig.id}: ${(e as Error).message}`);
-          return null;
-        });
-        if (enriched) {
-          context = enrichToContext(enriched) as unknown as Record<
-            string,
-            unknown
-          >;
-          confidence = enriched.confidence;
-        }
-      }
-      const dec: LoopDecision = decisions.add({
-        signal_id: sig.id,
-        type: candidate.type,
-        title: candidate.title,
-        action: candidate.action,
-        context: context as LoopDecision["context"],
-        confidence,
-        source_signal: sig,
-        dialogue: candidateDialogue(sig, candidate.type),
-        nextStep: candidateNextStep(candidate.type),
-      });
-      result.newDecisions.push(dec);
-      result.surfaced += 1;
-      log(`tick (legacy): ${sig.source}:${sig.type} → ${dec.id} (${dec.type})`);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      result.errors.push(`${sig.id}: ${msg}`);
-      log(`tick (legacy) error: ${sig.id}: ${msg}`);
-    }
-  }
-
-  writeStatus({
-    lastTickAt: new Date().toISOString(),
-    lastSignalCount: result.scanned,
-    lastDecisionCount: result.surfaced,
-    ...(result.errors[0] ? { lastError: result.errors[0] } : {}),
-  });
-  log(
-    `tick (legacy) done: scanned=${result.scanned} surfaced=${result.surfaced} muted=${result.muted} errors=${result.errors.length}`,
-  );
-  return result;
-}
-
-function candidateDialogue(sig: LoopSignal, type: string): string {
-  switch (type) {
-    case "rsvp":
-      return "This calendar invite needs a call — want me to reply 'accepted' directly?";
-    case "draft_reply":
-      return "This email looks like it's waiting on you — should I draft a reply?";
-    case "review_pr":
-      return "A PR tagged you as reviewer — take a look?";
-    case "slack_reply":
-      return "Someone @-mentioned you on Slack — want me to grab context first?";
-    case "todo":
-      return "Drop this into your todo list?";
-    case "linear_review":
-      return "Linear has an issue waiting for your scope check.";
-    case "requirement_synthesis":
-      return "This signal could become a new product-requirements draft.";
-    default:
-      return `New signal (${sig.source}): ${sig.type}`;
-  }
-}
-
-function candidateNextStep(type: string): string {
-  switch (type) {
-    case "rsvp":
-      return "Tap Dry Run to see the plan, or Run to accept the invite directly.";
-    case "draft_reply":
-      return "Tap Dry Run to draft a reply, then confirm to send.";
-    case "review_pr":
-      return "Tap Run to have the agent produce a review checklist.";
-    case "slack_reply":
-      return "Tap Dry Run to draft a reply, then confirm to send.";
-    case "todo":
-      return "Tap Run to add it to today's todo.";
-    case "linear_review":
-      return "Tap Run to have the agent do a scope check.";
-    case "requirement_synthesis":
-      return "Tap Run to draft a PR / FAQ.";
-    default:
-      return "Tap Run to let the agent handle it.";
-  }
-}
-
 export { LOOP_PATHS };
+
+// Local type aliases — kept narrow so this file's imports don't drag in
+// the full preferences / signal types when only a subset is referenced.
+type LoopPreferencesForPrompt = import("./types").LoopPreferences;
+type LoopSignalForPrompt = import("./types").LoopSignal;

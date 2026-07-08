@@ -2,13 +2,9 @@
  * Loop runner — execute a pending decision by POSTing to the main app's
  * native agent endpoint.
  *
- * Surface A (default):  POST /api/native/agent with `{ prompt }` and parse
- *   the SSE response. Reuses the same endpoint the locomo benchmark uses —
- *   full agentic tool-use, memory writes, multi-round reasoning.
- *
- * Surface B (legacy): spawn `claude -p <prompt>` when LOOP_LEGACY=1. Used
- *   for debugging tick behavior in a real TTY or when the native endpoint
- *   is down.
+ * POSTs to `/api/native/agent` with `{ prompt }` and parses the SSE
+ * response. Reuses the same endpoint the locomo benchmark uses — full
+ * agentic tool-use, memory writes, multi-round reasoning.
  *
  * The actual SSE parsing happens inside `/api/native/agent/route.ts`. From
  * the runner's perspective we just POST a prompt, wait for the result event
@@ -77,16 +73,11 @@ export interface InvokeAgentOptions {
 }
 
 /**
- * Public agent-entry point used by the loop's agentic tick. Resolves the
+ * Public agent-entry point used by the loop's tick. Resolves the
  * native-agent URL (env override → default) and POSTs the prompt as
  * `{ prompt }`. Returns the parsed SSE response — caller can read
  * `result` for a structured payload (when the agent emits a `result` event)
  * or fall back to `text` / `events` for streaming output.
- *
- * `LOOP_LEGACY=1` opts into spawning `claude -p` instead (Surface B in the
- * original skill). Surface B is intentionally NOT exposed here — the tick
- * is full-agentic by design; legacy callers should set `LOOP_LEGACY=1`
- * globally to route through Surface B.
  */
 export async function invokeAgentPrompt(
   prompt: string,

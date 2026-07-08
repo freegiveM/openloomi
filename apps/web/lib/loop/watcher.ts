@@ -2,13 +2,11 @@
  * Loop watcher — kept as a public entry point for backward compatibility
  * with `handlers.ts` (which calls `runWatcher()` before each `tick.run()`).
  *
- * **In agentic mode (the default) the watcher is a no-op**: the agent at
- * `/api/native/agent` has Composio MCP loaded and pulls signals itself
- * (see `tick-prompt.ts` §1–2). Legacy pullers (per-bot Gmail OAuth, per-channel
- * REST polling) were intentionally removed in the agentic refactor — see the
- * OpenLoomi Loop → Composio接入 plan, 2026-07-07. If you need a non-agentic
- * pull path for unit tests or offline cron, wire it through `LOOP_LEGACY=1`
- * and add a fresh puller here.
+ * **The watcher is a no-op in agentic mode**: the agent at `/api/native/agent`
+ * has the `composio` skill and `composio` CLI available and pulls signals
+ * itself (see `tick-prompt.ts` §1–2). Legacy pullers (per-bot Gmail OAuth,
+ * per-channel REST polling) were intentionally removed in the agentic
+ * refactor.
  *
  * Connector-status probing (which is what the watcher used to gate its
  * pullers) now lives in `composio-bridge.getActiveIntegrations()` and is

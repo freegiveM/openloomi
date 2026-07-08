@@ -2,17 +2,17 @@
  * Loop connector status — surface-only.
  *
  * The Loop is fully agentic: the agent at `/api/native/agent` has the
- * Composio MCP server loaded and probes connection state itself. The
- * Loop's local module does not hit Composio's REST API directly — that
- * would require a parallel `COMPOSIO_API_KEY` env var and duplicate the
- * agent's discovery work.
+ * `composio` skill and `composio` CLI available and probes connection
+ * state itself. The Loop's local module does not hit Composio's REST
+ * API directly — that would require a parallel `COMPOSIO_API_KEY` env
+ * var and duplicate the agent's discovery work.
  *
  * Two ways a connector snapshot reaches the cache:
  *
  *   1. **Tick pass** (`runAgentic` in `tick.ts`) — the full-pipeline
  *      prompt ends with a `result` event whose `connectors` block
- *      captures the agent's MCP-probed reality. The tick handler
- *      forwards it to `writeConnectorSnapshot` here.
+ *      captures the agent's probed reality. The tick handler forwards
+ *      it to `writeConnectorSnapshot` here.
  *
  *   2. **Explicit refresh** (`refreshConnectors` below) — the dev
  *      panel's "check connections" button or the
@@ -27,7 +27,7 @@
  * fallback when no snapshot has ever been written.
  *
  * Cache TTL is 24h: ticks run every `intervalSec` (default 600s = 10min)
- * and the agent's MCP probe is the ground truth — there's no point
+ * and the agent's probe is the ground truth — there's no point
  * thrashing the cache between ticks. Use `refreshConnectors()` (or
  * `/api/loop/connectors` with `{ refresh: true }`) when the UI genuinely
  * needs a fresh probe.
@@ -96,13 +96,46 @@ const FALLBACK_CONNECTORS: ConnectorEntry[] = [
 function readCache(): ConnectorCache | null {
   try {
     if (!existsSync(LOOP_PATHS.connectors)) return null;
+    // The on-disk shape can carry the top-level stamp under either
+    // `fetchedAt` (current `writeConnectorSnapshot`) or `updatedAt`
+    // (older writes / external writers). Read both as a permissive
+    // structural type so the cache survives shape drift.
     const raw = JSON.parse(
       readFileSync(LOOP_PATHS.connectors, "utf8"),
-    ) as ConnectorCache;
-    if (!raw?.fetchedAt || !Array.isArray(raw.connectors)) return null;
-    if (Date.now() - new Date(raw.fetchedAt).getTime() > CACHE_TTL_MS)
-      return null;
-    return raw;
+    ) as Partial<ConnectorCache> & {
+      updatedAt?: unknown;
+      connectors?: unknown;
+    };
+    if (!Array.isArray(raw?.connectors)) return null;
+    // Resolve a stamp from any of: top-level `fetchedAt` (current
+    // writer), top-level `updatedAt` (older writes / external writers),
+    // or the max `fetchedAt` carried by the connector entries
+    // themselves. Without this tolerance the UI falls back to the all-
+    // offline FALLBACK_CONNECTORS sentinel whenever the on-disk shape
+    // shifts — see issue: "LOOMI ONLINE card shows all channels
+    // offline" — because the `if (!raw.fetchedAt)` guard above discards
+    // a perfectly valid snapshot.
+    const topLevel =
+      typeof raw.fetchedAt === "string"
+        ? raw.fetchedAt
+        : typeof raw.updatedAt === "string"
+          ? raw.updatedAt
+          : null;
+    const entryMax = (raw.connectors as Array<{ fetchedAt?: unknown }>).reduce<
+      string | null
+    >((acc, c) => {
+      const ts = c.fetchedAt;
+      if (typeof ts !== "string" || !ts) return acc;
+      if (!acc) return ts;
+      return new Date(ts).getTime() > new Date(acc).getTime() ? ts : acc;
+    }, null);
+    const stamp = topLevel ?? entryMax;
+    if (!stamp) return null;
+    if (Date.now() - new Date(stamp).getTime() > CACHE_TTL_MS) return null;
+    return {
+      fetchedAt: stamp,
+      connectors: raw.connectors as ConnectorCache["connectors"],
+    };
   } catch {
     return null;
   }
@@ -157,7 +190,7 @@ export async function listConnectors(
 /**
  * Force-refresh by dispatching a small "connector probe" prompt to the
  * agent via `composio-bridge.ts`. The agent inspects the active
- * Composio surface (MCP / Skill / CLI / insights) and returns a fresh
+ * composio surfaces (skill / CLI / insights) and returns a fresh
  * snapshot, which we persist via `writeConnectorSnapshot` and return.
  *
  * Failure modes (in order of preference):

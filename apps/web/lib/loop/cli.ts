@@ -9,7 +9,7 @@
  *
  * Commands:
  *   tick [--userId <id>]       run one tick (signals → classify → enqueue)
- *   analyze                    alias for `tick` (legacy naming)
+ *   analyze                    alias for `tick`
  *   inbox [--status=X]         list decisions (default: all)
  *   run <id> [--dry]           invoke agent on a decision
  *   dismiss <id> [reason]      move decision → dismissed
@@ -81,9 +81,8 @@ function usage(): string {
   return `Usage: loop <command> [args]
 
 Commands:
-  tick [--userId <id>] [--mode=agentic|legacy]
-                              run one tick (default: agentic; LOOP_LEGACY=1 forces legacy)
-  analyze                    alias for tick (legacy naming)
+  tick [--userId <id>]       run one tick (default: agentic)
+  analyze                    alias for tick
   inbox [--status=X]         list decisions (default: all)
   run <id> [--dry]           invoke agent on a decision
   dismiss <id> [reason]      dismiss a decision
@@ -111,19 +110,12 @@ async function main(): Promise<number> {
       case "analyze": {
         // Optional `--userId <id>` — pass-through so the CLI can enrich
         // against the same user the web route would. Without it we run
-        // un-enriched (base confidence only).
+        // un-enriched (base confidence only). The tick itself is always
+        // agentic — dispatches the full pipeline prompt to /api/native/agent.
         const userId =
           typeof args.flags.userId === "string" ? args.flags.userId : undefined;
         if (userId) setActiveUser(userId);
-        // `--mode=agentic|legacy` overrides the LOOP_LEGACY=1 default. In
-        // agentic mode the tick dispatches the full pipeline prompt to
-        // /api/native/agent; legacy uses the in-process rules + DB enrich.
-        const modeFlag = args.flags.mode;
-        const mode =
-          modeFlag === "agentic" || modeFlag === "legacy"
-            ? modeFlag
-            : undefined;
-        const out = await runTick({ userId, ...(mode ? { mode } : {}) });
+        const out = await runTick({ userId });
         process.stdout.write(JSON.stringify(out, null, 2));
         return 0;
       }
