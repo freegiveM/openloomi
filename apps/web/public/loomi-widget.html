@@ -293,6 +293,10 @@
         const FALLBACK = "loomi-pet/assets/loomi-idle.png";
 
         const fox = document.getElementById("fox");
+        // Tracked alongside `fox.dataset.state` so the click handler can
+        // branch on it (e.g. `needs-setup` → `pet:open-ai-settings`
+        // instead of the default `pet:open-dashboard`).
+        let currentState = "idle";
 
         // Standalone-preview detection. When the page is opened in a plain
         // browser, `__TAURI__` is undefined and the body grows to 100vw ×
@@ -309,6 +313,7 @@
 
         function setState(key) {
           if (!key || typeof key !== "string") return;
+          currentState = key;
           fox.dataset.state = key;
           const src = STATE_IMAGES[key] || FALLBACK;
           if (fox.getAttribute("src") !== src) {
@@ -477,7 +482,16 @@
 
           const t = window.__TAURI__;
           if (t && t.event && t.event.emit) {
-            t.event.emit("pet:open-dashboard");
+            // On a fresh install the watcher emits `needs-setup` (see
+            // `pet::watcher::watch_loop`'s one-shot bootstrap). When
+            // that's the case, route the click straight to AI settings
+            // — opening the dashboard would just land the user on the
+            // guest-login redirect with no immediate path forward.
+            if (currentState === "needs-setup") {
+              t.event.emit("pet:open-ai-settings");
+            } else {
+              t.event.emit("pet:open-dashboard");
+            }
           }
         }
 

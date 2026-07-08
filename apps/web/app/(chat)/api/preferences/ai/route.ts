@@ -8,6 +8,7 @@ import {
   getUserLlmApiSettings,
   upsertUserLlmApiSetting,
 } from "@/lib/db/queries";
+import { isTauriMode } from "@/lib/env/constants";
 import { AppError } from "@openloomi/shared/errors";
 
 const providerTypeSchema = z.enum([
@@ -143,9 +144,19 @@ function invalidPayloadResponse() {
 }
 
 export async function GET() {
-  const session = await auth();
-  if (!session?.user?.id) {
+  const session = await auth().catch(() => null);
+  if (!session?.user?.id && !isTauriMode()) {
     return new AppError("unauthorized:chat").toResponse();
+  }
+
+  // Tauri mode may reach this handler before the user has finished guest
+  // login (the pet card webview is a separate origin from the main webview
+  // and shares no cookie jar). System defaults aren't user-specific, so
+  // it's safe to return them without auth — the client uses
+  // `systemDefaults.anthropic_compatible.hasApiKey` to decide whether to
+  // surface the missing-key CTA on the pet card.
+  if (!session?.user?.id) {
+    return NextResponse.json({ settings: [], systemDefaults });
   }
 
   try {

@@ -15,11 +15,18 @@ use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
 use serde::Deserialize;
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter, Listener, Manager};
 
 use super::{PET_BUBBLE_LABEL, PET_CARD_LABEL, PET_LABEL, set_pending_decision_count};
 
 const POLL_MS: u64 = 2000;
+
+/// Grace period after the watcher thread starts before the first poll.
+/// Lets the eagerly-built pet / bubble / card webviews (see `setup()` in
+/// `main.rs`) finish mounting their `loop:state` listeners, otherwise
+/// the initial emit lands before `window.__TAURI__.event.listen` is wired
+/// and gets dropped.
+const FIRST_RUN_SETUP_DELAY_MS: u64 = 1500;
 
 /// 30s freshness window for "just happened" rules (e.g. a decision moved
 /// to `done` in the last 30s => `happy` with "N done" monologue).
@@ -29,12 +36,53 @@ const JUST_NOW_SECS: i64 = 30;
 /// dumps and process listings, which makes "which thread ate my CPU"
 /// answers easy.
 pub fn spawn_decision_watcher(app: AppHandle) {
+    // Shared one-shot guard for the `needs-setup` bootstrap emit. The
+    // AI-settings-changed listener below needs to reset it when the user
+    // finishes configuration; the watch poll loop reads/writes it on
+    // every iteration. `Arc<Mutex<…>>` rather than `AtomicBool` so the
+    // bootstrap block can read+write atomically under the same lock —
+    // avoids the "emit twice in a row" race if the listener fires right
+    // after a poll.
+    let setup_emitted = std::sync::Arc::new(std::sync::Mutex::new(false));
+
+    // AI settings saved (or reset) — the pet card + bubble should leave
+    // the "needs-setup" mode and return to a natural idle/sleeping
+    // state. Without this listener the pet sprite + bubble monologue
+    // stayed pinned to "Let's get you set up" indefinitely after the
+    // user saved their first AI key, because the watch poll loop only
+    // emits state on decisions.json bucket changes (the AI key lives
+    // in the DB, not on disk).
+    {
+        let app_for_listener = app.clone();
+        let setup_emitted_for_listener = setup_emitted.clone();
+        app.listen("openloomi:ai-settings-changed", move |_event| {
+            if let Ok(mut flag) = setup_emitted_for_listener.lock() {
+                *flag = false;
+            }
+            let hour = current_hour_local();
+            let (state, monologue) = if hour >= 22 || hour < 6 {
+                ("sleeping", "circle back in the morning")
+            } else {
+                ("idle", "All clear")
+            };
+            let payload = serde_json::json!({
+                "state": state,
+                "monologue": monologue,
+            });
+            let _ = app_for_listener.emit_to(PET_LABEL, "loop:state", payload.clone());
+            let _ = app_for_listener.emit_to(PET_BUBBLE_LABEL, "loop:state", payload);
+            // Hide the bubble that the bootstrap emit showed — the user
+            // just finished setup, no need to keep prompting.
+            super::hide_bubble_window(&app_for_listener);
+        });
+    }
+
     std::thread::Builder::new()
         .name("loomi-pet-decision-watcher".into())
         .spawn(move || {
             let _ = crate::panic_guard::catch_unwind_str(
                 "loomi-pet watcher",
-                || watch_loop(&app),
+                || watch_loop(&app, setup_emitted),
             );
         })
         .expect("spawn loomi-pet watcher");
@@ -45,7 +93,10 @@ pub fn spawn_decision_watcher(app: AppHandle) {
 /// window). 16 is generous: in practice transitions are minutes apart.
 const RECENTLY_COMPLETED_CAP: usize = 16;
 
-fn watch_loop(app: &AppHandle) {
+fn watch_loop(
+    app: &AppHandle,
+    setup_emitted: std::sync::Arc<std::sync::Mutex<bool>>,
+) {
     let path = resolve_decisions_path(app);
     let mut last_mtime: Option<SystemTime> = None;
     let mut last_buckets: (usize, usize, usize) = (0, 0, 0);
@@ -59,6 +110,37 @@ fn watch_loop(app: &AppHandle) {
     let mut last_pending_ids: Vec<String> = Vec::new();
     let mut recently_completed: Vec<(String, String)> = Vec::new();
 
+    // One-shot first-run detection: if `~/.openloomi/loop/decisions.json`
+    // doesn't exist AND there's no env-level Anthropic key, surface a
+    // setup hint so the pet sprite + bubble invite the user to click
+    // through to AI settings. Without this, the watcher stays silent on
+    // a brand-new install — the pet sprite defaults to "idle" and the
+    // bubble never appears, so the user has no visual cue that anything
+    // is needed. The pet card self-shows its no-api-key CTA via
+    // `apply()` in `loomi-card.html` (GET /api/preferences/ai returns
+    // 200 in Tauri mode → apiConfigured === false → pet:open-card emit),
+    // so we don't need to show the card again here — only the bubble.
+    //
+    // `setup_emitted` is shared with the `openloomi:ai-settings-changed`
+    // listener registered in `spawn_decision_watcher` — the listener
+    // resets it to `false` after the user saves a key, so a later
+    // reset (or a future watcher restart) can re-trigger the hint.
+    std::thread::sleep(Duration::from_millis(FIRST_RUN_SETUP_DELAY_MS));
+    if !*setup_emitted.lock().unwrap() && !path.exists() && !has_anthropic_env_key() {
+        let payload = serde_json::json!({
+            "state": "needs-setup",
+            "monologue": "Tap me — let's set up your AI provider",
+        });
+        let _ = app.emit_to(PET_LABEL, "loop:state", payload.clone());
+        let _ = app.emit_to(PET_BUBBLE_LABEL, "loop:state", payload);
+        // Show the bubble so the monologue is immediately visible.
+        // The card is already self-shown by `loomi-card.html` on first
+        // load (see comment above), so we skip it here to avoid a
+        // duplicate show race that could disturb the focus order.
+        super::show_bubble_window(app);
+        *setup_emitted.lock().unwrap() = true;
+    }
+
     loop {
         std::thread::sleep(Duration::from_millis(POLL_MS));
 
@@ -68,6 +150,9 @@ fn watch_loop(app: &AppHandle) {
             continue;
         }
         last_mtime = Some(mtime);
+        // File appeared — clear the setup guard so a future deletion
+        // re-triggers the hint on next watcher restart.
+        *setup_emitted.lock().unwrap() = false;
 
         let Ok(bytes) = std::fs::read(&path) else { continue };
         let Ok(snap) = serde_json::from_slice::<DecisionsSnap>(&bytes) else {
@@ -671,6 +756,23 @@ fn current_hour_local() -> u32 {
         .map(|d| d.as_secs())
         .unwrap_or(0);
     ((secs / 3600 + 8) % 24) as u32
+}
+
+/// Whether the process has a usable Anthropic env key. Mirrors the
+/// `systemDefaults.anthropic_compatible.hasApiKey` check on the JS side
+/// (see `apps/web/app/(chat)/api/preferences/ai/route.ts`). We use this
+/// to decide whether the watcher should emit the `needs-setup` hint —
+/// if an env key is set, the user is already configured and we stay
+/// silent. User-set DB keys aren't visible to the watcher; the pet card
+/// surfaces those via its own `apply()` flow.
+fn has_anthropic_env_key() -> bool {
+    let set = |name: &str| {
+        std::env::var(name)
+            .ok()
+            .map(|v| !v.trim().is_empty())
+            .unwrap_or(false)
+    };
+    set("ANTHROPIC_API_KEY") || set("ANTHROPIC_AUTH_TOKEN")
 }
 
 #[cfg(test)]

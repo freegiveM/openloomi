@@ -17,6 +17,7 @@ import { ConversationApiOnboardingGuard } from "@/components/conversation-api-on
 import { ScreenMemoryCaptureProvider } from "@/components/chronicle/screen-memory-provider";
 import { LoopNavBridge } from "@/components/loop/loop-nav-bridge";
 import { PetChatBridge } from "@/components/pet/pet-chat-bridge";
+import { ScheduledJobsInit } from "@/components/scheduled-jobs-init";
 
 export default async function Layout({
   children,
@@ -64,6 +65,12 @@ export default async function Layout({
                         components/pet/pet-chat-bridge.tsx for the why.
                       */}
                       <PetChatBridge />
+                      {/* Drive the local scheduler + ensure-loop-jobs off
+                          useSession(). Mounted here (inside SessionProvider)
+                          so it can see auth state transitions, not just the
+                          first 3s window the previous setTimeout-based
+                          version raced against. Tauri-only. */}
+                      <ScheduledJobsInit />
                       <SidePanelShell>{children}</SidePanelShell>
                     </GlobalInsightDrawerProvider>
                   </ChatContextProvider>

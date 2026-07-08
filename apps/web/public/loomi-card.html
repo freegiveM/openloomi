@@ -3780,15 +3780,25 @@
         }
 
         // AI settings saved → re-evaluate the missing-key state. The
-        // React side dispatches this DOM event from
-        // `apps/web/components/ai-api-settings.tsx` after a successful
-        // save or reset (see `AI_SETTINGS_CHANGED_EVENT`). This is a
-        // plain `window` event (not a Tauri event) because the
-        // settings page lives in the main webview, not in this
-        // card webview.
-        window.addEventListener("openloomi:ai-settings-changed", () => {
-          refreshAiConfig();
-        });
+        // React side dispatches both a DOM event (for same-webview
+        // listeners — kept for backwards compat / dev-panel previews)
+        // and a Tauri event (which actually reaches this card webview
+        // from the main webview; the two webviews are separate
+        // browser contexts in Tauri 2.x, so `window.dispatchEvent`
+        // doesn't cross them). Without the Tauri mirror the card
+        // would keep showing the no-api-key CTA even after a
+        // successful save.
+        const onAiSettingsChanged = () => refreshAiConfig();
+        window.addEventListener(
+          "openloomi:ai-settings-changed",
+          onAiSettingsChanged,
+        );
+        if (tauri && tauri.event && tauri.event.listen) {
+          tauri.event.listen(
+            "openloomi:ai-settings-changed",
+            onAiSettingsChanged,
+          );
+        }
 
         // Clear devForm when the user dismisses the decision that the
         // dev panel injected, so the card returns to natural routing.

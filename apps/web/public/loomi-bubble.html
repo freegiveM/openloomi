@@ -249,6 +249,15 @@
           thinking: { lead: "Just a sec", sub: "reading the room" },
           working: { lead: "On it", sub: "I'll ping you when ready" },
           greet: { lead: "Hey", sub: "I see you" },
+          // Emitted once by the watcher on a fresh install when no
+          // ANTHROPIC_* env key is set AND `~/.openloomi/loop/decisions.json`
+          // doesn't exist yet. Tapping the bubble opens the pet card,
+          // which in turn surfaces the AI settings CTA via its `apply()`
+          // flow (see Fix 1 on `GET /api/preferences/ai`).
+          "needs-setup": {
+            lead: "Let's get you set up",
+            sub: "tap me to add your AI provider",
+          },
         };
 
         // A pending decision wins over state — once `loop:decision`
@@ -332,16 +341,28 @@
         // cancel the dismiss. The host listens for the auto-close
         // event and hides the bubble window.
         const AUTO_DISMISS_MS = 4500;
+        // On a fresh install the bubble carries the "needs-setup" CTA
+        // (the watcher emits `loop:state` with `needs-setup` once when
+        // `~/.openloomi/loop/decisions.json` is missing and no env API
+        // key is set). The default 4.5s dismiss is too aggressive for
+        // that prompt — users miss the sub line ("tap me to add your
+        // AI provider") and assume the app is dead. Give it more
+        // breathing room; the user can still click through to the card
+        // early, and any subsequent `loop:decision` / state flip falls
+        // back to AUTO_DISMISS_MS as expected.
+        const SETUP_DISMISS_MS = 12000;
         let autoHideTimer = null;
         function scheduleAutoHide() {
           if (autoHideTimer) clearTimeout(autoHideTimer);
+          const delay =
+            currentState === "needs-setup" ? SETUP_DISMISS_MS : AUTO_DISMISS_MS;
           autoHideTimer = setTimeout(() => {
             autoHideTimer = null;
             const t = window.__TAURI__;
             if (t && t.event && t.event.emit) {
               t.event.emit("pet:bubble-auto-close");
             }
-          }, AUTO_DISMISS_MS);
+          }, delay);
         }
         function cancelAutoHide() {
           if (autoHideTimer) {

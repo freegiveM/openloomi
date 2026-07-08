@@ -299,7 +299,24 @@ export function AiApiSettings() {
         apiKey: "",
         enabled: savedSetting.enabled,
       });
+      // Notify listeners in the same webview (kept for backwards compat).
       window.dispatchEvent(new Event(AI_SETTINGS_CHANGED_EVENT));
+      // Mirror as a Tauri event so the pet card webview (separate origin
+      // and therefore a separate window — `window.dispatchEvent` doesn't
+      // cross webviews in Tauri 2.x) re-evaluates its no-api-key layout,
+      // and the Rust watcher re-emits a natural idle/sleeping state so
+      // the pet sprite leaves the "needs-setup" mode. Without this the
+      // pet card kept showing the missing-key CTA even after a
+      // successful save. See loomi-card.html:3789 and
+      // apps/web/src-tauri/src/pet/watcher.rs.
+      const tauriEvent = (
+        window as unknown as {
+          __TAURI__?: { event?: { emit?: (name: string) => unknown } };
+        }
+      ).__TAURI__;
+      if (tauriEvent?.event?.emit) {
+        tauriEvent.event.emit(AI_SETTINGS_CHANGED_EVENT);
+      }
       if (
         showMissingApiKeyNotice &&
         providerType === "anthropic_compatible" &&
@@ -358,7 +375,18 @@ export function AiApiSettings() {
         [providerType]: "",
       }));
       updateDraft(providerType, createDraft());
+      // Same rationale as the save path above — fire both the DOM event
+      // (legacy listeners in the same webview) and the Tauri event
+      // (pet card webview + Rust watcher).
       window.dispatchEvent(new Event(AI_SETTINGS_CHANGED_EVENT));
+      const tauriEvent = (
+        window as unknown as {
+          __TAURI__?: { event?: { emit?: (name: string) => unknown } };
+        }
+      ).__TAURI__;
+      if (tauriEvent?.event?.emit) {
+        tauriEvent.event.emit(AI_SETTINGS_CHANGED_EVENT);
+      }
       toast({
         type: "success",
         description: t(

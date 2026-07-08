@@ -10,7 +10,6 @@ import { SonnerToaster } from "@/components/sonner-toaster";
 import { MotionConfigProvider } from "@/components/motion-config-provider";
 import { GeddleScript } from "@/components/geddle-script";
 import { AppProviders } from "@/components/app-providers";
-import { ScheduledJobsInit } from "@/components/scheduled-jobs-init";
 import { UpdateBanner } from "@/components/update-banner";
 
 const notoSansSC = Noto_Sans_SC({
@@ -52,8 +51,6 @@ export default async function RootLayout({
         </Suspense>
       </head>
       <body className="antialiased" suppressHydrationWarning>
-        {/* Only initialize ScheduledJobs in Tauri environment */}
-        <ScheduledJobsInit />
         <ThemeProvider
           attribute="class"
           defaultTheme="light"
