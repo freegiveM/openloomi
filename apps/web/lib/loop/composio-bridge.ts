@@ -290,12 +290,21 @@ export async function probeConnectorState(
       // discovery (skill / CLI / insights) and pings 5 toolkits. Cold
       // skill loads, OAuth token refresh, and per-toolkit network
       // round-trips each add latency; in real environments we've seen
-      // the tail of this distribution land around 60–90s. 120s gives a
-      // comfortable buffer without leaving a hung request alive forever.
-      // The full tick uses 15m because it does much more work (signal
-      // pull + enrich + classify + persist); the probe is intentionally
-      // shorter than that.
-      timeoutMs: 120 * 1000,
+      // the tail of this distribution land around 60–90s, and a
+      // particularly cold first probe (just-installed user, no cached
+      // composio surface, all 5 toolkits to enumerate) can stretch
+      // well past 2 minutes. 6 minutes gives a comfortable buffer
+      // without leaving a hung request alive forever. The full tick
+      // uses 15m because it does much more work (signal pull + enrich
+      // + classify + persist); the probe is intentionally shorter than
+      // that.
+      //
+      // This is the *full* probe timeout (used by `refreshConnectors()`
+      // without `silent`). The card-open path uses a 6s `silent` timeout
+      // + 30s cooldown to bound the worst case, but a fire-and-forget
+      // probe triggered by saving the AI key (PUT /api/preferences/ai)
+      // uses this larger budget so a cold install can actually land.
+      timeoutMs: 6 * 60 * 1000,
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);

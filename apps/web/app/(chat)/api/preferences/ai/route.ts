@@ -204,6 +204,45 @@ export async function PUT(request: Request) {
       ...parsed.data,
     });
 
+    // Save was the moment the user expressed intent: "I want Loomi to
+    // start working with this provider". Kick off a *real* connector
+    // probe in the background (non-silent → 6-minute budget) so the
+    // next Loomi Online card open sees a populated cache instead of
+    // the FALLBACK sentinel. The `silent` path the card auto-uses on
+    // open is bounded to 6s, which is too tight for a cold first
+    // probe (composio surface discovery + 5 toolkits; real tail is
+    // 60–90s, can stretch past 2 min on a fresh install). Without
+    // this fire-and-forget the user lands on the card and sees
+    // "Awaiting first probe" gray pills until the 30s cooldown
+    // window expires AND they reopen the card. Fire-and-forget so
+    // the PUT response stays snappy; the user already saw the
+    // success toast and can navigate to the card whenever.
+    //
+    // We also clear any stale `probeCooldownUntil` marker on the
+    // disk cache so the card's next silent probe (if it fires
+    // before the background one lands) isn't short-circuited by a
+    // cooldown from a prior timeout.
+    try {
+      const { clearProbeCooldown, refreshConnectors } =
+        await import("@/lib/loop/connectors");
+      clearProbeCooldown();
+      void refreshConnectors().catch((probeErr) => {
+        console.warn(
+          "[AI Preferences] background connector probe failed:",
+          probeErr,
+        );
+      });
+    } catch (importErr) {
+      // If the dynamic import fails (loop module not available in this
+      // route's runtime — shouldn't happen, but defensively swallow)
+      // we still want the save to succeed; the user can trigger a
+      // manual refresh from the card.
+      console.warn(
+        "[AI Preferences] could not import loop/connectors for background probe:",
+        importErr,
+      );
+    }
+
     return NextResponse.json({ setting });
   } catch (error) {
     console.error("[AI Preferences] Failed to save settings", error);

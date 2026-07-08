@@ -284,6 +284,34 @@ function writeProbeCooldownMarker(): void {
 }
 
 /**
+ * Clear any pending `probeCooldownUntil` marker on the on-disk cache.
+ *
+ * Intended for callers that have just kicked off a *real* (non-silent)
+ * probe in the background and want the next card-open `silent` probe
+ * to fall through to the cache (which the background probe is
+ * populating) rather than be short-circuited by the stale marker left
+ * over from a prior timeout. Mirrors `writeProbeCooldownMarker`'s
+ * "preserve existing snapshot" policy — we only drop the marker
+ * field, the connector rows stay.
+ *
+ * Swallows all errors (cooldown is an optimization, not correctness).
+ */
+export function clearProbeCooldown(): void {
+  try {
+    if (!existsSync(LOOP_PATHS.connectors)) return;
+    const raw = JSON.parse(
+      readFileSync(LOOP_PATHS.connectors, "utf8"),
+    ) as ConnectorCacheWithCooldown;
+    if (typeof raw.probeCooldownUntil !== "string") return;
+    raw.probeCooldownUntil = undefined;
+    ensureDirs();
+    writeFileSync(LOOP_PATHS.connectors, JSON.stringify(raw, null, 2));
+  } catch {
+    /* swallow — cooldown is an optimization, not a correctness lever */
+  }
+}
+
+/**
  * Force-refresh by dispatching a small "connector probe" prompt to the
  * agent via `composio-bridge.ts`. The agent inspects the active
  * composio surfaces (skill / CLI / insights) and returns a fresh
