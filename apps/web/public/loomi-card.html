@@ -382,6 +382,106 @@
       }
 
       /* ============================================================
+         Inline draft editor (draft_reply)
+         Hidden by default; toggled on by `setEditMode(true)`. Replaces
+         the action footer (and the chrome above it) with a Subject
+         input + Body textarea + Save / Save & Run / Cancel buttons so
+         the user can tweak a Gmail draft before sending. Lives inside
+         the [data-layout="decision"] section.
+         ============================================================ */
+      #dec-editor {
+        display: none;
+        flex-direction: column;
+        gap: 6px;
+        flex: 1 1 auto;
+        min-height: 0;
+      }
+      #dec-editor.show {
+        display: flex;
+      }
+      /* The page-level `html, body { user-select: none }` (line 75) blocks
+         text selection in any descendant input/textarea. Re-enable it
+         only for the editor so users can copy/edit text normally. */
+      #dec-editor,
+      #dec-editor-subject,
+      #dec-editor-body {
+        -webkit-user-select: text;
+        user-select: text;
+      }
+      #dec-editor label {
+        font-family: var(--font-mono);
+        font-size: 9px;
+        font-weight: 900;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--blue-dark);
+      }
+      #dec-editor-subject,
+      #dec-editor-body {
+        font-family: var(--font-body);
+        font-size: 12px;
+        font-weight: 600;
+        line-height: 1.4;
+        color: var(--ink);
+        background: var(--panel-soft);
+        border: 1px solid var(--blue-soft);
+        border-radius: 8px;
+        padding: 8px 10px;
+        width: 100%;
+      }
+      #dec-editor-subject {
+        height: 32px;
+      }
+      #dec-editor-body {
+        flex: 1 1 auto;
+        min-height: 80px;
+        resize: vertical;
+        caret-color: var(--ink);
+      }
+      #dec-editor-subject:focus,
+      #dec-editor-body:focus {
+        outline: none;
+        border-color: var(--blue);
+        background: #fff;
+      }
+      #dec-editor-body::placeholder {
+        color: var(--muted);
+        opacity: 0.7;
+      }
+      #dec-editor-error {
+        font-size: 10px;
+        font-weight: 700;
+        color: var(--red);
+        line-height: 1.3;
+        display: none;
+      }
+      #dec-editor-error.show {
+        display: block;
+      }
+      #dec-editor-footer {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 6px;
+        flex: 0 0 auto;
+      }
+      /* When the editor is open, hide the chrome blocks above it so the
+         textarea gets the room it needs inside the 360×420 card. The
+         editor itself takes their place. Toggled via .editing on the
+         card root, set/cleared by setEditMode(). */
+      .card.editing #dec-recommendation,
+      .card.editing #dec-source-chain,
+      .card.editing #dec-confidence-row,
+      .card.editing #dec-dialogue,
+      .card.editing #dec-evidence,
+      .card.editing #dec-status,
+      .card.editing #dec-footer {
+        display: none;
+      }
+      .card.editing [data-layout="decision"] {
+        gap: 6px;
+      }
+
+      /* ============================================================
          Layout: CONNECTION  (Form 1 · connection-check)
          Demo: .connection-panel + .connector-list + .connector-row
                + .pet-status + .queue-row
@@ -1435,7 +1535,7 @@
           <span class="label">RECOMMEND</span>
           <span class="body" id="dec-recommendation-body">…</span>
         </div>
-        <div class="confidence-row">
+        <div class="confidence-row" id="dec-confidence-row">
           <span class="label">CONFIDENCE</span>
           <div class="confidence-track">
             <div
@@ -1456,6 +1556,60 @@
              the trail without losing the action context. The toast still
              fires for redundancy but the banner is the primary signal. -->
         <div class="status-banner" id="dec-status"></div>
+        <!-- Inline draft editor — hidden by default. Toggled on for
+             draft_reply when the user clicks ↗ Edit. Replaces the
+             footer (Save & Run / Save / Cancel). The chrome above
+             (recommendation / source chain / confidence / dialogue /
+             evidence) is hidden by the .card.editing class so the
+             textarea has room inside the 360×420 window. Subject
+             pre-fills from `decision.action.params.subject`; body
+             starts empty with a "Write your reply…" placeholder. -->
+        <div id="dec-editor">
+          <label for="dec-editor-subject">SUBJECT</label>
+          <input
+            id="dec-editor-subject"
+            type="text"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="Subject"
+          />
+          <label for="dec-editor-body">BODY</label>
+          <textarea
+            id="dec-editor-body"
+            rows="6"
+            placeholder="Write your reply…"
+          ></textarea>
+          <div id="dec-editor-error" role="alert"></div>
+          <div id="dec-editor-footer">
+            <button
+              class="primary"
+              id="dec-editor-save-run"
+              data-editor-action="save-run"
+              type="button"
+              title="Save the draft and schedule the send"
+            >
+              Save &amp; Run
+            </button>
+            <button
+              class="ghost"
+              id="dec-editor-save"
+              data-editor-action="save"
+              type="button"
+              title="Save the draft and close the editor"
+            >
+              Save
+            </button>
+            <button
+              class="danger"
+              id="dec-editor-cancel"
+              data-editor-action="cancel"
+              type="button"
+              title="Discard local edits and close the editor"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
         <!-- Footer is JS-rendered per decision.type (see TYPE_ACTIONS in
              the inline script below). RSVP gets 4 buttons
              (Yes/No/Maybe/Skip); every other type gets 2-3 typed
@@ -1615,6 +1769,15 @@
         // footer with an extra Cancel button + countdown banner so the
         // user knows what's about to happen.
         let pendingAction = null;
+        // Polling fallback for the "Done · closing…" UX path. The
+        // watcher emits `loop:decision` when the scheduled action
+        // fires, but if that event is delayed or the watcher restarts
+        // mid-action we still want the card's Cancel button to clear
+        // promptly. `pendingActionPollTimer` is the setInterval handle;
+        // `pollInFlight` is the in-flight guard so we never pile up
+        // concurrent requests if the network is slow.
+        let pendingActionPollTimer = null;
+        let pollInFlight = false;
         // Dev-panel override: when the user clicks a Form button, the dev
         // panel broadcasts `pet:dev-form` with the scene key. The card
         // pins the matching layout regardless of pet state — without this
@@ -1622,6 +1785,13 @@
         // collide on `thinking`. Cleared when the user dismisses the
         // triggering decision, so the card returns to natural routing.
         let devForm = null;
+        // Inline draft-editor state (draft_reply ↗ Edit). `editMode` is
+        // toggled by setEditMode(); `saving` is true while a PATCH
+        // /api/loop/decision/:id is in flight so the editor buttons
+        // can't double-fire and the user gets the "Saving…" status
+        // banner instead of a blank gap.
+        let editMode = false;
+        let saving = false;
 
         /** Seconds from `now` until the given ISO timestamp (clamped >= 0). */
         function secondsUntil(iso) {
@@ -1705,13 +1875,13 @@
               action: "run",
               label: "▶ Send",
               variant: "primary",
-              tip: "Send the drafted email as-is, no edits",
+              tip: "Send the drafted email (or the edited version if you saved one) as-is",
             },
             {
-              action: "open",
+              action: "edit",
               label: "↗ Edit",
               variant: "ghost",
-              tip: "Open the draft in the dashboard to tweak the body before sending",
+              tip: "Edit the subject and body inline before sending",
             },
             {
               action: "dismiss",
@@ -2353,6 +2523,245 @@
           }
         }
 
+        // ---------- Inline draft editor (draft_reply) ----------
+        // Toggles the subject/body form on the decision layout. When
+        // `on` is true:
+        //   - hides the chrome (recommendation / source chain /
+        //     confidence / dialogue / evidence / status) so the
+        //     textarea has room inside the 360×420 card
+        //   - pre-fills the inputs from `decision.context.draft` if
+        //     present, otherwise from `decision.action.params.subject`
+        //     and "" for the body
+        //   - clears any previous validation error
+        //   - re-renders the action footer (so the Send/Edit/Discard
+        //     buttons disappear — the editor footer is the new action)
+        //   - focuses the body and places the caret at the end
+        // When `on` is false:
+        //   - clears the validation error
+        //   - re-renders the footer to restore Send/Edit/Discard
+        // The form is always present in the DOM (just hidden) so we
+        // don't have to wait for HTML parsing on every toggle.
+        function setEditMode(on) {
+          editMode = !!on;
+          const editor = document.getElementById("dec-editor");
+          const subject = document.getElementById("dec-editor-subject");
+          const body = document.getElementById("dec-editor-body");
+          const err = document.getElementById("dec-editor-error");
+          if (editor) editor.classList.toggle("show", editMode);
+          // The .editing class on the card root hides the chrome blocks
+          // via the CSS rules in the editor section above. Without
+          // these blocks the textarea fills the rest of the card.
+          card.classList.toggle("editing", editMode);
+          if (editMode) {
+            // Pre-fill from saved draft (round-trip from a previous
+            // Save) if present, else seed the subject from the
+            // decision's action.params and leave the body empty so the
+            // user starts from scratch. action.params.subject is the
+            // subject Loomi's first pass chose.
+            const saved = decision?.context?.draft;
+            const seedSubject =
+              saved &&
+              typeof saved.subject === "string" &&
+              saved.subject.length > 0
+                ? saved.subject
+                : typeof decision?.action?.params?.subject === "string"
+                  ? decision.action.params.subject
+                  : "";
+            const seedBody =
+              saved && typeof saved.body === "string" ? saved.body : "";
+            if (subject) subject.value = seedSubject;
+            if (body) body.value = seedBody;
+            if (err) {
+              err.textContent = "";
+              err.classList.remove("show");
+            }
+            // Re-render the footer so the Send/Edit/Discard buttons go
+            // away (the editor footer is the new action surface).
+            renderDecisionFooter();
+            // Focus on next paint so the layout has settled and the
+            // textarea is actually focusable. Caret at end so the user
+            // can keep typing without manually re-positioning.
+            requestAnimationFrame(() => {
+              if (body && document.activeElement !== body) {
+                body.focus();
+                const len = body.value.length;
+                try {
+                  body.setSelectionRange(len, len);
+                } catch (_) {
+                  /* some input types don't support setSelectionRange */
+                }
+              }
+            });
+          } else {
+            if (err) {
+              err.textContent = "";
+              err.classList.remove("show");
+            }
+            renderDecisionFooter();
+          }
+        }
+
+        // Persist the current editor contents to `context.draft` via
+        // PATCH /api/loop/decision/:id. If `thenRun` is true, schedules
+        // a Run immediately after the PATCH succeeds (so the runner
+        // reads the freshly-saved draft). On success: updates the
+        // in-memory `decision.context.draft`, closes the editor, and
+        // toasts "Draft saved". On 409 (decision no longer pending):
+        // closes the editor and toasts a different message — the draft
+        // text is intentionally dropped since the user didn't beat the
+        // race. On any other error: keeps the editor open and surfaces
+        // the error via the status banner.
+        async function saveDraft(opts) {
+          if (!decision || !decision.id) return;
+          if (saving) return;
+          const thenRun = !!(opts && opts.thenRun);
+          const subjectEl = document.getElementById("dec-editor-subject");
+          const bodyEl = document.getElementById("dec-editor-body");
+          const errEl = document.getElementById("dec-editor-error");
+          const subject = subjectEl ? subjectEl.value : "";
+          const body = bodyEl ? bodyEl.value : "";
+          // Empty-body guard — refuse to save an empty reply. Focus
+          // the textarea so the user can start typing without
+          // re-positioning the cursor, and surface an inline error
+          // instead of closing the editor.
+          if (body.trim().length === 0) {
+            if (errEl) {
+              errEl.textContent =
+                "Body is required — write something before saving.";
+              errEl.classList.add("show");
+            }
+            if (bodyEl) bodyEl.focus();
+            return;
+          }
+          saving = true;
+          setStatus("running", "Saving…");
+          // Disable the three editor buttons so a second click can't
+          // pile up concurrent PATCHes.
+          const btns = document.querySelectorAll("[data-editor-action]");
+          btns.forEach((b) => (b.disabled = true));
+          try {
+            const res = await fetch(
+              `${window.__OPENLOOMI_API__ || ""}/api/loop/decision/${encodeURIComponent(decision.id)}`,
+              {
+                method: "PATCH",
+                headers: { "content-type": "application/json" },
+                credentials: "include",
+                body: JSON.stringify({
+                  draft: { subject: subject, body: body },
+                }),
+              },
+            );
+            if (res.status === 401) {
+              throw new Error("auth required (sign in again)");
+            }
+            if (res.status === 413) {
+              throw new Error("body too long (50k char max)");
+            }
+            if (res.status === 409) {
+              // Decision moved to done/dismissed between when the user
+              // opened the editor and when we PATCHed. The draft is
+              // lost (acceptable — the user didn't get to save in
+              // time). Close the editor and tell them.
+              setEditMode(false);
+              showToast(
+                "This decision was already handled — closing editor.",
+                true,
+              );
+              return;
+            }
+            if (!res.ok) {
+              const text = await res.text().catch(() => "");
+              throw new Error(
+                `HTTP ${res.status}${text ? `: ${text.slice(0, 120)}` : ""}`,
+              );
+            }
+            // Mirror the server state into the in-memory decision so
+            // the editor pre-fill, the runner, and the "Send" action
+            // all see the same draft without re-fetching.
+            decision.context = decision.context || {};
+            decision.context.draft = { subject: subject, body: body };
+            setEditMode(false);
+            showToast("Draft saved", false);
+            if (thenRun) {
+              // Hand off to the existing scheduler path. The runner
+              // reads `decision.context.draft` (see runner.ts buildPrompt)
+              // and uses the subject/body verbatim — no re-draft.
+              postAction("run", undefined);
+            }
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            // Keep the editor open so the user can retry. Status
+            // banner shows the error; the inline error stays clear so
+            // the banner is the single source of truth.
+            setStatus("error", `Save failed: ${msg}`);
+            if (errEl) {
+              errEl.textContent = `Save failed: ${msg}`;
+              errEl.classList.add("show");
+            }
+          } finally {
+            saving = false;
+            btns.forEach((b) => (b.disabled = false));
+          }
+        }
+
+        // Delegated click handler for the editor's three buttons.
+        // Lives on the card root (same delegation pattern as the rest
+        // of the card) and matches `[data-editor-action]`. Kept
+        // separate from the main click handler so the dispatch is
+        // trivial — no risk of the schedule-fall-through eating an
+        // editor click.
+        card.addEventListener("click", (e) => {
+          const btn = e.target.closest("[data-editor-action]");
+          if (!btn) return;
+          if (btn.disabled) return;
+          const which = btn.dataset.editorAction;
+          if (which === "save-run") saveDraft({ thenRun: true });
+          else if (which === "save") saveDraft({ thenRun: false });
+          else if (which === "cancel") setEditMode(false);
+        });
+
+        // Keyboard shortcuts on the body textarea. The subject input
+        // intentionally does NOT get the Cmd+Enter shortcut — pressing
+        // Enter there is the natural "next field" gesture and we
+        // don't want to hijack it.
+        const editorBodyEl = document.getElementById("dec-editor-body");
+        if (editorBodyEl) {
+          editorBodyEl.addEventListener("keydown", (e) => {
+            // IME composition guard: don't fire on Escape while a CJK
+            // / Korean / Japanese composition is in progress — the
+            // user is mid-IME and pressing Esc to dismiss a candidate
+            // list, not the editor.
+            if (e.key === "Escape" && !e.isComposing) {
+              e.preventDefault();
+              setEditMode(false);
+              return;
+            }
+            // Cmd/Ctrl + Enter → Save & Run. Avoids Shift+Enter
+            // (newline) and bare Enter (newline) so the natural
+            // typing flow is preserved.
+            if (
+              (e.metaKey || e.ctrlKey) &&
+              e.key === "Enter" &&
+              !e.isComposing
+            ) {
+              e.preventDefault();
+              saveDraft({ thenRun: true });
+              return;
+            }
+            // Cmd/Ctrl + S → Save (no run). Browsers don't normally
+            // intercept Cmd+S in a textarea, but webview shells do —
+            // we still want a clean save shortcut.
+            if (
+              (e.metaKey || e.ctrlKey) &&
+              (e.key === "s" || e.key === "S") &&
+              !e.isComposing
+            ) {
+              e.preventDefault();
+              saveDraft({ thenRun: false });
+            }
+          });
+        }
+
         // ---------- Brief layout (Form 6) ----------
         function renderBrief() {
           // Metrics pull from the brief payload if present, else derive
@@ -2642,6 +3051,20 @@
             }
             return;
           }
+          if (action === "edit") {
+            // Inline editor for draft_reply. Opens the subject/body form
+            // (replaces the footer) so the user can tweak the draft
+            // before clicking ▶ Send. Blocked while a scheduled action
+            // is pending — editing the draft mid-flight would race with
+            // the runner reading `context.draft`. The user must Cancel
+            // the scheduled action first (or wait for it to fire).
+            if (pendingAction && pendingAction.decision_id === decision.id) {
+              showToast("Cancel the scheduled action first to edit.", true);
+              return;
+            }
+            setEditMode(true);
+            return;
+          }
           // Run / Dismiss / Dry / Promote: route through the one-shot
           // scheduler (POST /api/loop/action/schedule). The card no
           // longer drives the agent directly — instead it creates a
@@ -2696,6 +3119,10 @@
               action: apiAction,
               decision_id: id,
             };
+            // Start the polling fallback in parallel with the watcher
+            // event listener. Whichever lands first wins; both paths
+            // are idempotent via `clearPendingActionOnTerminal`.
+            startPendingActionPoll();
             const verb = apiAction === "dismiss" ? "Dismissal" : "Action";
             const inS = secondsUntil(schedule.fire_at);
             setStatus(
@@ -2712,6 +3139,10 @@
             setStatus("error", `Schedule failed: ${msg}`);
             showToast(`Schedule failed: ${msg}`, true);
             setBusy(false);
+            // Defensive: in case the error happened mid-assignment and
+            // `pendingAction` got partially populated, ensure no
+            // orphan poll keeps running. Idempotent.
+            stopPendingActionPoll();
             return;
           }
           // Hand off — the watcher will emit `loop:decision` when the
@@ -2829,12 +3260,18 @@
               // result.
               setStatus("running", "Already fired — waiting for result…");
               showToast("Action already fired — waiting for result.", false);
+              // Deliberately do NOT stop the poll here: we want
+              // pollPendingAction to keep firing until the terminal
+              // status arrives so the banner updates from "waiting for
+              // result" to "Done · closing…" without further user
+              // input.
               return;
             }
             if (!res.ok) {
               throw new Error(data?.error || `cancel HTTP ${res.status}`);
             }
             pendingAction = null;
+            stopPendingActionPoll();
             setStatus("idle", "Cancelled");
             showToast("Action cancelled.", false);
             renderDecisionFooter();
@@ -2845,6 +3282,110 @@
           } finally {
             setBusy(false);
           }
+        }
+
+        // ---------- Polling fallback for scheduled action completion ----------
+        // The watcher emits `loop:decision` for terminal transitions
+        // (status=done|dismissed), but if that event is delayed or the
+        // watcher restarts mid-action we still need to clear the UI.
+        // The polling fallback hits
+        // `/api/loop/action/by-decision/<decision_id>` every 3s and
+        // reads the derived `status` field. On a terminal status
+        // (completed | failed | not_found) it clears `pendingAction`
+        // and renders the appropriate "closing…" banner. Idempotent
+        // — both the event path and the poll path route through
+        // `clearPendingActionOnTerminal`, so whichever lands first
+        // wins.
+
+        /**
+         * Begin polling `/api/loop/action/by-decision/<id>` every
+         * 3s while `pendingAction` is set. Safe to call multiple
+         * times: clears any existing timer first.
+         */
+        function startPendingActionPoll() {
+          stopPendingActionPoll();
+          // Fire one tick immediately so a fast-firing action
+          // doesn't have to wait the full 3s for the first check.
+          pollPendingAction();
+          pendingActionPollTimer = setInterval(pollPendingAction, 3000);
+        }
+
+        /**
+         * Stop polling. Called from every termination path
+         * (cancel success, event-driven terminal, schedule error,
+         * not_found). Idempotent.
+         */
+        function stopPendingActionPoll() {
+          if (pendingActionPollTimer != null) {
+            clearInterval(pendingActionPollTimer);
+            pendingActionPollTimer = null;
+          }
+        }
+
+        /**
+         * One tick of the poll loop. Reads the derived status and,
+         * if terminal, clears the pending state via
+         * `clearPendingActionOnTerminal`. Skips if a previous tick
+         * is still in flight or if `pendingAction` has been cleared
+         * by another path (cancel / event).
+         */
+        async function pollPendingAction() {
+          if (!pendingAction || pollInFlight) return;
+          const target = pendingAction;
+          pollInFlight = true;
+          try {
+            const res = await fetch(
+              `${window.__OPENLOOMI_API__ || ""}/api/loop/action/by-decision/${encodeURIComponent(target.decision_id)}`,
+              { credentials: "include" },
+            );
+            if (!res.ok) return; // transient — try again next tick
+            const data = await res.json().catch(() => ({}));
+            const status = data && data.status;
+            if (
+              status === "completed" ||
+              status === "failed" ||
+              status === "not_found"
+            ) {
+              clearPendingActionOnTerminal(status);
+            }
+            // status === "pending" → action hasn't fired yet; keep
+            // polling. status === "running" → in-flight; keep
+            // polling.
+          } catch (_) {
+            // Network blip; next tick will retry.
+          } finally {
+            pollInFlight = false;
+          }
+        }
+
+        /**
+         * Idempotent terminal-state handler. Guards on
+         * `pendingAction` so concurrent paths (cancel + event +
+         * poll) cannot double-fire UI updates. Updates the banner
+         * to "Done · closing…" / "Failed · closing…" /
+         * "Cancelled · closing…" based on the status string and
+         * then nulls `pendingAction` and stops the poll.
+         */
+        function clearPendingActionOnTerminal(status) {
+          if (!pendingAction) return;
+          const verb =
+            status === "completed"
+              ? "Done"
+              : status === "failed"
+                ? "Failed"
+                : "Cancelled";
+          setStatus(
+            status === "failed" ? "error" : "success",
+            `${verb} · closing…`,
+          );
+          showToast(
+            `${verb} · check Loop for the result.`,
+            status === "failed",
+          );
+          pendingAction = null;
+          setBusy(false);
+          stopPendingActionPoll();
+          renderDecisionFooter();
         }
 
         // Periodically refresh the Cancel button label so the countdown
@@ -2969,6 +3510,33 @@
               showToast(`${verb} · check Loop for the result.`, false);
               pendingAction = null;
               setBusy(false);
+              // Stop the polling fallback now that the event path has
+              // cleared the state. Idempotent: if the poll already
+              // cleared it, this is a no-op.
+              stopPendingActionPoll();
+            }
+            // If the user was editing a draft when the decision was
+            // moved out of `pending` (e.g. by an external run / dismiss
+            // the user didn't initiate from this card, or by a race
+            // with the cancel-pending path), close the editor and
+            // toast so they know the in-flight text was discarded
+            // rather than silently losing it. Must run BEFORE
+            // `decision = next; apply();` so the editor closes before
+            // the layout re-renders against the new (non-pending)
+            // decision.
+            if (
+              editMode &&
+              decision &&
+              next &&
+              next.id === decision.id &&
+              next.status &&
+              next.status !== "pending"
+            ) {
+              setEditMode(false);
+              showToast(
+                "This decision was already handled — your unsaved text was discarded",
+                true,
+              );
             }
             decision = next;
             apply();

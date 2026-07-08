@@ -40,12 +40,24 @@ pub fn spawn_decision_watcher(app: AppHandle) {
         .expect("spawn loomi-pet watcher");
 }
 
+/// Cap on the `recently_completed` ring buffer. Bounds memory under
+/// pathological fan-out (many pending → done transitions in one poll
+/// window). 16 is generous: in practice transitions are minutes apart.
+const RECENTLY_COMPLETED_CAP: usize = 16;
+
 fn watch_loop(app: &AppHandle) {
     let path = resolve_decisions_path(app);
     let mut last_mtime: Option<SystemTime> = None;
     let mut last_buckets: (usize, usize, usize) = (0, 0, 0);
     let mut last_decision_ts: Option<String> = None;
     let mut last_top_id: Option<String> = None;
+    // Track ids that were pending on the previous poll so we can detect
+    // transitions out of `pending` and emit a terminal `loop:decision`
+    // payload (status=done | dismissed). Without this the pet card's
+    // Cancel button can stay stuck after countdown because the watcher
+    // only emitted `loop:decision` for the *new* top-pending id.
+    let mut last_pending_ids: Vec<String> = Vec::new();
+    let mut recently_completed: Vec<(String, String)> = Vec::new();
 
     loop {
         std::thread::sleep(Duration::from_millis(POLL_MS));
@@ -78,16 +90,42 @@ fn watch_loop(app: &AppHandle) {
             .max();
         let needs_user = snap.pending.iter().any(|d| d.needs_user.unwrap_or(false));
         let top_pending_id = snap.pending.first().and_then(|d| d.id.clone());
+        // Snapshot the current pending ids so the transition-diff below
+        // can compare against the previous poll. We clone rather than
+        // borrow because `snap.pending` is moved through several helpers
+        // (`set_pending_decision_count` takes &usize, but future readers
+        // may consume) and a small Vec<String> is cheap.
+        let current_pending_ids: Vec<String> = snap
+            .pending
+            .iter()
+            .filter_map(|d| d.id.clone())
+            .collect();
 
         let changed = buckets != last_buckets
             || newest_ts != last_decision_ts
-            || top_pending_id != last_top_id;
+            || top_pending_id != last_top_id
+            || current_pending_ids != last_pending_ids;
         if !changed {
             continue;
+        }
+        // Detect ids that left `pending` between this poll and the last.
+        // For each, look up the terminal bucket (done → "done",
+        // dismissed → "dismissed"); fall back to "done" if the bucket
+        // moved but the item is no longer present (defensive — handles
+        // the rare case where the loop skill writes the bucket count
+        // without echoing the item). Push onto `recently_completed`
+        // capped at RECENTLY_COMPLETED_CAP (FIFO drop). We only compute
+        // this on the `changed` branch so it's cheap on idle polls.
+        for (id, status) in diff_completed_ids(&last_pending_ids, &current_pending_ids, &snap) {
+            if recently_completed.len() >= RECENTLY_COMPLETED_CAP {
+                recently_completed.remove(0);
+            }
+            recently_completed.push((id, status));
         }
         last_buckets = buckets;
         last_decision_ts = newest_ts.clone();
         last_top_id = top_pending_id.clone();
+        last_pending_ids = current_pending_ids;
 
         let (state, monologue) = map_state_to_pet(&snap, &newest_ts, needs_user);
         let state_payload = serde_json::json!({ "state": state, "monologue": monologue });
@@ -137,6 +175,23 @@ fn watch_loop(app: &AppHandle) {
             }
         }
 
+        // Drain terminal transitions: for each id that left `pending`
+        // between polls, emit a `loop:decision` payload that carries
+        // the resolved status (`done` | `dismissed`). Mirrors the
+        // bubble/card symmetry used for top-pending emissions. We
+        // intentionally do NOT auto-show card/bubble for these — the
+        // user's card is already open and the existing top-pending
+        // branch above owns visibility decisions.
+        if !recently_completed.is_empty() {
+            for (id, status) in recently_completed.iter() {
+                if let Some(payload) = build_terminal_decision_payload(id, status, &snap) {
+                    let _ = app.emit_to(PET_BUBBLE_LABEL, "loop:decision", payload.clone());
+                    let _ = app.emit_to(PET_CARD_LABEL, "loop:decision", payload);
+                }
+            }
+            recently_completed.clear();
+        }
+
         // C: emit a slim pending-list to the card so connection-check
         // (Form 1) and any layout that wants to render a queue can
         // subscribe. Top 5 entries is plenty for a 360×420 window —
@@ -161,7 +216,11 @@ fn watch_loop(app: &AppHandle) {
 /// Build the `loop:decision` payload that the bubble + card webviews
 /// listen for. Mirrors the shape consumed by `loomi-bubble.html` /
 /// `loomi-card.html` (id, type, title, dialogue, priority, source chain,
-/// why bullets).
+/// why bullets). Includes `status: "pending"` so the card can
+/// self-describe the top-pending payload against the same field
+/// contract the terminal emit uses (status=done|dismissed) — without
+/// this, the success branch in the card cannot distinguish "no payload
+/// yet" from "still pending".
 fn build_decision_payload(d: &DecItem) -> serde_json::Value {
     let priority = match d.confidence {
         Some(c) if c >= 0.85 => "p0",
@@ -186,7 +245,75 @@ fn build_decision_payload(d: &DecItem) -> serde_json::Value {
         "source_type": source_type,
         "source_ts": source_ts,
         "why": d.context.as_ref().and_then(|c| c.why.clone()).unwrap_or_default(),
+        "status": "pending",
     })
+}
+
+/// Build the `loop:decision` payload for a decision that just
+/// transitioned out of `pending`. Mirrors `build_decision_payload`'s
+/// shape (id/type/title/dialogue/priority/source/why) but stamps the
+/// resolved status so the card's terminal branch can fire. Returns
+/// `None` if we cannot find the underlying item — in that case we
+/// still emit nothing rather than fabricating a half-formed payload.
+fn build_terminal_decision_payload(
+    id: &str,
+    status: &str,
+    snap: &DecisionsSnap,
+) -> Option<serde_json::Value> {
+    let item = snap
+        .done
+        .iter()
+        .chain(snap.dismissed.iter())
+        .find(|d| d.id.as_deref() == Some(id))?;
+    let mut payload = build_decision_payload(item);
+    // `build_decision_payload` defaults to status="pending" — override
+    // with the resolved terminal status. Use a map so the order is
+    // stable for downstream consumers that key off field position.
+    if let Some(obj) = payload.as_object_mut() {
+        obj.insert("status".into(), serde_json::Value::String(status.into()));
+    }
+    Some(payload)
+}
+
+/// Pure helper: given the previous and current pending id lists,
+/// produce the (id, status) pairs that transitioned OUT of pending.
+/// Status is determined by which terminal bucket the item landed in:
+/// `snap.done` → "done", `snap.dismissed` → "dismissed". If the item
+/// is no longer present in either bucket (defensive — handles the
+/// rare case where the loop skill adjusts the bucket counts without
+/// echoing the item), we fall back to "done" so the card still clears
+/// rather than getting stuck forever.
+///
+/// Order of `out` matches the order in `prev` (stable, not sorted) so
+/// emit order on the wire is predictable across polls.
+fn diff_completed_ids(
+    prev: &[String],
+    curr: &[String],
+    snap: &DecisionsSnap,
+) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    for id in prev {
+        if curr.contains(id) {
+            continue;
+        }
+        let status = if snap.done.iter().any(|d| d.id.as_deref() == Some(id.as_str())) {
+            "done"
+        } else if snap
+            .dismissed
+            .iter()
+            .any(|d| d.id.as_deref() == Some(id.as_str()))
+        {
+            "dismissed"
+        } else {
+            // Item left pending but didn't reappear in done/dismissed.
+            // Treat as done so the card's Cancel still clears rather
+            // than getting stuck. Better to surface "Done" for a
+            // vanished decision than to wedge the UI.
+            "done"
+        };
+        out.push((id.clone(), status.to_string()));
+    }
+    out
 }
 
 /// Resolve where the loop skill writes its decision JSON.
@@ -629,5 +756,80 @@ mod tests {
         let s = snap(1, 0, 0);
         let (state, _) = map_state_to_pet(&s, &None, false);
         assert!(matches!(state, "working" | "thinking"), "got {state}");
+    }
+
+    fn dec_with_id(id: &str) -> DecItem {
+        DecItem {
+            id: Some(id.into()),
+            r#type: Some("draft_reply".into()),
+            title: Some(format!("title {id}")),
+            dialogue: Some("hello".into()),
+            confidence: Some(0.8),
+            source_signal: None,
+            context: None,
+            created_at: None,
+            completed_at: Some("2026-01-01T00:00:00Z".into()),
+            needs_user: None,
+        }
+    }
+
+    #[test]
+    fn build_decision_payload_includes_status_pending() {
+        // The card's success branch keys on `payload.status !== "pending"`.
+        // If the top-pending emit forgets the field, the contract breaks
+        // silently. Lock the field in via test.
+        let d = dec_with_id("dec_x");
+        let v = build_decision_payload(&d);
+        assert_eq!(
+            v.get("status").and_then(|s| s.as_str()),
+            Some("pending"),
+            "top-pending payload must include status=pending"
+        );
+        assert_eq!(v.get("id").and_then(|s| s.as_str()), Some("dec_x"));
+    }
+
+    #[test]
+    fn diff_completed_ids_returns_missing() {
+        // Two ids pending, one stays, one moves to done. Expect the
+        // missing one to surface as ("b", "done").
+        let prev = vec!["a".to_string(), "b".to_string()];
+        let curr = vec!["a".to_string()];
+        let mut s = snap(0, 0, 0);
+        s.done.push(dec_with_id("b"));
+        let out = diff_completed_ids(&prev, &curr, &s);
+        assert_eq!(out, vec![("b".to_string(), "done".to_string())]);
+    }
+
+    #[test]
+    fn terminal_payload_resolves_done_vs_dismissed() {
+        // Decision "x" moved to done and "y" moved to dismissed. The
+        // helper should pull title/type from the looked-up item and
+        // stamp the resolved status. Also covers the "missing from
+        // buckets" fallback path: id "z" left pending but isn't in
+        // either bucket → falls back to "done".
+        let prev = vec!["x".to_string(), "y".to_string(), "z".to_string()];
+        let curr: Vec<String> = vec![];
+        let mut s = snap(0, 0, 0);
+        s.done.push(dec_with_id("x"));
+        s.dismissed.push(dec_with_id("y"));
+        // Note: "z" deliberately not added to either bucket.
+        let transitions = diff_completed_ids(&prev, &curr, &s);
+        assert_eq!(transitions.len(), 3);
+        assert_eq!(transitions[0], ("x".to_string(), "done".to_string()));
+        assert_eq!(transitions[1], ("y".to_string(), "dismissed".to_string()));
+        assert_eq!(transitions[2], ("z".to_string(), "done".to_string())); // fallback
+
+        // And the terminal payload helper renders the resolved status
+        // for the two items it can find.
+        let px = build_terminal_decision_payload("x", "done", &s).expect("x payload");
+        assert_eq!(px.get("status").and_then(|s| s.as_str()), Some("done"));
+        assert_eq!(px.get("id").and_then(|s| s.as_str()), Some("x"));
+        let py = build_terminal_decision_payload("y", "dismissed", &s).expect("y payload");
+        assert_eq!(
+            py.get("status").and_then(|s| s.as_str()),
+            Some("dismissed")
+        );
+        // Missing item → None rather than a half-formed payload.
+        assert!(build_terminal_decision_payload("z", "done", &s).is_none());
     }
 }

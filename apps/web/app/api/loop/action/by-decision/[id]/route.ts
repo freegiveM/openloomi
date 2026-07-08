@@ -62,6 +62,9 @@ export async function GET(_req: Request, ctx: RouteCtx) {
         id: scheduledJobs.id,
         jobConfig: scheduledJobs.jobConfig,
         createdAt: scheduledJobs.createdAt,
+        lastRunAt: scheduledJobs.lastRunAt,
+        lastStatus: scheduledJobs.lastStatus,
+        lastError: scheduledJobs.lastError,
       })
       .from(scheduledJobs)
       .where(
@@ -88,11 +91,26 @@ export async function GET(_req: Request, ctx: RouteCtx) {
         typeof payload === "object" &&
         (payload as Record<string, unknown>).decision_id === decisionId
       ) {
-        return NextResponse.json({ action_id: row.id });
+        const { status, last_run_at, last_status } = deriveStatus({
+          lastRunAt: row.lastRunAt,
+          lastStatus: row.lastStatus,
+          lastError: row.lastError,
+        });
+        return NextResponse.json({
+          action_id: row.id,
+          status,
+          last_run_at,
+          last_status,
+        });
       }
     }
 
-    return NextResponse.json({ action_id: null });
+    return NextResponse.json({
+      action_id: null,
+      status: "not_found",
+      last_run_at: null,
+      last_status: null,
+    });
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "lookup failed" },
@@ -107,4 +125,76 @@ function safeJsonParse(text: string): unknown {
   } catch {
     return null;
   }
+}
+
+interface JobStatusRow {
+  lastRunAt: Date | null | undefined;
+  lastStatus: string | null | undefined;
+  lastError: string | null | undefined;
+}
+
+interface DerivedStatus {
+  /**
+   * Lifecycle bucket for the polling fallback:
+   * - `pending`: scheduled but has not yet produced a `last_run_at`.
+   * - `completed`: ran successfully (lastStatus in {success, completed}).
+   * - `failed`: ran and errored (lastStatus=error OR lastError non-null).
+   * - `not_found`: no ScheduledJob matches the decision id.
+   */
+  status: "pending" | "completed" | "failed" | "not_found";
+  /** ISO timestamp of the most recent run, or null if it never ran. */
+  last_run_at: string | null;
+  /**
+   * Raw lastStatus string as stored on the row. May be one of
+   * `success` | `error` | `running` | `pending`, or null when never run.
+   * Mirrors the DB column so the card can render nuanced messages
+   * (e.g. "running" if the cron fired but hasn't recorded an outcome
+   * yet) without re-querying.
+   */
+  last_status: "success" | "error" | "running" | "pending" | null;
+}
+
+/**
+ * Pure status projection over a `scheduled_jobs` row. Centralized here
+ * so the route stays a thin DB-read and the polling fallback in
+ * `loomi-card.html` can rely on a stable, documented shape.
+ *
+ * Rules:
+ * - `lastRunAt == null` → still pending (the cron hasn't fired yet).
+ *   `last_status` mirrors the stored `lastStatus` (defaults to
+ *   `"pending"` for legacy rows that pre-date the column).
+ * - `lastStatus === "error"` OR a non-null `lastError` → terminal
+ *   failure. We surface `"error"` as `last_status` so the card can
+ *   distinguish "ran but errored" from "ran successfully".
+ * - Anything else with `lastRunAt` set → completed (success).
+ */
+export function deriveStatus(job: JobStatusRow | null): DerivedStatus {
+  if (job == null) {
+    return { status: "not_found", last_run_at: null, last_status: null };
+  }
+  if (job.lastRunAt == null) {
+    const stored = (job.lastStatus ??
+      "pending") as DerivedStatus["last_status"];
+    return {
+      status: "pending",
+      last_run_at: null,
+      last_status: stored,
+    };
+  }
+  const lastRunIso = job.lastRunAt.toISOString();
+  if (
+    job.lastStatus === "error" ||
+    (job.lastError != null && job.lastError !== "")
+  ) {
+    return {
+      status: "failed",
+      last_run_at: lastRunIso,
+      last_status: "error",
+    };
+  }
+  return {
+    status: "completed",
+    last_run_at: lastRunIso,
+    last_status: (job.lastStatus as DerivedStatus["last_status"]) ?? "success",
+  };
 }

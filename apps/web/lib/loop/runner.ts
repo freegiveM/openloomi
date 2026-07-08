@@ -211,6 +211,31 @@ function buildPrompt(decision: LoopDecision, mode: "dry" | "run"): string {
       "- Emit a single SSE `result` event whose `content` describes what you did — the system will record `completed_at` and `result` automatically. Include the calendar event id (or `skipped: <reason>` if you could not execute) so the user has a trail.",
     );
   }
+  // If the user edited the draft inline (via the pet card's #dec-editor
+  // + PATCH /api/loop/decision/:id) the edited subject/body lives at
+  // `context.draft`. Inject it verbatim and tell the agent not to
+  // re-draft. Without this block the agent would call the LLM again and
+  // overwrite the user's edits before sending. Falls back to the
+  // action.params.subject for the subject line so the body section
+  // below can stand on its own if the editor only filled the body.
+  if (decision.action?.kind === "email_reply" && decision.context?.draft) {
+    const d = decision.context.draft as {
+      subject?: string | null;
+      body?: string;
+    };
+    const subject =
+      typeof d.subject === "string" && d.subject.length > 0
+        ? d.subject
+        : (decision.action.params?.subject as string | undefined) ||
+          "(no subject)";
+    parts.push(
+      "",
+      "User-edited draft — use this subject and body verbatim, do NOT redraft:",
+      `Subject: ${subject}`,
+      "",
+      d.body ?? "",
+    );
+  }
   if (mode === "dry") {
     parts.push(
       "",
