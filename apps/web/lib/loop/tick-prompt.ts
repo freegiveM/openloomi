@@ -43,14 +43,39 @@ export function buildTickPrompt(opts: TickPromptOptions = {}): string {
 
   return `You are running one tick of the openloomi Loop. Your job: pull fresh external signals via the available Composio surface, write them to the loop's local signal store, enrich with openloomi-memory, classify, and surface any new decisions for the user.
 
-# Composio surface fallback chain (in priority order)
+# Composio surface fallback (three concurrent surfaces)
 
-For each toolkit (gmail / googlecalendar / github / slack), try surfaces in this order, stopping at the first that returns data:
+For each toolkit (gmail / googlecalendar / github / slack), run **all three** of
+the following in parallel (concurrently, not sequentially). Each surface is
+optional — skip it cleanly when its precondition isn't met (skill not installed,
+CLI not on $PATH, etc.) and let the other surfaces cover the toolkit.
 
-  1. **Composio MCP** — \`mcp__composio__COMPOSIO_MULTI_EXECUTE_TOOL\` / \`mcp__composio__COMPOSIO_MANAGE_CONNECTIONS\`. The richest transport — directly invokes the toolkit.
-  2. **\`composio-cli\` skill** — \`Skill composio-cli …\`. Use this when MCP is not loaded but the skill is installed in the current Claude Code session. Discover available tools with \`Skill composio-cli list-tools\`, then execute with \`Skill composio-cli execute <TOOL> on <toolkit> with <args>\`.
-  3. **\`composio\` CLI** — \`Bash(composio …)\`. The terminal fallback. Use \`composio connections list\` to confirm which toolkits are active, then \`composio <toolkit> <action> --json '<args>'\` to invoke. Best for headless / cron / non-interactive sessions where the MCP server and the skill are both absent.
-  4. **openloomi-memory insights** — \`node $OPENLOOMI_MEMORY_DIR/scripts/openloomi-memory.cjs list-insights …\`. Last resort — synthesizes signals from previously-captured insights. Use only when no live Composio surface is reachable.
+  • **\`composio-cli\` skill** — \`Skill composio-cli execute <TOOL> on <toolkit>\`
+    (when the skill is installed in this session)
+  • **\`composio\` CLI** — \`Bash(composio <toolkit> <action> …)\`
+    (when on $PATH)
+  • **openloomi-memory insights** — \`node $OPENLOOMI_MEMORY_DIR/scripts/
+    openloomi-memory.cjs list-insights --channel=<X> --days=<N>\`
+    (always available when insights are seeded)
+
+The three are **并列关系 / parallel**, not ordered. Skill and CLI are
+Composio's non-MCP surfaces; openloomi-memory insights is the
+loop↔insights bridge. They are not "fallback levels" — they are
+co-equal channels. There is no primary / fallback hierarchy; whichever
+surface has data contributes it to the merged signal stream.
+
+Run them concurrently (Promise.all / parallel tool calls). Merge
+results into one signal stream; dedupe by signal key:
+
+  • email / calendar / slack:  dedupe on (messageId | eventId | ts + channel)
+  • insight-sourced signals:   dedupe on (insight.id)
+  • cross-source dedupe:       an insight whose (projectName, topKeywords,
+                               people[0]) matches a live signal is dropped
+                               in favor of the live signal — live data wins.
+
+Append to signals.jsonl with the appropriate _origin marker:
+  - "composio"   for skill or CLI results
+  - "insights"   for openloomi-memory results
 
 # Steps
 
