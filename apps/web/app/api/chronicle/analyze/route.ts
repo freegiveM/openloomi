@@ -311,10 +311,7 @@ async function analyzeScreenshotWithMessagesAPI(params: {
 
   const base64 = imageBuffer.toString("base64");
   const targetUrl = new URL(ANTHROPIC_MESSAGES_PATH, requestUrl).toString();
-  const model =
-    process.env.LLM_VISION_LANGUAGE_MODEL ||
-    process.env.ANTHROPIC_MODEL ||
-    DEFAULT_AI_MODEL;
+  const model = process.env.ANTHROPIC_MODEL || DEFAULT_AI_MODEL;
 
   // Sniff media type from magic bytes so we can correctly label JPEGs that the
   // client now produces (PNG capture → 1080p JPEG re-encode to shrink the

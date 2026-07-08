@@ -7,12 +7,9 @@
 import OpenAI from "openai";
 import { estimateTokens } from "@openloomi/shared";
 
-const OPENROUTER_API_KEY =
-  process.env.OPENROUTER_API_KEY || process.env.LLM_API_KEY;
-const EMBEDDING_BASE_URL =
-  process.env.LLM_EMBEDDING_BASE_URL || "https://openrouter.ai/api/v1";
-const EMBEDDING_MODEL =
-  process.env.LLM_EMBEDDING_MODEL || "openai/text-embedding-3-small";
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
+const EMBEDDING_BASE_URL = "https://openrouter.ai/api/v1";
+const EMBEDDING_MODEL = "openai/text-embedding-3-small";
 
 // Pricing per 1M tokens (in USD)
 const EMBEDDING_PRICING: Record<string, number> = {

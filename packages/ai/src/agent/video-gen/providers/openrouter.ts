@@ -93,8 +93,8 @@ export class OpenRouterVideoGenProvider extends VideoGenProvider {
 
   constructor() {
     super();
-    this.baseUrl = process.env.LLM_BASE_URL || "https://openrouter.ai/api/v1";
-    this.apiKey = process.env.LLM_API_KEY || "";
+    this.baseUrl = "https://openrouter.ai/api/v1";
+    this.apiKey = "";
   }
 
   get name(): string {
@@ -134,7 +134,7 @@ export class OpenRouterVideoGenProvider extends VideoGenProvider {
         duration: request.duration || 10,
         provider: this.name,
         error:
-          "OpenRouter API not configured. Set LLM_API_KEY environment variable.",
+          "OpenRouter API not configured. Save an OpenRouter API key in your AI provider preferences.",
         error_type: "configuration_error",
       };
     }

@@ -65,11 +65,7 @@ export function getConfiguredEmbeddingModelName(
     ).trim();
   }
 
-  return (
-    options.cloud?.modelName ||
-    process.env.LLM_EMBEDDING_MODEL ||
-    DEFAULT_CLOUD_EMBEDDING_MODEL
-  ).trim();
+  return (options.cloud?.modelName || DEFAULT_CLOUD_EMBEDDING_MODEL).trim();
 }
 
 export function getEmbeddingProviderType(): EmbeddingProviderType {
@@ -89,22 +85,11 @@ export class CloudEmbeddingProvider implements EmbeddingProvider {
   private dimensions?: number;
 
   constructor(options: CloudEmbeddingProviderOptions = {}) {
-    this.apiKey =
-      options.apiKey ||
-      process.env.OPENAI_EMBEDDINGS_API_KEY ||
-      process.env.OPENROUTER_API_KEY ||
-      process.env.LLM_API_KEY ||
-      "";
+    this.apiKey = options.apiKey || process.env.OPENROUTER_API_KEY || "";
 
     this.userAuthToken = options.userAuthToken;
-    this.modelName =
-      options.modelName ||
-      process.env.LLM_EMBEDDING_MODEL ||
-      DEFAULT_CLOUD_EMBEDDING_MODEL;
-    this.baseURL =
-      options.baseURL ||
-      process.env.LLM_EMBEDDING_BASE_URL ||
-      DEFAULT_CLOUD_EMBEDDING_BASE_URL;
+    this.modelName = options.modelName || DEFAULT_CLOUD_EMBEDDING_MODEL;
+    this.baseURL = options.baseURL || DEFAULT_CLOUD_EMBEDDING_BASE_URL;
     this.baseURL = this.baseURL.replace(/\/+$/, "");
     this.batchSize = options.batchSize ?? getEmbeddingBatchSize();
   }

@@ -214,15 +214,10 @@ function getOpenAICompatibleBaseUrl(isNativeMode: boolean): string {
     return fullLocalUrl;
   }
 
-  const externalUrl = process.env.LLM_BASE_URL;
-  if (!externalUrl) {
-    throw new Error("LLM_BASE_URL environment variable is not set (web mode)");
-  }
-  console.log(
-    "[LLM Provider] Using external AI provider (web mode):",
-    externalUrl,
+  // Web mode: user LLM settings are required
+  throw new Error(
+    "user LLM settings required for anthropic/openai-compatible provider",
   );
-  return externalUrl;
 }
 
 /**
@@ -332,16 +327,20 @@ function getValidatedEnv(isNativeMode: boolean) {
 
   const apiKey =
     userOpenAISettings?.apiKey ??
-    (isNativeMode ? "local-auth-via-jwt-token" : process.env.LLM_API_KEY);
+    (isNativeMode ? "local-auth-via-jwt-token" : undefined);
 
   if (!isNativeMode && !apiKey) {
-    throw new Error("LLM_API_KEY environment variable is not set (web mode)");
+    throw new Error(
+      "user LLM settings required for anthropic/openai-compatible provider",
+    );
   }
 
-  const modelName = userOpenAISettings?.model ?? process.env.LLM_MODEL;
+  const modelName = userOpenAISettings?.model;
 
   if (!modelName) {
-    throw new Error("LLM_MODEL environment variable is not set");
+    throw new Error(
+      "user LLM settings required for anthropic/openai-compatible provider",
+    );
   }
 
   return {
@@ -349,8 +348,8 @@ function getValidatedEnv(isNativeMode: boolean) {
     baseUrl,
     apiKey,
     modelName,
-    imageModelName: process.env.LLM_IMAGE_MODEL,
-    vlmModelName: process.env.LLM_VISION_LANGUAGE_MODEL || modelName,
+    imageModelName: undefined,
+    vlmModelName: modelName,
   };
 }
 

@@ -112,7 +112,7 @@ import {
   getVLMModel,
 } from "@openloomi/ai/agent/ai";
 
-// NOTE: These are lazy getters to avoid requiring LLM_MODEL at module load time.
+// NOTE: These are lazy getters to avoid requiring user LLM settings at module load time.
 // They are only evaluated when actually used (e.g., in executeJob, not in API routes).
 let _modelProvider: ReturnType<typeof getModelProvider> | undefined;
 let _model: ReturnType<typeof getModelBase> | undefined;

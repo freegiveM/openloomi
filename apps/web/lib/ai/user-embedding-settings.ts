@@ -92,10 +92,6 @@ export async function hasUserEmbeddingProviderConfig({
   }
 
   return Boolean(
-    config?.cloud?.apiKey ||
-    authToken ||
-    process.env.OPENAI_EMBEDDINGS_API_KEY ||
-    process.env.OPENROUTER_API_KEY ||
-    process.env.LLM_API_KEY,
+    config?.cloud?.apiKey || authToken || process.env.OPENROUTER_API_KEY,
   );
 }

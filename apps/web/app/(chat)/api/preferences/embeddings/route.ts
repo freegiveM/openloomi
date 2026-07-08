@@ -27,14 +27,9 @@ const systemDefaults = {
       ? ("local" as const)
       : ("cloud" as const),
   cloud: {
-    baseUrl:
-      process.env.LLM_EMBEDDING_BASE_URL ?? "https://openrouter.ai/api/v1",
-    model: process.env.LLM_EMBEDDING_MODEL ?? "text-embedding-3-small",
-    hasApiKey: Boolean(
-      process.env.OPENAI_EMBEDDINGS_API_KEY ||
-      process.env.OPENROUTER_API_KEY ||
-      process.env.LLM_API_KEY,
-    ),
+    baseUrl: "https://openrouter.ai/api/v1",
+    model: "text-embedding-3-small",
+    hasApiKey: Boolean(process.env.OPENROUTER_API_KEY),
   },
   local: {
     model: process.env.LOCAL_EMBEDDING_MODEL ?? "Xenova/all-MiniLM-L6-v2",

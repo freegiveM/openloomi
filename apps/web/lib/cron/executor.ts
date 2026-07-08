@@ -454,7 +454,7 @@ After calling chatInsight with withDetail=true, if any insights have attachments
 
     // Build model config for agent
     // Use default proxy baseUrl instead of database-stored config.modelConfig.baseUrl
-    const defaultBaseUrl = AI_PROXY_BASE_URL || process.env.LLM_BASE_URL;
+    const defaultBaseUrl = AI_PROXY_BASE_URL;
     const rawModelConfig = context.modelConfig || config.modelConfig;
     const modelConfig = {
       ...rawModelConfig,
@@ -462,7 +462,6 @@ After calling chatInsight with withDetail=true, if any insights have attachments
       model:
         rawModelConfig?.model ||
         (config as any).modelConfig?.model ||
-        process.env.LLM_MODEL ||
         DEFAULT_AI_MODEL,
     };
 

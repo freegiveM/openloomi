@@ -4,8 +4,7 @@
  * The calling app is responsible for setting the appropriate env vars.
  */
 
-const EMBEDDING_BASE_URL =
-  process.env.LLM_EMBEDDING_BASE_URL || "https://openrouter.ai/api/v1";
+const EMBEDDING_BASE_URL = "https://openrouter.ai/api/v1";
 
 /**
  * Custom embeddings implementation that can use OpenAI or OpenRouter API.
@@ -18,15 +17,10 @@ export class UniversalEmbeddings {
   private userAuthToken?: string;
 
   constructor(userAuthToken?: string) {
-    this.apiKey =
-      process.env.OPENAI_EMBEDDINGS_API_KEY ||
-      process.env.OPENROUTER_API_KEY ||
-      process.env.LLM_API_KEY ||
-      "";
+    this.apiKey = process.env.OPENROUTER_API_KEY || "";
 
     this.userAuthToken = userAuthToken;
-    this.modelName =
-      process.env.LLM_EMBEDDING_MODEL || "text-embedding-3-small";
+    this.modelName = "text-embedding-3-small";
     this.baseURL = EMBEDDING_BASE_URL;
   }
 

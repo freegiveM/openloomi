@@ -54,8 +54,6 @@ OpenLoomi 是一个开源的 AI 工作空间，运行在你的桌面上。它连
 git clone https://github.com/melandlabs/openloomi.git
 cd openloomi
 
-cp apps/web/.env.example apps/web/.env
-
 pnpm install
 pnpm tauri:dev
 ```

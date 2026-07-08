@@ -54,12 +54,6 @@ cd openloomi
 # Install dependencies
 pnpm install
 
-# Copy environment files
-cp apps/web/.env.example apps/web/.env
-
-# Configure your AI provider keys in .env:
-#   ANTHROPIC_API_KEY=sk-ant-...
-#   LLM_API_KEY=sk-...
 ```
 
 ### Running the App

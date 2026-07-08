@@ -164,10 +164,7 @@ async function generateMeetingSummary(
   requestUrl: string,
 ): Promise<MeetingAnalysisResult> {
   const targetUrl = new URL(ANTHROPIC_MESSAGES_PATH, requestUrl).toString();
-  const model =
-    process.env.LLM_VISION_LANGUAGE_MODEL ||
-    process.env.ANTHROPIC_MODEL ||
-    DEFAULT_AI_MODEL;
+  const model = process.env.ANTHROPIC_MODEL || DEFAULT_AI_MODEL;
 
   const userTitleNote = title ? `\nMeeting title: ${title}` : "";
 

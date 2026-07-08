@@ -25,8 +25,7 @@ async function getJSZip() {
 function getVisionBaseUrl(): string {
   // In Web mode (cloud or local dev), use external AI provider directly
   if (!isTauriMode()) {
-    const externalUrl =
-      process.env.LLM_BASE_URL || "https://openrouter.ai/api/v1";
+    const externalUrl = "https://openrouter.ai/api/v1";
     console.log(
       "[Vision Parser] Using external AI provider (web mode):",
       externalUrl,
@@ -48,13 +47,10 @@ function getVisionBaseUrl(): string {
 }
 
 // Configuration from environment
-const OPENROUTER_API_KEY =
-  process.env.OPENROUTER_API_KEY || process.env.LLM_API_KEY;
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 
 // Vision model - use OpenAI compatible multimodal model
-// Can be overridden via LLM_VISION_LANGUAGE_MODEL env var
-const VISION_MODEL =
-  process.env.LLM_VISION_LANGUAGE_MODEL || "google/gemini-2.5-flash";
+const VISION_MODEL = "google/gemini-2.5-flash";
 
 export type FileContent = {
   text: string;
@@ -244,12 +240,12 @@ async function parseImage(
   cloudAuthToken?: string,
 ): Promise<FileContent> {
   // In Tauri mode with cloudAuthToken, use local proxy with JWT auth
-  // Otherwise, require LLM_API_KEY for direct API access
+  // Otherwise, require OPENROUTER_API_KEY for direct API access
   const useLocalProxy = isTauriMode() && cloudAuthToken;
 
   if (!useLocalProxy && !OPENROUTER_API_KEY) {
     throw new Error(
-      "LLM_API_KEY is required for image RAG processing. Please set the environment variable.",
+      "OpenRouter API key is required for image RAG processing. Set OPENROUTER_API_KEY or save credentials in your AI provider preferences.",
     );
   }
 
@@ -398,9 +394,9 @@ This description will be used for semantic search, so be comprehensive and detai
     let helpText = "";
     if (isAuthError) {
       helpText =
-        "\n**Authentication Error**: Your LLM_API_KEY may be invalid or expired.";
+        "\n**Authentication Error**: Your OpenRouter API key may be invalid or expired.";
     } else if (isModelError) {
-      helpText = `\n**Model Error**: The vision model '${VISION_MODEL}' may not be supported or available on your API endpoint. Try setting LLM_VISION_MODEL to a different model.`;
+      helpText = `\n**Model Error**: The vision model '${VISION_MODEL}' may not be supported or available on your API endpoint. Update the vision model in your AI provider preferences to use a different model.`;
     } else if (isRateLimitError) {
       helpText =
         "\n**Rate Limit Error**: You have exceeded the API rate limit. Please try again later.";
@@ -411,7 +407,7 @@ This description will be used for semantic search, so be comprehensive and detai
 
     // Provide a fallback basic description
     return {
-      text: `[Image Content - ${contentType}]\n\nThis image was uploaded but could not be fully analyzed. Image size: ${buffer.length} bytes.\n\n**Error Details**: ${errorMessage}${helpText}\n\n**Configuration**: Model: ${VISION_MODEL}, Base URL: ${getVisionBaseUrl()}\n\n**Troubleshooting**:\n1. Ensure LLM_API_KEY is properly configured and valid\n2. Verify your vision model supports image analysis\n3. Try setting LLM_VISION_MODEL environment variable\n4. Check API logs for more details`,
+      text: `[Image Content - ${contentType}]\n\nThis image was uploaded but could not be fully analyzed. Image size: ${buffer.length} bytes.\n\n**Error Details**: ${errorMessage}${helpText}\n\n**Configuration**: Model: ${VISION_MODEL}, Base URL: ${getVisionBaseUrl()}\n\n**Troubleshooting**:\n1. Ensure OPENROUTER_API_KEY is properly configured and valid\n2. Verify your vision model supports image analysis\n3. Update the vision model in your AI provider preferences\n4. Check API logs for more details`,
       metadata: {
         source: "vision-parsing-fallback",
         error: errorMessage,

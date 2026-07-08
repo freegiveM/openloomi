@@ -54,9 +54,7 @@ function resolveEnvProviderConfig(): ProviderConfig | undefined {
   const baseUrl = normalizeOptionalString(
     process.env.ANTHROPIC_BASE_URL || process.env.ANTHROPIC_DEFAULT_BASE_URL,
   );
-  const model = normalizeOptionalString(
-    process.env.ANTHROPIC_MODEL || process.env.LLM_MODEL,
-  );
+  const model = normalizeOptionalString(process.env.ANTHROPIC_MODEL);
 
   if (!apiKey || !baseUrl || !model) return undefined;
   return { apiKey, baseUrl, model };

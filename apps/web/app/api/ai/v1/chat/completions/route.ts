@@ -30,31 +30,15 @@ function buildChatCompletionsUrl(baseUrl: string) {
   return `${normalized}/v1/chat/completions`;
 }
 
-function resolveEnvProviderConfig(): ProviderConfig | undefined {
-  const apiKey = normalizeOptionalString(process.env.LLM_API_KEY);
-  const baseUrl = normalizeOptionalString(process.env.LLM_BASE_URL);
-  const model = normalizeOptionalString(process.env.LLM_MODEL);
-
-  if (!apiKey || !baseUrl || !model) {
+async function resolveProviderConfig(userId?: string) {
+  if (!userId) {
     return undefined;
   }
 
-  return { apiKey, baseUrl, model };
-}
-
-async function resolveProviderConfig(userId?: string) {
-  if (userId) {
-    const userConfig = await getUserLlmProviderConfig({
-      userId,
-      providerType: "openai_compatible",
-    });
-
-    if (userConfig) {
-      return userConfig;
-    }
-  }
-
-  return resolveEnvProviderConfig();
+  return getUserLlmProviderConfig({
+    userId,
+    providerType: "openai_compatible",
+  });
 }
 
 function resolveModel(body: ChatCompletionsBody, fallbackModel: string) {
@@ -118,7 +102,7 @@ export async function POST(request: Request) {
   if (!providerConfig) {
     return new AppError(
       "bad_request:api",
-      "OpenAI-compatible provider is not configured. Set LLM_API_KEY, LLM_BASE_URL, and LLM_MODEL, or save an AI provider in Preferences.",
+      "LLM settings required — save them in /api/preferences/ai",
     ).toResponse();
   }
 

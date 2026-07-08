@@ -32,13 +32,13 @@ const llmApiTestSchema = llmApiSettingSchema.pick({
 
 const systemDefaults = {
   openai_compatible: {
-    baseUrl: process.env.LLM_BASE_URL ?? null,
-    model: process.env.LLM_MODEL ?? null,
-    hasApiKey: Boolean(process.env.LLM_API_KEY),
+    baseUrl: null,
+    model: null,
+    hasApiKey: false,
   },
   anthropic_compatible: {
     baseUrl: process.env.ANTHROPIC_BASE_URL ?? null,
-    model: process.env.ANTHROPIC_MODEL ?? process.env.LLM_MODEL ?? null,
+    model: process.env.ANTHROPIC_MODEL ?? null,
     hasApiKey: Boolean(
       process.env.ANTHROPIC_AUTH_TOKEN || process.env.ANTHROPIC_API_KEY,
     ),

@@ -101,9 +101,7 @@ export async function processDocumentWithPGVector(
   const estimatedTokens = cfg.estimateTokens(content);
   const estimatedCreditCost = Math.ceil(
     (estimatedTokens / 1_000_000) *
-      (EMBEDDING_PRICING[
-        process.env.LLM_EMBEDDING_MODEL || "openai/text-embedding-3-small"
-      ] || 0.02) *
+      (EMBEDDING_PRICING["openai/text-embedding-3-small"] || 0.02) *
       CREDIT_COST_MULTIPLIER,
   );
 

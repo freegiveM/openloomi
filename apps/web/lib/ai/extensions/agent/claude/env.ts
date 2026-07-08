@@ -115,18 +115,12 @@ export function buildClaudeEnvConfig(
     env.ANTHROPIC_DEFAULT_HAIKU_MODEL = config.model;
     env.ANTHROPIC_DEFAULT_OPUS_MODEL = config.model;
   } else if (config.apiKey) {
-    const llmModel = process.env.LLM_MODEL;
-    if (llmModel) {
-      env.ANTHROPIC_MODEL = llmModel;
-      env.ANTHROPIC_DEFAULT_SONNET_MODEL = llmModel;
-      env.ANTHROPIC_DEFAULT_HAIKU_MODEL = llmModel;
-      env.ANTHROPIC_DEFAULT_OPUS_MODEL = llmModel;
-    } else {
-      env.ANTHROPIC_MODEL = undefined;
-      env.ANTHROPIC_DEFAULT_SONNET_MODEL = undefined;
-      env.ANTHROPIC_DEFAULT_HAIKU_MODEL = undefined;
-      env.ANTHROPIC_DEFAULT_OPUS_MODEL = undefined;
-    }
+    // No LLM_MODEL env-var fallback: prefer DEFAULT_AI_MODEL aliases over
+    // leaving the SDK with no model at all.
+    env.ANTHROPIC_MODEL = DEFAULT_AI_MODEL;
+    env.ANTHROPIC_DEFAULT_SONNET_MODEL = DEFAULT_AI_MODEL;
+    env.ANTHROPIC_DEFAULT_HAIKU_MODEL = DEFAULT_AI_MODEL;
+    env.ANTHROPIC_DEFAULT_OPUS_MODEL = DEFAULT_AI_MODEL;
   } else {
     env.ANTHROPIC_MODEL = DEFAULT_AI_MODEL;
     env.ANTHROPIC_DEFAULT_SONNET_MODEL = DEFAULT_AI_MODEL;

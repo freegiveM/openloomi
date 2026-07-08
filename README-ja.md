@@ -54,8 +54,6 @@ OpenLoomiは、デスクトップ上で動作するオープンソースのAIワ
 git clone https://github.com/melandlabs/openloomi.git
 cd openloomi
 
-cp apps/web/.env.example apps/web/.env
-
 pnpm install
 pnpm tauri:dev
 ```
