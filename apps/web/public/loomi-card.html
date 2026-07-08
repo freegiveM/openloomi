@@ -256,6 +256,34 @@
         height: 30px;
       }
 
+      /* Single-column footer variant for layouts that surface one
+         full-width CTA (e.g. the connection layout's
+         "Add more connectors" button). The default `.footer` is
+         a 3-col grid tuned for decision layouts (Run / Cancel / Open
+         dashboard) — this variant resets to one column and lets the
+         single button stretch edge-to-edge. Picked up by the existing
+         `button.primary` styles for the blue fill / hover / shadow so
+         it visually matches the no-api-key footer CTA. */
+      .footer.single-col {
+        grid-template-columns: 1fr;
+      }
+      .footer.single-col button {
+        padding: 9px 12px;
+        font-size: 11px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+      }
+      .footer-cta-icon {
+        font-size: 13px;
+        line-height: 1;
+        font-weight: 700;
+      }
+      .footer-cta-label {
+        white-space: nowrap;
+      }
+
       /* ---------- Inline status banner (between decision body + footer) ----------
          Sits one line above the footer so the user sees an unmistakable
          "Running… → Sent ✓ → closing…" trail without losing the action
@@ -1342,6 +1370,16 @@
         <div class="queue-section">
           <div class="queue-label" id="queue-label">PENDING QUEUE · 0</div>
           <div class="queue-rows" id="connection-queue"></div>
+        </div>
+        <div class="footer single-col">
+          <button
+            class="primary"
+            data-action="guide-connect-more"
+            type="button"
+          >
+            <span class="footer-cta-icon">＋</span>
+            <span class="footer-cta-label">Add more connectors</span>
+          </button>
         </div>
       </section>
 
@@ -2451,7 +2489,16 @@
             cancel.className = "danger";
             cancel.dataset.action = "cancel-pending";
             const inS = secondsUntil(pendingAction.fire_at);
-            cancel.textContent = `Cancel · fires in ~${Math.max(inS, 0)}s`;
+            // Once the fire_at window has passed, swap from a stuck
+            // "fires in ~0s" label to "Running…" so the user sees that
+            // the system is making progress instead of being wedged.
+            // The actual completion will still clear the button via
+            // `clearPendingActionOnTerminal` (event or poll path).
+            if (inS <= 0) {
+              cancel.textContent = "Running…";
+            } else {
+              cancel.textContent = `Cancel · fires in ~${inS}s`;
+            }
             footer.appendChild(cancel);
             return;
           }
@@ -2526,6 +2573,11 @@
         // ---------- Inline draft editor (draft_reply) ----------
         // Toggles the subject/body form on the decision layout. When
         // `on` is true:
+        //   - re-fetches the decision from /api/loop/decision/:id so
+        //     the editor pre-fills from the freshest `context.draft`
+        //     (the in-memory copy can be stale — the watcher only
+        //     emits loop:decision on bucket / id / ts changes, not on
+        //     context.draft mutations)
         //   - hides the chrome (recommendation / source chain /
         //     confidence / dialogue / evidence / status) so the
         //     textarea has room inside the 360×420 card
@@ -2541,7 +2593,7 @@
         //   - re-renders the footer to restore Send/Edit/Discard
         // The form is always present in the DOM (just hidden) so we
         // don't have to wait for HTML parsing on every toggle.
-        function setEditMode(on) {
+        async function setEditMode(on) {
           editMode = !!on;
           const editor = document.getElementById("dec-editor");
           const subject = document.getElementById("dec-editor-subject");
@@ -2553,6 +2605,31 @@
           // these blocks the textarea fills the rest of the card.
           card.classList.toggle("editing", editMode);
           if (editMode) {
+            // Re-fetch the decision so the editor pre-fills from the
+            // freshest context.draft. The Rust watcher only pushes
+            // loop:decision on bucket / top-id / id-list / ts changes,
+            // not on context mutations — without this re-fetch a Save
+            // (or any external PATCH, including from another device /
+            // the dashboard) wouldn't be reflected when the user
+            // reopens the editor. Best-effort: if the fetch fails we
+            // fall back to the in-memory copy so the user can still
+            // type fresh.
+            if (decision && decision.id) {
+              try {
+                const res = await fetch(
+                  `${window.__OPENLOOMI_API__ || ""}/api/loop/decision/${encodeURIComponent(decision.id)}`,
+                  { credentials: "include" },
+                );
+                if (res.ok) {
+                  const data = await res.json().catch(() => null);
+                  if (data && data.decision) {
+                    decision = data.decision;
+                  }
+                }
+              } catch (_) {
+                /* fall back to in-memory copy */
+              }
+            }
             // Pre-fill from saved draft (round-trip from a previous
             // Save) if present, else seed the subject from the
             // decision's action.params and leave the body empty so the
@@ -3125,10 +3202,16 @@
             startPendingActionPoll();
             const verb = apiAction === "dismiss" ? "Dismissal" : "Action";
             const inS = secondsUntil(schedule.fire_at);
-            setStatus(
-              "running",
-              `${verb} scheduled · fires in ~${Math.max(inS, 0)}s · Cancel below`,
-            );
+            // Once the fire_at window has passed (which can happen on
+            // the very first tick if the server clock is ahead of the
+            // client), say "Running…" instead of "fires in ~0s" so the
+            // user gets immediate feedback that the action is now in
+            // the scheduler's hands.
+            const statusMsg =
+              inS <= 0
+                ? `${verb} running · waiting for scheduler to fire it`
+                : `${verb} scheduled · fires in ~${inS}s · Cancel below`;
+            setStatus("running", statusMsg);
             showToast(
               `${verb} scheduled · you can cancel before it fires.`,
               false,
@@ -3214,6 +3297,41 @@
             }, 160);
             return;
           }
+          // Connection layout "Add more connectors" CTA → ask
+          // the Rust host to surface the main window and dispatch an
+          // `openloomi:send-chat-message` DOM event with the chat
+          // prompt. The PetChatBridge mounted in the (chat) layout
+          // forwards that text into the chat composer via
+          // useChatContext().sendMessage(...). Mirrors the
+          // `pet:open-ai-settings` flow above; without Tauri (designer
+          // / standalone preview) we fall back to the connectors page
+          // so the click still produces a visible effect.
+          if (action === "guide-connect-more") {
+            const t = window.__TAURI__;
+            if (t && t.event && t.event.emit)
+              t.event.emit("pet:guide-connect-more");
+            else window.location.href = "/connectors?addPlatform=true";
+            // Make the card Tauri window mouse-transparent so the
+            // main window behind it stays clickable. We deliberately
+            // do NOT fade the card or set display:none — the user
+            // wants the card to stay visible on the desktop while
+            // the chat prompt is being composed in the main window.
+            const tao = t && t.window ? t.window : null;
+            const win =
+              tao && typeof tao.getCurrentWebviewWindow === "function"
+                ? tao.getCurrentWebviewWindow()
+                : tao && typeof tao.getCurrentWindow === "function"
+                  ? tao.getCurrentWindow()
+                  : null;
+            if (win && typeof win.setIgnoreCursorEvents === "function") {
+              try {
+                win.setIgnoreCursorEvents(true);
+              } catch (_) {
+                /* non-fatal — main window click-through is best-effort */
+              }
+            }
+            return;
+          }
           // Missing-API-key CTA → ask the Rust host to surface the
           // AI settings page in the main window. We close the card
           // locally first so the click feels responsive before the
@@ -3289,7 +3407,7 @@
         // (status=done|dismissed), but if that event is delayed or the
         // watcher restarts mid-action we still need to clear the UI.
         // The polling fallback hits
-        // `/api/loop/action/by-decision/<decision_id>` every 3s and
+        // `/api/loop/action/by-decision/<decision_id>` every 1s and
         // reads the derived `status` field. On a terminal status
         // (completed | failed | not_found) it clears `pendingAction`
         // and renders the appropriate "closing…" banner. Idempotent
@@ -3299,15 +3417,18 @@
 
         /**
          * Begin polling `/api/loop/action/by-decision/<id>` every
-         * 3s while `pendingAction` is set. Safe to call multiple
-         * times: clears any existing timer first.
+         * 1s while `pendingAction` is set. The 1s cadence matches the
+         * countdown re-render interval so the UI feels live — once the
+         * action fires the banner flips within at most one tick of the
+         * DB write. Safe to call multiple times: clears any existing
+         * timer first.
          */
         function startPendingActionPoll() {
           stopPendingActionPoll();
           // Fire one tick immediately so a fast-firing action
-          // doesn't have to wait the full 3s for the first check.
+          // doesn't have to wait the full interval for the first check.
           pollPendingAction();
-          pendingActionPollTimer = setInterval(pollPendingAction, 3000);
+          pendingActionPollTimer = setInterval(pollPendingAction, 1000);
         }
 
         /**
@@ -3392,7 +3513,27 @@
         // ticks down. The button text re-renders via renderDecisionFooter;
         // we only need to call it every ~1s while a pending action exists.
         setInterval(() => {
-          if (pendingAction) renderDecisionFooter();
+          if (!pendingAction) return;
+          renderDecisionFooter();
+          // Also re-write the status line so the user sees a live
+          // countdown rather than a stale "fires in ~30s" text that
+          // was set once at schedule time. After fire_at passes we
+          // switch to a "Running…" message so the UI feels alive
+          // instead of stuck at 0.
+          const inS = secondsUntil(pendingAction.fire_at);
+          const verb =
+            pendingAction.action === "dismiss" ? "Dismissal" : "Action";
+          // Only rewrite when the message would actually change to
+          // avoid fighting setStatus calls from other paths (cancel,
+          // event-driven terminal, etc.). `busy` covers the in-flight
+          // cancellation guard.
+          if (!busy) {
+            const msg =
+              inS <= 0
+                ? `${verb} running · waiting for scheduler to fire it`
+                : `${verb} scheduled · fires in ~${inS}s · Cancel below`;
+            setStatus("running", msg);
+          }
         }, 1000);
 
         // ---------- Connector refresh ----------
@@ -3474,9 +3615,19 @@
         const tauri = window.__TAURI__;
         if (tauri && tauri.event && tauri.event.listen) {
           tauri.event.listen("loop:decision", (e) => {
-            // The previous × click set setIgnoreCursorEvents(true) so
-            // the card would stop blocking clicks. Restore it now that
-            // the card has content to show again.
+            // The previous × click set three pieces of state on the card:
+            //   1. setIgnoreCursorEvents(true) on the Tauri window
+            //   2. card.style.opacity = "0" (immediate)
+            //   3. card.style.display = "none" (after 160ms fade)
+            // All three must be cleared here, otherwise the host's
+            // show_card_window() brings the OS window back on screen but
+            // the .card element stays at display:none → blank window
+            // even though a new decision is being routed in. Tauri
+            // window is restored first (so the 360×420 region becomes
+            // mouse-active again), then the CSS inline styles are wiped
+            // so the DOM becomes visible. Order matters: wiping CSS
+            // before the OS window is clickable would flash a frame
+            // of unclickable content on the user's previous click.
             if (tauri && tauri.window) {
               try {
                 const w = tauri.window.getCurrentWebviewWindow
@@ -3490,6 +3641,14 @@
               } catch (_) {
                 /* non-fatal */
               }
+            }
+            // Wipe the × click's CSS hiding. Inline style "" clears
+            // the property back to whatever the stylesheet says, which
+            // is `display: flex` (see .card rule at the top of this
+            // file) — exactly what we want on re-show.
+            if (card) {
+              card.style.opacity = "";
+              card.style.display = "";
             }
             const p = (e && e.payload) || {};
             const next = p && p.id ? p : null;

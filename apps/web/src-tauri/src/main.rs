@@ -672,6 +672,59 @@ fn main() {
                 }
             });
 
+            // Pet card "Add more connectors" CTA → show the main
+            // window and dispatch a new openloomi:send-chat-message
+            // DOM event with the chat prompt. The new PetChatBridge
+            // mounted in the (chat) layout listens for this event and
+            // forwards it to the chat composer via
+            // useChatContext().sendMessage(). Mirrors the
+            // `pet:open-decision` event-payload pattern (same escape
+            // helper for the JS literal so backslashes / quotes /
+            // newlines can't break the eval). English prompt by
+            // design — loomi-card.html is a static asset with no
+            // runtime i18n, and the agent can translate the response
+            // server-side.
+            let guide_app = app_handle.clone();
+            app_handle.listen("pet:guide-connect-more", move |_event| {
+                eprintln!("[pet:guide-connect-more] listener fired");
+                tray::show_main_window(&guide_app);
+                if let Some(window) = guide_app.get_webview_window("main") {
+                    let prompt = "Please help me connect more available connectors via Composio \
+(Gmail, Slack, Google Calendar, GitHub, Linear, Obsidian, etc.). \
+List the platforms I haven't connected yet, then walk me through \
+authorizing each one. Begin with Gmail if it's not connected.";
+                    // Escape the prompt for embedding in a JS string literal.
+                    // (No backslashes / quotes / newlines in this prompt in
+                    // practice, but the helper is copy-pasted from the
+                    // pet:open-decision block for consistency / defense in
+                    // depth.)
+                    let escaped = prompt
+                        .replace('\\', "\\\\")
+                        .replace('"', "\\\"")
+                        .replace('\n', "\\n");
+                    // Call window.__petChatBridgeSend(text) directly,
+                    // retrying every 200ms for up to 5s. We can't use a
+                    // one-shot CustomEvent because the React bridge
+                    // component might not be mounted yet when the eval
+                    // lands (events with no listener are silently lost).
+                    // A global function can be polled until the bridge
+                    // registers it. The leading console.log + title
+                    // change are diagnostic so we can confirm the eval
+                    // is actually executing on the main webview (vs
+                    // silently swallowed).
+                    let js = format!(
+                        "(function(){{console.log('[Tauri] eval landed, polling for bridge...');document.title='[pet] '+document.title;var n=0;var t=setInterval(function(){{n++;if(typeof window.__petChatBridgeSend==='function'){{clearInterval(t);console.log('[Tauri] bridge found after '+n+' ticks');window.__petChatBridgeSend(\"{}\");}}else if(n>25){{clearInterval(t);console.warn('[Tauri] bridge not ready after 5s, prompt dropped');}}}},200);}})()",
+                        escaped
+                    );
+                    match window.eval(&js) {
+                        Ok(_) => eprintln!("[pet:guide-connect-more] eval ok"),
+                        Err(e) => eprintln!("[pet:guide-connect-more] eval err: {e}"),
+                    }
+                } else {
+                    eprintln!("[pet:guide-connect-more] no main webview window");
+                }
+            });
+
             // B2b: "Open brief" / "Open wrap" inside the card. Brief and
             // wrap are not decisions — they're aggregate views
             // (morning brief, evening wrap) persisted to
