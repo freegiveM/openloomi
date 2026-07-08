@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getSession } from "next-auth/react";
+import { invoke } from "@tauri-apps/api/core";
 
 /**
  * Guest login page - automatically creates a guest account and redirects to home.
@@ -33,6 +34,31 @@ export default function GuestLoginPage() {
         });
 
         if (response.ok) {
+          // Sync the freshly minted JWT to ~/.openloomi/token in Tauri mode
+          // so the desktop loop can authenticate immediately. Done here
+          // (right after the session cookie is set) rather than in the
+          // root-level `TokenSync` component because the cookie was set by
+          // a direct fetch and `useSession` does not pick up the change
+          // automatically.
+          const isTauri = !!(window as { __TAURI__?: unknown }).__TAURI__;
+          if (isTauri) {
+            try {
+              const tokenRes = await fetch("/api/auth/token", {
+                credentials: "include",
+              });
+              if (tokenRes.ok) {
+                const data = (await tokenRes.json()) as { token?: string };
+                if (data.token) {
+                  await invoke("save_token", { token: data.token });
+                  console.log(
+                    "[GuestLogin] token synced to ~/.openloomi/token",
+                  );
+                }
+              }
+            } catch (err) {
+              console.warn("[GuestLogin] failed to sync token:", err);
+            }
+          }
           // Successful login, go to home
           router.push("/");
         } else {
