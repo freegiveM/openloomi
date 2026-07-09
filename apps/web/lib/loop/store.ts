@@ -15,9 +15,13 @@ import {
 import { ensureDirs, ensureParent, LOOP_PATHS } from "./paths";
 import type {
   DecisionStatus,
+  DecisionType,
   LoopDecision,
   LoopDecisionBuckets,
+  LoopMutes,
   LoopSignal,
+  MuteRule,
+  MuteScope,
 } from "./types";
 
 const MAX_SIGNALS = 5000;
@@ -276,6 +280,237 @@ export const decisions = {
       done: d.done.length,
       dismissed: d.dismissed.length,
     };
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Mutes — dismiss-driven skip rules. When a user dismisses a decision, we
+// record a normalised key derived from the signal so the next tick does not
+// re-surface the same kind of signal (e.g. a re-edited Obsidian note with a
+// fresh `mtime_ms`, or a follow-up email from the same sender).
+// ---------------------------------------------------------------------------
+
+const MAX_MUTES = 1000;
+
+/** Decision types eligible for auto-muting on dismiss. brief / wrap are
+ *  explicitly excluded — those are scheduled and must resurface each day. */
+export const MUTABLE_DECISION_TYPES: ReadonlySet<DecisionType> = new Set([
+  "rsvp",
+  "draft_reply",
+  "slack_reply",
+  "review_pr",
+  "todo",
+  "deadline_reminder",
+  "release_plan",
+  "requirement_synthesis",
+  "linear_review",
+  "contact_update",
+  "doc_update",
+]);
+
+function emptyMutes(): LoopMutes {
+  return { version: 1, rules: [], keys: [] };
+}
+
+/** Module-level cache — invalidated by `mutes.invalidate()` or by writers
+ *  after they touch the file. Keeps `mutes.has()` cheap (Set lookup) in the
+ *  hot classify path. */
+let mutesCache: LoopMutes | null = null;
+
+function readMutes(): LoopMutes {
+  if (mutesCache) return mutesCache;
+  ensureDirs();
+  const m = readJson<LoopMutes>(LOOP_PATHS.mutes, emptyMutes());
+  // Defensive: any drift between `rules` and `keys` is repaired on read.
+  const recomputed = Array.from(new Set((m.rules ?? []).map((r) => r.key)));
+  mutesCache = {
+    version: 1,
+    rules: Array.isArray(m.rules) ? m.rules : [],
+    keys: recomputed,
+  };
+  return mutesCache;
+}
+
+function writeMutes(m: LoopMutes): void {
+  // Always re-derive `keys` from `rules` before writing — defence in depth so
+  // a future mutation that forgets to update `keys` cannot desync the file.
+  const keys = Array.from(new Set(m.rules.map((r) => r.key)));
+  const out: LoopMutes = { version: 1, rules: m.rules, keys };
+  writeJsonAtomic(LOOP_PATHS.mutes, out);
+  mutesCache = out;
+}
+
+/**
+ * Compute the normalised mute key for a signal. Returns `null` when the
+ * signal type has no stable identity to mute on (e.g. an `insight` without a
+ * canonical id). Pure function — reused by `classify.ts` and the dismiss
+ * write-sites so they stay in lockstep.
+ */
+export function muteKeyFor(
+  signal: LoopSignal,
+): { key: string; scope: MuteScope } | null {
+  const p = signal.payload as Record<string, unknown>;
+
+  if (signal.type === "email") {
+    const raw = String(p.from ?? p.sender ?? "")
+      .trim()
+      .toLowerCase();
+    if (!raw) return null;
+    return { key: raw, scope: { kind: "email", from: raw } };
+  }
+
+  if (signal.type === "calendar_event") {
+    const org = String(p.organizer ?? "")
+      .trim()
+      .toLowerCase();
+    if (org) {
+      return { key: org, scope: { kind: "calendar_event", organizer: org } };
+    }
+    const eid = String(p.eventId ?? p.id ?? "")
+      .trim()
+      .toLowerCase();
+    if (!eid) return null;
+    return {
+      key: eid,
+      scope: { kind: "calendar_event", organizer: eid, fallback: "eventId" },
+    };
+  }
+
+  if (signal.type === "slack_message") {
+    // Real user ids are alphanumeric strings; broadcast markers
+    // ("channel" / "here" / "everyone") should be ignored — they aren't a
+    // single person to mute.
+    const rawUser = String(p.user ?? "").trim();
+    const isBroadcastMarker = /^(channel|here|everyone)$/i.test(rawUser);
+    if (rawUser && !isBroadcastMarker) {
+      const user = rawUser.toLowerCase();
+      return { key: `user:${user}`, scope: { kind: "slack_message", user } };
+    }
+    const rawChannel = String(p.channel ?? "").trim();
+    if (rawChannel) {
+      const channel = rawChannel.toLowerCase();
+      return {
+        key: `channel:${channel}`,
+        scope: { kind: "slack_message", channel },
+      };
+    }
+    return null;
+  }
+
+  if (signal.type === "obsidian_note_changed") {
+    const path = String(p.path ?? "").trim();
+    if (!path) return null;
+    const key = path.toLowerCase();
+    return { key, scope: { kind: "obsidian_note_changed", path: key } };
+  }
+
+  if (signal.type === "github_pr") {
+    const repo = String(p.repo ?? "")
+      .trim()
+      .toLowerCase();
+    if (!repo) return null;
+    return { key: repo, scope: { kind: "github_pr", repo } };
+  }
+
+  if (signal.type === "github_issue") {
+    const repo = String(p.repo ?? "")
+      .trim()
+      .toLowerCase();
+    if (!repo) return null;
+    return { key: repo, scope: { kind: "github_issue", repo } };
+  }
+
+  if (signal.type === "linear_issue") {
+    const team = p.team as Record<string, unknown> | string | undefined;
+    const teamKey =
+      typeof team === "object" && team && typeof team.key === "string"
+        ? team.key.trim().toLowerCase()
+        : typeof team === "string"
+          ? team.trim().toLowerCase()
+          : "";
+    if (teamKey) {
+      return {
+        key: teamKey,
+        scope: { kind: "linear_issue", team: teamKey },
+      };
+    }
+    const project = p.project as Record<string, unknown> | string | undefined;
+    const projectId =
+      typeof project === "object" && project && typeof project.id === "string"
+        ? project.id.trim().toLowerCase()
+        : typeof project === "string"
+          ? project.trim().toLowerCase()
+          : "";
+    if (projectId) {
+      return {
+        key: projectId,
+        scope: { kind: "linear_issue", project: projectId },
+      };
+    }
+    return null;
+  }
+
+  return null;
+}
+
+export const mutes = {
+  /** O(1) membership check against the cached key set. */
+  has(key: string): boolean {
+    return readMutes().keys.includes(key);
+  },
+  /** List rules, newest first. */
+  list(): MuteRule[] {
+    return [...readMutes().rules].sort((a, b) =>
+      b.createdAt.localeCompare(a.createdAt),
+    );
+  },
+  /** Idempotent add — same key returns the existing rule unchanged.
+   *  Caps `rules.length` at `MAX_MUTES` by dropping the oldest half of
+   *  unique-key entries when the limit is exceeded. */
+  add(rule: Omit<MuteRule, "createdAt"> & { createdAt?: string }): MuteRule {
+    const cur = readMutes();
+    const existing = cur.rules.find((r) => r.key === rule.key);
+    if (existing) {
+      mutesCache = null;
+      return existing;
+    }
+    const createdAt = rule.createdAt ?? nowIso();
+    const next: MuteRule = {
+      key: rule.key,
+      scope: rule.scope,
+      createdAt,
+      ...(rule.source ? { source: rule.source } : {}),
+    };
+    const rules = [...cur.rules, next];
+    if (rules.length > MAX_MUTES) {
+      // Trim the oldest half by createdAt to give headroom and keep the
+      // most-recent dismisses intact.
+      const sorted = rules
+        .slice()
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+      const dropCount = sorted.length - Math.floor(MAX_MUTES / 2);
+      const survivors = sorted.slice(dropCount);
+      writeMutes({
+        version: 1,
+        rules: survivors,
+        keys: survivors.map((r) => r.key),
+      });
+      return next;
+    }
+    writeMutes({ version: 1, rules, keys: rules.map((r) => r.key) });
+    return next;
+  },
+  /** Remove by key — exposed for tests and a future mute UI. */
+  remove(key: string): boolean {
+    const cur = readMutes();
+    const next = cur.rules.filter((r) => r.key !== key);
+    if (next.length === cur.rules.length) return false;
+    writeMutes({ version: 1, rules: next, keys: next.map((r) => r.key) });
+    return true;
+  },
+  /** Drop the in-memory cache — call after external file edits or in tests. */
+  invalidate(): void {
+    mutesCache = null;
   },
 };
 

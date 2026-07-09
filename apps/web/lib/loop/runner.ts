@@ -18,7 +18,13 @@ import { join } from "node:path";
 
 import { DEV_PORT, PROD_PORT } from "@openloomi/shared";
 
-import { decisions, log } from "./store";
+import {
+  decisions,
+  log,
+  MUTABLE_DECISION_TYPES,
+  muteKeyFor,
+  mutes,
+} from "./store";
 import type { LoopDecision } from "./types";
 
 /**
@@ -326,7 +332,47 @@ export async function dismissDecision(
     return { ok: false, status: "pending", decision: null, error: "not found" };
   const moved = decisions.moveTo(dec.id, "dismissed", reason ?? null);
   log(`dismiss ${dec.id}${reason ? `: ${reason}` : ""}`);
+  // Best-effort: write a persistent mute rule so the same kind of signal
+  // does not re-surface on the next tick. Failures are swallowed — the
+  // dismiss has already succeeded, and a recurring mute must never roll
+  // back a user action.
+  recordMuteOnDismiss(dec.id);
   return { ok: true, status: "dismissed", decision: moved };
+}
+
+/**
+ * Persist a mute rule from the dismissed decision's source signal. Called
+ * from both `dismissDecision` (cron path via `handleAction`) and
+ * `applyDecisionAction::case "dismiss"` (web dashboard path) so every
+ * dismiss — pet card, web UI, programmatic — funnels through the same
+ * write. Idempotent: re-dismissing the same decision is a no-op because
+ * `mutes.add` checks the key.
+ */
+export function recordMuteOnDismiss(decisionId: string): void {
+  try {
+    const dec = decisions.get(decisionId);
+    if (!dec) return;
+    if (!MUTABLE_DECISION_TYPES.has(dec.type)) return;
+    if (!dec.source_signal) return;
+    const mk = muteKeyFor(dec.source_signal);
+    if (!mk) return;
+    mutes.add({
+      key: mk.key,
+      scope: mk.scope,
+      source: {
+        decisionId,
+        ...(dec.source_signal.type
+          ? { signalType: dec.source_signal.type }
+          : {}),
+      },
+    });
+  } catch (e) {
+    log(
+      `[runner] mute write failed for ${decisionId}: ${
+        e instanceof Error ? e.message : String(e)
+      }`,
+    );
+  }
 }
 
 export async function promoteDecision(id: string): Promise<RunResult> {

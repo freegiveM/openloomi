@@ -125,6 +125,34 @@ export interface LoopPreferences {
   timezone?: string;
 }
 
+/** Mute rule scope — discriminated union keyed by signal type. */
+export type MuteScope =
+  | { kind: "email"; from: string }
+  | { kind: "calendar_event"; organizer: string; fallback?: "eventId" }
+  | { kind: "slack_message"; user?: string; channel?: string }
+  | { kind: "obsidian_note_changed"; path: string }
+  | { kind: "github_pr"; repo: string }
+  | { kind: "github_issue"; repo: string }
+  | { kind: "linear_issue"; team?: string; project?: string };
+
+export interface MuteRule {
+  /** Normalised lowercase key — the atom of O(1) lookups. */
+  key: string;
+  /** Discriminated scope, kept for diagnostics and a future mute UI. */
+  scope: MuteScope;
+  /** ISO timestamp when the rule was created. */
+  createdAt: string;
+  /** Provenance — which dismiss produced this rule. */
+  source?: { decisionId?: string; signalType?: SignalType };
+}
+
+export interface LoopMutes {
+  version: 1;
+  rules: MuteRule[];
+  /** Flattened keys — recomputed from `rules` on every write. */
+  keys: string[];
+}
+
 export const DEFAULT_LOOP_PREFERENCES: LoopPreferences = {
   enabled: true,
   briefTime: "09:00",

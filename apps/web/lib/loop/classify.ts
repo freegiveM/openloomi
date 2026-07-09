@@ -19,6 +19,7 @@ import type {
   LoopPreferences,
   LoopSignal,
 } from "./types";
+import { muteKeyFor, mutes } from "./store";
 
 const NORELY_RE =
   /^(no-?reply|noreply|donotreply|notifications?@|mailer-daemon@|postmaster@)/i;
@@ -59,6 +60,31 @@ export function isHardSkipped(
     return { reason: "already replied" };
   }
   return null;
+}
+
+/**
+ * Returns a SkipReason when the signal's normalised key is in the user's
+ * persistent mute list. The mute list is written by every dismiss — see
+ * `mutes.add` in store.ts — so a signal that matches the same scope as one
+ * the user previously dismissed will be dropped here, before classification.
+ */
+export function isMuted(signal: LoopSignal): SkipReason | null {
+  const mk = muteKeyFor(signal);
+  if (!mk) return null;
+  if (mutes.has(mk.key)) return { reason: `user-muted: ${mk.key}` };
+  return null;
+}
+
+/**
+ * Run the full pre-classify gate: user muting first (so a user explicitly
+ * muted key wins even after they later turn off a related hard-skip toggle),
+ * then the hard-skip rules.
+ */
+export function gateSignal(
+  signal: LoopSignal,
+  prefs: Pick<LoopPreferences, "noReplySkip" | "promotionSkip">,
+): SkipReason | null {
+  return isMuted(signal) ?? isHardSkipped(signal, prefs);
 }
 
 export interface DecisionCandidate {
@@ -355,5 +381,12 @@ export function buildCardDecision(input: {
   };
 }
 
-export const rules = { isHardSkipped, classify, NORELY_RE, PROMO_LABELS };
+export const rules = {
+  isHardSkipped,
+  isMuted,
+  gateSignal,
+  classify,
+  NORELY_RE,
+  PROMO_LABELS,
+};
 export type { ActionKind };

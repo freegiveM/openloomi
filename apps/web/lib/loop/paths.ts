@@ -9,6 +9,7 @@
  *   - wrap.json           most-recent wrap snapshot
  *   - connectors.json     cached connector status (60s TTL)
  *   - config.json         LoopPreferences
+ *   - mutes.json          key-scoped skip rules (dismiss → "don't show this kind again")
  *   - migrated.json       marker written after legacy data migration
  *
  * Legacy location (read once on first boot): skills/openloomi-loop/data/
@@ -37,6 +38,7 @@ export const LOOP_PATHS = {
   wrap: join(LOOP_HOME, "wrap.json"),
   connectors: join(LOOP_HOME, "connectors.json"),
   config: join(LOOP_HOME, "config.json"),
+  mutes: join(LOOP_HOME, "mutes.json"),
   migrated: join(LOOP_HOME, "migrated.json"),
   log: join(LOOP_HOME, "loop.log"),
   inbox: join(LOOP_HOME, "inbox"),

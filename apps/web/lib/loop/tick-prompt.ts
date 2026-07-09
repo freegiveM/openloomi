@@ -37,6 +37,7 @@ export function buildTickPrompt(opts: TickPromptOptions = {}): string {
   const includeObsidian = opts.includeObsidian ?? true;
   const signalsPath = LOOP_PATHS.signals;
   const decisionsPath = LOOP_PATHS.decisions;
+  const mutesPath = LOOP_PATHS.mutes;
   const loopCli = "apps/web/scripts/loop-cli.mjs";
   const sinceDaysStr = String(sinceDays);
 
@@ -331,6 +332,7 @@ lib-level classifier exactly):
     - gmail label in [Promotions, Social, Forums, Updates, Spam]
     - calendar event already accepted/declined/tentative
     - email already replied
+    - user-muted key in ${mutesPath} (compute via the same rules as classify.ts:isMuted; signals whose normalised key appears here are dropped before ingestion — typically because the user dismissed a similar signal in a prior tick; read the file fresh each tick, not from memory)
 
   Classifier (returns a typed action):
     - calendar_event with my_response in [needsAction, undefined]  -> rsvp        (calendar_rsvp)
