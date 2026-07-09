@@ -268,6 +268,8 @@ fn main() {
         eprintln!("⚠️  Warning: Failed to initialize data directories: {}", e);
     }
 
+    let context = tauri::generate_context!();
+
     // Pre-start cleanup (production only)
     #[cfg(not(debug_assertions))]
     {
@@ -283,6 +285,22 @@ fn main() {
             panic_guard::lock_recovered(&node::APP_HANDLE_TX, "store app handle sender");
         *tx_guard = Some(tx);
         drop(tx_guard);
+        // Resolve the resource dir before the Tauri app is built: the Next.js
+        // server starts before an AppHandle exists, and on Linux resources are
+        // installed to /usr/lib/<app>, not next to the executable in /usr/bin.
+        match tauri::utils::platform::resource_dir(context.package_info(), &tauri::Env::default())
+        {
+            Ok(dir) => {
+                let mut dir_guard =
+                    panic_guard::lock_recovered(&node::RESOURCE_DIR, "store resource dir");
+                *dir_guard = Some(dir);
+                drop(dir_guard);
+            }
+            Err(e) => eprintln!(
+                "⚠️  Failed to resolve resource dir, falling back to exe dir: {}",
+                e
+            ),
+        }
         node::start_nextjs_server();
     }
 
@@ -790,7 +808,7 @@ authorizing each one. Begin with Gmail if it's not connected.";
 
             Ok(())
         })
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("error while building tauri application")
         .run(|app_handle, event| {
             // macOS: clicking the Dock icon while the window is hidden to tray

@@ -116,6 +116,12 @@ pub static APP_HANDLE_TX: Mutex<Option<std::sync::mpsc::Sender<tauri::AppHandle>
 /// Startup error message
 pub static STARTUP_ERROR: Mutex<Option<String>> = Mutex::new(None);
 
+/// Tauri resource directory, resolved in main() before the Tauri app is built.
+/// start_nextjs_server runs before an AppHandle exists, and on Linux resources
+/// are installed to /usr/lib/<app>, not next to the executable in /usr/bin, so
+/// the directory cannot be derived from current_exe() alone.
+pub static RESOURCE_DIR: Mutex<Option<PathBuf>> = Mutex::new(None);
+
 /// Flag indicating whether Node.js is being downloaded
 pub static DOWNLOADING_NODE: AtomicBool = AtomicBool::new(false);
 
@@ -1259,6 +1265,23 @@ pub fn try_start_nextjs(
     }
 }
 
+/// Derive the resource directory from the executable location.
+///
+/// Only correct on Windows (resources sit next to the exe) and macOS
+/// (Contents/MacOS -> Contents/Resources). On Linux installs resources live in
+/// /usr/lib/<app>, so this is only a fallback for when RESOURCE_DIR was not
+/// resolved in main().
+fn resource_dir_from_exe(exe_dir: PathBuf) -> PathBuf {
+    if exe_dir.ends_with("MacOS") {
+        exe_dir
+            .parent()
+            .and_then(|p| p.join("Resources").canonicalize().ok())
+            .unwrap_or(exe_dir)
+    } else {
+        exe_dir
+    }
+}
+
 /// Start Next.js server in production mode (spawns a background thread)
 #[cfg(not(debug_assertions))]
 pub fn start_nextjs_server() {
@@ -1273,23 +1296,21 @@ pub fn start_nextjs_server() {
 
     println!("🚀 Starting Next.js server in production mode...");
 
-    let resource_dir = std::env::current_exe()
-        .ok()
-        .and_then(|path| path.parent().map(|p| p.to_path_buf()))
-        .unwrap_or_else(|| PathBuf::from("."));
-
-    let resource_dir = if resource_dir.ends_with("MacOS") {
-        resource_dir
-            .parent()
-            .and_then(|p| p.join("Resources").canonicalize().ok())
-    } else {
-        Some(resource_dir.clone())
+    let resource_dir = {
+        let guard = lock_recovered(&RESOURCE_DIR, "read resource dir");
+        guard.clone()
     }
-    .unwrap_or(resource_dir.clone());
+    .unwrap_or_else(|| {
+        let exe_dir = std::env::current_exe()
+            .ok()
+            .and_then(|path| path.parent().map(|p| p.to_path_buf()))
+            .unwrap_or_else(|| PathBuf::from("."));
+        resource_dir_from_exe(exe_dir)
+    });
 
     println!("📂 Resource directory: {:?}", resource_dir);
 
-    // standalone dir: Resources/_up_/.next/standalone/apps/web/server.js
+    // standalone dir: {resource_dir}/_up_/.next/standalone/apps/web/server.js
     let standalone_dir = resource_dir.join("_up_").join(".next").join("standalone");
     let server_script = standalone_dir.join("apps").join("web").join("server.js");
 
@@ -1957,4 +1978,39 @@ pub fn restart_server() -> Result<(), String> {
 #[tauri::command]
 pub fn restart_server() -> Result<(), String> {
     crate::panic_guard::catch_unwind_result("restart_server", || Ok(()))
+}
+
+#[cfg(test)]
+mod resource_dir_tests {
+    use super::resource_dir_from_exe;
+    use std::path::PathBuf;
+
+    #[test]
+    fn should_return_exe_dir_unchanged_outside_macos_bundle() {
+        let dir = PathBuf::from("/usr/bin");
+        assert_eq!(resource_dir_from_exe(dir.clone()), dir);
+    }
+
+    #[test]
+    fn should_map_contents_macos_to_sibling_resources_dir() {
+        let base = std::env::temp_dir().join(format!(
+            "openloomi-resource-dir-test-{}",
+            std::process::id()
+        ));
+        let macos_dir = base.join("Contents").join("MacOS");
+        let resources_dir = base.join("Contents").join("Resources");
+        std::fs::create_dir_all(&macos_dir).unwrap();
+        std::fs::create_dir_all(&resources_dir).unwrap();
+
+        let resolved = resource_dir_from_exe(macos_dir);
+        assert_eq!(resolved, resources_dir.canonicalize().unwrap());
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn should_fall_back_to_exe_dir_when_resources_dir_missing() {
+        let dir = PathBuf::from("/nonexistent/Contents/MacOS");
+        assert_eq!(resource_dir_from_exe(dir.clone()), dir);
+    }
 }
