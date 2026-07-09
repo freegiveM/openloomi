@@ -791,7 +791,8 @@ const zhHans = {
     addPlatform: "添加平台",
     addConnector: "添加连接器",
     connectMoreViaComposio: "通过 Composio 连接更多",
-    connectMoreViaComposioDesc: "让 Agent 帮你接入 GitHub、Linear、Notion、HubSpot 等上百款应用。",
+    connectMoreViaComposioDesc:
+      "让 Agent 帮你接入 GitHub、Linear、Notion、HubSpot 等上百款应用。",
     composioMoreAppsLabel: "更多应用",
     /**
      * 提示词原样发送给聊天 Agent,作为用户点击「通过 Composio 连接更多」时的

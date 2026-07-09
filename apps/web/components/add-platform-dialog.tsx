@@ -44,9 +44,7 @@ import { FeishuAuthForm } from "@/components/feishu-auth-form";
 import { DingTalkAuthForm } from "@/components/dingtalk-auth-form";
 import { QQBotAuthForm } from "@/components/qqbot-auth-form";
 import { WeixinAuthForm } from "@/components/weixin-auth-form";
-import {
-  IntegrationPlatformCard,
-} from "@/components/integration-platform-card";
+import { IntegrationPlatformCard } from "@/components/integration-platform-card";
 
 /**
  * Resolve short display text for an account

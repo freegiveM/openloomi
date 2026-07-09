@@ -169,8 +169,9 @@ export function PersonalizationLinkedAccounts({
       "integrations.composioConnectMorePrompt",
       "Help me connect more apps via Composio. First, list the available platforms I have not connected yet (e.g. GitHub, Linear, Notion, HubSpot, Asana, etc.), then walk me through authorizing each one step by step.",
     );
-    const bridge = (globalThis as { __petChatBridgeSend?: (text: string) => void })
-      .__petChatBridgeSend;
+    const bridge = (
+      globalThis as { __petChatBridgeSend?: (text: string) => void }
+    ).__petChatBridgeSend;
     if (typeof bridge === "function") {
       bridge(prompt);
       return;

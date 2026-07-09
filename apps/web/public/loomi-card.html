@@ -517,6 +517,7 @@
          card root, set/cleared by setEditMode(). */
       .card.editing #dec-recommendation,
       .card.editing #dec-source-chain,
+      .card.editing #dec-body,
       .card.editing #dec-confidence-row,
       .card.editing #dec-dialogue,
       .card.editing #dec-evidence,
@@ -571,7 +572,7 @@
         display: grid;
         gap: 5px;
         flex: 0 0 auto;
-        max-height: 144px;
+        max-height: 160px;
         overflow: auto;
       }
       .connector-row.connector-more {
@@ -1164,6 +1165,13 @@
       }
 
       .evidence-pills {
+        display: grid;
+        gap: 4px;
+        flex: 0 0 auto;
+        max-height: 84px;
+        overflow: auto;
+        grid-template-columns: 1fr;
+      }
       .evidence-pill {
         padding: 7px 9px 8px;
         border: 1px solid var(--blue-soft);
@@ -1758,13 +1766,13 @@
           <div id="dec-editor-error" role="alert"></div>
           <div id="dec-editor-footer">
             <button
-              class="primary"
-              id="dec-editor-save-run"
-              data-editor-action="save-run"
+              class="danger"
+              id="dec-editor-cancel"
+              data-editor-action="cancel"
               type="button"
-              title="Save the draft and schedule the send"
+              title="Discard local edits and close the editor"
             >
-              Save &amp; Run
+              Cancel
             </button>
             <button
               class="ghost"
@@ -1776,13 +1784,13 @@
               Save
             </button>
             <button
-              class="danger"
-              id="dec-editor-cancel"
-              data-editor-action="cancel"
+              class="primary"
+              id="dec-editor-save-run"
+              data-editor-action="save-run"
               type="button"
-              title="Discard local edits and close the editor"
+              title="Save the draft and schedule the send"
             >
-              Cancel
+              Save &amp; Run
             </button>
           </div>
         </div>
@@ -2877,8 +2885,7 @@
               dec.subject ||
               dec.title ||
               "";
-            const sender =
-              (payload && payload.from) || dec.from || "";
+            const sender = (payload && payload.from) || dec.from || "";
             const snippet =
               (payload && (payload.snippet || payload.body)) || "";
             // Cluster rows
