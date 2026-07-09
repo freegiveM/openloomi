@@ -134,9 +134,31 @@ The Attention Agent is lightweight — just a 168×168 transparent window, no co
 
 Yes. Loomi defaults to the bottom-right of your primary monitor, but wherever you drag it — which monitor, which corner — it remembers.
 
+### Can I switch the pet's look?
+
+Yes. Loomi ships with two built-in themes (`fox` and `capybara`) and a fully file-driven customization layer:
+
+- **Switch theme** — right-click Loomi → `Theme → Capybara` (or `Fox`).
+- **Custom themes** — drop a folder at `~/.openloomi/pet-custom/<name>/` with PNGs named `idle.png`, `thinking.png`, `presenting.png`, etc. Loomi auto-discovers them and they appear in the theme picker.
+- **Per-state overrides** — edit `~/.openloomi/pet-config.json` to point individual states at any PNG on disk:
+
+  ```json
+  {
+    "version": 1,
+    "activeTheme": "capybara",
+    "customThemesDir": "~/.openloomi/pet-custom",
+    "overrides": {
+      "fox": { "idle": "/Users/me/Pictures/my-fox-idle.png" }
+    }
+  }
+  ```
+
+- **External edits auto-apply** — the config watcher listens for changes and re-paints within ~250 ms; no app restart needed.
+- **`presenting` state** — when a decision moves to `done` and you haven't reviewed it yet, Loomi shows the `presenting` sprite + bubble ("All wrapped up — ready when you are"). Click the bubble to flip back to `happy`.
+
 ### What's the difference between the Attention Agent and Loop?
 
-- **The Attention Agent** is the **little fox on your desktop**, gently reminding you in your line of sight.
+- **The Attention Agent** is the **little pet on your desktop**, gently reminding you in your line of sight.
 - **Loop** is the **proactive execution engine** in the background, picking up scattered signals and turning them into decision cards waiting for your approval.
 
 The two work as a pair: the "Today's To-Do" and "Today's Done" that Loomi pushes are essentially Loop's output, surfaced to your eyes by the Attention Agent. To see how that pipeline actually works, read [Loop](/docs/loop) next.
