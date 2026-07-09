@@ -1796,7 +1796,10 @@
           ) {
             return t.webviewWindow.getCurrentWebviewWindow();
           }
-          if (t.window && typeof t.window.getCurrentWebviewWindow === "function") {
+          if (
+            t.window &&
+            typeof t.window.getCurrentWebviewWindow === "function"
+          ) {
             return t.window.getCurrentWebviewWindow();
           }
           if (t.window && typeof t.window.getCurrentWindow === "function") {
@@ -1823,10 +1826,10 @@
         function isInteractiveTarget(target) {
           return Boolean(
             target &&
-              target.closest &&
-              target.closest(
-                "button,a,input,textarea,select,[contenteditable='true'],[data-action],[data-editor-action]",
-              ),
+            target.closest &&
+            target.closest(
+              "button,a,input,textarea,select,[contenteditable='true'],[data-action],[data-editor-action]",
+            ),
           );
         }
 
@@ -1840,7 +1843,8 @@
           if (win && typeof win.startDragging === "function") {
             try {
               const t = window.__TAURI__;
-              if (t && t.event && t.event.emit) t.event.emit("pet:card-drag-start");
+              if (t && t.event && t.event.emit)
+                t.event.emit("pet:card-drag-start");
               win.startDragging();
             } catch (_) {
               /* native drag is best-effort */
