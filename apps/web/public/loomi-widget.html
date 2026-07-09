@@ -59,9 +59,6 @@
         height: var(--size);
         overflow: hidden;
         cursor: grab;
-        /* Soft drop shadow gives the fox weight against any wallpaper.
-       Matching the demo: 18px y-offset, 26px blur, 20% navy. */
-        filter: drop-shadow(0 18px 26px rgba(24, 50, 84, 0.2));
       }
       body.dragging {
         cursor: grabbing;
@@ -502,9 +499,6 @@
         if (!inTauri) {
           document.body.style.width = "100vw";
           document.body.style.height = "100vh";
-          // Drop the drop-shadow in preview mode; against a page background
-          // it would be visible as a soft halo, not the desktop feel.
-          document.body.style.filter = "none";
         }
 
         function setState(key) {
