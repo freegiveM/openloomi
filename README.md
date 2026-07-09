@@ -92,13 +92,6 @@ Requires Node.js 22+, pnpm 9+, Rust 1.75+, and on Windows: Visual Studio Build T
 </tr>
 </table>
 
-## Security
-
-- **Local-first**: works offline, no data sent to external servers
-- **Auditable**: you can see and audit exactly when and why data is accessed
-- **AES-256 encryption** for stored data
-- **Hardware-isolated processing, no public gateways**
-
 ## Feedback
 
 This is early-stage software. We're looking for people who'll actually install it, connect their tools, and tell us what's broken.
