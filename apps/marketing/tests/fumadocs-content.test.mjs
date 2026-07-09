@@ -13,22 +13,25 @@ function readJson(filePath) {
 
 function parseFrontmatter(filePath) {
   const source = fs.readFileSync(filePath, "utf8");
-  const match = source.match(/^---\n([\s\S]*?)\n---/);
+  const match = source.match(/^---\r?\n([\s\S]*?)\r?\n---/);
   if (!match) return {};
 
   return Object.fromEntries(
     match[1]
-      .split("\n")
+      .split(/\r?\n/)
       .map((line) => line.match(/^([A-Za-z0-9_-]+):\s*(.*)$/))
       .filter(Boolean)
-      .map(([, key, value]) => [key, value.replace(/^["']|["']$/g, "")]),
+      .map(([, key, value]) => [
+        key,
+        value.trim().replace(/^["']|["']$/g, ""),
+      ]),
   );
 }
 
 function countMarkdownH1(filePath) {
   const source = fs
     .readFileSync(filePath, "utf8")
-    .replace(/^---\n[\s\S]*?\n---/, "")
+    .replace(/^---\r?\n[\s\S]*?\r?\n---/, "")
     .replace(/```[\s\S]*?```/g, "");
 
   return source.split("\n").filter((line) => /^#(?!#)\s+/.test(line.trim()))
@@ -58,6 +61,10 @@ assertMetaPages(
   path.join(docsDir, "changelog", "meta.json"),
   path.join(docsDir, "changelog"),
 );
+assertMetaPages(
+  path.join(docsDir, "reference", "meta.json"),
+  path.join(docsDir, "reference"),
+);
 
 const docsPageTreeSource = fs.readFileSync(docsPageTreePath, "utf8");
 
@@ -72,7 +79,11 @@ assert.match(
   "docs page tree must keep the changelog folder collapsible",
 );
 
-for (const dir of [docsDir, path.join(docsDir, "changelog")]) {
+for (const dir of [
+  docsDir,
+  path.join(docsDir, "changelog"),
+  path.join(docsDir, "reference"),
+]) {
   for (const fileName of fs
     .readdirSync(dir)
     .filter((file) => file.endsWith(".mdx"))) {
