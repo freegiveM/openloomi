@@ -16,21 +16,41 @@ import {
   type AuthenticatedNativeAgentSession,
   type NativeAgentRequest,
 } from "@/lib/ai/native-agent/runner";
+import { recordUsage } from "@/lib/llm-usage/recorder";
 
 // Set max duration for long-running agent tasks.
 // This prevents "TypeError: Load failed" when tool calls take a long time.
 // NOTE: Vercel has hard limits (Hobby: 10s, Pro: 800s).
 export const maxDuration = 800;
 
+/**
+ * Resolves a stable providerType slug from the request body. Today the only
+ * tracking-eligible provider is the Anthropic-compatible path ("claude"),
+ * but `body.provider` is the contract — anything else becomes "unknown"
+ * so the recorder still writes the row with provider metadata intact.
+ */
+function resolveProviderType(body: NativeAgentRequest): string {
+  if (body.provider === "claude") {
+    return "anthropic_compatible";
+  }
+  return typeof body.provider === "string" && body.provider.trim().length > 0
+    ? body.provider
+    : "unknown";
+}
+
 // Helper to create SSE stream with heartbeat to keep connection alive.
 // SSE heartbeat sends a comment every 30 seconds to prevent idle timeouts
 // from proxies, load balancers, and browsers.
 function createSSEStream(
   generator: AsyncGenerator<AgentMessage>,
-  onClose?: () => void,
+  options?: {
+    onClose?: () => void;
+    onUsage?: (message: AgentMessage) => void;
+  },
 ) {
   const encoder = new TextEncoder();
   const HEARTBEAT_INTERVAL_MS = 30000;
+  const { onClose, onUsage } = options ?? {};
 
   return new ReadableStream({
     async start(controller) {
@@ -60,6 +80,12 @@ function createSSEStream(
         for await (const message of generator) {
           const data = `data: ${JSON.stringify(message)}\n\n`;
           controller.enqueue(encoder.encode(data));
+          // Fire usage instrumentation AFTER the byte is enqueued so a slow
+          // disk write can never push the SSE frame out, and recorder errors
+          // are caught inside recordUsage (no try/catch needed here).
+          if (onUsage) {
+            onUsage(message);
+          }
         }
       } catch (error) {
         console.error("[AgentAPI] Generator error:", {
@@ -158,10 +184,45 @@ export async function POST(req: NextRequest) {
       abortController,
     });
 
-    const readable = createSSEStream(run.generator, () => {
-      if (run.shouldAbortOnClose()) {
-        abortController.abort();
-      }
+    // Usage metadata captured once per request — derived from the parsed
+    // body so we don't need to re-resolve provider settings here. The
+    // recorder is the source of truth; the SSE loop never blocks on it.
+    const usageContext = {
+      userId: authUser.id,
+      providerType: resolveProviderType(body),
+      model:
+        typeof body.modelConfig?.model === "string" &&
+        body.modelConfig.model.trim().length > 0
+          ? body.modelConfig.model.trim()
+          : null,
+      endpoint: "native-agent",
+      runId: body.sessionId ?? null,
+    } as const;
+
+    const readable = createSSEStream(run.generator, {
+      onClose: () => {
+        if (run.shouldAbortOnClose()) {
+          abortController.abort();
+        }
+      },
+      onUsage: (message) => {
+        if (message.type !== "result") return;
+        const usage = message.usage;
+        if (
+          !usage ||
+          typeof usage.inputTokens !== "number" ||
+          typeof usage.outputTokens !== "number"
+        ) {
+          return;
+        }
+        // Fire and forget — recordUsage has its own try/catch and per-
+        // user serialization, and the SSE stream must not be affected.
+        void recordUsage({
+          ...usageContext,
+          inputTokens: usage.inputTokens,
+          outputTokens: usage.outputTokens,
+        });
+      },
     });
 
     return new Response(readable, { headers: SSE_HEADERS });

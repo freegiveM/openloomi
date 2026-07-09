@@ -5891,6 +5891,81 @@ export async function deleteUserLlmApiSetting({
   }
 }
 
+/**
+ * Resolves the earliest `created_at` of any enabled LLM provider for the
+ * user. This anchors the "since the user first configured a custom LLM
+ * provider" baseline used by the LOOMI Online usage summary UI.
+ *
+ * Returns:
+ * - `providerSince: Date | null` — earliest `created_at` across all
+ *   enabled provider rows, or `null` when the user has no enabled provider.
+ * - `currentProvider` — the most recently updated enabled provider, useful
+ *   for surfacing the active providerType/model in the card.
+ *
+ * If the user deletes and re-creates a provider, the new row has a fresh
+ * `created_at`, so the baseline naturally resets — matching the product
+ * intent of "after the user re-configured".
+ */
+export async function getUserLlmProviderEarliestEnabledSince(
+  userId: string,
+): Promise<{
+  providerSince: Date | null;
+  currentProvider?: {
+    providerType: string;
+    model: string | null;
+    enabledSince: Date;
+  };
+}> {
+  try {
+    const rows = await db
+      .select({
+        providerType: userLlmApiSettings.providerType,
+        model: userLlmApiSettings.model,
+        createdAt: userLlmApiSettings.createdAt,
+        updatedAt: userLlmApiSettings.updatedAt,
+      })
+      .from(userLlmApiSettings)
+      .where(
+        and(
+          eq(userLlmApiSettings.userId, userId),
+          eq(userLlmApiSettings.enabled, true),
+        ),
+      );
+
+    if (rows.length === 0) {
+      return { providerSince: null };
+    }
+
+    let earliest: Date | null = null;
+    let current: (typeof rows)[number] | null = null;
+    for (const row of rows) {
+      if (!earliest || row.createdAt < earliest) {
+        earliest = row.createdAt;
+      }
+      if (!current || row.updatedAt > current.updatedAt) {
+        current = row;
+      }
+    }
+
+    return {
+      providerSince: earliest,
+      currentProvider: current
+        ? {
+            providerType: current.providerType,
+            model: current.model ?? null,
+            enabledSince: current.createdAt,
+          }
+        : undefined,
+    };
+  } catch (error) {
+    console.error(
+      "Failed to resolve user LLM provider earliest enabled since:",
+      error,
+    );
+    return { providerSince: null };
+  }
+}
+
 export type EmbeddingProviderType = UserEmbeddingSettings["providerType"];
 
 export type UserEmbeddingSettingSafe = Omit<

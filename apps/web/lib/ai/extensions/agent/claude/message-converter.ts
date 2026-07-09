@@ -73,6 +73,7 @@ export function* convertClaudeSdkMessage({
     subtype?: string;
     total_cost_usd?: number;
     duration_ms?: number;
+    usage?: unknown;
     event?: {
       type: string;
       delta?: { type?: string; text?: string; thinking?: string };
@@ -249,11 +250,41 @@ export function* convertClaudeSdkMessage({
 
   if (msg.type === "result") {
     // The result event is metadata-only: final status, cost, and duration.
+    // Claude Code also surfaces a usage block on `result` (and on every
+    // `assistant` turn, but those values stay at 0 until the final rollup),
+    // so we forward it to the LLM-usage recorder via the SSE loop.
+    const usage = extractClaudeResultUsage(msg.usage);
     yield {
       type: "result",
       content: msg.subtype,
       cost: msg.total_cost_usd,
       duration: msg.duration_ms,
+      ...(usage ? { usage } : {}),
     };
   }
+}
+
+/**
+ * Pull a normalized `{ inputTokens, outputTokens }` block out of Claude
+ * Code's snake_case `usage` payload (if present and well-formed). Returns
+ * `undefined` when the block is missing or has no token counts — the route
+ * SSE loop skips recording in that case, matching the Hermes adapter.
+ */
+export function extractClaudeResultUsage(
+  value: unknown,
+): { inputTokens: number; outputTokens: number } | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const record = value as Record<string, unknown>;
+  const inputTokens =
+    typeof record.input_tokens === "number" &&
+    Number.isFinite(record.input_tokens)
+      ? record.input_tokens
+      : undefined;
+  const outputTokens =
+    typeof record.output_tokens === "number" &&
+    Number.isFinite(record.output_tokens)
+      ? record.output_tokens
+      : undefined;
+  if (inputTokens === undefined || outputTokens === undefined) return undefined;
+  return { inputTokens, outputTokens };
 }

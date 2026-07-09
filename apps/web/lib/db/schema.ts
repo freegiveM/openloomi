@@ -36,6 +36,7 @@ export const userInsightSettings = (currentSchema as any).userInsightSettings;
 export const userVisionLlmSettings = (currentSchema as any)
   .userVisionLlmSettings;
 export const userLlmApiSettings = (currentSchema as any).userLlmApiSettings;
+export const llmUsage = (currentSchema as any).llmUsage;
 export const userEmbeddingSettings = (currentSchema as any)
   .userEmbeddingSettings;
 export const userContacts = (currentSchema as any).userContacts;
@@ -156,6 +157,8 @@ export type {
   DBInsertVisionLlmSettings,
   UserLlmApiSettings,
   InsertUserLlmApiSettings,
+  LlmUsage,
+  InsertLlmUsage,
   UserEmbeddingSettings,
   InsertUserEmbeddingSettings,
   DBPersonCustomFields,

@@ -673,6 +673,13 @@
       "when": 1784150400000,
       "tag": "0106_add_chronicle_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 96,
+      "version": "7",
+      "when": 1784236800000,
+      "tag": "0108_llm_usage",
+      "breakpoints": true
     }
   ]
 }

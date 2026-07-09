@@ -982,6 +982,36 @@ export type InsertUserLlmApiSettings = InferInsertModel<
   typeof userLlmApiSettings
 >;
 
+export const llmUsage = sqliteTable(
+  "llm_usage",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    ts: integer("ts", { mode: "timestamp" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    providerType: text("provider_type").notNull(),
+    model: text("model"),
+    endpoint: text("endpoint").notNull().default("native-agent"),
+    inputTokens: integer("input_tokens").notNull(),
+    outputTokens: integer("output_tokens").notNull(),
+    runId: text("run_id"),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (table) => ({
+    userTsIdx: index("llm_usage_user_ts_idx").on(table.userId, table.ts),
+  }),
+);
+
+export type LlmUsage = InferSelectModel<typeof llmUsage>;
+export type InsertLlmUsage = InferInsertModel<typeof llmUsage>;
+
 export const userEmbeddingSettings = sqliteTable(
   "user_embedding_settings",
   {

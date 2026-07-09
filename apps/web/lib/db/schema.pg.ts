@@ -1165,6 +1165,34 @@ export type InsertUserLlmApiSettings = InferInsertModel<
   typeof userLlmApiSettings
 >;
 
+export const llmUsage = pgTable(
+  "llm_usage",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    ts: timestamp("ts", { withTimezone: true }).notNull().defaultNow(),
+    providerType: varchar("provider_type", { length: 64 }).notNull(),
+    model: text("model"),
+    endpoint: varchar("endpoint", { length: 64 })
+      .notNull()
+      .default("native-agent"),
+    inputTokens: integer("input_tokens").notNull(),
+    outputTokens: integer("output_tokens").notNull(),
+    runId: text("run_id"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => ({
+    userTsIdx: index("llm_usage_user_ts_idx").on(table.userId, table.ts),
+  }),
+);
+
+export type LlmUsage = InferSelectModel<typeof llmUsage>;
+export type InsertLlmUsage = InferInsertModel<typeof llmUsage>;
+
 export const userEmbeddingSettings = pgTable(
   "user_embedding_settings",
   {
