@@ -587,10 +587,17 @@ fn main() {
                 // `false`, pick Accessory (no Dock icon), and then never
                 // re-evaluate. A short background-thread sleep lets the
                 // NSWindow settle before we ask the OS about its state.
+                // The actual sync must then hop back to the main thread —
+                // it calls `setApplicationIconImage:`, which is only safe
+                // on the main thread and corrupts the objc selector table
+                // (later SIGSEGV in CALayer init) when invoked off-main.
                 let app_for_deferred = pet_to_main.clone();
                 std::thread::spawn(move || {
                     std::thread::sleep(std::time::Duration::from_millis(80));
-                    pet::sync_dock_policy(&app_for_deferred);
+                    let app_for_main = app_for_deferred.clone();
+                    let _ = app_for_deferred.run_on_main_thread(move || {
+                        pet::sync_dock_policy(&app_for_main);
+                    });
                 });
             });
 

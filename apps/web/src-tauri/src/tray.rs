@@ -70,12 +70,33 @@ pub fn build_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
 ///
 /// `pub` so the pet can ask us to do this from its own
 /// `pet:open-dashboard` event without going through a second `#[command]`.
+///
+/// Also re-syncs the macOS Dock icon policy after the show, since
+/// every caller that brings main back should restore the Dock too —
+/// otherwise the icon can stay stuck in `Accessory` after the user
+/// re-opens the window from the tray. The sync is deferred because
+/// `is_visible()` lags one frame after `.show()` returns; this mirrors
+/// the workaround used in the `pet:open-dashboard` handler in main.rs.
 pub fn show_main_window(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.unminimize();
         let _ = window.show();
         let _ = window.set_focus();
     }
+    let app_for_deferred = app.clone();
+    std::thread::spawn(move || {
+        // Let the NSWindow settle so `is_visible()` no longer returns the
+        // pre-`show()` value. Then bounce to the main thread before touching
+        // AppKit — `sync_dock_policy` calls `setApplicationIconImage:`
+        // which is only safe on the main thread, and calling it from a
+        // background thread corrupts the objc selector table and later
+        // crashes main-thread rendering (CALayer init SIGSEGV).
+        std::thread::sleep(std::time::Duration::from_millis(80));
+        let app_for_main = app_for_deferred.clone();
+        let _ = app_for_deferred.run_on_main_thread(move || {
+            crate::pet::sync_dock_policy(&app_for_main);
+        });
+    });
 }
 
 /// Handle macOS `applicationShouldHandleReopen` (e.g. clicking the Dock icon
