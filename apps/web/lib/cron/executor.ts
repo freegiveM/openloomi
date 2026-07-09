@@ -43,7 +43,7 @@ import {
   type ArtifactToolPart,
 } from "./artifact-reconciliation";
 import { getAllFilesAtPathWithSize } from "@/lib/files/workspace/sessions";
-import { platform, homedir } from "node:os";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { DEFAULT_JOB_TIMEOUT_MS } from "../env/config/constants";
 import { APP_DIR_NAME } from "../env/config/constants";
@@ -305,7 +305,6 @@ async function executeCustomJob(
     null;
   let charSources: Array<{ type: string; name: string; id?: string }> = [];
   let charNotificationChannels: string[] = [];
-  let charSystemNotification = true;
   if (context.characterId) {
     [char] = await db
       .select()
@@ -331,17 +330,6 @@ async function executeCustomJob(
           : Array.isArray(char.notificationChannels)
             ? char.notificationChannels
             : [];
-    }
-
-    // Parse system notification toggle (default true for backward compatibility)
-    if (
-      char?.systemNotification !== undefined &&
-      char?.systemNotification !== null
-    ) {
-      charSystemNotification =
-        typeof char.systemNotification === "number"
-          ? char.systemNotification === 1
-          : char.systemNotification === true;
     }
 
     if (char && char.status !== "active") {
@@ -518,77 +506,16 @@ After calling chatInsight with withDetail=true, if any insights have attachments
           executionCompleted: "执行完成",
         };
 
-    // Determine platform for system notifications
-    const osPlatform = platform();
-    const isMacOS = osPlatform === "darwin";
-    const isLinux = osPlatform === "linux";
-    const isWindows = osPlatform === "win32";
-
-    let platformNotificationSection = "";
-    let platformNotificationWorkflow = "";
-    let platformNotificationExamples = "";
-    let platformNotificationName: string = osPlatform;
-
-    if (charSystemNotification) {
-      if (isMacOS) {
-        platformNotificationName = "macOS";
-        platformNotificationSection = `**macOS Notification (ALWAYS send if no platform specified):**
-- dialog: (sleep 18 && osascript -e 'display dialog "Notification content" buttons {"OK"} default button 1 with title "openloomi Reminder"') &
-- notification: (sleep 18 && osascript -e 'display notification "Notification content" with title "openloomi Reminder"') &`;
-        platformNotificationWorkflow =
-          "5. macOS notification - ALWAYS use the delayed notification pattern: (sleep 18 && osascript -e 'display notification ...' with title \"openloomi Reminder\") & AND also (sleep 18 && osascript -e 'display dialog ...' with title \"openloomi Reminder\") & - BOTH commands must be used with proper background delay execution (the & at the end makes it run in background)";
-        platformNotificationExamples = `- Task: "Remind me to attend meeting at 9 AM every day" (no platform specified)
-  - Platforms: ALL available platforms + macOS notification
-  - Reminder: "Time for meeting!"
-
-- Task: "Remind me to submit weekly report every Friday" (no platform specified)
-  - Platforms: ALL available platforms + macOS notification
-  - Reminder: "Time to submit weekly report!"`;
-      } else if (isLinux) {
-        platformNotificationName = "Linux";
-        platformNotificationSection = `**Linux Notification (ALWAYS send if no platform specified):**
-- Use the Bash tool to send system notification: (sleep 18 && notify-send "openloomi Reminder" "Notification content") &
-- Alternative: (sleep 18 && zenity --info --text="Notification content" --title="openloomi Reminder") &`;
-        platformNotificationWorkflow =
-          '5. Linux notification - ALWAYS use the delayed notification pattern: (sleep 18 && notify-send "openloomi Reminder" "Notification content") & - must run in background with & at the end';
-        platformNotificationExamples = `- Task: "Remind me to attend meeting at 9 AM every day" (no platform specified)
-  - Platforms: ALL available platforms + Linux notification
-  - Reminder: "Time for meeting!"
-
-- Task: "Remind me to submit weekly report every Friday" (no platform specified)
-  - Platforms: ALL available platforms + Linux notification
-  - Reminder: "Time to submit weekly report!"`;
-      } else if (isWindows) {
-        platformNotificationName = "Windows";
-        platformNotificationSection = `**Windows Notification (ALWAYS send if no platform specified):**
-- Use PowerShell: Start-Process powershell -ArgumentList '-Command', 'Start-Sleep -Seconds 18; Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.MessageBox]::Show(\"Notification content\", \"openloomi Reminder\")'`;
-        platformNotificationWorkflow =
-          "5. Windows notification - ALWAYS use the delayed notification pattern: Start-Process powershell -ArgumentList '-Command', 'Start-Sleep -Seconds 18; Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.MessageBox]::Show(\"Notification content\", \"openloomi Reminder\")' - must run in background";
-        platformNotificationExamples = `- Task: "Remind me to attend meeting at 9 AM every day" (no platform specified)
-  - Platforms: ALL available platforms + Windows notification
-  - Reminder: "Time for meeting!"
-
-- Task: "Remind me to submit weekly report every Friday" (no platform specified)
-  - Platforms: ALL available platforms + Windows notification
-  - Reminder: "Time to submit weekly report!"`;
-      } else {
-        platformNotificationName = "your system";
-        platformNotificationSection = `**System Notification:**
-Current platform (${osPlatform}) system notification is not configured. Only send to connected platforms.`;
-        platformNotificationWorkflow =
-          "5. System notification - send to connected platforms only";
-        platformNotificationExamples = `- Task: "Remind me to attend meeting at 9 AM every day" (no platform specified)
-  - Platforms: ALL available platforms
-  - Reminder: "Time for meeting!"`;
-      }
-    } // end charSystemNotification
+    // OS desktop notifications are no longer injected into cron prompts.
+    // All reminders go through configured cross-platform Notification Channels
+    // (Telegram/Slack/Discord/etc.) via `sendReply`.
 
     // Add system prompt as first assistant message to guide behavior
     messages.push({
       role: "assistant",
       content: `**SCHEDULED TASK EXECUTION**
 
-You are executing a scheduled task on **${platformNotificationName} (${osPlatform})**.
+You are executing a scheduled task.
 
 **TASK DESCRIPTION:**
 "${jobDescription}"
@@ -624,7 +551,7 @@ When the task description mentions or is associated with a specific insight, eve
 3. If no platform is specified, ONLY send to the user's configured Notification Channels (from CHARACTER CONTEXT):
    - Send to each channel listed in Notification Channels using sendReply
    - Do NOT send to platforms not in Notification Channels
-${charSystemNotification ? `   - System notification (${platformNotificationName}) is still sent if configured` : "   - Do NOT send system/desktop notifications"}
+   - Do NOT send system/desktop notifications
 
 **EXECUTION WORKFLOW:**
 1. queryIntegrations - Verify the configured Notification Channels are available
@@ -637,9 +564,6 @@ ${charSystemNotification ? `   - System notification (${platformNotificationName
    - For other platforms: Find the user's own contact via queryContacts (the recipient is the user themselves)
 4. sendReply - Send the reminder message to the user via each configured Notification Channel
 5. If the task description references an existing insight/event/track -> use modifyInsight to update it
-${platformNotificationWorkflow}
-
-${platformNotificationSection}
 
 **EXAMPLES:**
 - Task: "Remind me to drink water at 8 PM every day on Telegram"
@@ -655,8 +579,6 @@ ${platformNotificationSection}
 - Task: "Log my daily reading to 'Book Tracker' every evening"
   - The user has associated this task with the "Book Tracker" insight
   - Action: Use modifyInsight to add a timeline event to the existing "Book Tracker" insight
-
-${platformNotificationExamples}
 
 **IMPORTANT:**
 - Recipient is always the USER (yourself), not other people

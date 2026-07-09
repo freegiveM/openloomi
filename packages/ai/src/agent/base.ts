@@ -5,7 +5,6 @@
  */
 
 import { nanoid } from "nanoid";
-import { platform } from "node:os";
 
 import { UserLocale } from "@openloomi/shared";
 
@@ -520,25 +519,6 @@ Combine strategies as needed. For example, to find recent large PDFs:
 ### Important constraints
 - File search is **supplementary context only**. It must never block or delay the main task. If search takes too long or returns nothing, continue the task without it.
 - Never treat file search as a prerequisite — the user's request should always be fulfilled regardless of whether files are found.
-
-## Notification Rules
-
-${(() => {
-  const osPlatform = platform();
-  const cmd =
-    osPlatform === "darwin"
-      ? 'macOS — `osascript -e \'display notification "<content>" with title "openloomi Reminder"\'`'
-      : osPlatform === "linux"
-        ? 'Linux — `notify-send "openloomi Reminder" "<content>"` (fallback: `zenity --info --text="<content>" --title "openloomi Reminder"`, then `xmessage -center "<content>"`)'
-        : osPlatform === "win32"
-          ? "Windows — `powershell -Command \"Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.MessageBox]::Show('<content>','openloomi Reminder')\"`"
-          : "the appropriate system-notification command for the current OS";
-  return `**CRITICAL: When the user says "remind me" / "notify me" / "N minutes later remind me" and does NOT name a channel (Telegram, Slack, Email, WhatsApp, etc.), you MUST send an OS system notification via the \`Bash\` tool — NOT a chat message, NOT sendReply, NOT plain text in the conversation.**
-
-- Command (${osPlatform}): ${cmd}
-- Exception: if the user explicitly names a platform, use \`sendReply\` to send to that platform instead.
-- For a future-time reminder, use the \`createScheduledJob\` tool to create a scheduled task and put the notification logic inside it.`;
-})()}
 
 ## Search Rules
 
