@@ -199,7 +199,9 @@ export async function triggerBrief(
   opts: { force?: boolean } = {},
 ): Promise<BriefActionResult> {
   try {
-    const { card, snapshot } = buildBrief({ force: opts.force ?? true });
+    const { card, snapshot } = await buildBrief({
+      force: opts.force ?? true,
+    });
     return {
       ok: true,
       stats: snapshot.stats,
@@ -225,7 +227,9 @@ export async function triggerWrap(
   opts: { force?: boolean } = {},
 ): Promise<BriefActionResult> {
   try {
-    const { card, snapshot } = buildWrap({ force: opts.force ?? true });
+    const { card, snapshot } = await buildWrap({
+      force: opts.force ?? true,
+    });
     return {
       ok: true,
       stats: {

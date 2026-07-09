@@ -22,6 +22,7 @@ const ALLOWED_KEYS: (keyof LoopPreferences)[] = [
   "noReplySkip",
   "promotionSkip",
   "timezone",
+  "narrative",
 ];
 
 const TIME_RE = /^([01]?\d|2[0-3]):[0-5]\d$/;
@@ -93,6 +94,12 @@ export async function PUT(req: Request) {
     if (typeof body.intervalSec === "number" && body.intervalSec < 30) {
       return NextResponse.json(
         { error: "intervalSec must be >= 30" },
+        { status: 400 },
+      );
+    }
+    if (body.narrative !== undefined && typeof body.narrative !== "boolean") {
+      return NextResponse.json(
+        { error: "narrative must be a boolean" },
         { status: 400 },
       );
     }

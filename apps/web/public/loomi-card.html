@@ -1238,6 +1238,63 @@
         padding: 2px 7px;
         border-radius: 999px;
       }
+      /* ---------- Agentic narrative overlay (brief / wrap) ---------- */
+      .brief-narrative {
+        padding: 8px 10px;
+        border-radius: 8px;
+        background: rgba(0, 0, 0, 0.04);
+        margin-bottom: 6px;
+      }
+      .brief-narrative-headline {
+        font-weight: 600;
+        font-size: 12.5px;
+        line-height: 1.25;
+        color: var(--ink);
+      }
+      .brief-narrative-body {
+        font-size: 11.5px;
+        opacity: 0.85;
+        margin-top: 4px;
+        line-height: 1.45;
+        color: var(--ink);
+        white-space: pre-line;
+      }
+      .brief-narrative-body[data-collapsed="true"] {
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+      .brief-narrative-toggle {
+        font-family: var(--font-body);
+        font-size: 10.5px;
+        color: var(--accent, #6366f1);
+        background: none;
+        border: none;
+        cursor: pointer;
+        padding: 4px 0 0;
+      }
+      .brief-narrative-generating {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 11.5px;
+        color: var(--muted, #6b7280);
+      }
+      .brief-narrative-spinner {
+        display: inline-block;
+        width: 10px;
+        height: 10px;
+        border: 2px solid currentColor;
+        border-right-color: transparent;
+        border-radius: 50%;
+        animation: brief-spin 0.7s linear infinite;
+      }
+      @keyframes brief-spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
       .brief-metrics {
         display: grid;
         grid-template-columns: repeat(3, 1fr);
@@ -1465,6 +1522,97 @@
       .toast.error {
         border-color: rgba(255, 73, 36, 0.4);
         color: var(--red);
+      }
+
+      /* ---------- Usage strip (cumulative native-agent tokens) ----------
+         Sits as its own row directly under each layout's header,
+         right-aligned within the card flex column. This deliberately
+         avoids the top-right corner where the × close button lives
+         and the bottom-right where footer action buttons sit.
+         Reads /api/llm/usage/summary on init, on ai-settings-changed, and
+         (debounced) on every loop:decision terminal event.
+
+         Visibility: only the idle Loomi Online (connection) layout shows
+         the chip. The card's `data-active-layout` is set by apply() so
+         every non-connection layout hides it via the default rule
+         below — that way the chip never flashes during a layout swap
+         and never competes with footer / decision content. */
+      .usage-strip {
+        display: none;
+        flex: 0 0 auto;
+        align-self: flex-end;
+        /* Push the chip to the bottom of the card flex column so it
+           behaves like a status bar even when the connection layout
+           doesn't fill the card height. On non-connection layouts the
+           strip is `display: none` (rule below), so this auto margin
+           never steals vertical space from the layout's own footer. */
+        margin-top: auto;
+        height: 22px;
+        max-width: 100%;
+        align-items: center;
+        gap: 6px;
+        padding: 0 8px;
+        border-radius: 999px;
+        background: var(--panel-soft);
+        border: 1px solid var(--line);
+        font-family: var(--font-mono);
+        font-size: 9.5px;
+        color: var(--ink);
+        pointer-events: auto;
+        cursor: default;
+      }
+      .card[data-active-layout="connection"] .usage-strip {
+        display: inline-flex;
+        margin-top: auto;
+      }
+      .card.dark .usage-strip {
+        background: rgba(20, 33, 60, 0.6);
+        border-color: rgba(255, 255, 255, 0.14);
+        color: #d9e9ff;
+      }
+      .usage-strip[data-state="loading"],
+      .usage-strip[data-state="error"] {
+        opacity: 0.78;
+      }
+      .usage-strip[data-state="error"] .usage-value {
+        color: var(--red);
+      }
+      .usage-strip[data-state="unconfigured"] {
+        background: var(--orange-softer);
+        border-color: var(--orange-border);
+        color: var(--orange-text);
+      }
+      .usage-strip[data-state="has-usage"] {
+        background: var(--blue-soft);
+        border-color: var(--blue-border);
+      }
+      .usage-label {
+        letter-spacing: 0.04em;
+        font-weight: 700;
+        color: var(--label);
+      }
+      .card.dark .usage-label {
+        color: #d9e9ff;
+      }
+      .usage-value {
+        font-weight: 700;
+        letter-spacing: 0.01em;
+        color: var(--ink);
+      }
+      .card.dark .usage-value {
+        color: #f7fbff;
+      }
+      .usage-meta {
+        color: var(--label);
+        font-weight: 500;
+        letter-spacing: 0.01em;
+        white-space: nowrap;
+        max-width: 110px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .card.dark .usage-meta {
+        color: #b8c6dc;
       }
     </style>
   </head>
@@ -1842,6 +1990,11 @@
           </div>
           <div class="brief-tag" id="brief-tag">3 unread · 2 conflicts</div>
         </div>
+        <div
+          class="brief-narrative"
+          id="brief-narrative"
+          style="display: none"
+        ></div>
         <div class="brief-metrics" id="brief-metrics">
           <div class="metric-chip">
             <span class="metric-value" id="brief-m1">0</span>
@@ -1911,6 +2064,11 @@
             </div>
           </div>
         </div>
+        <div
+          class="brief-narrative"
+          id="wrap-narrative"
+          style="display: none"
+        ></div>
         <div class="memory-ledger">
           <div class="memory-ledger-title">Tomorrow starts with</div>
           <div class="ledger-rows" id="wrap-ledger">
@@ -1924,6 +2082,36 @@
           </button>
         </div>
       </section>
+
+      <!-- ============================================================
+           USAGE STRIP (cumulative native-agent tokens)
+           Anchored to the bottom of the card flex column, right-aligned.
+           This keeps it out of the way of the layout's own header (×)
+           and the layout's footer action buttons — both common in the
+           pipeline / decision / brief / wrap forms. On the idle Loomi
+           Online (connection) layout, where the card has plenty of empty
+           room below the pending queue, the chip docks at the very
+           bottom edge as a quiet status line, much like the status bar
+           on a chat / IDE window.
+           Data: GET /api/llm/usage/summary. Title attr carries the
+           full breakdown so we avoid shipping a tooltip library.
+
+           Visibility: CSS only shows this when the card has
+           `data-active-layout="connection"` (idle Loomi Online). Other
+           layouts (pipeline / decision / brief / wrap / no-api-key)
+           hide it via the default rule so it never competes with
+           their own footer actions.
+           ============================================================ -->
+      <div
+        class="usage-strip"
+        id="usage-strip"
+        data-state="loading"
+        title="Cumulative native-agent token usage since provider was configured"
+      >
+        <span class="usage-label">TOKENS</span>
+        <span class="usage-value" id="usage-value">—</span>
+        <span class="usage-meta" id="usage-meta">loading…</span>
+      </div>
 
       <div class="toast" id="toast"></div>
     </div>
@@ -2368,6 +2556,15 @@
             el.classList.toggle("active", el.dataset.layout === layout),
           );
           card.classList.toggle("dark", layout === "wrap");
+          // The usage chip is only meaningful on the idle Loomi Online
+          // (connection) screen. Action / reading layouts (pipeline,
+          // decision, brief, wrap) compete with footer buttons and
+          // body content for visual attention, and no-api-key already
+          // explains the missing config in its own copy. The CSS uses
+          // this attribute to hide the chip on every non-connection
+          // layout — including during transitions where multiple
+          // layouts briefly co-exist.
+          card.dataset.activeLayout = layout;
           // Hide footer / pills on layouts that don't use them — but the
           // footer lives inside each section, so layout-level switching
           // already hides them. Nothing global to do here.
@@ -3518,8 +3715,24 @@
           document.getElementById("brief-m3").textContent = prs;
 
           const tag = document.getElementById("brief-tag");
-          tag.textContent =
-            unread + " unread · " + conflicts + " conflicts · " + prs + " PRs";
+          // When an agentic narrative is ready, swap the templated tag
+          // for the headline so the card opens with the actual story.
+          const narr = decision?.context?.narrative;
+          if (narr && narr.status === "ready" && narr.headline) {
+            tag.textContent = narr.headline;
+          } else {
+            tag.textContent =
+              unread +
+              " unread · " +
+              conflicts +
+              " conflicts · " +
+              prs +
+              " PRs";
+          }
+
+          renderNarrative("brief-narrative", decision?.context?.narrative, {
+            generating: "Generating morning brief…",
+          });
 
           const list = document.getElementById("brief-list");
           list.innerHTML = "";
@@ -3570,6 +3783,10 @@
               carriedCount +
               " carried";
 
+          renderNarrative("wrap-narrative", decision?.context?.narrative, {
+            generating: "Generating evening wrap…",
+          });
+
           // Optional: pre-render the carried rows from pendingList when
           // we have them, otherwise keep the static demo copy.
           const ledger = document.getElementById("wrap-ledger");
@@ -3584,6 +3801,60 @@
               ledger.appendChild(row);
             }
           }
+        }
+
+        // ---------- Narrative overlay (shared by brief / wrap) ----------
+        /**
+         * Render an agentic narrative block into the container with id
+         * `containerId`. Three states:
+         *   - missing / null / undefined → hide the container (template fallback)
+         *   - { status: "generating" }   → spinner + label
+         *   - { status: "ready", headline, body }
+         *                               → headline + body, line-clamp to 2
+         *                                 lines with a "Read more" toggle when
+         *                                 body is long enough to need it.
+         */
+        function renderNarrative(containerId, narrative, labels) {
+          const el = document.getElementById(containerId);
+          if (!el) return;
+          if (!narrative) {
+            el.style.display = "none";
+            el.innerHTML = "";
+            return;
+          }
+          if (narrative.status === "generating") {
+            el.style.display = "";
+            el.innerHTML =
+              '<div class="brief-narrative-generating">' +
+              '<span class="brief-narrative-spinner"></span>' +
+              esc(labels?.generating || "Generating…") +
+              "</div>";
+            return;
+          }
+          if (narrative.status === "ready" && narrative.headline) {
+            const body = narrative.body || "";
+            // > 140 chars → collapse by default + offer a toggle.
+            const collapsible = body.length > 140;
+            const bodyHtml = collapsible
+              ? '<div class="brief-narrative-body" data-collapsed="true">' +
+                esc(body) +
+                "</div>"
+              : '<div class="brief-narrative-body">' + esc(body) + "</div>";
+            const toggleHtml = collapsible
+              ? '<button class="brief-narrative-toggle" data-action="narr-expand" type="button">Read more</button>'
+              : "";
+            el.style.display = "";
+            el.innerHTML =
+              '<div class="brief-narrative-headline">' +
+              esc(narrative.headline) +
+              "</div>" +
+              bodyHtml +
+              toggleHtml;
+            return;
+          }
+          // Unknown shape → hide.
+          el.style.display = "none";
+          el.innerHTML = "";
         }
 
         // ---------- Misc ----------
@@ -4113,6 +4384,21 @@
             cancelPendingAction();
             return;
           }
+          // Toggle the agentic narrative body's 2-line clamp. The toggle
+          // button is rendered by renderNarrative() next to a
+          // `.brief-narrative-body[data-collapsed]` element — we flip the
+          // attribute and update the button label.
+          if (action === "narr-expand") {
+            const body = btn.parentElement?.querySelector(
+              ".brief-narrative-body",
+            );
+            if (body) {
+              const collapsed = body.getAttribute("data-collapsed") === "true";
+              body.setAttribute("data-collapsed", collapsed ? "false" : "true");
+              btn.textContent = collapsed ? "Show less" : "Read more";
+            }
+            return;
+          }
           const body = btn._actionBody;
           postAction(action, body);
         });
@@ -4456,6 +4742,12 @@
             }
             decision = next;
             apply();
+            // Terminal decision events (done / dismissed) usually mean a
+            // native agent run just finished. Debounce-refresh the usage
+            // strip so the new totals land without flooding the API.
+            if (next && next.status && next.status !== "pending") {
+              scheduleUsageRefresh();
+            }
           });
           tauri.event.listen("loop:state", (e) => {
             // The previous × click set setIgnoreCursorEvents(true) so
@@ -4536,16 +4828,220 @@
           });
         }
 
-        // AI settings saved → re-evaluate the missing-key state. The
-        // React side dispatches both a DOM event (for same-webview
-        // listeners — kept for backwards compat / dev-panel previews)
-        // and a Tauri event (which actually reaches this card webview
-        // from the main webview; the two webviews are separate
-        // browser contexts in Tauri 2.x, so `window.dispatchEvent`
-        // doesn't cross them). Without the Tauri mirror the card
-        // would keep showing the no-api-key CTA even after a
-        // successful save.
-        const onAiSettingsChanged = () => refreshAiConfig();
+        // ---------- Usage strip (cumulative native-agent tokens) ----------
+        // Reads `/api/llm/usage/summary` and renders the top-right chip.
+        // Mirrors `refreshConnectors()` / `refreshAiConfig()` for auth
+        // (credentials: include) and silent failure (leave the prior
+        // state visible so the chip never blinks to a misleading "—").
+        //
+        // Refresh triggers:
+        //   1. card init (line ~end of script below)
+        //   2. `openloomi:ai-settings-changed` (provider added/removed)
+        //   3. `loop:decision` terminal event (debounced 1.5s, so we
+        //      don't refetch on every state push)
+        let usageSummary = null;
+        let usageFetchInflight = false;
+        let usageFetchQueued = false;
+        let usageDebounceTimer = null;
+
+        async function refreshUsageSummary() {
+          if (usageFetchInflight) {
+            // Coalesce overlapping calls so a storm of `loop:decision`
+            // events during the result flush does not pile up requests.
+            usageFetchQueued = true;
+            return;
+          }
+          usageFetchInflight = true;
+          try {
+            const res = await fetch(
+              `${window.__OPENLOOMI_API__ || ""}/api/llm/usage/summary`,
+              { credentials: "include" },
+            );
+            // 401 → keep the strip in "loading" so we don't claim
+            // "unconfigured" for a logged-out user; the next event will retry.
+            if (!res.ok) {
+              if (res.status === 401) {
+                renderUsageStrip({ state: "loading" });
+              } else {
+                renderUsageStrip({ state: "error" });
+              }
+              return;
+            }
+            const data = await res.json().catch(() => null);
+            if (!data) {
+              renderUsageStrip({ state: "error" });
+              return;
+            }
+            usageSummary = data;
+            renderUsageStrip({ state: deriveUsageState(data) });
+          } catch (_) {
+            // Network failure — leave the chip in its current state so
+            // it doesn't blink. We don't have an "offline" signal here,
+            // and the next refresh trigger will retry.
+          } finally {
+            usageFetchInflight = false;
+            if (usageFetchQueued) {
+              usageFetchQueued = false;
+              // Re-fetch immediately so a decision that lands while we
+              // were mid-request still gets the latest totals.
+              void refreshUsageSummary();
+            }
+          }
+        }
+
+        function scheduleUsageRefresh() {
+          // Debounce so a burst of decision events still results in a
+          // single fetch after the run completes.
+          if (usageDebounceTimer) {
+            clearTimeout(usageDebounceTimer);
+          }
+          usageDebounceTimer = setTimeout(() => {
+            usageDebounceTimer = null;
+            void refreshUsageSummary();
+          }, 1500);
+        }
+
+        function deriveUsageState(data) {
+          if (data && data.error === "usage_unavailable") return "error";
+          if (!data || data.configured === false) return "unconfigured";
+          if (!data.runCount || data.runCount === 0) return "no-usage";
+          return "has-usage";
+        }
+
+        function formatTokenCount(n) {
+          if (typeof n !== "number" || !Number.isFinite(n)) return "—";
+          if (n >= 1_000_000) {
+            return (n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1) + "M";
+          }
+          if (n >= 10_000) {
+            return (n / 1000).toFixed(0) + "K";
+          }
+          // Compact grouping for sub-10K numbers: 1,234.
+          return Math.round(n).toLocaleString("en-US");
+        }
+
+        function formatRelativeShort(iso) {
+          if (!iso) return "";
+          const t = new Date(iso).getTime();
+          if (!Number.isFinite(t)) return "";
+          const diff = Date.now() - t;
+          if (diff < 60 * 1000) return "just now";
+          if (diff < 60 * 60 * 1000) {
+            return `${Math.max(1, Math.floor(diff / (60 * 1000)))} min ago`;
+          }
+          if (diff < 24 * 60 * 60 * 1000) {
+            return `${Math.floor(diff / (60 * 60 * 1000))} h ago`;
+          }
+          if (diff < 30 * 24 * 60 * 60 * 1000) {
+            return `${Math.floor(diff / (24 * 60 * 60 * 1000))} d ago`;
+          }
+          // Older than a month → fall back to a month label.
+          return new Date(t).toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+          });
+        }
+
+        function formatSinceShort(iso) {
+          if (!iso) return "";
+          const t = new Date(iso).getTime();
+          if (!Number.isFinite(t)) return "";
+          const d = new Date(t);
+          return d.toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+          });
+        }
+
+        function buildUsageTitle(data) {
+          if (!data) {
+            return "Cumulative native-agent token usage since provider was configured";
+          }
+          if (data.error === "usage_unavailable") {
+            return "Token usage stats are temporarily unavailable";
+          }
+          if (!data.configured) {
+            return "No LLM provider configured\nConfigure one in Settings to see cumulative token usage here";
+          }
+          const total = data.totals?.totalTokens ?? 0;
+          const input = data.totals?.inputTokens ?? 0;
+          const output = data.totals?.outputTokens ?? 0;
+          const lines = [];
+          lines.push(
+            `${formatTokenCount(total)} tokens since provider was configured`,
+          );
+          lines.push(
+            `Input ${formatTokenCount(input)} · Output ${formatTokenCount(output)}`,
+          );
+          lines.push(`${data.runCount ?? 0} native-agent calls`);
+          if (data.currentProvider) {
+            const cp = data.currentProvider;
+            lines.push(
+              `Provider: ${cp.providerType}${cp.model ? " · " + cp.model : ""}`,
+            );
+          }
+          if (data.providerSince) {
+            lines.push(
+              `since ${formatSinceShort(data.providerSince)} · last ${
+                data.lastRunAt ? formatSinceShort(data.lastRunAt) : "—"
+              }`,
+            );
+          }
+          lines.push(
+            "Only counts /api/native/agent calls whose provider reports usage",
+          );
+          return lines.join("\n");
+        }
+
+        function renderUsageStrip({ state }) {
+          const strip = document.getElementById("usage-strip");
+          const value = document.getElementById("usage-value");
+          const meta = document.getElementById("usage-meta");
+          if (!strip || !value || !meta) return;
+          strip.dataset.state = state;
+          strip.title = buildUsageTitle(usageSummary);
+          switch (state) {
+            case "unconfigured":
+              // The .usage-label span already shows "TOKENS". Here we
+              // write the chip's *value* only — never re-prefix the label
+              // or the card renders "TOKENS TOKENS …".
+              value.textContent = "No LLM provider";
+              meta.textContent = "";
+              break;
+            case "no-usage":
+              value.textContent = "0";
+              meta.textContent = usageSummary?.providerSince
+                ? `since ${formatSinceShort(usageSummary.providerSince)}`
+                : "";
+              break;
+            case "has-usage":
+              value.textContent = formatTokenCount(
+                usageSummary?.totals?.totalTokens ?? 0,
+              );
+              meta.textContent = `${usageSummary?.runCount ?? 0} runs · ${
+                usageSummary?.lastRunAt
+                  ? "last " + formatRelativeShort(usageSummary.lastRunAt)
+                  : "—"
+              }`;
+              break;
+            case "error":
+              value.textContent = "--";
+              meta.textContent = "stats unavailable";
+              break;
+            default:
+              value.textContent = "—";
+              meta.textContent = "loading…";
+          }
+        }
+
+        // AI settings saved → re-evaluate the missing-key state AND the
+        // usage summary. Provider add/remove flips `configured` so we need
+        // to re-fetch immediately (no debounce) — the previous totals may
+        // be stale or the chip may need to flip into "unconfigured".
+        const onAiSettingsChanged = () => {
+          refreshAiConfig();
+          void refreshUsageSummary();
+        };
         window.addEventListener(
           "openloomi:ai-settings-changed",
           onAiSettingsChanged,
@@ -4570,6 +5066,7 @@
         // Initial fetch + render
         refreshConnectors();
         refreshAiConfig();
+        refreshUsageSummary();
         apply();
       })();
     </script>

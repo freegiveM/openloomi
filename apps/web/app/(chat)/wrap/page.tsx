@@ -29,12 +29,35 @@ interface WrapHighlight {
   resultKind: string;
 }
 
+/**
+ * Agentic narrative — optional overlay. Mirrors `WrapNarrative` in
+ * lib/loop/types. Three terminal shapes:
+ *   - undefined → prefs off (never appears on the page)
+ *   - null      → tried + failed (silently falls back to template)
+ *   - {status: "generating"} → agent call in flight
+ *   - {status: "ready"}      → headline + body rendered as a hero
+ */
+interface WrapNarrative {
+  status: "generating" | "ready";
+  headline?: string;
+  body?: string;
+  startedAt?: string;
+  generatedAt?: string;
+  input_hash?: string;
+  model?: string;
+}
+
 interface WrapSnapshot {
   date: string;
   generatedAt: string;
   stats: { done: number; dismissed: number; stillPending: number };
   highlights: WrapHighlight[];
+  narrative?: WrapNarrative | null;
 }
+
+/** Polling cadence + stale watchdog — mirrors /brief page. */
+const POLL_INTERVAL_MS = 3_000;
+const STALE_AFTER_MS = 25 * 60 * 1000; // timeout + 5min slack
 
 export default function WrapPage() {
   const router = useRouter();
@@ -64,9 +87,41 @@ export default function WrapPage() {
     }
   }, []);
 
+  // Initial load on mount. Without this the page stays on the "Loading
+  // wrap…" spinner forever, because the polling effect below bails out
+  // while `wrap` is still null.
   useEffect(() => {
-    reload();
+    void reload();
   }, [reload]);
+
+  // Poll for narrative completion while a "generating" placeholder is on
+  // screen. Mirrors /brief. Survives reloads via persisted startedAt.
+  useEffect(() => {
+    if (!wrap) return;
+    const narr = wrap.narrative;
+    if (!narr || narr.status !== "generating") return;
+    const startedAt = narr.startedAt ? new Date(narr.startedAt).getTime() : 0;
+    if (startedAt && Date.now() - startedAt > STALE_AFTER_MS) {
+      void (async () => {
+        try {
+          await fetch("/api/loop/wrap", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ force: true }),
+          });
+        } catch {
+          /* surfaced via next reload */
+        }
+        await reload();
+      })();
+      return;
+    }
+    const id = setInterval(() => {
+      void reload();
+    }, POLL_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [wrap, reload]);
 
   const generate = useCallback(async () => {
     setGenerating(true);
@@ -172,6 +227,30 @@ function EmptyWrap({
 function WrapContent({ wrap }: { wrap: WrapSnapshot }) {
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-6">
+      {/* Narrative hero — three states. Silent fallback when null/undefined. */}
+      {wrap.narrative?.status === "generating" && (
+        <div
+          className="rounded-lg border border-dashed border-border bg-card/50 p-4"
+          aria-live="polite"
+        >
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Spinner size={14} /> Generating evening wrap…
+          </div>
+        </div>
+      )}
+      {wrap.narrative?.status === "ready" && wrap.narrative.headline && (
+        <div className="rounded-lg border border-border bg-card p-4">
+          <div className="text-base font-semibold leading-snug">
+            {wrap.narrative.headline}
+          </div>
+          {wrap.narrative.body && (
+            <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-foreground/90">
+              {wrap.narrative.body}
+            </p>
+          )}
+        </div>
+      )}
+
       <div className="rounded-lg border border-border bg-card p-4">
         <div className="flex items-baseline justify-between">
           <div>

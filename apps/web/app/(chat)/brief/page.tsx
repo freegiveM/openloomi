@@ -35,9 +35,28 @@ interface BriefItem {
 }
 
 interface BriefMuted {
+  id: string;
   kind: string;
   title: string;
   reason: string;
+}
+
+/**
+ * Agentic narrative — optional overlay. Mirrors `BriefNarrative` in
+ * lib/loop/types. Three terminal shapes:
+ *   - undefined → prefs off (never appears on the page)
+ *   - null      → tried + failed (silently falls back to template)
+ *   - {status: "generating"} → agent call in flight
+ *   - {status: "ready"}      → headline + body rendered as a hero
+ */
+interface BriefNarrative {
+  status: "generating" | "ready";
+  headline?: string;
+  body?: string;
+  startedAt?: string;
+  generatedAt?: string;
+  input_hash?: string;
+  model?: string;
 }
 
 interface BriefSnapshot {
@@ -46,6 +65,7 @@ interface BriefSnapshot {
   stats: { scanned: number; surfaced: number; muted: number };
   items: BriefItem[];
   muted?: BriefMuted[];
+  narrative?: BriefNarrative | null;
 }
 
 const PRIORITY_LABEL: Record<number, string> = {
@@ -53,6 +73,15 @@ const PRIORITY_LABEL: Record<number, string> = {
   2: "P2 · should-do",
   3: "P3 · nice-to-do",
 };
+
+/**
+ * Polling cadence and stale-generating watchdog. The agent has up to 20
+ * minutes to finish (configurable in lib/loop/brief.ts::NARRATIVE_TIMEOUT_MS),
+ * so we poll every 3s for the duration and only force a regenerate when a
+ * "generating" placeholder has been stuck for > STALE_AFTER_MS.
+ */
+const POLL_INTERVAL_MS = 3_000;
+const STALE_AFTER_MS = 25 * 60 * 1000; // timeout + 5min slack
 
 export default function BriefPage() {
   const router = useRouter();
@@ -82,9 +111,45 @@ export default function BriefPage() {
     }
   }, []);
 
+  // Initial load on mount. Without this the page stays on the "Loading
+  // brief…" spinner forever, because the polling effect below bails out
+  // while `brief` is still null.
   useEffect(() => {
-    reload();
+    void reload();
   }, [reload]);
+
+  // Poll for narrative completion while a "generating" placeholder is on
+  // screen. The agent has up to 20 min (brief.ts::NARRATIVE_TIMEOUT_MS);
+  // we stop polling once the narrative lands as "ready" or "null".
+  useEffect(() => {
+    if (!brief) return;
+    const narr = brief.narrative;
+    if (!narr || narr.status !== "generating") return;
+    // Watchdog: if the placeholder has been stuck > STALE_AFTER_MS, kick
+    // off a fresh build and stop polling. Survives page reloads because
+    // `startedAt` is persisted on the snapshot.
+    const startedAt = narr.startedAt ? new Date(narr.startedAt).getTime() : 0;
+    if (startedAt && Date.now() - startedAt > STALE_AFTER_MS) {
+      void (async () => {
+        try {
+          await fetch("/api/loop/brief", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ force: true }),
+          });
+        } catch {
+          /* surfaced via next reload */
+        }
+        await reload();
+      })();
+      return;
+    }
+    const id = setInterval(() => {
+      void reload();
+    }, POLL_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [brief, reload]);
 
   const generate = useCallback(async () => {
     setGenerating(true);
@@ -191,6 +256,32 @@ function BriefContent({ brief }: { brief: BriefSnapshot }) {
   const items = [...brief.items].sort((a, b) => a.priority - b.priority);
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-6">
+      {/* Narrative hero — three states. Falls through silently when the
+          field is null (failed) or undefined (prefs off): the existing
+          stat card below carries the page. */}
+      {brief.narrative?.status === "generating" && (
+        <div
+          className="rounded-lg border border-dashed border-border bg-card/50 p-4"
+          aria-live="polite"
+        >
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Spinner size={14} /> Generating morning brief…
+          </div>
+        </div>
+      )}
+      {brief.narrative?.status === "ready" && brief.narrative.headline && (
+        <div className="rounded-lg border border-border bg-card p-4">
+          <div className="text-base font-semibold leading-snug">
+            {brief.narrative.headline}
+          </div>
+          {brief.narrative.body && (
+            <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-foreground/90">
+              {brief.narrative.body}
+            </p>
+          )}
+        </div>
+      )}
+
       <div className="rounded-lg border border-border bg-card p-4">
         <div className="flex items-baseline justify-between">
           <div>
@@ -253,7 +344,10 @@ function BriefContent({ brief }: { brief: BriefSnapshot }) {
           <ul className="mt-3 flex flex-col gap-2 text-xs">
             {brief.muted.map((m) => (
               <li
-                key={`${m.kind}-${m.title}`}
+                // `m.id` is the originating LoopDecision.id — stable across
+                // snapshots, unique even when two muted rows share
+                // kind+title (e.g. multiple `wrap` cards on the same date).
+                key={m.id}
                 className="flex items-baseline gap-2"
               >
                 <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px]">

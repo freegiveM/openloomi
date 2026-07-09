@@ -123,6 +123,12 @@ export interface LoopPreferences {
    * honours the user's wall-clock 09:00 / 21:00.
    */
   timezone?: string;
+  /**
+   * Generate agentic narrative summary for brief/wrap. When `false`, brief
+   * and wrap fall back to the deterministic templated dialogue. Default
+   * `true` — opt-out via `PUT /api/loop/preferences { narrative: false }`.
+   */
+  narrative?: boolean;
 }
 
 /** Mute rule scope — discriminated union keyed by signal type. */
@@ -160,6 +166,7 @@ export const DEFAULT_LOOP_PREFERENCES: LoopPreferences = {
   intervalSec: 600,
   noReplySkip: true,
   promotionSkip: true,
+  narrative: true,
 };
 
 export interface ConnectorEntry {
@@ -199,4 +206,83 @@ export interface LoopTickResult {
   muted: number;
   newDecisions: LoopDecision[];
   errors: string[];
+}
+
+// ---------------------------------------------------------------------------
+// Agentic narrative for brief / wrap
+// ---------------------------------------------------------------------------
+//
+// The brief / wrap snapshots are otherwise plain data (items, stats). The
+// `narrative` field is the agentic overlay — a short headline + body the agent
+// writes, plus generation lifecycle state. Three terminal shapes:
+//
+//   - undefined  → user opted out (prefs.narrative === false); UI uses the
+//                  templated dialogue.
+//   - null       → tried but failed; UI silently falls back to template.
+//   - { status: "generating", ... } → an agent call is in flight; UI shows
+//                  a spinner placeholder, never hangs.
+//   - { status: "ready", ... }     → headline + body available.
+//
+// `input_hash` is sha1(items) (or sha1(highlights) for wrap) — used to detect
+// staleness so we can skip a redundant agent call when the underlying queue
+// hasn't changed since the last successful generation.
+
+export interface BriefNarrativeReady {
+  status: "ready";
+  /** ≤ 200 chars after slice; do not start with "Morning:". */
+  headline: string;
+  /** ≤ 800 chars after slice; plain prose, no markdown. */
+  body: string;
+  /** ISO timestamp the narrative finished generating. */
+  generatedAt: string;
+  /** Optional model id for debugging / admin panels. */
+  model?: string;
+  /** sha1(items) at the time of generation. Detects staleness. */
+  input_hash?: string;
+}
+
+export interface BriefNarrativeGenerating {
+  status: "generating";
+  /** ISO timestamp the agent call started. */
+  startedAt: string;
+  /** sha1(items) the agent was invoked on. */
+  input_hash: string;
+}
+
+export type BriefNarrative =
+  | BriefNarrativeReady
+  | BriefNarrativeGenerating
+  | null;
+
+export interface WrapNarrativeReady {
+  status: "ready";
+  headline: string;
+  body: string;
+  generatedAt: string;
+  model?: string;
+  input_hash?: string;
+}
+
+export interface WrapNarrativeGenerating {
+  status: "generating";
+  startedAt: string;
+  input_hash: string;
+}
+
+export type WrapNarrative = WrapNarrativeReady | WrapNarrativeGenerating | null;
+
+// ---------------------------------------------------------------------------
+// Brief snapshot — muted bucket shape
+// ---------------------------------------------------------------------------
+//
+// `id` is the originating `LoopDecision.id`. Two muted rows can have the same
+// `kind`+`title` (e.g. two `wrap` decisions on the same date, or multiple
+// `draft_reply` rows for the same thread), so we need a stable identity beyond
+// position for React keys and any future "un-mute from the UI" flow.
+
+export interface BriefMuted {
+  id: string;
+  kind: string;
+  title: string;
+  reason: string;
 }
