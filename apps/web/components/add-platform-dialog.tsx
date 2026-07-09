@@ -1,6 +1,4 @@
 "use client";
-
-import Image from "next/image";
 import { useMemo, useState, useCallback, useRef, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useSWRConfig } from "swr";
@@ -48,7 +46,6 @@ import { QQBotAuthForm } from "@/components/qqbot-auth-form";
 import { WeixinAuthForm } from "@/components/weixin-auth-form";
 import {
   IntegrationPlatformCard,
-  resolvePlatformLogo,
 } from "@/components/integration-platform-card";
 
 /**
@@ -862,6 +859,7 @@ export function AddPlatformContent({
         buttonClass: "bg-[#4A154B] text-white hover:bg-[#3A0F3A]",
         iconBackground: "bg-[#4A154B]/10 text-[#4A154B]",
         onConnect: slackConnect,
+        disable: true,
       },
       telegram: {
         id: "telegram",
@@ -880,6 +878,7 @@ export function AddPlatformContent({
         buttonClass: "bg-[#5865F2] text-white hover:bg-[#4752C4]",
         iconBackground: "bg-[#5865F2]/10 text-[#5865F2]",
         onConnect: discordConnect,
+        disable: true,
       },
       whatsapp: {
         id: "whatsapp",
@@ -979,6 +978,7 @@ export function AddPlatformContent({
         buttonClass: "bg-black text-white hover:bg-gray-800",
         iconBackground: "bg-black/10 text-black",
         onConnect: twitterConnect,
+        disable: true,
       },
       google_drive: {
         id: "google_drive",
@@ -1131,6 +1131,7 @@ export function AddPlatformContent({
         buttonClass: "bg-black text-white hover:bg-neutral-800",
         iconBackground: "bg-neutral-900/10 text-neutral-900",
         onConnect: notionConnect,
+        disable: true,
       },
       asana: {
         id: "asana",
@@ -1259,106 +1260,6 @@ export function AddPlatformContent({
               );
             })}
         </div>
-
-        {(Object.keys(platformDefs) as IntegrationId[]).some(
-          (platformId) => platformDefs[platformId]?.disable === true,
-        ) && (
-          <div className="mt-3 mb-3 rounded-xl border border-[#e5e5e5] p-4">
-            <div className="flex flex-wrap items-center gap-3 mb-2">
-              {(Object.keys(platformDefs) as IntegrationId[])
-                .filter(
-                  (platformId) => platformDefs[platformId]?.disable === true,
-                )
-                .map((platformId) => {
-                  const logoSrc = resolvePlatformLogo(platformId);
-                  const info = getPlatformDisplayInfo(platformId, t);
-                  return (
-                    <div
-                      key={platformId}
-                      className="flex h-8 w-8 items-center justify-center rounded-full bg-[#f7f6f3] overflow-hidden"
-                    >
-                      {logoSrc ? (
-                        <Image
-                          src={logoSrc}
-                          alt={info.label}
-                          width={24}
-                          height={24}
-                          className="h-5 w-5"
-                        />
-                      ) : (
-                        <RemixIcon
-                          name={info.icon}
-                          size="size-4"
-                          className="text-[#6f6e69]"
-                        />
-                      )}
-                    </div>
-                  );
-                })}
-            </div>
-            <p className="text-xs text-[#6f6e69] pt-1">
-              {t(
-                "integrations.comingSoonGroup",
-                "More platforms are coming soon",
-              )}
-            </p>
-          </div>
-        )}
-      </div>
-
-      <div className="space-y-2 rounded-xl border border-[#e5e5e5] bg-primary-50 p-4 text-xs text-[#6f6e69] mt-0 mb-3">
-        <div className="font-serif font-semibold text-[#37352f] mb-2">
-          {t("auth.privacyCommitment")}
-        </div>
-        <ul className="list-disc space-y-1 pl-4">
-          <li>{t("securityPrompt.principles.leastAccessDesc")}</li>
-          <li>{t("securityPrompt.principles.localFirstDesc")}</li>
-          <li>{t("securityPrompt.principles.encryptedStorageDesc")}</li>
-          <li>{t("auth.infoItem3")}</li>
-        </ul>
-        <p>
-          {t("auth.infoItem4")}
-          {isTauri() ? (
-            <>
-              <button
-                type="button"
-                onClick={() => openUrl("https://app.alloomi.ai/privacy")}
-                className="text-blue-500 hover:underline bg-transparent border-none cursor-pointer p-0"
-              >
-                {t("auth.privacy")}
-              </button>
-              {t("auth.and")}
-              <button
-                type="button"
-                onClick={() => openUrl("https://app.alloomi.ai/terms")}
-                className="text-blue-500 hover:underline bg-transparent border-none cursor-pointer p-0"
-              >
-                {t("auth.tos")}
-              </button>
-            </>
-          ) : (
-            <>
-              <a
-                href="/privacy"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-blue-500 hover:underline"
-              >
-                {t("auth.privacy")}
-              </a>
-              {t("auth.and")}
-              <a
-                href="/terms"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-blue-500 hover:underline"
-              >
-                {t("auth.tos")}
-              </a>
-            </>
-          )}
-          {t("auth.end")}
-        </p>
       </div>
     </>
   );

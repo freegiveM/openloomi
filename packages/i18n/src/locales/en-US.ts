@@ -838,6 +838,18 @@ const enUS = {
       "Push calendar events (Google/Outlook; new + upcoming) into openloomi.",
     addPlatform: "Add Platform",
     addConnector: "Add connector",
+    connectMoreViaComposio: "Connect more via Composio",
+    connectMoreViaComposioDesc:
+      "Ask the agent to link GitHub, Linear, Notion, HubSpot, and hundreds more.",
+    composioMoreAppsLabel: "More apps",
+    /**
+     * Prompt sent verbatim to the chat agent when the user clicks
+     * "Connect more via Composio". The agent uses the `composio` skill
+     * to enumerate unconnected platforms and walk the user through
+     * OAuth linking, replying in the user's locale.
+     */
+    composioConnectMorePrompt:
+      "Help me connect more apps via Composio. First, list the available platforms I have not connected yet (e.g. GitHub, Linear, Notion, HubSpot, Asana, etc.), then walk me through authorizing each one step by step.",
     platformCardAriaConnecting: "Connecting",
     platformCardAriaConnect: "Connect {{label}}",
     selectPlatform: "Select a platform to connect",

@@ -790,6 +790,16 @@ const zhHans = {
       "把连接的日历（Google/Outlook）中新建/临近的日程推送到 openloomi。",
     addPlatform: "添加平台",
     addConnector: "添加连接器",
+    connectMoreViaComposio: "通过 Composio 连接更多",
+    connectMoreViaComposioDesc: "让 Agent 帮你接入 GitHub、Linear、Notion、HubSpot 等上百款应用。",
+    composioMoreAppsLabel: "更多应用",
+    /**
+     * 提示词原样发送给聊天 Agent,作为用户点击「通过 Composio 连接更多」时的
+     * 首发消息。Agent 会使用 `composio` 技能列出尚未连接的可用平台,
+     * 并一步步引导用户完成授权,Agent 回复使用用户的当前语言。
+     */
+    composioConnectMorePrompt:
+      "帮我通过 Composio 连接更多应用。先列出我还没连接的可用平台(如 GitHub、Linear、Notion、HubSpot、Asana 等),然后一步步引导我完成每个应用的授权。",
     connectPlatform: "连接 {{name}}",
     platformCardAriaConnecting: "连接中",
     platformCardAriaConnect: "连接 {{label}}",

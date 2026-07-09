@@ -59,6 +59,7 @@ import { QQBotAuthForm } from "@/components/qqbot-auth-form";
 import { WeixinAuthForm } from "@/components/weixin-auth-form";
 import { createIntegrationAccount } from "@/lib/integrations/client";
 import { useIntegrations } from "@/hooks/use-integrations";
+import { ComposioIcon } from "@/components/composio-icon";
 
 /**
  * Linked accounts component in personalization settings
@@ -148,6 +149,36 @@ export function PersonalizationLinkedAccounts({
   const handleBackToPlatformList = useCallback(() => {
     setInlinePlatformView(null);
   }, []);
+
+  /**
+   * Jump to chat with an auto-sent prompt that instructs the agent to use
+   * the `composio` skill to list available-but-unconnected platforms and
+   * walk the user through OAuth linking. We delegate to the
+   * `PetChatBridge` global (mounted at the (chat) layout level) instead
+   * of the URL `?send=` auto-pipe because the bridge navigates, switches
+   * to a new chat, and then sends via `useChatContext().sendMessage`
+   * with a 1000ms settle delay — much more reliable across the
+   * `/connectors → /?page=chat` navigation than the chat panel's
+   * `initialMessageToSend` effect (which can race the remount and
+   * silently drop the prompt if `apiConfigurationState` hasn't resolved
+   * yet). Falls back to the URL approach if the bridge hasn't mounted
+   * (e.g. very early dev-mode click).
+   */
+  const handleConnectMoreViaComposio = useCallback(() => {
+    const prompt = t(
+      "integrations.composioConnectMorePrompt",
+      "Help me connect more apps via Composio. First, list the available platforms I have not connected yet (e.g. GitHub, Linear, Notion, HubSpot, Asana, etc.), then walk me through authorizing each one step by step.",
+    );
+    const bridge = (globalThis as { __petChatBridgeSend?: (text: string) => void })
+      .__petChatBridgeSend;
+    if (typeof bridge === "function") {
+      bridge(prompt);
+      return;
+    }
+    // Fallback: URL-based auto-send. The chat panel's effect strips
+    // `send` from the URL after the message lands.
+    router.push(`/?page=chat&send=${encodeURIComponent(prompt)}`);
+  }, [router, t]);
 
   /**
    * Open Google auth dialog (legacy: used when connector dialog is not open).
@@ -587,6 +618,51 @@ export function PersonalizationLinkedAccounts({
                             linkingPlatform={linkingPlatform}
                           />
                         </Suspense>
+
+                        {/* Fallback entry: route the user into the chat agent
+                            so it can use the `composio` skill to connect
+                            platforms that don't have a native adapter. */}
+                        <div className="mt-8 pt-6 border-t border-border/60">
+                          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3">
+                            {t(
+                              "integrations.composioMoreAppsLabel",
+                              "More apps",
+                            )}
+                          </p>
+                          <button
+                            type="button"
+                            onClick={handleConnectMoreViaComposio}
+                            className="group flex w-full cursor-pointer items-stretch rounded-xl border border-[#e5e5e5] bg-white hover:bg-[#f5f5f5] transition-colors text-left"
+                          >
+                            <div className="flex flex-1 items-center gap-4 pl-4 pr-0 py-2">
+                              <div className="flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-full bg-[#f7f6f3] shrink-0">
+                                <ComposioIcon className="h-5 w-5 sm:!h-6 sm:!w-6 text-[#37352f]" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <span className="block text-sm font-serif font-semibold text-[#37352f]">
+                                  {t(
+                                    "integrations.connectMoreViaComposio",
+                                    "Connect more via Composio",
+                                  )}
+                                </span>
+                                <span className="block text-xs text-muted-foreground mt-0.5">
+                                  {t(
+                                    "integrations.connectMoreViaComposioDesc",
+                                    "Ask the agent to link GitHub, Linear, Notion, HubSpot, and hundreds more.",
+                                  )}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="flex items-center pr-3 sm:pr-4 pointer-events-none">
+                              <span
+                                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                                aria-hidden
+                              >
+                                <RemixIcon name="add" size="size-4" />
+                              </span>
+                            </div>
+                          </button>
+                        </div>
                       </TabsContent>
                       <TabsContent value="rss" className="mt-0">
                         <RssAddControls />
