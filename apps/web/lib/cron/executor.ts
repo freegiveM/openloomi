@@ -618,7 +618,8 @@ When the task description mentions or is associated with a specific insight, eve
 - Add **tags** for categorization and **action** for next steps (e.g., "Review competitor update", "Schedule follow-up", "Share with team")
 
 **PLATFORM SELECTION:**
-1. First, use queryIntegrations to check which platforms the user has connected
+1. First, use queryIntegrations to check which first-party platforms the user has connected (Slack/Telegram/Discord/Gmail/etc. — openloomi-native bots only).
+   - For platforms queryIntegrations does not see (Composio-only toolkits such as HubSpot/Asana/Notion/GitHub/Linear), run \`Skill composio connections list\` (or \`Bash(composio connections list)\`) and treat those as available connections too.
 2. If the task specifies a platform (e.g., "Remind me on Telegram"), only use that platform
 3. If no platform is specified, ONLY send to the user's configured Notification Channels (from CHARACTER CONTEXT):
    - Send to each channel listed in Notification Channels using sendReply
@@ -627,6 +628,7 @@ ${charSystemNotification ? `   - System notification (${platformNotificationName
 
 **EXECUTION WORKFLOW:**
 1. queryIntegrations - Verify the configured Notification Channels are available
+1a. (Composio check) \`Skill composio connections list\` or \`Bash(composio connections list)\` — record which Composio toolkits are reachable, in case the task references one.
 2. Determine target platforms based on task description:
    - If platform specified (e.g., "Telegram reminder") -> use that platform only (must be in Notification Channels)
    - If no platform specified -> use ONLY the Notification Channels configured for this character

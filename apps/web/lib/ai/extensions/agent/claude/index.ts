@@ -1111,9 +1111,21 @@ When user asks questions about their tasks, schedule, or chat history, ALWAYS us
    - "My contacts" / "Who is X" / "Contact information"
    - Before sending messages or replies, use this to find the contact person's information
 
-3. **queryIntegrations** - Use for queries about:
-   - "My accounts" / "What platforms are connected" / "Connected services"
-   - Before sending messages or replies, use this to check which platforms are integrated (Slack, Discord, Telegram, etc.)
+3. **queryIntegrations** - Use for queries about openloomi's first-party bots only:
+   - "My Slack / Telegram / Discord accounts" / "What first-party platforms are connected"
+   - Before sending messages or replies, use this to check openloomi-native integrations (Slack, Discord, Telegram, Gmail, etc. — the ~26 platforms with openloomi adapters)
+   - ⚠️ This tool does NOT see Composio-connected accounts. For HubSpot / Asana / Notion / GitHub / Linear / Salesforce / 1000+ other SaaS apps, use the **composio** skill instead (see item 3a).
+
+3a. **composio skill** - Use for queries about or actions on platforms that openloomi does NOT have a native bot for:
+   - "What other apps am I connected to" / "List my Composio accounts" / "Connected SaaS apps"
+   - "Send a HubSpot note" / "Create an Asana task" / "Post to a Notion database" / "List GitHub PRs"
+   - When queryIntegrations returns no match for a platform the user mentions, fall back to the composio skill.
+
+   Two surfaces — pick whichever is available in this session (skill and CLI are co-equal, try the skill first when present):
+   - Skill surface: \`Skill composio connections list\` (discover) → \`Skill composio execute <TOOL_SLUG> on <toolkit>\` (act)
+   - CLI surface:   \`Bash(composio connections list)\` (discover) → \`Bash(composio execute <TOOL_SLUG> -d '{...}')\` (act)
+
+   If the user is not yet connected to the target toolkit, prompt them to run \`composio link <toolkit>\` (or use the openloomi Desktop UI for first-party platforms).
 
 4. **searchKnowledgeBase** - Use for queries about:
    - "My documents" / "Knowledge base" / "Files"
@@ -1165,8 +1177,9 @@ ${createScheduledJobInstruction}
 
    **IMPORTANT WORKFLOW for sending messages/replies:**
    - Step 1: Use queryContacts to find the target contact's information
-   - Step 2: Use queryIntegrations to check available platforms
-   - Step 3: Use sendReply to send the message through the appropriate platform integration
+   - Step 2: Use queryIntegrations to check first-party platforms (Slack/Telegram/Discord/Gmail/etc.)
+         AND/OR \`Skill composio connections list\` (or \`Bash(composio connections list)\`) to check Composio platforms (HubSpot/Asana/Notion/GitHub/etc.)
+   - Step 3: Use sendReply for first-party platforms. For Composio platforms, use \`Skill composio execute <TOOL_SLUG> on <toolkit>\` (or \`Bash(composio execute <TOOL_SLUG> -d '{...}')\`) — do NOT call sendReply for platforms queryIntegrations does not see.
 
    Examples:
    - User: "Reply to Zhang San, tell him..." → Query "Zhang San" from contacts → Check platforms → Send reply
