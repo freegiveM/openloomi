@@ -22,7 +22,7 @@
 
   Window is 360×420 (matches `card.rs`). Demo font sizes scaled by
   ~0.55×; layouts that were originally multi-column are collapsed to
-  single column to fit (A 方案).
+  single column to fit (Plan A).
 -->
 <html lang="zh-CN">
   <head>
@@ -40,6 +40,10 @@
         --card-h: 420px;
         --ink: #101827;
         --muted: #5b6980;
+        /* 50% gray used for chrome labels (SIGNAL / TYPE / TIMING / CONFIDENCE /
+           RECOMMEND / REASON n). Lighter than --muted so the label stays
+           legible against the panel-soft background without dominating. */
+        --label: #6b7280;
         --blue: #2b8af7;
         --blue-dark: #1467c8;
         --orange: #ffa149;
@@ -66,6 +70,15 @@
       }
       * {
         box-sizing: border-box;
+      }
+      /* Belt-and-suspenders: many element-level rules in this stylesheet
+         set `display: grid` / `display: flex` which silently override
+         the HTML `hidden` attribute (which only sets display:none via
+         the UA stylesheet, lower specificity). Without this override
+         toggling hidden=true on a .confidence-row / .recommendation /
+         .dec-body has no visible effect. */
+      [hidden] {
+        display: none !important;
       }
       html,
       body {
@@ -167,12 +180,11 @@
         color: #d9e9ff;
       }
       .type-label {
-        font-family: var(--font-mono);
-        font-size: 10px;
-        font-weight: 800;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        color: var(--blue-dark);
+        font-family: var(--font-body);
+        font-size: 10.5px;
+        font-weight: 500;
+        letter-spacing: 0.02em;
+        color: var(--label);
       }
       .card.dark .type-label {
         color: #d9e9ff;
@@ -184,10 +196,9 @@
         padding: 1px 7px;
         border-radius: 999px;
         font-family: var(--font-mono);
-        font-size: 9px;
-        font-weight: 800;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
+        font-size: 9.5px;
+        font-weight: 600;
+        letter-spacing: 0.02em;
         background: var(--orange-soft);
         color: var(--orange-text);
       }
@@ -308,8 +319,8 @@
         padding: 6px 10px;
         border-radius: 6px;
         font-size: 10.5px;
-        font-weight: 800;
-        letter-spacing: 0.02em;
+        font-weight: 500;
+        letter-spacing: 0.01em;
         line-height: 1.2;
       }
       .status-banner.show {
@@ -339,7 +350,7 @@
         flex: 0 0 auto;
         font-family: var(--font-mono);
         font-size: 11px;
-        font-weight: 900;
+        font-weight: 600;
       }
       .status-banner .spinner {
         width: 10px;
@@ -364,12 +375,12 @@
         background: #fff;
         color: var(--ink);
         font-size: 11px;
-        font-weight: 800;
+        font-weight: 600;
         display: inline-flex;
         align-items: center;
         justify-content: center;
         gap: 3px;
-        letter-spacing: 0.02em;
+        letter-spacing: 0.01em;
       }
       button:hover {
         background: rgba(43, 138, 247, 0.04);
@@ -446,12 +457,11 @@
         user-select: text;
       }
       #dec-editor label {
-        font-family: var(--font-mono);
-        font-size: 9px;
-        font-weight: 900;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        color: var(--blue-dark);
+        font-family: var(--font-body);
+        font-size: 10px;
+        font-weight: 500;
+        letter-spacing: 0.02em;
+        color: var(--label);
       }
       #dec-editor-subject,
       #dec-editor-body {
@@ -538,9 +548,8 @@
       .brand-text {
         font-family: var(--font-mono);
         font-size: 10px;
-        font-weight: 800;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
+        font-weight: 600;
+        letter-spacing: 0.02em;
         color: var(--green);
       }
       .connection-title {
@@ -562,8 +571,14 @@
         display: grid;
         gap: 5px;
         flex: 0 0 auto;
-        max-height: 110px;
+        max-height: 144px;
         overflow: auto;
+      }
+      .connector-row.connector-more {
+        cursor: pointer;
+      }
+      .connector-row.connector-more:hover {
+        background: var(--blue-soft);
       }
       .connector-row {
         display: grid;
@@ -592,7 +607,7 @@
       .connector-name {
         display: block;
         font-size: 11px;
-        font-weight: 800;
+        font-weight: 600;
         color: var(--ink);
         line-height: 1.1;
       }
@@ -600,13 +615,13 @@
         display: block;
         font-size: 9px;
         color: var(--muted);
-        font-weight: 600;
+        font-weight: 500;
         line-height: 1.2;
       }
       .connector-status {
         font-family: var(--font-mono);
         font-size: 9px;
-        font-weight: 800;
+        font-weight: 600;
         color: var(--green);
       }
       .connector-status.off {
@@ -633,12 +648,11 @@
         min-height: 0;
       }
       .queue-label {
-        font-family: var(--font-mono);
-        font-size: 9px;
-        font-weight: 800;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        color: var(--blue-dark);
+        font-family: var(--font-body);
+        font-size: 10px;
+        font-weight: 500;
+        letter-spacing: 0.02em;
+        color: var(--label);
       }
       .queue-rows {
         display: flex;
@@ -670,11 +684,11 @@
         color: var(--blue-dark);
         font-family: var(--font-mono);
         font-size: 10px;
-        font-weight: 800;
+        font-weight: 600;
       }
       .queue-row .qtitle {
         font-size: 10px;
-        font-weight: 700;
+        font-weight: 600;
         color: var(--ink);
         line-height: 1.2;
         display: -webkit-box;
@@ -685,7 +699,7 @@
       .queue-row .qpri {
         font-family: var(--font-mono);
         font-size: 9px;
-        font-weight: 800;
+        font-weight: 600;
         color: var(--orange-text);
       }
       .queue-row .qpri.p0 {
@@ -708,12 +722,11 @@
         margin: 2px 0 0;
       }
       .pipeline-sub {
-        font-family: var(--font-mono);
-        font-size: 9px;
-        font-weight: 800;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        color: var(--blue-dark);
+        font-family: var(--font-body);
+        font-size: 10px;
+        font-weight: 500;
+        letter-spacing: 0.02em;
+        color: var(--label);
       }
       .pipeline-steps {
         display: flex;
@@ -748,7 +761,7 @@
         color: var(--blue-dark);
         font-family: var(--font-mono);
         font-size: 11px;
-        font-weight: 800;
+        font-weight: 600;
       }
       .pipeline-step.active .num {
         background: var(--orange-soft);
@@ -770,11 +783,10 @@
         line-height: 1.3;
       }
       .pipeline-progress {
-        font-family: var(--font-mono);
-        font-size: 9px;
-        font-weight: 800;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
+        font-family: var(--font-body);
+        font-size: 10px;
+        font-weight: 500;
+        letter-spacing: 0.02em;
         color: var(--orange-text);
         text-align: right;
       }
@@ -800,25 +812,24 @@
       }
       .trash-message .tag-trashed {
         display: inline-block;
-        font-family: var(--font-mono);
-        font-size: 9px;
-        font-weight: 900;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
+        font-family: var(--font-body);
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.02em;
         color: var(--red);
         margin-bottom: 4px;
       }
       .trash-message .msg-from {
         display: block;
         font-size: 10px;
-        font-weight: 700;
+        font-weight: 500;
         color: var(--muted);
         font-family: var(--font-mono);
       }
       .trash-message .msg-subject {
         display: block;
         font-size: 12px;
-        font-weight: 800;
+        font-weight: 600;
         color: var(--ink);
         line-height: 1.25;
         margin-top: 2px;
@@ -839,9 +850,9 @@
         border-radius: 6px;
         background: var(--panel-soft);
         color: rgba(16, 24, 39, 0.72);
-        font-family: var(--font-mono);
-        font-size: 9px;
-        font-weight: 800;
+        font-family: var(--font-body);
+        font-size: 10px;
+        font-weight: 500;
         line-height: 1.2;
       }
       .context-pill::before {
@@ -862,16 +873,15 @@
       .triage-log .log-title {
         font-family: var(--font-display);
         font-size: 12px;
-        font-weight: 800;
+        font-weight: 600;
         color: var(--green-text);
         line-height: 1.2;
       }
       .triage-log .log-sub {
-        font-family: var(--font-mono);
-        font-size: 9px;
-        font-weight: 700;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
+        font-family: var(--font-body);
+        font-size: 10px;
+        font-weight: 500;
+        letter-spacing: 0.02em;
         color: var(--green-text);
         margin-top: 2px;
       }
@@ -897,19 +907,31 @@
         overflow: hidden;
         flex: 0 0 auto;
       }
+      .subtitle {
+        font-size: 11px;
+        font-weight: 500;
+        color: var(--muted);
+        line-height: 1.32;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        flex: 0 0 auto;
+        margin-top: 1px;
+      }
       .source-chain {
         position: relative;
         display: grid;
         grid-template-columns: repeat(4, 1fr);
-        gap: 6px;
+        gap: 4px;
         flex: 0 0 auto;
       }
       .source-chain::before {
         content: "";
         position: absolute;
-        left: 14px;
-        right: 14px;
-        top: 14px;
+        left: 12px;
+        right: 12px;
+        top: 12px;
         height: 2px;
         border-radius: 2px;
         background: linear-gradient(
@@ -922,62 +944,64 @@
       .meta-node {
         position: relative;
         z-index: 1;
-        min-height: 60px;
-        padding: 7px 8px 6px;
+        min-height: 56px;
+        padding: 5px 6px 5px;
         border: 1px solid var(--blue-soft);
         border-radius: 6px;
         background: var(--panel-soft);
         display: flex;
         flex-direction: column;
-        gap: 2px;
+        gap: 1px;
         overflow: hidden;
         justify-content: center;
       }
       .meta-node .label {
-        font-family: var(--font-mono);
-        font-size: 8px;
-        font-weight: 800;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        color: var(--blue-dark);
+        font-family: var(--font-body);
+        font-size: 9px;
+        font-weight: 500;
+        letter-spacing: 0.02em;
+        color: var(--label);
       }
       .meta-node .value {
-        font-size: 11px;
-        font-weight: 700;
+        font-size: 10.5px;
+        font-weight: 500;
         color: var(--ink);
-        line-height: 1.25;
+        line-height: 1.2;
         display: -webkit-box;
         -webkit-line-clamp: 2;
         -webkit-box-orient: vertical;
         overflow: hidden;
+        word-break: break-word;
       }
       .recommendation {
-        padding: 8px 10px;
-        border: 1px solid var(--orange-border);
+        /* Now sits one row above the action footer (see HTML order below)
+           so it reads as the button group's subtitle. Background is plain
+           neutral instead of a blue/orange gradient — the previous
+           gradient screamed "system chrome", drawing the eye away from
+           the actual proposal text. */
+        padding: 7px 9px 8px;
+        border: 1px solid var(--line);
         border-radius: 8px;
-        background: linear-gradient(
-          90deg,
-          rgba(43, 138, 247, 0.08),
-          rgba(255, 161, 73, 0.12)
-        );
+        background: var(--panel-soft);
         flex: 0 0 auto;
+        margin-top: 6px;
       }
       .recommendation .label {
         display: block;
-        font-family: var(--font-mono);
-        font-size: 9px;
-        font-weight: 900;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        color: var(--blue-dark);
+        font-family: var(--font-body);
+        font-size: 10px;
+        font-weight: 500;
+        letter-spacing: 0.02em;
+        color: var(--label);
+        margin-bottom: 2px;
       }
       .recommendation .body {
         display: block;
-        margin-top: 4px;
+        margin-top: 1px;
         color: var(--ink);
         font-size: 12px;
-        font-weight: 700;
-        line-height: 1.32;
+        font-weight: 500;
+        line-height: 1.45;
       }
       .confidence-row {
         display: grid;
@@ -987,12 +1011,11 @@
         flex: 0 0 auto;
       }
       .confidence-row .label {
-        font-family: var(--font-mono);
-        font-size: 9px;
-        font-weight: 900;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        color: var(--blue-dark);
+        font-family: var(--font-body);
+        font-size: 10px;
+        font-weight: 500;
+        letter-spacing: 0.02em;
+        color: var(--label);
       }
       .confidence-track {
         height: 6px;
@@ -1010,7 +1033,7 @@
       .confidence-row .value {
         font-family: var(--font-mono);
         font-size: 10px;
-        font-weight: 900;
+        font-weight: 600;
         color: var(--ink);
       }
       .dialogue {
@@ -1022,12 +1045,11 @@
       }
       .dialogue .label {
         display: block;
-        font-family: var(--font-mono);
-        font-size: 8px;
-        font-weight: 900;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        color: var(--blue-dark);
+        font-family: var(--font-body);
+        font-size: 10px;
+        font-weight: 500;
+        letter-spacing: 0.02em;
+        color: var(--label);
         margin-bottom: 2px;
       }
       .dialogue .body {
@@ -1035,14 +1057,113 @@
         line-height: 1.4;
         color: var(--ink);
       }
-      .evidence-pills {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
-        gap: 6px;
-        flex: 1 1 auto;
-        min-height: 0;
-        overflow: auto;
+      /* ---------- Type-specific body content ----------
+         Renders one of three things based on decision.type:
+           - deadline_reminder: sender + subject + email snippet + countdown
+           - draft_reply: drafted body preview + thread context
+           - anything else: hidden (falls back to evidence pills)
+         Lays out as a stack INSIDE the source-chain area so it never
+         pushes the recommendation/footer off the 360×420 frame. When
+         the body content is shown we hide the evidence-pills grid to
+         avoid the user reading two redundant explanations. */
+      .dec-body {
+        padding: 8px 9px 9px;
+        border: 1px solid var(--blue-soft);
+        border-radius: 8px;
+        background: var(--panel-soft);
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        flex: 0 0 auto;
       }
+      .dec-body .label {
+        font-family: var(--font-body);
+        font-size: 10px;
+        font-weight: 500;
+        letter-spacing: 0.02em;
+        color: var(--label);
+      }
+      .dec-body .sender {
+        font-size: 10.5px;
+        font-weight: 500;
+        color: var(--muted);
+        font-family: var(--font-mono);
+      }
+      .dec-body .subject {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--ink);
+        line-height: 1.32;
+      }
+      .dec-body .snippet {
+        font-size: 10.5px;
+        font-weight: 400;
+        color: var(--muted);
+        line-height: 1.45;
+        display: -webkit-box;
+        -webkit-line-clamp: 3;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        word-break: break-word;
+      }
+      .dec-body .countdown {
+        margin-top: 2px;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-family: var(--font-mono);
+        font-size: 10px;
+        font-weight: 600;
+        color: var(--orange-text);
+        background: var(--orange-soft);
+        padding: 2px 7px;
+        border-radius: 999px;
+        align-self: flex-start;
+      }
+      .dec-body .cluster {
+        margin-top: 4px;
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+      }
+      .dec-body .cluster-row {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 6px;
+        font-size: 10px;
+        color: var(--muted);
+        line-height: 1.3;
+      }
+      .dec-body .cluster-row::before {
+        content: "•";
+        color: var(--muted);
+        font-size: 10px;
+        line-height: 1.3;
+      }
+      .dec-body .draft {
+        font-size: 10.5px;
+        font-weight: 400;
+        color: var(--ink);
+        line-height: 1.5;
+        background: #fff;
+        border: 1px solid var(--blue-soft);
+        border-radius: 6px;
+        padding: 6px 8px;
+        white-space: pre-wrap;
+        word-break: break-word;
+        display: -webkit-box;
+        -webkit-line-clamp: 4;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+      /* When .dec-body is rendered we hide the legacy evidence pills
+         to avoid the user reading two parallel explanations. The body
+         IS the explanation. */
+      .dec.show-body .evidence-pills {
+        display: none;
+      }
+
+      .evidence-pills {
       .evidence-pill {
         padding: 7px 9px 8px;
         border: 1px solid var(--blue-soft);
@@ -1054,12 +1175,11 @@
         min-height: 56px;
       }
       .evidence-pill .label {
-        font-family: var(--font-mono);
-        font-size: 8px;
-        font-weight: 800;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
-        color: var(--blue-dark);
+        font-family: var(--font-body);
+        font-size: 10px;
+        font-weight: 500;
+        letter-spacing: 0.02em;
+        color: var(--label);
         display: inline-flex;
         align-items: center;
         gap: 4px;
@@ -1072,7 +1192,7 @@
       }
       .evidence-pill strong {
         font-size: 11px;
-        font-weight: 700;
+        font-weight: 500;
         color: var(--ink);
         line-height: 1.3;
         white-space: pre-wrap;
@@ -1107,11 +1227,10 @@
       .brief-tag {
         display: inline-flex;
         align-self: flex-start;
-        font-family: var(--font-mono);
-        font-size: 9px;
-        font-weight: 800;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
+        font-family: var(--font-body);
+        font-size: 10.5px;
+        font-weight: 600;
+        letter-spacing: 0.02em;
         color: var(--orange-text);
         background: var(--orange-soft);
         padding: 2px 7px;
@@ -1130,23 +1249,22 @@
         background: var(--panel-soft);
         text-align: center;
       }
-      .metric-chip strong {
+      .metric-chip .metric-value {
         display: block;
         color: var(--ink);
         font-family: var(--font-mono);
         font-size: 14px;
-        font-weight: 900;
+        font-weight: 600;
         line-height: 1;
       }
-      .metric-chip span {
+      .metric-chip .metric-label {
         display: block;
         margin-top: 3px;
         color: var(--muted);
-        font-family: var(--font-mono);
-        font-size: 7px;
-        font-weight: 800;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
+        font-family: var(--font-body);
+        font-size: 9px;
+        font-weight: 500;
+        letter-spacing: 0.02em;
       }
       .brief-list {
         display: flex;
@@ -1178,7 +1296,7 @@
         color: var(--red);
         font-family: var(--font-mono);
         font-size: 10px;
-        font-weight: 900;
+        font-weight: 600;
       }
       .brief-priority.p1 {
         background: var(--orange-soft);
@@ -1189,8 +1307,8 @@
         color: var(--blue-dark);
       }
       .brief-item .bi-title {
-        font-size: 10px;
-        font-weight: 800;
+        font-size: 10.5px;
+        font-weight: 600;
         color: var(--ink);
         line-height: 1.18;
         display: -webkit-box;
@@ -1201,7 +1319,7 @@
       .brief-item .bi-sub {
         font-size: 9px;
         color: var(--muted);
-        font-weight: 600;
+        font-weight: 500;
         line-height: 1.2;
         display: -webkit-box;
         -webkit-line-clamp: 1;
@@ -1210,8 +1328,8 @@
       }
       .brief-item .bi-time {
         font-family: var(--font-mono);
-        font-size: 9px;
-        font-weight: 800;
+        font-size: 9.5px;
+        font-weight: 600;
         color: var(--muted);
       }
 
@@ -1238,11 +1356,10 @@
         margin: 0;
       }
       .wrap-sub {
-        font-family: var(--font-mono);
-        font-size: 8.5px;
-        font-weight: 700;
-        letter-spacing: 0.07em;
-        text-transform: uppercase;
+        font-family: var(--font-body);
+        font-size: 10px;
+        font-weight: 500;
+        letter-spacing: 0.02em;
         color: rgba(247, 251, 255, 0.6);
       }
       .review-columns {
@@ -1272,14 +1389,14 @@
         display: block;
         color: #fff;
         font-size: 11px;
-        font-weight: 800;
+        font-weight: 600;
         line-height: 1.2;
       }
       .review-card p {
         margin: 1px 0 0;
         color: rgba(247, 251, 255, 0.66);
-        font-size: 9.5px;
-        font-weight: 600;
+        font-size: 10px;
+        font-weight: 500;
         line-height: 1.28;
         white-space: nowrap;
         overflow: hidden;
@@ -1292,11 +1409,10 @@
         background: rgba(43, 138, 247, 0.12);
       }
       .memory-ledger-title {
-        font-family: var(--font-mono);
-        font-size: 8.5px;
-        font-weight: 900;
-        letter-spacing: 0.07em;
-        text-transform: uppercase;
+        font-family: var(--font-body);
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.02em;
         color: #d9e9ff;
         margin-bottom: 4px;
       }
@@ -1310,8 +1426,8 @@
         border-radius: 5px;
         background: rgba(255, 255, 255, 0.08);
         color: rgba(247, 251, 255, 0.82);
-        font-size: 9.5px;
-        font-weight: 700;
+        font-size: 10px;
+        font-weight: 500;
         line-height: 1.2;
         white-space: nowrap;
         overflow: hidden;
@@ -1577,13 +1693,26 @@
           </button>
         </div>
         <div class="title" id="dec-title">Pending</div>
+        <!-- Subtitle: type-aware, replaces the previous machine-style
+             "(4 emails)" suffix. Renders the cluster count + related
+             signal metadata the user actually needs to scan before
+             deciding. -->
+        <div class="subtitle" id="dec-subtitle"></div>
         <div class="source-chain" id="dec-source-chain"></div>
-        <div class="recommendation" id="dec-recommendation">
-          <span class="label">RECOMMEND</span>
-          <span class="body" id="dec-recommendation-body">…</span>
-        </div>
-        <div class="confidence-row" id="dec-confidence-row">
-          <span class="label">CONFIDENCE</span>
+        <!-- Type-specific body block. Renders one of:
+             - deadline_reminder: sender + subject + email snippet + countdown
+             - draft_reply: drafted body preview + thread context
+             - rsvp: event time + organizer + attendee summary
+             - review_pr: PR title + repo/diffstat + reviewer status
+             - other types: hidden (falls back to evidence pills)
+             Add `.show-body` to #dec (in JS) so the legacy evidence
+             grid is hidden when the body block is taking its slot. -->
+        <div class="dec-body" id="dec-body" hidden></div>
+        <!-- Confidence is already shown in the meta-node row above.
+             Hide the duplicate bottom bar — the percentage and color
+             gradient were both being rendered twice on every decision. -->
+        <div class="confidence-row" id="dec-confidence-row" hidden>
+          <span class="label">Confidence</span>
           <div class="confidence-track">
             <div
               class="confidence-fill"
@@ -1594,14 +1723,14 @@
           <span class="value" id="dec-confidence-value">72%</span>
         </div>
         <div class="dialogue" id="dec-dialogue">
-          <span class="label">LOOMI</span>
+          <span class="label">From Loomi</span>
           <span class="body" id="dec-dialogue-body">…</span>
         </div>
         <div class="evidence-pills" id="dec-evidence"></div>
-        <!-- Inline status banner — shows Running… / Sent ✓ / Failed inline
-             between the evidence pills and the footer so the user sees
-             the trail without losing the action context. The toast still
-             fires for redundancy but the banner is the primary signal. -->
+        <!-- Inline status banner — shows Running… / Sent ✓ / Dismissed ✓
+             inline so the user sees the trail without losing the action
+             context. The toast still fires for redundancy but the
+             banner is the primary signal. -->
         <div class="status-banner" id="dec-status"></div>
         <!-- Inline draft editor — hidden by default. Toggled on for
              draft_reply when the user clicks ↗ Edit. Replaces the
@@ -1612,7 +1741,7 @@
              pre-fills from `decision.action.params.subject`; body
              starts empty with a "Write your reply…" placeholder. -->
         <div id="dec-editor">
-          <label for="dec-editor-subject">SUBJECT</label>
+          <label for="dec-editor-subject">Subject</label>
           <input
             id="dec-editor-subject"
             type="text"
@@ -1620,7 +1749,7 @@
             spellcheck="false"
             placeholder="Subject"
           />
-          <label for="dec-editor-body">BODY</label>
+          <label for="dec-editor-body">Body</label>
           <textarea
             id="dec-editor-body"
             rows="6"
@@ -1657,11 +1786,27 @@
             </button>
           </div>
         </div>
+        <!-- Recommendation is hidden — the per-type action buttons
+             (e.g. "✓ Add reminder", "▶ Send", "✓ Approve") already
+             communicate the proposed action. Surfacing the same
+             information twice as "Suggested: Add calendar reminder"
+             duplicated the proposal text without adding any new signal.
+             The block is kept in the DOM (hidden) so the existing
+             #dec-recommendation-body element remains a valid target
+             for any legacy code path. -->
+        <div class="recommendation" id="dec-recommendation" hidden>
+          <span class="label">Suggested</span>
+          <span class="body" id="dec-recommendation-body">…</span>
+        </div>
         <!-- Footer is JS-rendered per decision.type (see TYPE_ACTIONS in
              the inline script below). RSVP gets 4 buttons
              (Yes/No/Maybe/Skip); every other type gets 2-3 typed
              buttons (Send/Edit/Discard, Approve/Comment, etc.). Each
              button gets a native tooltip from its `tip` field.
+             Buttons are ordered by convention: neutral / cancel on
+             the LEFT, confirm / primary on the RIGHT. That way the
+             destructive primary action doesn't read as "the first
+             click target" when the user is scanning left-to-right.
              A decision without a known type falls back to the legacy
              Run/Dismiss/Open trio. -->
         <div class="footer" id="dec-footer"></div>
@@ -1698,13 +1843,16 @@
         </div>
         <div class="brief-metrics" id="brief-metrics">
           <div class="metric-chip">
-            <strong id="brief-m1">0</strong><span>UNREAD MAIL</span>
+            <span class="metric-value" id="brief-m1">0</span>
+            <span class="metric-label">UNREAD MAIL</span>
           </div>
           <div class="metric-chip">
-            <strong id="brief-m2">0</strong><span>CONFLICTS</span>
+            <span class="metric-value" id="brief-m2">0</span>
+            <span class="metric-label">CONFLICTS</span>
           </div>
           <div class="metric-chip">
-            <strong id="brief-m3">0</strong><span>PR REVIEWS</span>
+            <span class="metric-value" id="brief-m3">0</span>
+            <span class="metric-label">PR REVIEWS</span>
           </div>
         </div>
         <div class="brief-list" id="brief-list"></div>
@@ -1954,12 +2102,15 @@
         // user gets a native tooltip explaining the consequence.
         const TYPE_ACTIONS = {
           rsvp: [
+            // Order convention: Skip / destructive on the LEFT, the
+            // primary Yes on the RIGHT. The two middle slots hold the
+            // neutral replies so the user scans left-to-right
+            // ("skip / decline / maybe / accept").
             {
-              action: "run",
-              label: "✓ Yes",
-              variant: "primary",
-              tip: "Confirm attendance — Loomi adds it to your calendar and replies 'yes' to the host",
-              body: { response: "yes" },
+              action: "dismiss",
+              label: "Skip",
+              variant: "danger",
+              tip: "Don't reply — leave the invite pending for a later pass",
             },
             {
               action: "run",
@@ -1976,18 +2127,19 @@
               body: { response: "maybe" },
             },
             {
-              action: "dismiss",
-              label: "Skip",
-              variant: "danger",
-              tip: "Don't reply — leave the invite pending for a later pass",
+              action: "run",
+              label: "✓ Yes",
+              variant: "primary",
+              tip: "Confirm attendance — Loomi adds it to your calendar and replies 'yes' to the host",
+              body: { response: "yes" },
             },
           ],
           draft_reply: [
             {
-              action: "run",
-              label: "▶ Send",
-              variant: "primary",
-              tip: "Send the drafted email (or the edited version if you saved one) as-is",
+              action: "dismiss",
+              label: "Discard",
+              variant: "danger",
+              tip: "Drop the draft — no message will be sent; the thread stays unread",
             },
             {
               action: "edit",
@@ -1996,19 +2148,18 @@
               tip: "Edit the subject and body inline before sending",
             },
             {
-              action: "dismiss",
-              label: "Discard",
-              variant: "danger",
-              tip: "Drop the draft — no message will be sent; the thread stays unread",
+              action: "run",
+              label: "▶ Send",
+              variant: "primary",
+              tip: "Send the drafted email (or the edited version if you saved one) as-is",
             },
           ],
           review_pr: [
             {
-              action: "run",
-              label: "✓ Approve",
-              variant: "primary",
-              tip: "Post an approval — use this when the diff looks good and you want to unblock the merge",
-              body: { verdict: "approve" },
+              action: "dismiss",
+              label: "Skip",
+              variant: "danger",
+              tip: "Skip this review for now — leave the PR unassigned on your side, you can come back later",
             },
             {
               action: "run",
@@ -2017,13 +2168,20 @@
               tip: "Post a neutral review note (no approve / request-changes verdict) — for questions, nits, or FYIs",
               body: { verdict: "comment" },
             },
+            {
+              action: "run",
+              label: "✓ Approve",
+              variant: "primary",
+              tip: "Post an approval — use this when the diff looks good and you want to unblock the merge",
+              body: { verdict: "approve" },
+            },
           ],
           slack_reply: [
             {
-              action: "run",
-              label: "▶ Send",
-              variant: "primary",
-              tip: "Post the drafted reply to the channel as-is",
+              action: "dismiss",
+              label: "Skip",
+              variant: "danger",
+              tip: "Don't post — leave the message unread, the draft is discarded",
             },
             {
               action: "open",
@@ -2032,10 +2190,10 @@
               tip: "Open the draft in the dashboard to tweak the message before posting",
             },
             {
-              action: "dismiss",
-              label: "Skip",
-              variant: "danger",
-              tip: "Don't post — leave the message unread, the draft is discarded",
+              action: "run",
+              label: "▶ Send",
+              variant: "primary",
+              tip: "Post the drafted reply to the channel as-is",
             },
           ],
           release_plan: [
@@ -2053,26 +2211,36 @@
             },
           ],
           deadline_reminder: [
+            // Button order convention (applied across all 2/4-button
+            // layouts): neutral / skip / cancel on the LEFT, confirm /
+            // primary on the RIGHT. Avoids the destructive button
+            // winning the user's left-to-right scan.
+            {
+              action: "dismiss",
+              label: "Skip",
+              variant: "ghost",
+              tip: "Drop the reminder suggestion",
+            },
             {
               action: "run",
               label: "✓ Add reminder",
               variant: "primary",
               body: { channel: "calendar" },
+              tip: "Add a calendar event with a reminder before the deadline",
             },
-            { action: "dismiss", label: "Skip", variant: "danger" },
           ],
           todo: [
+            {
+              action: "dismiss",
+              label: "Skip",
+              variant: "ghost",
+              tip: "Don't add — drop the suggestion, no todo is created",
+            },
             {
               action: "run",
               label: "✓ Add",
               variant: "primary",
               tip: "Add to your todo list — Loomi tracks it across surfaces and the dashboard",
-            },
-            {
-              action: "dismiss",
-              label: "Skip",
-              variant: "danger",
-              tip: "Don't add — drop the suggestion, no todo is created",
             },
           ],
           brief: [
@@ -2292,7 +2460,12 @@
           const queueLabel = document.getElementById("queue-label");
           const queue = document.getElementById("connection-queue");
           const cl = document.getElementById("connection-connectors");
-          // Connectors
+          // Connectors — cap visible rows at 3 so the 360×420 card
+          // never clips a half-row at the bottom. When there are more
+          // we append a compact "+N more" summary row that opens the
+          // full connector list when clicked (re-uses the existing
+          // "Add more connectors" CTA as the primary action below).
+          const VISIBLE_CONNECTOR_CAP = 3;
           cl.innerHTML = "";
           if (!connectors.length) {
             const empty = document.createElement("div");
@@ -2301,7 +2474,9 @@
               '<span class="connector-dot"></span><div><span class="connector-name">Loading…</span><span class="connector-meta">Fetching from /api/loop/connectors</span></div><span class="connector-status off">—</span>';
             cl.appendChild(empty);
           } else {
-            for (const c of connectors) {
+            const visible = connectors.slice(0, VISIBLE_CONNECTOR_CAP);
+            const hidden = connectors.length - visible.length;
+            for (const c of visible) {
               const row = document.createElement("div");
               row.className = "connector-row";
               const account =
@@ -2333,6 +2508,21 @@
                 <span class="connector-status ${statusClass}">${status}</span>
               `;
               cl.appendChild(row);
+            }
+            if (hidden > 0) {
+              const more = document.createElement("div");
+              more.className = "connector-row connector-more";
+              more.dataset.action = "guide-connect-more";
+              more.title = `Open the ${hidden} remaining connector${hidden === 1 ? "" : "s"} in settings`;
+              more.innerHTML = `
+                <span class="connector-dot unknown"></span>
+                <div>
+                  <span class="connector-name">+${hidden} more connector${hidden === 1 ? "" : "s"}</span>
+                  <span class="connector-meta">Tap to manage all</span>
+                </div>
+                <span class="connector-status unknown">…</span>
+              `;
+              cl.appendChild(more);
             }
           }
           // Queue rows from pending list
@@ -2440,6 +2630,7 @@
           const typeLabel = document.getElementById("dec-type-label");
           const pill = document.getElementById("dec-pill");
           const titleEl = document.getElementById("dec-title");
+          const subEl = document.getElementById("dec-subtitle");
           const sc = document.getElementById("dec-source-chain");
           const recBody = document.getElementById("dec-recommendation-body");
           const confFill = document.getElementById("dec-confidence-fill");
@@ -2447,6 +2638,8 @@
           const dlgBody = document.getElementById("dec-dialogue-body");
           const ev = document.getElementById("dec-evidence");
           const dlgWrap = document.getElementById("dec-dialogue");
+          const bodyEl = document.getElementById("dec-body");
+          const decEl = document.getElementById("dec");
 
           if (!decision || !decision.id) return;
 
@@ -2472,20 +2665,49 @@
             pill.textContent = pri;
             pill.className = "pill " + pri;
           }
+          // Set both title and subtitle. Title is the action verb +
+          // entity + time (driven by the tick prompt). Subtitle is the
+          // scan-friendly context line — replaces the legacy
+          // machine-style "(4 emails)" suffix the agent used to cram
+          // into the title itself.
           titleEl.textContent = decision.title || t;
+          renderDecisionSubtitle(subEl, decision);
+          renderDecisionBody(bodyEl, decEl, decision, t);
 
-          // Source chain
+          // Source chain (chrome strip — keeps SIGNAL/TYPE/TIMING/CONFIDENCE
+          //  since they're useful as a quick at-a-glance summary. Labels
+          //  were changed from blue uppercase to neutral sentence-case
+          //  to stop competing with the title for visual weight.)
           sc.innerHTML = "";
           const conf =
             typeof decision.confidence === "number"
               ? decision.confidence
               : null;
+          // Short channel aliases keep the 4-cell meta-node row from
+          // overflowing the 360px card. Long IDs like
+          // "google_calendar" → "gcal", "github_pr" → "pr", etc.
+          const SHORT = {
+            gmail: "gmail",
+            google_calendar: "gcal",
+            github: "github",
+            slack: "slack",
+            linear: "linear",
+            obsidian: "obs",
+            email: "email",
+            calendar_event: "cal",
+            github_pr: "pr",
+            slack_message: "slack",
+          };
+          const rawType = decision.source_type || t;
           const nodes = [
-            { label: "SIGNAL", value: decision.source || "—" },
-            { label: "TYPE", value: decision.source_type || t },
-            { label: "TIMING", value: fmtTs(decision.source_ts) },
             {
-              label: "CONFIDENCE",
+              label: "Signal",
+              value: SHORT[decision.source] || decision.source || "—",
+            },
+            { label: "Type", value: SHORT[rawType] || rawType },
+            { label: "Received", value: fmtTs(decision.source_ts) },
+            {
+              label: "Confidence",
               value: conf != null ? Math.round(conf * 100) + "%" : "—",
             },
           ];
@@ -2558,6 +2780,332 @@
           // main renderDecision() body so it stays trivially testable
           // and re-runnable on every apply().
           renderDecisionFooter();
+        }
+
+        // ---------- Decision subtitle (context line under the title) ----------
+        // The LLM-generated title is reserved for the action + entity + time
+        // (eg "Add reminder: 7/14 OneSignal event"). Subtitle carries the
+        // scan-friendly counts that used to be smashed into the title
+        // (eg "(4 emails)") plus the relative-time remaining when the
+        // decision carries a deadline. Hidden when there's nothing
+        // meaningful to add so the card doesn't grow a useless blank row.
+        function renderDecisionSubtitle(subEl, dec) {
+          if (!subEl) return;
+          const parts = [];
+          // Cluster count from the email/Slack thread dedupe. The tick
+          // prompt is expected to populate `context.cluster.size` for
+          // deadline_reminder / draft_reply so the user immediately
+          // knows whether the decision represents one event or many.
+          const cluster =
+            dec && dec.context && dec.context.cluster
+              ? dec.context.cluster
+              : null;
+          const clusterSize = cluster ? Number(cluster.size) || 0 : 0;
+          if (clusterSize > 1) {
+            const label =
+              cluster.kind === "thread"
+                ? `${clusterSize} replies in thread`
+                : cluster.kind === "mailbox"
+                  ? `${clusterSize} related emails`
+                  : cluster.kind === "channel"
+                    ? `${clusterSize} messages in channel`
+                    : `${clusterSize} related items`;
+            parts.push(label);
+          }
+          // Time-to-deadline for deadline_reminder. `action.params.deadlineAt`
+          // is the ISO timestamp the tick prompt detected; rendering "due
+          // in 5 days" gives the user an immediate yes-this-is-urgent
+          // signal without opening the thread to check the date.
+          const deadlineAt =
+            dec && dec.action && dec.action.params
+              ? dec.action.params.deadlineAt
+              : null;
+          if (deadlineAt) {
+            const until = secondsUntil(deadlineAt);
+            const days = Math.floor(until / 86400);
+            const hours = Math.floor((until % 86400) / 3600);
+            let human;
+            if (until <= 0) human = "due now";
+            else if (days >= 1) human = `due in ${days}d`;
+            else if (hours >= 1) human = `due in ${hours}h`;
+            else human = `due in ${Math.max(1, Math.floor(until / 60))}m`;
+            parts.push(human);
+          }
+          if (parts.length === 0) {
+            subEl.textContent = "";
+            subEl.style.display = "none";
+          } else {
+            subEl.textContent = parts.join(" · ");
+            subEl.style.display = "";
+          }
+        }
+
+        // ---------- Decision body (type-specific content block) ----------
+        // Renders a content block tailored to the decision type. Replaces
+        // the legacy machine-style "Why 1/2/3" evidence pills for types
+        // where the actual content (an email snippet, a drafted reply,
+        // a PR diff stat) is what the user needs to make the call. For
+        // types that don't get a custom block (review_pr, rsvp,
+        // release_plan, todo) the body is hidden and the evidence pills
+        // stand in. Net effect: a single source of truth for "what is
+        // this about" instead of two parallel explanations.
+        function renderDecisionBody(bodyEl, decEl, dec, t) {
+          if (!bodyEl) return;
+          bodyEl.innerHTML = "";
+          bodyEl.hidden = true;
+          if (decEl) decEl.classList.remove("show-body");
+          if (!dec) return;
+
+          // ---------- deadline_reminder ----------
+          // Show the email subject + sender + a snippet of the body so the
+          // user doesn't have to open Gmail just to decide. Cluster rows
+          // (when present) list the other messages the agent folded into
+          // this decision — replaces the previous opaque "(4 emails)"
+          // suffix the user couldn't act on.
+          if (t === "deadline_reminder") {
+            const src = dec && dec.source === "email" ? dec : null;
+            const payload =
+              src && Array.isArray(src.signals) && src.signals[0]
+                ? src.signals[0].payload || {}
+                : {};
+            // Fall back through the decision-level subject/title so the
+            // card never renders the placeholder "Untitled deadline" when
+            // the agent already supplied a meaningful title upstream.
+            const subject =
+              (payload && payload.subject) ||
+              (src && src.title) ||
+              dec.subject ||
+              dec.title ||
+              "";
+            const sender =
+              (payload && payload.from) || dec.from || "";
+            const snippet =
+              (payload && (payload.snippet || payload.body)) || "";
+            // Cluster rows
+            const cluster = (dec.context && dec.context.cluster) || null;
+            const extras =
+              cluster && Array.isArray(cluster.extras) ? cluster.extras : [];
+            // Drop the entire block if no meaningful fields exist — the
+            // empty shell used to render with "Untitled deadline" /
+            // "email" placeholders which made the card look unfinished.
+            if (!subject && !sender && !snippet) return;
+            // Build markup
+            const lab = document.createElement("span");
+            lab.className = "label";
+            lab.textContent = "Source email";
+            bodyEl.appendChild(lab);
+            if (sender) {
+              const fromEl = document.createElement("span");
+              fromEl.className = "sender";
+              fromEl.textContent = sender;
+              bodyEl.appendChild(fromEl);
+            }
+            if (subject) {
+              const subj = document.createElement("div");
+              subj.className = "subject";
+              subj.textContent = subject;
+              bodyEl.appendChild(subj);
+            }
+            if (snippet) {
+              const snip = document.createElement("div");
+              snip.className = "snippet";
+              snip.textContent = stripSnippet(snippet);
+              bodyEl.appendChild(snip);
+            }
+            // Countdown pill (duplicates the subtitle for at-a-glance
+            // readability — the user reads top-down so the chip near
+            // the body text carries the urgency regardless of how far
+            // they scrolled)
+            const deadlineAt =
+              (dec.action &&
+                dec.action.params &&
+                dec.action.params.deadlineAt) ||
+              null;
+            if (deadlineAt) {
+              const cd = document.createElement("span");
+              cd.className = "countdown";
+              const until = secondsUntil(deadlineAt);
+              const days = Math.floor(until / 86400);
+              const hours = Math.floor((until % 86400) / 3600);
+              cd.textContent =
+                until <= 0
+                  ? "Due now"
+                  : days >= 1
+                    ? `${days}d until deadline`
+                    : hours >= 1
+                      ? `${hours}h until deadline`
+                      : `${Math.max(1, Math.floor(until / 60))}m left`;
+              bodyEl.appendChild(cd);
+            }
+            // Cluster list — the user previously asked about
+            // "4 related emails" being collapsed. Render each surviving
+            // message as one muted row so they can see the cluster
+            // shape without leaving the card.
+            if (extras.length > 0) {
+              const cl = document.createElement("div");
+              cl.className = "cluster";
+              const clLab = document.createElement("span");
+              clLab.className = "label";
+              clLab.textContent = "Also in this batch";
+              bodyEl.appendChild(clLab);
+              for (const r of extras.slice(0, 4)) {
+                const row = document.createElement("div");
+                row.className = "cluster-row";
+                row.textContent = r.subject || r.from || "(no subject)";
+                cl.appendChild(row);
+              }
+              bodyEl.appendChild(cl);
+            }
+            bodyEl.hidden = false;
+            if (decEl) decEl.classList.add("show-body");
+            return;
+          }
+
+          // ---------- draft_reply ----------
+          // Show the drafted reply body so the user sees what would go
+          // out before clicking Run. Saves an edit cycle for the
+          // common case where the draft is fine.
+          if (t === "draft_reply") {
+            const draft =
+              (dec.context && dec.context.draft && dec.context.draft.body) ||
+              (dec.action &&
+                dec.action.params &&
+                dec.action.params.draftBody) ||
+              "";
+            const subject =
+              (dec.context && dec.context.draft && dec.context.draft.subject) ||
+              (dec.action && dec.action.params && dec.action.params.subject) ||
+              "";
+            if (!draft && !subject) return;
+            const lab = document.createElement("span");
+            lab.className = "label";
+            lab.textContent = "Drafted reply";
+            bodyEl.appendChild(lab);
+            if (subject) {
+              const sbj = document.createElement("div");
+              sbj.className = "subject";
+              sbj.textContent = "Re: " + subject;
+              bodyEl.appendChild(sbj);
+            }
+            const draftEl = document.createElement("div");
+            draftEl.className = "draft";
+            draftEl.textContent = draft || "(empty draft)";
+            bodyEl.appendChild(draftEl);
+            bodyEl.hidden = false;
+            if (decEl) decEl.classList.add("show-body");
+            return;
+          }
+
+          // ---------- rsvp ----------
+          // Show the event time + organizer + attendee summary so the
+          // user knows what they're accepting without opening the
+          // calendar. Falls back gracefully when the payload only
+          // carries a title.
+          if (t === "rsvp") {
+            const params = (dec.action && dec.action.params) || {};
+            const payload =
+              (dec.signals && dec.signals[0] && dec.signals[0].payload) || {};
+            const start =
+              payload.start || params.start || dec.context?.eventTime;
+            const organizer = payload.organizer || dec.context?.person || "";
+            const attendees = Array.isArray(payload.attendees)
+              ? payload.attendees
+              : [];
+            const title = payload.title || dec.subject || dec.title || "";
+            if (!start && !title) return;
+            const lab = document.createElement("span");
+            lab.className = "label";
+            lab.textContent = "Calendar invite";
+            bodyEl.appendChild(lab);
+            if (title) {
+              const tEl = document.createElement("div");
+              tEl.className = "subject";
+              tEl.textContent = title;
+              bodyEl.appendChild(tEl);
+            }
+            if (start) {
+              const tm = document.createElement("div");
+              tm.className = "snippet";
+              tm.textContent = `When: ${fmtTs(start, "full")}`;
+              bodyEl.appendChild(tm);
+            }
+            if (organizer) {
+              const org = document.createElement("div");
+              org.className = "snippet";
+              org.textContent = `From: ${organizer}`;
+              bodyEl.appendChild(org);
+            }
+            if (attendees.length > 0) {
+              const att = document.createElement("div");
+              att.className = "snippet";
+              const others = attendees.filter(
+                (a) => a && a !== dec.context?.person,
+              );
+              att.textContent = others.length
+                ? `With: ${others.slice(0, 3).join(", ")}${others.length > 3 ? "…" : ""}`
+                : `With: ${attendees.slice(0, 3).join(", ")}`;
+              bodyEl.appendChild(att);
+            }
+            bodyEl.hidden = false;
+            if (decEl) decEl.classList.add("show-body");
+            return;
+          }
+
+          // ---------- review_pr ----------
+          // Show the PR's repo/number, title, and diffstat so the user
+          // can size the change before clicking Approve. Without this
+          // block the meta-node row says "github / github_pr" but
+          // hides everything else the user needs to decide.
+          if (t === "review_pr") {
+            const params = (dec.action && dec.action.params) || {};
+            const payload =
+              (dec.signals && dec.signals[0] && dec.signals[0].payload) || {};
+            const repo = params.repo || payload.repo || "";
+            const number = params.number || payload.number;
+            const title = payload.title || dec.subject || dec.title || "";
+            const additions =
+              typeof payload.additions === "number" ? payload.additions : null;
+            const deletions =
+              typeof payload.deletions === "number" ? payload.deletions : null;
+            if (!title && !number) return;
+            const lab = document.createElement("span");
+            lab.className = "label";
+            lab.textContent = "Pull request";
+            bodyEl.appendChild(lab);
+            if (title) {
+              const tEl = document.createElement("div");
+              tEl.className = "subject";
+              tEl.textContent = title;
+              bodyEl.appendChild(tEl);
+            }
+            const meta = document.createElement("div");
+            meta.className = "snippet";
+            const repoLine =
+              repo && number != null ? `${repo} #${number}` : repo || "";
+            const diff =
+              additions != null && deletions != null
+                ? ` · +${additions} / −${deletions}`
+                : additions != null
+                  ? ` · +${additions}`
+                  : "";
+            meta.textContent = repoLine + diff;
+            bodyEl.appendChild(meta);
+            bodyEl.hidden = false;
+            if (decEl) decEl.classList.add("show-body");
+            return;
+          }
+        }
+
+        // Trim and collapse Gmail-style snippets (which arrive with
+        // embedded "\n" and trailing "...") for the body block. Stays
+        // cheap — no DOM, just a string slice.
+        function stripSnippet(s, max = 220) {
+          if (!s) return "";
+          const flat = String(s).replace(/\s+/g, " ").trim();
+          if (flat.length <= max) return flat;
+          const cut = flat.slice(0, max);
+          const lastSpace = cut.lastIndexOf(" ");
+          return (lastSpace > max * 0.6 ? cut.slice(0, lastSpace) : cut) + "…";
         }
 
         // ---------- Decision footer (per-type action buttons) ----------
@@ -3282,13 +3830,84 @@
           //   - failures are written to the row, not lost on refresh
           //   - status survives UI reloads (it lives in the DB)
           // The cost: 30–90s before the action actually fires
-          // (local-scheduler polls every 60s). For one-click actions
-          // this feels live; for power users the Cancel covers the
-          // "I changed my mind" case.
+          // (local-scheduler polls every 60s).
+          //
+          // EXCEPTION — `dismiss` is fast-tracked. Marking a decision
+          // dismissed does NOT need the scheduler round-trip:
+          //   - it has no external side-effect (no email sent, no
+          //     calendar event created, no PR review posted)
+          //   - the user expects "Skip" to close the card instantly
+          //     (they just want to silence the suggestion)
+          //   - the scheduler's 30–90s window made the click feel
+          //     stuck — feedback was that "after Skip it sat there for
+          //     a while, what is the meaning of the wait?" (the
+          //     `Dismissal scheduled · fires in ~30s` banner).
+          //
+          // We POST /api/loop/decision/:id directly with `{action:
+          // "dismiss"}` — applyDecisionAction() flips status to
+          // "dismissed" synchronously. The card then closes within
+          // ~300ms: status banner shows "Dismissed ✓", the watcher
+          // emits `loop:decision` (which the existing listener already
+          // handles), and the card auto-hides.
           setBusy(true);
           const id = decision.id;
           const apiAction =
             action === "run" || action === "dismiss" ? action : "dismiss";
+
+          // Fast path for dismiss — no scheduler, no 30s wait.
+          if (apiAction === "dismiss") {
+            setStatus("running", "Dismissing…");
+            try {
+              const res = await fetch(
+                `${window.__OPENLOOMI_API__ || ""}/api/loop/decision/${encodeURIComponent(id)}`,
+                {
+                  method: "POST",
+                  headers: { "content-type": "application/json" },
+                  credentials: "include",
+                  body: JSON.stringify({ action: "dismiss" }),
+                },
+              );
+              if (!res.ok) {
+                const text = await res.text().catch(() => "");
+                throw new Error(
+                  `dismiss HTTP ${res.status}${text ? `: ${text.slice(0, 120)}` : ""}`,
+                );
+              }
+              const out = await res.json().catch(() => ({}));
+              // Mirror server truth into the in-memory decision so the
+              // watcher event listener (or `clearPendingActionOnTerminal`
+              // if it races) doesn't second-guess our local state.
+              if (out && out.decision) {
+                decision = out.decision;
+              }
+              setStatus("success", "Dismissed · closing…");
+              // Close after a beat so the user sees the green ✓ trail.
+              // The watcher will also emit loop:decision which fires
+              // `clearPendingActionOnTerminal`, but we don't want to
+              // wait for it — the dismissal already landed.
+              setTimeout(() => {
+                try {
+                  card.style.opacity = "0";
+                  setTimeout(() => {
+                    card.style.display = "none";
+                  }, 160);
+                } catch (_) {
+                  /* best-effort */
+                }
+              }, 600);
+              showToast("Dismissed", false);
+              setBusy(false);
+              return;
+            } catch (e) {
+              const msg = e instanceof Error ? e.message : String(e);
+              setStatus("error", `Dismiss failed: ${msg}`);
+              showToast(`Dismiss failed: ${msg}`, true);
+              setBusy(false);
+              return;
+            }
+          }
+
+          // Run path stays through the scheduler (existing behaviour).
           let schedule = null;
           try {
             const res = await fetch(
@@ -3326,7 +3945,7 @@
             // event listener. Whichever lands first wins; both paths
             // are idempotent via `clearPendingActionOnTerminal`.
             startPendingActionPoll();
-            const verb = apiAction === "dismiss" ? "Dismissal" : "Action";
+            const verb = "Action";
             const inS = secondsUntil(schedule.fire_at);
             // Once the fire_at window has passed (which can happen on
             // the very first tick if the server clock is ahead of the
@@ -3355,10 +3974,10 @@
             return;
           }
           // Hand off — the watcher will emit `loop:decision` when the
-          // job fires and the decision moves to done/dismissed. From
-          // here the user just sees the spinner-style banner with the
-          // Cancel button. setBusy stays true until the success path
-          // (or error path) resets it.
+          // job fires and the decision moves to done. From here the
+          // user just sees the spinner-style banner with the Cancel
+          // button. setBusy stays true until the success path (or
+          // error path) resets it.
         }
 
         // Delegated click handler — one listener on the card root that
