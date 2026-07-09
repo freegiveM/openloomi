@@ -17,6 +17,8 @@
     "core:window:allow-set-ignore-cursor-events",
     "core:window:allow-close",
     "core:window:allow-start-dragging",
-    "allow-emit-dev-state"
+    "allow-emit-dev-state",
+    "allow-get-pet-config",
+    "allow-set-active-theme"
   ]
 }

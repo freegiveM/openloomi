@@ -267,3 +267,13 @@ commands.allow = ["unregister_voice_input_shortcut"]
 identifier = "allow-emit-dev-state"
 description = "Allow the emit_dev_state command (dev panel → pet state flip)"
 commands.allow = ["emit_dev_state"]
+
+[[permission]]
+identifier = "allow-get-pet-config"
+description = "Allow the get_pet_config command (read theme + overrides)"
+commands.allow = ["get_pet_config"]
+
+[[permission]]
+identifier = "allow-set-active-theme"
+description = "Allow the set_active_theme command (right-click theme switcher)"
+commands.allow = ["set_active_theme"]

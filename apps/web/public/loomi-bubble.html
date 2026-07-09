@@ -249,6 +249,14 @@
           thinking: { lead: "Just a sec", sub: "reading the room" },
           working: { lead: "On it", sub: "I'll ping you when ready" },
           greet: { lead: "Hey", sub: "I see you" },
+          // Surfaced by the watcher after a decision moves to `done`
+          // but before the user clicks the bubble. Deliberately distinct
+          // from `happy` so the pet reads as "handing off" rather than
+          // celebrating — the cue is "review when you're ready".
+          presenting: {
+            lead: "All wrapped up — ready when you are",
+            sub: "tap to view",
+          },
           // Emitted once by the watcher on a fresh install when no
           // ANTHROPIC_* env key is set AND `~/.openloomi/loop/decisions.json`
           // doesn't exist yet. Tapping the bubble opens the pet card,
@@ -351,11 +359,22 @@
         // early, and any subsequent `loop:decision` / state flip falls
         // back to AUTO_DISMISS_MS as expected.
         const SETUP_DISMISS_MS = 12000;
+        // `presenting` is a deliberate handoff state — the user is
+        // being shown a freshly-done decision. The bubble text is the
+        // call-to-action, so 4.5 s is too short: the user is mid-task
+        // when the loop finishes, and a brief flash makes the
+        // notification easy to miss. 8 s gives enough breathing room
+        // for the user to read both lines without forcing a click.
+        const PRESENTING_DISMISS_MS = 8000;
         let autoHideTimer = null;
         function scheduleAutoHide() {
           if (autoHideTimer) clearTimeout(autoHideTimer);
           const delay =
-            currentState === "needs-setup" ? SETUP_DISMISS_MS : AUTO_DISMISS_MS;
+            currentState === "needs-setup"
+              ? SETUP_DISMISS_MS
+              : currentState === "presenting"
+                ? PRESENTING_DISMISS_MS
+                : AUTO_DISMISS_MS;
           autoHideTimer = setTimeout(() => {
             autoHideTimer = null;
             const t = window.__TAURI__;

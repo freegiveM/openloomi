@@ -57,6 +57,7 @@ export type PetStateHint =
   | "thinking"
   | "working"
   | "greet"
+  | "presenting"
   | null;
 
 export interface DevScene {

@@ -17,7 +17,10 @@ use std::time::{Duration, SystemTime};
 use serde::Deserialize;
 use tauri::{AppHandle, Emitter, Listener, Manager};
 
-use super::{PET_BUBBLE_LABEL, PET_CARD_LABEL, PET_LABEL, set_pending_decision_count};
+use super::{
+    last_review_seen_secs_ago, PET_BUBBLE_LABEL, PET_CARD_LABEL, PET_LABEL,
+    set_pending_decision_count,
+};
 
 const POLL_MS: u64 = 2000;
 
@@ -31,6 +34,13 @@ const FIRST_RUN_SETUP_DELAY_MS: u64 = 1500;
 /// 30s freshness window for "just happened" rules (e.g. a decision moved
 /// to `done` in the last 30s => `happy` with "N done" monologue).
 const JUST_NOW_SECS: i64 = 30;
+
+/// How long after a `done` decision the user has to open the card
+/// before `presenting` flips to `happy`. 60 s is generous — the bubble
+/// text is "Click to view" so the cue is immediate — but long enough
+/// that background tabs / multi-monitor workflows don't lose the
+/// signal.
+pub const PRESENTING_REVIEW_GRACE_SECS: u64 = 60;
 
 /// Spawn the dedicated watcher thread. The thread name surfaces in crash
 /// dumps and process listings, which makes "which thread ate my CPU"
@@ -109,6 +119,16 @@ fn watch_loop(
     // only emitted `loop:decision` for the *new* top-pending id.
     let mut last_pending_ids: Vec<String> = Vec::new();
     let mut recently_completed: Vec<(String, String)> = Vec::new();
+    // Track the last emitted pet state + whether the user had been
+    // "recently reviewed". The watcher normally only re-emits on
+    // bucket / ts / id changes, but the `presenting → happy`
+    // transition is triggered by `mark_review_seen` (i.e. the user
+    // clicking the bubble), not by a decisions.json edit. Without
+    // tracking `reviewed_recently` here, the pet would stay on
+    // `presenting` for the full 60 s grace window even after the user
+    // opened the card.
+    let mut last_emitted_state: Option<String> = None;
+    let mut last_reviewed_recently: bool = false;
 
     // One-shot first-run detection: if `~/.openloomi/loop/decisions.json`
     // doesn't exist AND there's no env-level Anthropic key, surface a
@@ -186,10 +206,19 @@ fn watch_loop(
             .filter_map(|d| d.id.clone())
             .collect();
 
+        let reviewed_recently = last_review_seen_secs_ago()
+            .map(|s| s < PRESENTING_REVIEW_GRACE_SECS)
+            .unwrap_or(false);
+
         let changed = buckets != last_buckets
             || newest_ts != last_decision_ts
             || top_pending_id != last_top_id
-            || current_pending_ids != last_pending_ids;
+            || current_pending_ids != last_pending_ids
+            // The `presenting → happy` transition fires on review, not
+            // on decisions.json edits. Re-emit whenever the reviewed-
+            // recently flag flips so the pet reacts within one poll
+            // (~2 s) of the user clicking the bubble.
+            || reviewed_recently != last_reviewed_recently;
         if !changed {
             continue;
         }
@@ -211,8 +240,10 @@ fn watch_loop(
         last_decision_ts = newest_ts.clone();
         last_top_id = top_pending_id.clone();
         last_pending_ids = current_pending_ids;
+        last_reviewed_recently = reviewed_recently;
 
-        let (state, monologue) = map_state_to_pet(&snap, &newest_ts, needs_user);
+        let (state, monologue) = map_state_to_pet(&snap, &newest_ts, needs_user, reviewed_recently);
+        last_emitted_state = Some(state.to_string());
         let state_payload = serde_json::json!({ "state": state, "monologue": monologue });
         // Pet widget flips its sprite/animation, bubble swaps to a
         // state-specific phrase — both listen on `loop:state`. We
@@ -657,10 +688,17 @@ pub struct DecContext {
 /// function pure (no IO, no time access other than the `Utc::now()`-style
 /// "fresh" check below) so it can be unit-tested by feeding in canned
 /// snapshots.
+///
+/// `reviewed_recently` is true when the user has opened the decision
+/// card within the last `PRESENTING_REVIEW_GRACE_SECS` window. It gates
+/// the `presenting → happy` transition: when the user clicks the bubble
+/// to see their freshly-done decisions, we want the pet to immediately
+/// flip from "I have results for you" to "happy / done".
 pub fn map_state_to_pet(
     s: &DecisionsSnap,
     newest_ts: &Option<String>,
     needs_user: bool,
+    reviewed_recently: bool,
 ) -> (&'static str, Option<String>) {
     let pending = s.pending.len();
     let done = s.done.len();
@@ -673,6 +711,20 @@ pub fn map_state_to_pet(
     }
     if pending == 0 && dismissed > 0 && just_now {
         return ("sweeping", None);
+    }
+    // `presenting` sits between `sweeping` and `happy` — it surfaces
+    // when there's a freshly-done decision that the user hasn't yet
+    // seen. The pet sprite + bubble text deliberately differentiates
+    // this from `happy` so the user feels the loop "handing off" the
+    // result rather than just celebrating. As soon as the user
+    // clicks through (`pet:open-card` → `mark_review_seen`), the
+    // watcher re-emits with `reviewed_recently = true` and we fall
+    // through to the `happy` branch on the next poll.
+    if pending == 0 && done > 0 && just_now && !reviewed_recently {
+        return (
+            "presenting",
+            Some(format!("{done} done — review when you're ready")),
+        );
     }
     if pending == 0 && done > 0 && just_now {
         return ("happy", Some(format!("{} done. Tap to see.", done)));
@@ -833,14 +885,14 @@ mod tests {
         // We can't easily inject hour, so check both branches: any result
         // is "sleeping" or "idle" depending on local clock; just assert
         // it is not the "happy" / "juggling" family.
-        let (state, _) = map_state_to_pet(&s, &None, false);
+        let (state, _) = map_state_to_pet(&s, &None, false, false);
         assert!(matches!(state, "sleeping" | "idle"), "got {state}");
     }
 
     #[test]
     fn multiple_pending_is_juggling_with_count() {
         let s = snap(3, 0, 0);
-        let (state, mono) = map_state_to_pet(&s, &None, false);
+        let (state, mono) = map_state_to_pet(&s, &None, false, false);
         assert_eq!(state, "juggling");
         assert_eq!(mono.as_deref(), Some("3 cards open"));
     }
@@ -849,15 +901,109 @@ mod tests {
     fn single_pending_with_needs_user_is_needsinput() {
         let mut s = snap(1, 0, 0);
         s.pending[0].needs_user = Some(true);
-        let (state, _) = map_state_to_pet(&s, &None, true);
+        let (state, _) = map_state_to_pet(&s, &None, true, false);
         assert_eq!(state, "needsinput");
     }
 
     #[test]
     fn single_pending_no_needs_user_is_working_or_thinking() {
         let s = snap(1, 0, 0);
-        let (state, _) = map_state_to_pet(&s, &None, false);
+        let (state, _) = map_state_to_pet(&s, &None, false, false);
         assert!(matches!(state, "working" | "thinking"), "got {state}");
+    }
+
+    /// Build a snapshot whose `done` bucket contains exactly one
+    /// decision whose `completed_at` matches the supplied ISO string.
+    /// Helper for the `presenting` rule tests below — keeps the test
+    /// bodies focused on the input/output contract.
+    fn snap_with_done_completed_at(done: usize, completed_at: &str) -> DecisionsSnap {
+        DecisionsSnap {
+            pending: Vec::new(),
+            done: (0..done)
+                .map(|i| DecItem {
+                    id: Some(format!("dec_test_done_{i}")),
+                    r#type: Some("draft_reply".into()),
+                    title: Some(format!("done {i}")),
+                    dialogue: None,
+                    confidence: Some(0.8),
+                    source_signal: None,
+                    context: None,
+                    created_at: None,
+                    completed_at: Some(completed_at.into()),
+                    needs_user: None,
+                })
+                .collect(),
+            dismissed: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn done_with_just_now_and_not_reviewed_emits_presenting() {
+        // `newest_ts` is "now-ish" (the test runs at the moment of
+        // wall-clock), `reviewed_recently = false` → we expect the
+        // `presenting` rule to win over the `happy` rule that would
+        // otherwise fire on `done > 0 && just_now`.
+        let now_iso = format_iso_now_approx();
+        let s = snap_with_done_completed_at(1, &now_iso);
+        let (state, _) = map_state_to_pet(&s, &Some(now_iso), false, false);
+        assert_eq!(state, "presenting");
+    }
+
+    #[test]
+    fn done_with_just_now_and_reviewed_falls_back_to_happy() {
+        let now_iso = format_iso_now_approx();
+        let s = snap_with_done_completed_at(1, &now_iso);
+        let (state, _) = map_state_to_pet(&s, &Some(now_iso), false, true);
+        assert_eq!(state, "happy");
+    }
+
+    #[test]
+    fn done_with_old_completed_at_never_emits_presenting() {
+        // `completed_at` is years in the past — `just_now` returns
+        // false, so we skip both `presenting` and `happy`. The empty
+        // bucket branch lands on `idle` (or `sleeping` if the test
+        // happens to run in night hours).
+        let s = snap_with_done_completed_at(1, "2020-01-01T00:00:00Z");
+        let (state, _) = map_state_to_pet(&s, &Some("2020-01-01T00:00:00Z".into()), false, false);
+        assert!(
+            matches!(state, "idle" | "sleeping"),
+            "expected idle/sleeping, got {state}"
+        );
+    }
+
+    /// Rough "now" in the format `is_just_now` accepts. We don't need
+    /// timezone precision — `is_just_now` only checks the absolute
+    /// delta against the wall clock, and `secs` are bounded enough
+    /// that UTC vs local makes no difference for the just-now test.
+    fn format_iso_now_approx() -> String {
+        let secs = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let (y, mo, d, h, mi, s) = epoch_to_ymdhms(secs);
+        format!("{y:04}-{mo:02}-{d:02}T{h:02}:{mi:02}:{s:02}Z")
+    }
+
+    /// Tiny epoch → civil converter used only by the just-now tests.
+    /// Mirrors the algorithm in `theme::civil_from_days`; copied here
+    /// rather than re-exported because tests in this file already
+    /// exercise pure data flow.
+    fn epoch_to_ymdhms(secs: u64) -> (u32, u32, u32, u32, u32, u32) {
+        let s = (secs % 60) as u32;
+        let m = ((secs / 60) % 60) as u32;
+        let h = ((secs / 3600) % 24) as u32;
+        let days = (secs / 86_400) as i64;
+        let z = days + 719_468;
+        let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+        let doe = (z - era * 146_097) as u64;
+        let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+        let y_signed = yoe as i64 + era * 400;
+        let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+        let mp = (5 * doy + 2) / 153;
+        let d_signed = doy - (153 * mp + 2) / 5 + 1;
+        let m_signed = if mp < 10 { mp + 3 } else { mp - 9 };
+        let y = if m_signed <= 2 { y_signed + 1 } else { y_signed };
+        (y as u32, m_signed as u32, d_signed as u32, h, m, s)
     }
 
     fn dec_with_id(id: &str) -> DecItem {

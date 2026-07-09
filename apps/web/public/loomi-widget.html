@@ -214,6 +214,13 @@
         position: fixed;
         z-index: 9999;
         min-width: 96px;
+        /* The pet window is 168×168 but the menu (theme picker + a
+           few shortcuts) is ~250px tall, so we cap the height and let
+           it scroll rather than clip the Quit button. `calc(100vh -
+           8px)` adapts to both Tauri (vh = window height = 168) and
+           standalone preview (vh = browser viewport). */
+        max-height: calc(100vh - 8px);
+        overflow-y: auto;
         padding: 4px;
         background: rgba(15, 23, 42, 0.92);
         border: 1px solid rgba(255, 255, 255, 0.1);
@@ -231,13 +238,29 @@
         -webkit-user-select: none;
         user-select: none;
       }
+      /* Slim webkit scrollbar so the scroll affordance doesn't crowd
+         the 12px menu text. Falls back to platform default in
+         non-webkit browsers (rare for the Tauri webview, but safe). */
+      #pet-menu::-webkit-scrollbar {
+        width: 6px;
+      }
+      #pet-menu::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      #pet-menu::-webkit-scrollbar-thumb {
+        background: rgba(255, 255, 255, 0.15);
+        border-radius: 3px;
+      }
+      #pet-menu::-webkit-scrollbar-thumb:hover {
+        background: rgba(255, 255, 255, 0.25);
+      }
       #pet-menu.visible {
         display: block;
       }
       #pet-menu button {
         display: block;
         width: 100%;
-        padding: 6px 12px;
+        padding: 4px 12px;
         margin: 0;
         background: transparent;
         border: 0;
@@ -256,7 +279,30 @@
       #pet-menu hr {
         border: 0;
         border-top: 1px solid rgba(255, 255, 255, 0.08);
-        margin: 4px 2px;
+        margin: 2px 2px;
+      }
+      /* Theme picker tick — only the active theme shows the ✓.
+         Kept out of the button text so the label can wrap on long
+         custom-theme names without reflowing the tick. */
+      .menu-tick {
+        display: inline-block;
+        width: 12px;
+        margin-right: 4px;
+        opacity: 0;
+        color: #34d399;
+        font-weight: 700;
+      }
+      .menu-tick.active {
+        opacity: 1;
+      }
+      /* Subtle separator within the theme list — separates built-ins
+         from custom themes the user has added. */
+      .menu-separator {
+        padding: 2px 12px;
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: rgba(255, 255, 255, 0.4);
       }
     </style>
   </head>
@@ -267,6 +313,15 @@
       <button type="button" data-op="open" role="menuitem">Open Loomi</button>
       <button type="button" data-op="settings" role="menuitem">Settings</button>
       <hr />
+      <div class="menu-separator">Theme</div>
+      <button type="button" data-op="theme-fox" role="menuitem">
+        <span class="menu-tick active" data-theme-tick="fox">✓</span>Fox
+      </button>
+      <button type="button" data-op="theme-capybara" role="menuitem">
+        <span class="menu-tick" data-theme-tick="capybara">✓</span>Capybara
+      </button>
+      <!-- Custom theme buttons injected at boot by applyConfig(view). -->
+      <hr />
       <button type="button" data-op="quit" role="menuitem">Quit</button>
     </div>
 
@@ -274,29 +329,170 @@
       (function () {
         "use strict";
 
-        // Map loop state key → asset filename. Falls back to idle for any
-        // unknown key. Files live under /loomi-pet/assets/ which is bundled
-        // alongside this HTML by the public/ resource pattern in
-        // tauri.conf.json: `../.next/standalone/apps/web/public/**/*`.
-        const STATE_IMAGES = {
-          check: "loomi-pet/assets/loomi-idle.png",
-          thinking: "loomi-pet/assets/loomi-thinking.png",
-          sweeping: "loomi-pet/assets/loomi-sweeping.png",
-          working: "loomi-pet/assets/loomi-working.png",
-          needsinput: "loomi-pet/assets/loomi-needsinput.png",
-          greet: "loomi-pet/assets/loomi-greet.png",
-          sleeping: "loomi-pet/assets/loomi-sleeping.png",
-          juggling: "loomi-pet/assets/loomi-info.png",
-          happy: "loomi-pet/assets/loomi-happy.png",
-          idle: "loomi-pet/assets/loomi-idle.png",
+        // Two built-in themes ship with the app. Each maps a state key
+        // to a PNG filename in the theme's directory. The directory
+        // layout matches `apps/web/public/loomi-pet/assets/<theme>/`,
+        // which is bundled by the public/ resource pattern in
+        // tauri.conf.json (`../.next/standalone/apps/web/public/**/*`).
+        //
+        // Juggling note: the original `loomi-info.png` (1.5 MB) was
+        // assigned to `juggling` by mistake. The real juggling sprite
+        // is `loomi-juggling.png` (52 KB). This map now points at the
+        // correct file.
+        //
+        // `presenting` is the post-completion handoff state — the fox
+        // has no dedicated sprite for it yet, so we fall back to
+        // `happy` until assets land.
+        const BUILTIN_THEMES = {
+          fox: {
+            baseDir: "loomi-pet/assets/fox/",
+            states: {
+              idle: "loomi-idle.png",
+              thinking: "loomi-thinking.png",
+              sweeping: "loomi-sweeping.png",
+              working: "loomi-working.png",
+              needsinput: "loomi-needsinput.png",
+              greet: "loomi-greet.png",
+              sleeping: "loomi-sleeping.png",
+              juggling: "loomi-juggling.png",
+              happy: "loomi-happy.png",
+              presenting: "loomi-happy.png",
+            },
+          },
+          capybara: {
+            baseDir: "loomi-pet/assets/capybara/",
+            states: {
+              idle: "capybara-idle.png",
+              thinking: "capybara-thinking.png",
+              sweeping: "capybara-sweeping.png",
+              working: "capybara-working.png",
+              needsinput: "capybara-needsinput.png",
+              greet: "capybara-idle.png",
+              sleeping: "capybara-sleeping.png",
+              juggling: "capybara-juggling.png",
+              happy: "capybara-happy.png",
+              presenting: "capybara-presenting.png",
+            },
+          },
         };
-        const FALLBACK = "loomi-pet/assets/loomi-idle.png";
+        const FALLBACK = "loomi-pet/assets/fox/loomi-idle.png";
+
+        // Runtime overrides — populated from `PetConfigView.overrides`
+        // when the host returns the config on boot (and again on every
+        // `pet:config-changed` event). Shape:
+        //   overrideMap[theme][state] = { kind: "asset", path: string }
+        //                              | { kind: "absolute", path: string }
+        let overrideMap = {};
+
+        // Currently active theme name. Defaulted to `fox` for the
+        // standalone-preview path (no Tauri host); replaced on boot
+        // by `get_pet_config`.
+        let currentTheme = "fox";
+        // Custom theme names discovered on the host's
+        // `~/.openloomi/pet-custom/` directory. Refreshed on every
+        // config event. The widget renders one menu button per entry.
+        let customThemes = [];
 
         const fox = document.getElementById("fox");
         // Tracked alongside `fox.dataset.state` so the click handler can
         // branch on it (e.g. `needs-setup` → `pet:open-ai-settings`
         // instead of the default `pet:open-dashboard`).
         let currentState = "idle";
+
+        // Resolve a sprite URL/path for an (theme, state) pair.
+        // Priority:
+        //   1. runtime override (user-configured per-theme, per-state)
+        //   2. built-in theme map
+        //   3. fox idle fallback (so we never paint a broken image)
+        //
+        // `override.kind === "absolute"` means the user gave us a
+        // path on disk — we route it through `convertFileSrc` so the
+        // webview can fetch it via Tauri's asset:// protocol. Anything
+        // else is a relative URL to the bundled asset.
+        function imageFor(theme, state) {
+          const ov = overrideMap[theme] && overrideMap[theme][state];
+          if (ov) {
+            if (ov.kind === "absolute") {
+              const t = window.__TAURI__;
+              if (t && t.core && typeof t.core.convertFileSrc === "function") {
+                return t.core.convertFileSrc(ov.path);
+              }
+              return ov.path;
+            }
+            return ov.path;
+          }
+          const t = BUILTIN_THEMES[theme];
+          if (t && t.states[state]) return t.baseDir + t.states[state];
+          return FALLBACK;
+        }
+
+        // Apply a fresh `PetConfigView` payload. Rebuilds the override
+        // map, swaps the active theme, refreshes the right-click
+        // menu's theme picker, and re-paints the current sprite so a
+        // background theme change is visible without waiting for the
+        // next state event.
+        function applyConfig(view) {
+          if (!view || typeof view !== "object") return;
+          if (typeof view.activeTheme === "string" && view.activeTheme) {
+            currentTheme = view.activeTheme;
+          }
+          overrideMap = (view && view.overrides) || {};
+          customThemes = Array.isArray(view.customThemes)
+            ? view.customThemes.slice()
+            : [];
+          rebuildThemeButtons();
+          updateThemeTicks();
+          // Re-paint with the current state under the new theme so
+          // the user sees the change immediately.
+          if (currentState) setState(currentState);
+        }
+
+        // Add menu buttons for any custom theme names not already
+        // present in the DOM. Called on boot and after every config
+        // event. Built-in entries are statically rendered in the
+        // HTML, so we only touch custom themes here.
+        function rebuildThemeButtons() {
+          const menu = document.getElementById("pet-menu");
+          if (!menu) return;
+          // Remove previously injected custom-theme buttons so a
+          // directory rename doesn't leave stale entries behind.
+          menu
+            .querySelectorAll(
+              "button[data-op^='theme-']:not([data-op='theme-fox']):not([data-op='theme-capybara'])",
+            )
+            .forEach((el) => el.remove());
+          // Insertion point: right after the capybara built-in button
+          // (so the menu reads fox → capybara → my-pack → ...).
+          const anchor = menu.querySelector("[data-op='theme-capybara']");
+          if (!anchor) return;
+          for (const name of customThemes) {
+            // Skip the built-in names — they already have buttons.
+            if (name === "fox" || name === "capybara") continue;
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.setAttribute("role", "menuitem");
+            btn.dataset.op = "theme-" + name;
+            const tick = document.createElement("span");
+            tick.className = "menu-tick";
+            tick.dataset.themeTick = name;
+            tick.textContent = "✓";
+            btn.appendChild(tick);
+            btn.appendChild(document.createTextNode(" " + name));
+            // Insert after the anchor; if multiple, they appear in
+            // alphabetical order (customThemes is sorted by the host).
+            anchor.insertAdjacentElement("afterend", btn);
+          }
+        }
+
+        // Toggle the ✓ indicator on the active theme's button.
+        function updateThemeTicks() {
+          document.querySelectorAll("[data-theme-tick]").forEach((el) => {
+            el.classList.toggle(
+              "active",
+              el.dataset.themeTick === currentTheme,
+            );
+          });
+        }
 
         // Standalone-preview detection. When the page is opened in a plain
         // browser, `__TAURI__` is undefined and the body grows to 100vw ×
@@ -315,7 +511,7 @@
           if (!key || typeof key !== "string") return;
           currentState = key;
           fox.dataset.state = key;
-          const src = STATE_IMAGES[key] || FALLBACK;
+          const src = imageFor(currentTheme, key);
           if (fox.getAttribute("src") !== src) {
             // Cross-fade the swap so the eye doesn't catch the load flicker.
             fox.style.opacity = "0";
@@ -354,11 +550,19 @@
           petMenu.classList.add("visible");
           petMenu.setAttribute("aria-hidden", "false");
           const r = petMenu.getBoundingClientRect();
-          // Anchor: down-right from cursor, clamped to 168×168.
+          // Anchor: down-right from cursor, clamped to 168×168. When
+          // the menu would overflow the bottom (common — the menu has
+          // ~7 entries but the window is only 168px tall) flip it
+          // upward so the user still sees the top of the menu near
+          // the cursor. The CSS caps menu height at `100vh - 8px` so
+          // `r.height` is bounded and the clamp is well-defined.
           const winW = document.documentElement.clientWidth || 168;
           const winH = document.documentElement.clientHeight || 168;
           const left = Math.max(0, Math.min(winW - r.width, x));
-          const top = Math.max(0, Math.min(winH - r.height, y));
+          let top = y;
+          if (top + r.height > winH) {
+            top = Math.max(0, y - r.height);
+          }
           petMenu.style.left = left + "px";
           petMenu.style.top = top + "px";
           petMenuOpen = true;
@@ -394,7 +598,28 @@
           if (!op) return;
           closePetMenu();
           const t = window.__TAURI__;
-          if (!t || !t.event || !t.event.emit) return;
+          if (!t) return;
+          // Theme switcher + custom shortcuts go through core.invoke
+          // (commands) rather than event.emit — the host writes the
+          // new theme to disk and broadcasts the change back via
+          // `pet:config-changed`. Open / Settings / Quit remain event
+          // emits because they are transient UI gestures, not state
+          // changes.
+          if (op.startsWith("theme-")) {
+            const themeName = op.slice("theme-".length);
+            if (t.core && t.core.invoke) {
+              t.core
+                .invoke("set_active_theme", { themeName: themeName })
+                .then((view) => {
+                  if (view) applyConfig(view);
+                })
+                .catch((err) => {
+                  console.warn("[loomi] set_active_theme failed", err);
+                });
+            }
+            return;
+          }
+          if (!t.event || !t.event.emit) return;
           if (op === "open") t.event.emit("pet:open-dashboard");
           else if (op === "settings") t.event.emit("pet:open-settings");
           else if (op === "quit") t.event.emit("pet:quit");
@@ -511,9 +736,38 @@
             if (p.state) setState(p.state);
           });
         }
+        // `pet:config-changed` fires whenever the host reloads the
+        // pet config — either because the user picked a new theme
+        // from the right-click menu, because the file watcher
+        // detected an external edit of `~/.openloomi/pet-config.json`,
+        // or because the user dropped a new PNG into the custom
+        // theme directory. Apply the fresh view and re-paint so
+        // background edits show up without waiting for the next
+        // state event.
+        if (t && t.event && t.event.listen) {
+          t.event.listen("pet:config-changed", (e) => {
+            const p = (e && e.payload) || null;
+            if (p) applyConfig(p);
+          });
+        }
 
         // ---- Boot -------------------------------------------------------
+        // On cold boot we ask the host for the active theme +
+        // overrides + custom theme list. We paint with `fox idle`
+        // first (synchronous) so the user sees the pet instantly
+        // while the invoke round-trips, then re-paint under the
+        // resolved theme.
         setState("idle");
+        if (t && t.core && t.core.invoke) {
+          t.core
+            .invoke("get_pet_config")
+            .then((view) => {
+              if (view) applyConfig(view);
+            })
+            .catch((err) => {
+              console.warn("[loomi] get_pet_config failed", err);
+            });
+        }
       })();
     </script>
   </body>

@@ -394,6 +394,11 @@ fn main() {
             // any side effects beyond emitting to (possibly-absent)
             // PET_LABEL / PET_BUBBLE_LABEL windows.
             pet::emit_dev_state,
+            // Pet theme system — config read/write + right-click
+            // shortcuts. Registered unconditionally so the widget
+            // always has a way to discover its theme on cold boot.
+            pet::get_pet_config,
+            pet::set_active_theme,
         ])
         .setup(|app| {
             // Deliver AppHandle to the background server thread immediately
@@ -562,6 +567,13 @@ fn main() {
             // Cheap mtime poll — no extra deps, easy to reason about.
             pet::spawn_decision_watcher(app_handle.clone());
 
+            // Watch `pet-config.json` and the user's custom theme
+            // directory for external edits. Cheap, debounced, and
+            // cross-platform — the user can hand-edit the config or
+            // drop a new theme PNG in `~/.openloomi/pet-custom/` and
+            // the pet reacts without a restart.
+            pet::spawn_config_watcher(app_handle.clone());
+
             // Pet can ask the host to surface the main dashboard. We
             // listen globally (not on a single webview) so the pet is
             // not required to re-emit when its own webview is rebuilt.
@@ -621,8 +633,14 @@ fn main() {
             // (e.g. everything got dismissed in flight), the card
             // window will just show its empty state — the user can still
             // use the × to close.
+            //
+            // `mark_review_seen` flips the `presenting → happy`
+            // transition. Without this stamp, the watcher would keep
+            // the pet on `presenting` until the 60 s grace expired
+            // even though the user has clearly seen the result.
             let open_card_app = app_handle.clone();
             app_handle.listen("pet:open-card", move |_event| {
+                pet::mark_review_seen();
                 pet::hide_bubble_window(&open_card_app);
                 pet::show_card_window(&open_card_app);
             });
@@ -638,8 +656,14 @@ fn main() {
             // a pending decision surfacing. Without this gate the bubble
             // pops up empty ("All clear") when the user dismissed the
             // last pending decision inside the card.
+            //
+            // We also stamp `mark_review_seen` so a card that the user
+            // explicitly opened and then closed still counts as
+            // "reviewed" — otherwise closing without clicking the
+            // bubble would leave the pet pinned on `presenting`.
             let close_card_app = app_handle.clone();
             app_handle.listen("pet:close-card", move |_event| {
+                pet::mark_review_seen();
                 pet::hide_card_window(&close_card_app);
                 pet::show_bubble_window_if_pending(&close_card_app);
             });

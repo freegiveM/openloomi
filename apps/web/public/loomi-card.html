@@ -2168,6 +2168,14 @@
           //    regardless of whether the watcher would agree.
           if (devForm && DEV_FORM_LAYOUT[devForm])
             return DEV_FORM_LAYOUT[devForm];
+          // 1b. `presenting` mirrors a freshly-done decision — render
+          //     it as the decision layout so the user lands on the
+          //     same surface they would have seen if they had been
+          //     watching the loop finish. Keeps the experience
+          //     consistent: "open card from presenting state" looks
+          //     the same as "open card from the bubble for a finished
+          //     decision".
+          if (state === "presenting") return "decision";
           // 2. Decision-driven layouts.
           if (decision && decision.id) {
             if (decision.type === "brief") return "brief";
@@ -2367,6 +2375,11 @@
             juggling: 2,
             sweeping: 3,
             happy: 4,
+            // `presenting` is the post-completion handoff — the loop
+            // has reached the final step ("wait for approval" →
+            // "done"). Mapping it to step 4 keeps the pipeline
+            // indicator consistent with `happy` and `needsinput`.
+            presenting: 4,
             idle: 1,
             sleeping: 1,
           };
@@ -2436,11 +2449,25 @@
           const t = decision.type || "decision";
           icon.textContent = TYPE_ICONS[t] || "●";
           typeLabel.textContent = TYPE_LABELS[t] || t.toUpperCase();
-          const pri = (
-            decision.priority || priorityFor(decision)
-          ).toLowerCase();
-          pill.textContent = pri;
-          pill.className = "pill " + pri;
+          // `presenting` is the watcher's "I have a freshly-done
+          // result, hand it off" state. When the user opens the
+          // card from there, the priority pill flips from the
+          // numeric p0/p1/p2 to a green "READY" tag and the
+          // primary CTA changes from "Run" to "Open result".
+          // Falls back to the regular pill when status is anything
+          // else (incl. the user opening the card pre-decision).
+          const isPresenting =
+            state === "presenting" && decision.status === "done";
+          if (isPresenting) {
+            pill.textContent = "READY";
+            pill.className = "pill ready";
+          } else {
+            const pri = (
+              decision.priority || priorityFor(decision)
+            ).toLowerCase();
+            pill.textContent = pri;
+            pill.className = "pill " + pri;
+          }
           titleEl.textContent = decision.title || t;
 
           // Source chain
@@ -2574,16 +2601,41 @@
           }
           const actions =
             (decision.type && TYPE_ACTIONS[decision.type]) || DEFAULT_ACTIONS;
+          // `presenting` swaps the primary CTA label from "Run" to
+          // "Open result" so the user understands the loop has
+          // already finished — they don't need to "run" anything,
+          // just look at the prepared output. Reuses the existing
+          // `open` action (the postAction handler already routes
+          // that to the dashboard / external app).
+          const isPresentingReady =
+            state === "presenting" && decision.status === "done";
+          const finalActions = isPresentingReady
+            ? actions.map((a) =>
+                a.action === "run"
+                  ? {
+                      ...a,
+                      label: "↗ Open result",
+                      tip: "View the prepared output",
+                    }
+                  : a.action === "dismiss"
+                    ? {
+                        ...a,
+                        label: "✓ Got it",
+                        tip: "Acknowledge and dismiss",
+                      }
+                    : a,
+              )
+            : actions;
           // 2 → two-col, 3 → default 3-col, 4 → four-col.
           const cls =
-            actions.length === 4
+            finalActions.length === 4
               ? "footer four-col"
-              : actions.length === 2
+              : finalActions.length === 2
                 ? "footer two-col"
                 : "footer";
           footer.className = cls;
           footer.innerHTML = "";
-          for (const a of actions) {
+          for (const a of finalActions) {
             const btn = document.createElement("button");
             btn.type = "button";
             btn.className = a.variant || "";
