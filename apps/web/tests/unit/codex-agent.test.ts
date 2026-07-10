@@ -45,8 +45,6 @@ describe("Codex command builder", () => {
       "gpt-5.4",
       "--sandbox",
       "workspace-write",
-      "--ask-for-approval",
-      "on-request",
       "--skip-git-repo-check",
       "fix the failing tests",
     ]);
@@ -104,8 +102,11 @@ describe("Codex command builder", () => {
 
     expect(command.args).toContain("--sandbox");
     expect(command.args).toContain("danger-full-access");
-    expect(command.args).toContain("--ask-for-approval");
-    expect(command.args).toContain("never");
+    // Codex CLI 0.144 dropped `--ask-for-approval`. The config field is
+    // still parsed so existing user settings keep loading, but
+    // `buildCodexRunCommand` must not emit the flag anymore.
+    expect(command.args).not.toContain("--ask-for-approval");
+    expect(command.args).not.toContain("never");
     // extraArgs are appended after `--` so they cannot smuggle flags into the
     // global argv; here we just verify the guard value is present.
     const guardIndex = command.args.indexOf("--");
@@ -276,7 +277,7 @@ describe("Codex parser", () => {
     ]);
   });
 
-  it("emits error message and a tool_result on item-level error events", () => {
+  it("surfaces Codex self-diagnostics as a non-fatal tool_result, not a fatal error", () => {
     expect(
       parseCodexJsonLine(
         JSON.stringify({
@@ -289,12 +290,11 @@ describe("Codex parser", () => {
         }),
       ),
     ).toEqual([
-      { type: "error", message: "tool failed" },
       {
         type: "tool_result",
         toolUseId: "err-1",
         output: "tool failed",
-        isError: true,
+        isError: false,
       },
     ]);
   });
@@ -380,8 +380,9 @@ describe("CodexAgent", () => {
     expect(args).toContain("--json");
     expect(args).toContain("--sandbox");
     expect(args).toContain("workspace-write");
-    expect(args).toContain("--ask-for-approval");
-    expect(args).toContain("on-request");
+    // Codex CLI 0.144 dropped `--ask-for-approval`; the argv no longer
+    // carries an approval flag.
+    expect(args).not.toContain("--ask-for-approval");
     expect(args).toContain("--skip-git-repo-check");
     expect(args.at(-1)).toBe("hello codex");
   });

@@ -149,9 +149,6 @@ function resolveCodexEnvConfig(env: EnvSource) {
   const profile = normalizeOptionalString(env.OPENLOOMI_AGENT_CODEX_PROFILE);
   const model = normalizeOptionalString(env.OPENLOOMI_AGENT_CODEX_MODEL);
   const sandbox = normalizeOptionalString(env.OPENLOOMI_AGENT_CODEX_SANDBOX);
-  const askForApproval = normalizeOptionalString(
-    env.OPENLOOMI_AGENT_CODEX_ASK_FOR_APPROVAL,
-  );
   const skipGitRepoCheck = parseBooleanEnv(
     env,
     "OPENLOOMI_AGENT_CODEX_SKIP_GIT_REPO_CHECK",
@@ -172,17 +169,6 @@ function resolveCodexEnvConfig(env: EnvSource) {
       `OPENLOOMI_AGENT_CODEX_SANDBOX must be read-only, workspace-write, or danger-full-access. Received: ${sandbox}.`,
     );
   }
-  if (
-    askForApproval &&
-    askForApproval !== "untrusted" &&
-    askForApproval !== "on-failure" &&
-    askForApproval !== "on-request" &&
-    askForApproval !== "never"
-  ) {
-    throwConfigError(
-      `OPENLOOMI_AGENT_CODEX_ASK_FOR_APPROVAL must be untrusted, on-failure, on-request, or never. Received: ${askForApproval}.`,
-    );
-  }
 
   if (command) {
     providerConfig.codexPath = command;
@@ -192,9 +178,6 @@ function resolveCodexEnvConfig(env: EnvSource) {
   }
   if (sandbox) {
     providerConfig.sandbox = sandbox;
-  }
-  if (askForApproval) {
-    providerConfig.askForApproval = askForApproval;
   }
   if (skipGitRepoCheck !== undefined) {
     providerConfig.skipGitRepoCheck = skipGitRepoCheck;

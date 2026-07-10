@@ -36,7 +36,6 @@ const AGENT_ENV_KEYS = [
   "OPENLOOMI_AGENT_CODEX_PROFILE",
   "OPENLOOMI_AGENT_CODEX_MODEL",
   "OPENLOOMI_AGENT_CODEX_SANDBOX",
-  "OPENLOOMI_AGENT_CODEX_ASK_FOR_APPROVAL",
   "OPENLOOMI_AGENT_CODEX_SKIP_GIT_REPO_CHECK",
   "OPENLOOMI_AGENT_CODEX_FULL_AUTO",
   "OPENLOOMI_AGENT_CODEX_TIMEOUT_MS",
@@ -423,7 +422,6 @@ describe("native agent provider env resolver", () => {
       codexPath: "codex-custom",
       profile: "work",
       sandbox: "read-only",
-      askForApproval: "on-request",
       skipGitRepoCheck: false,
       fullAuto: true,
       timeoutMs: 12000,
@@ -446,14 +444,15 @@ describe("native agent provider env resolver", () => {
     expect(command.args).toContain("gpt-5.4");
     expect(command.args).toContain("--sandbox");
     expect(command.args).toContain("read-only");
-    expect(command.args).toContain("--ask-for-approval");
-    expect(command.args).toContain("on-request");
+    // Codex CLI 0.144 dropped `--ask-for-approval`. The OPENLOOMI_AGENT_CODEX_ASK_FOR_APPROVAL
+    // env var is therefore a no-op at the command-builder level.
+    expect(command.args).not.toContain("--ask-for-approval");
     expect(command.args).not.toContain("--skip-git-repo-check");
     expect(command.args).toContain("--full-auto");
     expect(command.args.at(-1)).toBe("fix the failing tests");
   });
 
-  it("rejects unsupported Codex sandbox and askForApproval env values", () => {
+  it("rejects unsupported Codex sandbox env values and silently ignores ASK_FOR_APPROVAL", () => {
     process.env.OPENLOOMI_AGENT_PROVIDER = "codex";
     process.env.OPENLOOMI_AGENT_CODEX_SANDBOX = "wide-open";
     expect(() => resolveNativeAgentProviderRequest(baseRequest())).toThrow(
@@ -461,10 +460,13 @@ describe("native agent provider env resolver", () => {
     );
 
     process.env.OPENLOOMI_AGENT_CODEX_SANDBOX = "workspace-write";
+    // OPENLOOMI_AGENT_CODEX_ASK_FOR_APPROVAL was retired when Codex CLI 0.144
+    // dropped the `--ask-for-approval` flag. Setting it now must not throw
+    // and must not leak into providerConfig.
     process.env.OPENLOOMI_AGENT_CODEX_ASK_FOR_APPROVAL = "always";
-    expect(() => resolveNativeAgentProviderRequest(baseRequest())).toThrow(
-      /OPENLOOMI_AGENT_CODEX_ASK_FOR_APPROVAL/,
-    );
+    const request = resolveNativeAgentProviderRequest(baseRequest());
+    expect(request.provider).toBe("codex");
+    expect(request.providerConfig).not.toHaveProperty("askForApproval");
   });
 
   it("uses Codex default sandbox and skipGitRepoCheck when env is unset", () => {

@@ -25,6 +25,12 @@ export interface CodexProviderConfig {
   codexPath?: string;
   profile?: string;
   sandbox?: CodexSandboxMode;
+  /**
+   * @deprecated Codex CLI 0.144 removed the `--ask-for-approval` flag and
+   * replaced it with a single `--dangerously-bypass-approvals-and-sandbox`
+   * switch. This field is preserved so existing user/provider config keeps
+   * parsing, but `buildCodexRunCommand` no longer forwards it to the CLI.
+   */
   askForApproval?: CodexApprovalPolicy;
   fullAuto?: boolean;
   skipGitRepoCheck?: boolean;
@@ -155,10 +161,6 @@ export function buildCodexRunCommand(
       ? "read-only"
       : (providerConfig.sandbox ?? "workspace-write"),
   );
-  args.push(
-    "--ask-for-approval",
-    providerConfig.askForApproval ?? "on-request",
-  );
   if (providerConfig.skipGitRepoCheck) {
     args.push("--skip-git-repo-check");
   }
@@ -224,6 +226,14 @@ export async function* runCodexCli(
       detached: shouldDetachCliProcess(),
       windowsHide: true,
     });
+    // Codex CLI 0.144+ reads the prompt from argv but ALSO blocks waiting
+    // for stdin to reach EOF whenever stdin is a piped stream (e.g.
+    // `node`'s default `pipe` stdio). Without this explicit close the
+    // child process hangs in "Reading additional input from stdin..."
+    // forever and the SSE stream never receives any events. We never write
+    // to stdin ourselves (the prompt is passed positionally), so closing
+    // it immediately is safe and signals EOF to the CLI.
+    proc.stdin.end();
   } catch (error) {
     const err = error instanceof Error ? error : new Error(String(error));
     if (isCommandNotFoundError(err)) {

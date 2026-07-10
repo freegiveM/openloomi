@@ -209,18 +209,37 @@ function convertCodexItem(
     }
 
     case "error": {
+      // Codex CLI 0.144+ emits two distinct flavors of error in the
+      // NDJSON event stream:
+      //
+      //   1. **Top-level** `{"type":"error","message":"..."}` — this means
+      //      the turn was aborted and no further events will arrive. We map
+      //      this to a fatal AgentMessage error in `convertCodexEvent` below.
+      //   2. **Item-level** `{"type":"item.completed","item":{"type":"error",...}}`
+      //      — Codex uses this shape for *non-fatal* self-diagnostics
+      //      (e.g. "Model metadata for `X` not found. Defaulting to
+      //      fallback metadata" or "Skill descriptions were shortened to
+      //      fit the 2% skills context budget"). The turn continues
+      //      normally afterwards. Treating these as fatal UI errors would
+      //      surface Codex's internal logging as red error banners even
+      //      when the chat reply is delivered a moment later.
+      //
+      // So for the item-level variant we only emit a non-fatal
+      // `tool_result` carrying the message. Callers can still surface
+      // the text in debug UIs via the tool result, but the chat timeline
+      // stays clean. Real fatal errors are caught by the top-level
+      // branch and by the nonzero-exit branch in CodexAgent.
       const message =
         readString(item.message) ||
         readString(item.error) ||
         "Codex tool error";
       const toolUseId = itemId ?? `err_${randomSuffix()}`;
       return [
-        { type: "error", message },
         {
           type: "tool_result",
           toolUseId,
           output: message,
-          isError: true,
+          isError: false,
         },
       ];
     }
