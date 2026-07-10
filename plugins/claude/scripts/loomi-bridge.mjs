@@ -54,7 +54,11 @@ import { fileURLToPath } from 'node:url';
 const PLUGIN_VERSION = '0.1.0';
 const DEFAULT_PROVIDER_BASE = 'https://api.anthropic.com';
 const DEFAULT_PROVIDER_MODEL = 'claude-opus-4-6';
-const OPENLOOMI_PORT_DEFAULT = 8787;
+// Matches the documented ports in skills/openloomi-api/SKILL.md; the
+// desktop app falls back to 3515 when 3414 is busy.
+const OPENLOOMI_PORT_DEFAULT = 3414;
+const OPENLOOMI_PORT_FALLBACK = 3515;
+let _resolvedPort = OPENLOOMI_PORT_DEFAULT;
 const STATE_HTTP_TIMEOUT_MS = 2000;
 const ARCHIVE_HTTP_TIMEOUT_MS = 15_000;
 const ARCHIVE_MAX_BYTES = 5 * 1024 * 1024;       // 5 MB cap on transcripts
@@ -528,7 +532,31 @@ function loadBearerToken() {
 
 function openloomiBaseUrl() {
   if (process.env.OPENLOOMI_BASE_URL) return process.env.OPENLOOMI_BASE_URL.replace(/\/+$/, '');
-  return `http://127.0.0.1:${OPENLOOMI_PORT_DEFAULT}`;
+  return `http://127.0.0.1:${_resolvedPort}`;
+}
+
+// Probes the default then fallback port for any HTTP response from
+// /api/remote-auth/user, caches whichever port answered for the
+// lifetime of the process, and returns the resolved base URL. Returns
+// null if neither port responds.
+async function probeOpenLoomiBaseUrl() {
+  for (const port of [OPENLOOMI_PORT_DEFAULT, OPENLOOMI_PORT_FALLBACK]) {
+    const url = `http://127.0.0.1:${port}`;
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 1500);
+    try {
+      const res = await fetch(`${url}/api/remote-auth/user`, { method: 'GET', signal: ctrl.signal });
+      if (res.status > 0) {
+        _resolvedPort = port;
+        return url;
+      }
+    } catch {
+      // connection refused / timeout — try the next port
+    } finally {
+      clearTimeout(t);
+    }
+  }
+  return null;
 }
 
 async function apiGET(path, { timeoutMs = 5000 } = {}) {
@@ -610,11 +638,10 @@ async function probeAiProvider() {
 }
 
 async function probeApiReachable() {
-  // /api/remote-auth/user is documented in skills/openloomi-api to exist
-  // and to return 401 fast when auth is missing. We treat any HTTP
-  // response as "reachable" — including 401.
-  const r = await apiGET('/api/remote-auth/user', { timeoutMs: 2500 });
-  return r.status > 0;
+  // Tries the default port (3414) first, then the documented fallback
+  // (3515). Any HTTP response — including 401 — counts as "reachable";
+  // only network errors / timeouts mean the runtime is not running.
+  return (await probeOpenLoomiBaseUrl()) !== null;
 }
 
 async function buildStatus({ json = true, explicit = null } = {}) {

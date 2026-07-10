@@ -9,8 +9,8 @@ Wires Claude Code into a local OpenLoomi runtime. Once installed you get the
 - `/openloomi:hooks install` — _(opt-in)_ mirror Claude's lifecycle onto the Pet + auto-archive every Stop into OpenLoomi memory.
 
 The plugin never duplicates OpenLoomi business logic — every side effect hits
-your local OpenLoomi runtime (the desktop app's HTTP API on `127.0.0.1:8787`,
-or its bundled helper CLI under the hood).
+your local OpenLoomi runtime (the desktop app's HTTP API on `127.0.0.1:3414`,
+fallback `127.0.0.1:3515`, or its bundled helper CLI under the hood).
 
 ---
 
@@ -184,7 +184,7 @@ Claude Code
                  ├── archive (Stop hook; always exit 0)
                  └── install-hooks (merge-no-overwrite into settings.json)
                        ↓
-            OpenLoomi Desktop runtime (helper CLI + 127.0.0.1:8787)
+            OpenLoomi Desktop runtime (helper CLI + 127.0.0.1:3414 / fallback 3515)
 ```
 
 ## Plugin layout
