@@ -677,6 +677,15 @@ const zhHans = {
         description: "处理请求时遇到问题。",
         suggestions: ["稍后重试", "如果问题持续存在，请联系支持"],
       },
+      fileNotFoundError: {
+        title: "文件未找到",
+        description: "找不到指定的文件。",
+        suggestions: [
+          "检查文件路径是否正确",
+          "确认文件是否存在",
+          "使用完整的文件路径",
+        ],
+      },
     },
     confirmDeleteTitle: "确认删除",
     confirmDeleteMessage: "确定要删除此项目吗？",

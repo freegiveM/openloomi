@@ -719,6 +719,15 @@ const enUS = {
           "Contact support if the problem persists",
         ],
       },
+      fileNotFoundError: {
+        title: "File Not Found",
+        description: "The specified file could not be found.",
+        suggestions: [
+          "Check if the file path is correct",
+          "Confirm that the file exists",
+          "Use the full file path",
+        ],
+      },
     },
     confirmDeleteTitle: "Confirm Delete",
     confirmDeleteMessage: "Are you sure you want to delete this item?",
