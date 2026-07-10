@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildHermesAcpCommand } from "@/lib/ai/extensions/agent/hermes/command";
 import { buildOpenCodeRunCommand } from "@/lib/ai/extensions/agent/opencode/command";
 import { buildOpenClawAcpCommand } from "@/lib/ai/extensions/agent/openclaw/command";
+import { buildCodexRunCommand } from "@/lib/ai/extensions/agent/codex/command";
 import {
   getConfiguredDefaultAgentProvider,
   resolveNativeAgentProviderRequest,
@@ -31,6 +32,14 @@ const AGENT_ENV_KEYS = [
   "OPENLOOMI_AGENT_OPENCLAW_NO_PREFIX_CWD",
   "OPENLOOMI_AGENT_OPENCLAW_PROVENANCE",
   "OPENLOOMI_AGENT_OPENCLAW_TIMEOUT_MS",
+  "OPENLOOMI_AGENT_CODEX_COMMAND",
+  "OPENLOOMI_AGENT_CODEX_PROFILE",
+  "OPENLOOMI_AGENT_CODEX_MODEL",
+  "OPENLOOMI_AGENT_CODEX_SANDBOX",
+  "OPENLOOMI_AGENT_CODEX_ASK_FOR_APPROVAL",
+  "OPENLOOMI_AGENT_CODEX_SKIP_GIT_REPO_CHECK",
+  "OPENLOOMI_AGENT_CODEX_FULL_AUTO",
+  "OPENLOOMI_AGENT_CODEX_TIMEOUT_MS",
 ];
 
 let originalEnv: NodeJS.ProcessEnv;
@@ -388,6 +397,100 @@ describe("native agent provider env resolver", () => {
     expect(command.command).toBe("env-hermes");
     expect(command.args).toEqual(["--profile", "env-profile", "acp"]);
     expect(command.args).not.toContain("--yolo");
+  });
+
+  it("uses Codex from env and builds the exec --json command", () => {
+    process.env.OPENLOOMI_AGENT_PROVIDER = "codex";
+    process.env.OPENLOOMI_AGENT_CODEX_COMMAND = "codex-custom";
+    process.env.OPENLOOMI_AGENT_CODEX_PROFILE = "work";
+    process.env.OPENLOOMI_AGENT_CODEX_MODEL = "gpt-5.4";
+    process.env.OPENLOOMI_AGENT_CODEX_SANDBOX = "read-only";
+    process.env.OPENLOOMI_AGENT_CODEX_ASK_FOR_APPROVAL = "on-request";
+    process.env.OPENLOOMI_AGENT_CODEX_SKIP_GIT_REPO_CHECK = "false";
+    process.env.OPENLOOMI_AGENT_CODEX_FULL_AUTO = "1";
+    process.env.OPENLOOMI_AGENT_CODEX_TIMEOUT_MS = "12000";
+
+    const request = resolveNativeAgentProviderRequest({
+      ...baseRequest(),
+      provider: "claude",
+      modelConfig: { model: "request-model" },
+      providerConfig: { codexPath: "request-command" },
+    });
+
+    expect(request.provider).toBe("codex");
+    expect(request.modelConfig).toEqual({ model: "gpt-5.4" });
+    expect(request.providerConfig).toEqual({
+      codexPath: "codex-custom",
+      profile: "work",
+      sandbox: "read-only",
+      askForApproval: "on-request",
+      skipGitRepoCheck: false,
+      fullAuto: true,
+      timeoutMs: 12000,
+    });
+
+    const command = buildCodexRunCommand({
+      prompt: "fix the failing tests",
+      cwd: "/workspace/project",
+      model: request.modelConfig?.model,
+      mode: "run",
+      permissionMode: "bypassPermissions",
+      providerConfig: request.providerConfig,
+    });
+    expect(command.command).toBe("codex-custom");
+    expect(command.args).toContain("exec");
+    expect(command.args).toContain("--json");
+    expect(command.args).toContain("-p");
+    expect(command.args).toContain("work");
+    expect(command.args).toContain("-m");
+    expect(command.args).toContain("gpt-5.4");
+    expect(command.args).toContain("--sandbox");
+    expect(command.args).toContain("read-only");
+    expect(command.args).toContain("--ask-for-approval");
+    expect(command.args).toContain("on-request");
+    expect(command.args).not.toContain("--skip-git-repo-check");
+    expect(command.args).toContain("--full-auto");
+    expect(command.args.at(-1)).toBe("fix the failing tests");
+  });
+
+  it("rejects unsupported Codex sandbox and askForApproval env values", () => {
+    process.env.OPENLOOMI_AGENT_PROVIDER = "codex";
+    process.env.OPENLOOMI_AGENT_CODEX_SANDBOX = "wide-open";
+    expect(() => resolveNativeAgentProviderRequest(baseRequest())).toThrow(
+      /OPENLOOMI_AGENT_CODEX_SANDBOX/,
+    );
+
+    process.env.OPENLOOMI_AGENT_CODEX_SANDBOX = "workspace-write";
+    process.env.OPENLOOMI_AGENT_CODEX_ASK_FOR_APPROVAL = "always";
+    expect(() => resolveNativeAgentProviderRequest(baseRequest())).toThrow(
+      /OPENLOOMI_AGENT_CODEX_ASK_FOR_APPROVAL/,
+    );
+  });
+
+  it("uses Codex default sandbox and skipGitRepoCheck when env is unset", () => {
+    process.env.OPENLOOMI_AGENT_PROVIDER = "codex";
+    process.env.OPENLOOMI_AGENT_CODEX_COMMAND = "codex";
+
+    const request = resolveNativeAgentProviderRequest(baseRequest());
+
+    expect(request.provider).toBe("codex");
+    expect(request.providerConfig).toEqual({
+      codexPath: "codex",
+      // skipGitRepoCheck is omitted because the env-resolver only forwards it
+      // when explicitly set; the Codex runtime defaults skipGitRepoCheck to
+      // true at the command-builder level.
+    });
+
+    const command = buildCodexRunCommand({
+      prompt: "do work",
+      cwd: "/workspace/project",
+      mode: "run",
+      providerConfig: request.providerConfig,
+    });
+    expect(command.args).toContain("--sandbox");
+    expect(command.args).toContain("workspace-write");
+    expect(command.args).toContain("--skip-git-repo-check");
+    expect(command.args).not.toContain("--full-auto");
   });
 });
 

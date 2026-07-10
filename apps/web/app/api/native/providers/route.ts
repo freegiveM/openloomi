@@ -4,6 +4,7 @@
  * Get available agent and sandbox providers
  */
 
+import { codexPlugin } from "@/lib/ai/extensions/agent/codex";
 import { hermesPlugin } from "@/lib/ai/extensions/agent/hermes";
 import { openclawPlugin } from "@/lib/ai/extensions/agent/openclaw";
 import { opencodePlugin } from "@/lib/ai/extensions/agent/opencode";
@@ -20,6 +21,7 @@ import { NextResponse } from "next/server";
 
 // Register lightweight built-in Agent plugins used by this metadata route.
 const registry = getAgentRegistry();
+registry.register(codexPlugin);
 registry.register(opencodePlugin);
 registry.register(hermesPlugin);
 registry.register(openclawPlugin);
@@ -29,6 +31,7 @@ function getProviderMetadata(): AgentProviderMetadata[] {
 
   for (const metadata of [
     CLAUDE_METADATA,
+    codexPlugin.metadata,
     opencodePlugin.metadata,
     hermesPlugin.metadata,
     openclawPlugin.metadata,

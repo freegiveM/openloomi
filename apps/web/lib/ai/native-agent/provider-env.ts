@@ -11,11 +11,13 @@ const ENV_PROVIDER_KEY = "OPENLOOMI_AGENT_PROVIDER";
 const OPENCODE_PROVIDER = "opencode";
 const HERMES_PROVIDER = "hermes";
 const OPENCLAW_PROVIDER = "openclaw";
+const CODEX_PROVIDER = "codex";
 const SUPPORTED_ENV_PROVIDERS = new Set([
   "claude",
   OPENCODE_PROVIDER,
   HERMES_PROVIDER,
   OPENCLAW_PROVIDER,
+  CODEX_PROVIDER,
 ]);
 
 export function getConfiguredDefaultAgentProvider(
@@ -58,6 +60,18 @@ export function resolveNativeAgentProviderRequest(
     };
   }
 
+  if (provider === CODEX_PROVIDER) {
+    const codexEnvConfig = resolveCodexEnvConfig(env);
+    return {
+      ...body,
+      provider,
+      modelConfig: codexEnvConfig.model
+        ? { model: codexEnvConfig.model }
+        : undefined,
+      providerConfig: codexEnvConfig.providerConfig,
+    };
+  }
+
   if (provider !== OPENCODE_PROVIDER) {
     return {
       ...body,
@@ -87,7 +101,7 @@ function resolveEnvAgentProvider(env: EnvSource): AgentProvider | undefined {
   const provider = rawProvider.toLowerCase();
   if (!SUPPORTED_ENV_PROVIDERS.has(provider)) {
     throwConfigError(
-      `Unsupported ${ENV_PROVIDER_KEY}: ${rawProvider}. Supported values: claude, opencode, hermes, openclaw.`,
+      `Unsupported ${ENV_PROVIDER_KEY}: ${rawProvider}. Supported values: claude, opencode, hermes, openclaw, codex.`,
     );
   }
 
@@ -125,6 +139,75 @@ function resolveHermesEnvConfig(env: EnvSource) {
 
   return {
     model: model && inferenceProvider ? `${inferenceProvider}:${model}` : model,
+    providerConfig,
+  };
+}
+
+function resolveCodexEnvConfig(env: EnvSource) {
+  const providerConfig: Record<string, unknown> = {};
+  const command = normalizeOptionalString(env.OPENLOOMI_AGENT_CODEX_COMMAND);
+  const profile = normalizeOptionalString(env.OPENLOOMI_AGENT_CODEX_PROFILE);
+  const model = normalizeOptionalString(env.OPENLOOMI_AGENT_CODEX_MODEL);
+  const sandbox = normalizeOptionalString(env.OPENLOOMI_AGENT_CODEX_SANDBOX);
+  const askForApproval = normalizeOptionalString(
+    env.OPENLOOMI_AGENT_CODEX_ASK_FOR_APPROVAL,
+  );
+  const skipGitRepoCheck = parseBooleanEnv(
+    env,
+    "OPENLOOMI_AGENT_CODEX_SKIP_GIT_REPO_CHECK",
+  );
+  const fullAuto = parseBooleanEnv(env, "OPENLOOMI_AGENT_CODEX_FULL_AUTO");
+  const timeoutMs = parsePositiveIntegerEnv(
+    env,
+    "OPENLOOMI_AGENT_CODEX_TIMEOUT_MS",
+  );
+
+  if (
+    sandbox &&
+    sandbox !== "read-only" &&
+    sandbox !== "workspace-write" &&
+    sandbox !== "danger-full-access"
+  ) {
+    throwConfigError(
+      `OPENLOOMI_AGENT_CODEX_SANDBOX must be read-only, workspace-write, or danger-full-access. Received: ${sandbox}.`,
+    );
+  }
+  if (
+    askForApproval &&
+    askForApproval !== "untrusted" &&
+    askForApproval !== "on-failure" &&
+    askForApproval !== "on-request" &&
+    askForApproval !== "never"
+  ) {
+    throwConfigError(
+      `OPENLOOMI_AGENT_CODEX_ASK_FOR_APPROVAL must be untrusted, on-failure, on-request, or never. Received: ${askForApproval}.`,
+    );
+  }
+
+  if (command) {
+    providerConfig.codexPath = command;
+  }
+  if (profile) {
+    providerConfig.profile = profile;
+  }
+  if (sandbox) {
+    providerConfig.sandbox = sandbox;
+  }
+  if (askForApproval) {
+    providerConfig.askForApproval = askForApproval;
+  }
+  if (skipGitRepoCheck !== undefined) {
+    providerConfig.skipGitRepoCheck = skipGitRepoCheck;
+  }
+  if (fullAuto !== undefined) {
+    providerConfig.fullAuto = fullAuto;
+  }
+  if (timeoutMs !== undefined) {
+    providerConfig.timeoutMs = timeoutMs;
+  }
+
+  return {
+    model,
     providerConfig,
   };
 }

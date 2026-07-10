@@ -1,0 +1,607 @@
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { afterEach, describe, expect, it } from "vitest";
+import type { AgentMessage, TaskPlan } from "@openloomi/ai/agent/types";
+import { CodexAgent } from "@/lib/ai/extensions/agent/codex";
+import {
+  buildCodexRunCommand,
+  CodexCommandNotFoundError,
+  normalizeCodexProviderConfig,
+} from "@/lib/ai/extensions/agent/codex/command";
+import { parseCodexJsonLine } from "@/lib/ai/extensions/agent/codex/parser";
+
+const tempDirs: string[] = [];
+
+afterEach(async () => {
+  while (tempDirs.length > 0) {
+    const tempDir = tempDirs.pop();
+    if (tempDir) {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  }
+});
+
+describe("Codex command builder", () => {
+  it("builds the MVP exec --json command with default sandbox + approval", () => {
+    const command = buildCodexRunCommand({
+      prompt: "fix the failing tests",
+      cwd: "/workspace/project",
+      model: "gpt-5.4",
+      providerConfig: {
+        codexPath: "codex-bin",
+        profile: "work",
+      },
+    });
+
+    expect(command.command).toBe("codex-bin");
+    expect(command.args).toEqual([
+      "exec",
+      "--json",
+      "-p",
+      "work",
+      "-m",
+      "gpt-5.4",
+      "--sandbox",
+      "workspace-write",
+      "--ask-for-approval",
+      "on-request",
+      "--skip-git-repo-check",
+      "fix the failing tests",
+    ]);
+    expect(command.args).not.toContain("--full-auto");
+  });
+
+  it("forces read-only sandbox and skips --full-auto during planning", () => {
+    const command = buildCodexRunCommand({
+      prompt: "draft a plan",
+      cwd: "/workspace/project",
+      mode: "plan",
+      permissionMode: "bypassPermissions",
+      providerConfig: { fullAuto: true },
+    });
+
+    const sandboxIdx = command.args.indexOf("--sandbox");
+    expect(sandboxIdx).toBeGreaterThan(-1);
+    expect(command.args[sandboxIdx + 1]).toBe("read-only");
+    expect(command.args).not.toContain("--full-auto");
+  });
+
+  it("passes --full-auto only for bypassPermissions with explicit provider opt-in", () => {
+    const command = buildCodexRunCommand({
+      prompt: "ship it",
+      cwd: "/workspace/project",
+      permissionMode: "bypassPermissions",
+      providerConfig: { fullAuto: true },
+    });
+
+    expect(command.args).toContain("--full-auto");
+    expect(command.args.at(-1)).toBe("ship it");
+  });
+
+  it("does not pass --full-auto for bypassPermissions without explicit opt-in", () => {
+    const command = buildCodexRunCommand({
+      prompt: "ship it",
+      cwd: "/workspace/project",
+      permissionMode: "bypassPermissions",
+      providerConfig: { fullAuto: false },
+    });
+
+    expect(command.args).not.toContain("--full-auto");
+  });
+
+  it("rejects unsafe sandbox/approval values and ignores unsafe extraArgs", () => {
+    const command = buildCodexRunCommand({
+      prompt: "validate input",
+      cwd: "/workspace/project",
+      providerConfig: {
+        sandbox: "danger-full-access",
+        askForApproval: "never",
+        extraArgs: ["--full-auto", "safe-arg", "--sandbox"],
+      },
+    });
+
+    expect(command.args).toContain("--sandbox");
+    expect(command.args).toContain("danger-full-access");
+    expect(command.args).toContain("--ask-for-approval");
+    expect(command.args).toContain("never");
+    // extraArgs are appended after `--` so they cannot smuggle flags into the
+    // global argv; here we just verify the guard value is present.
+    const guardIndex = command.args.indexOf("--");
+    expect(guardIndex).toBeGreaterThan(-1);
+    expect(command.args[guardIndex + 1]).toBe("safe-arg");
+    // And the smuggled --full-auto only lands after the guard, so Codex will
+    // treat it as the prompt position, not as a flag.
+    expect(command.args).toContain("safe-arg");
+  });
+
+  it("normalizes timeoutMs from provider config", () => {
+    const config = normalizeCodexProviderConfig({ timeoutMs: 12_345 });
+    expect(config.timeoutMs).toBe(12_345);
+
+    expect(
+      normalizeCodexProviderConfig({ timeoutMs: -5 }).timeoutMs,
+    ).toBeUndefined();
+    expect(
+      normalizeCodexProviderConfig({ timeoutMs: "nope" }).timeoutMs,
+    ).toBeUndefined();
+  });
+
+  it("defaults skipGitRepoCheck to true and honours an explicit false", () => {
+    expect(normalizeCodexProviderConfig({}).skipGitRepoCheck).toBe(true);
+    expect(
+      normalizeCodexProviderConfig({ skipGitRepoCheck: false })
+        .skipGitRepoCheck,
+    ).toBe(false);
+  });
+});
+
+describe("Codex parser", () => {
+  it("ignores empty and invalid JSON lines", () => {
+    expect(parseCodexJsonLine("")).toEqual([]);
+    expect(parseCodexJsonLine("   ")).toEqual([]);
+    expect(parseCodexJsonLine("not-json")).toEqual([]);
+  });
+
+  it("projects thread.started into a session message", () => {
+    expect(
+      parseCodexJsonLine(
+        JSON.stringify({ type: "thread.started", thread_id: "thread-1" }),
+      ),
+    ).toEqual([{ type: "session", sessionId: "thread-1" }]);
+  });
+
+  it("projects agent_message and reasoning items into text/reasoning", () => {
+    expect(
+      parseCodexJsonLine(
+        JSON.stringify({
+          type: "item.completed",
+          item: {
+            type: "agent_message",
+            id: "msg-1",
+            text: "hello",
+          },
+        }),
+      ),
+    ).toEqual([{ type: "text", content: "hello" }]);
+
+    expect(
+      parseCodexJsonLine(
+        JSON.stringify({
+          type: "item.completed",
+          item: {
+            type: "reasoning",
+            id: "r-1",
+            text: "thinking",
+          },
+        }),
+      ),
+    ).toEqual([{ type: "reasoning", content: "thinking" }]);
+  });
+
+  it("emits tool_use + tool_result for completed command_execution items", () => {
+    expect(
+      parseCodexJsonLine(
+        JSON.stringify({
+          type: "item.completed",
+          item: {
+            type: "command_execution",
+            id: "cmd-1",
+            command: "pwd",
+            aggregated_output: "/workspace/project\n",
+            exit_code: 0,
+            status: "completed",
+          },
+        }),
+      ),
+    ).toEqual([
+      {
+        type: "tool_result",
+        toolUseId: "cmd-1",
+        output: "/workspace/project\n",
+        isError: false,
+      },
+    ]);
+  });
+
+  it("marks failed command executions with isError: true", () => {
+    const messages = parseCodexJsonLine(
+      JSON.stringify({
+        type: "item.completed",
+        item: {
+          type: "command_execution",
+          id: "cmd-2",
+          command: "false",
+          aggregated_output: "boom",
+          exit_code: 1,
+          status: "failed",
+        },
+      }),
+    );
+    expect(messages).toEqual([
+      {
+        type: "tool_result",
+        toolUseId: "cmd-2",
+        output: "boom",
+        isError: true,
+      },
+    ]);
+  });
+
+  it("only emits tool_use for running command_execution items", () => {
+    expect(
+      parseCodexJsonLine(
+        JSON.stringify({
+          type: "item.started",
+          item: {
+            type: "command_execution",
+            id: "cmd-3",
+            command: "sleep 5",
+          },
+        }),
+      ),
+    ).toEqual([
+      {
+        type: "tool_use",
+        id: "cmd-3",
+        name: "shell",
+        input: { command: "sleep 5" },
+      },
+    ]);
+  });
+
+  it("projects file_change items into tool_use + tool_result with summary", () => {
+    expect(
+      parseCodexJsonLine(
+        JSON.stringify({
+          type: "item.completed",
+          item: {
+            type: "file_change",
+            id: "fc-1",
+            changes: [
+              { path: "src/a.ts", kind: "update" },
+              { path: "src/b.ts", kind: "create" },
+            ],
+          },
+        }),
+      ),
+    ).toEqual([
+      {
+        type: "tool_result",
+        toolUseId: "fc-1",
+        output: "update src/a.ts\ncreate src/b.ts",
+        isError: false,
+      },
+    ]);
+  });
+
+  it("emits error message and a tool_result on item-level error events", () => {
+    expect(
+      parseCodexJsonLine(
+        JSON.stringify({
+          type: "item.completed",
+          item: {
+            type: "error",
+            id: "err-1",
+            message: "tool failed",
+          },
+        }),
+      ),
+    ).toEqual([
+      { type: "error", message: "tool failed" },
+      {
+        type: "tool_result",
+        toolUseId: "err-1",
+        output: "tool failed",
+        isError: true,
+      },
+    ]);
+  });
+
+  it("projects turn.completed usage onto a result message", () => {
+    expect(
+      parseCodexJsonLine(
+        JSON.stringify({
+          type: "turn.completed",
+          usage: {
+            input_tokens: 12,
+            cached_input_tokens: 4,
+            output_tokens: 6,
+          },
+        }),
+      ),
+    ).toEqual([
+      {
+        type: "result",
+        content: "turn.completed",
+        usage: { inputTokens: 12, outputTokens: 6 },
+      },
+    ]);
+  });
+
+  it("skips turn.completed usage when not numeric", () => {
+    expect(
+      parseCodexJsonLine(
+        JSON.stringify({
+          type: "turn.completed",
+          usage: { input_tokens: "nope" },
+        }),
+      ),
+    ).toEqual([{ type: "result", content: "turn.completed" }]);
+  });
+
+  it("maps top-level error events to an error message", () => {
+    expect(
+      parseCodexJsonLine(JSON.stringify({ type: "error", message: "boom" })),
+    ).toEqual([{ type: "error", message: "boom" }]);
+  });
+
+  it("ignores unknown event types without crashing", () => {
+    expect(
+      parseCodexJsonLine(JSON.stringify({ type: "future.event", x: 1 })),
+    ).toEqual([]);
+  });
+});
+
+describe("CodexAgent", () => {
+  it("runs a thread, forwards session id, and yields text + result", async () => {
+    const workDir = await createFakeCodexWorkDir(defaultFakeCodexScript());
+    const agent = new CodexAgent({
+      provider: "codex",
+      workDir,
+      providerConfig: { codexPath: process.execPath },
+    });
+
+    const messages = await collectMessages(agent.run("hello codex"));
+
+    expect(messages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "session" }),
+        expect.objectContaining({ type: "text", content: "hello" }),
+        expect.objectContaining({ type: "tool_use", name: "shell" }),
+        expect.objectContaining({
+          type: "tool_result",
+          output: "/workspace\n",
+          isError: false,
+        }),
+        expect.objectContaining({
+          type: "result",
+          content: "success",
+          usage: { inputTokens: 9, outputTokens: 4 },
+        }),
+      ]),
+    );
+    expect(messages.at(-1)?.type).toBe("done");
+
+    const args = JSON.parse(
+      await readFile(join(workDir, "args.json"), "utf8"),
+    ) as string[];
+    expect(args).toContain("--json");
+    expect(args).toContain("--sandbox");
+    expect(args).toContain("workspace-write");
+    expect(args).toContain("--ask-for-approval");
+    expect(args).toContain("on-request");
+    expect(args).toContain("--skip-git-repo-check");
+    expect(args.at(-1)).toBe("hello codex");
+  });
+
+  it("embeds conversation context into the Codex prompt", async () => {
+    const workDir = await createFakeCodexWorkDir(defaultFakeCodexScript());
+    const agent = new CodexAgent({
+      provider: "codex",
+      workDir,
+      providerConfig: { codexPath: process.execPath },
+    });
+
+    await collectMessages(
+      agent.run("current question", {
+        conversation: [
+          { role: "user", content: "earlier question" },
+          { role: "assistant", content: "earlier answer" },
+        ],
+      }),
+    );
+
+    const args = JSON.parse(
+      await readFile(join(workDir, "args.json"), "utf8"),
+    ) as string[];
+    const prompt = args.at(-1) ?? "";
+    expect(prompt).toEqual(expect.stringContaining("earlier question"));
+    expect(prompt).toEqual(expect.stringContaining("current question"));
+  });
+
+  it("converts a nonzero CLI exit into an error message", async () => {
+    const workDir = await createFakeCodexWorkDir(`
+console.error("simulated failure");
+process.exit(7);
+`);
+
+    const agent = new CodexAgent({
+      provider: "codex",
+      workDir,
+      providerConfig: { codexPath: process.execPath },
+    });
+
+    const messages = await collectMessages(agent.run("do work"));
+
+    expect(messages.find((message) => message.type === "error")).toMatchObject({
+      type: "error",
+      message: expect.stringContaining("Codex CLI exited with code 7"),
+    });
+    expect(
+      messages.find((message) => message.type === "error")?.message,
+    ).toContain("simulated failure");
+    expect(messages.at(-1)?.type).toBe("done");
+  });
+
+  it("returns a clear error when the codex executable is missing", async () => {
+    const workDir = await mkdtemp(join(tmpdir(), "openloomi-codex-test-"));
+    tempDirs.push(workDir);
+
+    const agent = new CodexAgent({
+      provider: "codex",
+      workDir,
+      providerConfig: { codexPath: "definitely-not-openloomi-codex" },
+    });
+
+    const messages = await collectMessages(agent.run("do work"));
+
+    expect(messages.find((message) => message.type === "error")).toMatchObject({
+      type: "error",
+      message: expect.stringContaining("Codex CLI executable not found"),
+    });
+    expect(messages.at(-1)?.type).toBe("done");
+  });
+
+  it("surfaces CodexCommandNotFoundError type when codex is missing", async () => {
+    const workDir = await mkdtemp(join(tmpdir(), "openloomi-codex-test-"));
+    tempDirs.push(workDir);
+
+    const agent = new CodexAgent({
+      provider: "codex",
+      workDir,
+      providerConfig: { codexPath: "definitely-not-openloomi-codex" },
+    });
+
+    const messages = await collectMessages(agent.run("anything"));
+    const error = messages.find((message) => message.type === "error");
+    expect(error?.message).toMatch(/Codex CLI executable not found/);
+    // The exported class exists so consumers can `instanceof` narrow errors.
+    expect(CodexCommandNotFoundError).toBeDefined();
+  });
+
+  it("forces read-only sandbox during planning and never opts into --full-auto", async () => {
+    const workDir = await createFakeCodexWorkDir(`
+require("node:fs").writeFileSync("args.json", JSON.stringify(process.argv.slice(2)));
+console.log(JSON.stringify({ type: "text", text: JSON.stringify({ type: "direct_answer", answer: "ok" }) }));
+`);
+    const agent = new CodexAgent({
+      provider: "codex",
+      workDir,
+      providerConfig: { codexPath: process.execPath, fullAuto: true },
+    });
+
+    await collectMessages(
+      agent.plan("draft a plan", {
+        permissionMode: "bypassPermissions",
+      }),
+    );
+
+    const args = JSON.parse(
+      await readFile(join(workDir, "args.json"), "utf8"),
+    ) as string[];
+    const sandboxIdx = args.indexOf("--sandbox");
+    expect(sandboxIdx).toBeGreaterThan(-1);
+    expect(args[sandboxIdx + 1]).toBe("read-only");
+    expect(args).not.toContain("--full-auto");
+  });
+
+  it("retains and deletes plans across successful executions", async () => {
+    const workDir = await createFakeCodexWorkDir(`
+require("node:fs").writeFileSync("args.json", JSON.stringify(process.argv.slice(2)));
+console.log(JSON.stringify({ type: "text", text: JSON.stringify({
+  type: "plan",
+  goal: "Do work",
+  steps: [{ id: "1", description: "Complete implementation" }]
+}) }));
+`);
+
+    const agent = new CodexAgent({
+      provider: "codex",
+      workDir,
+      providerConfig: { codexPath: process.execPath },
+    });
+
+    const planMessages = await collectMessages(agent.plan("plan the work"));
+    const plan = planMessages.find((message) => message.type === "plan")
+      ?.plan as TaskPlan | undefined;
+    expect(plan).toBeDefined();
+    if (!plan) {
+      throw new Error("Expected Codex planning to produce a plan");
+    }
+    const planId = plan.id;
+    expect(agent.getPlan(planId)).toBe(plan);
+
+    await writeFakeCodexScript(
+      workDir,
+      `console.log(JSON.stringify({ type: "text", text: "done" }));`,
+    );
+    await collectMessages(agent.execute({ planId, originalPrompt: "do work" }));
+    expect(agent.getPlan(planId)).toBeUndefined();
+  });
+
+  it("decodes UTF-8 JSON events split across stdout chunks", async () => {
+    const workDir = await createFakeCodexWorkDir(`
+const payload = Buffer.from(JSON.stringify({ type: "item.completed", item: { type: "agent_message", id: "msg-1", text: "你好" } }) + "\\n");
+const split = payload.indexOf(Buffer.from("你")) + 1;
+process.stdout.write(payload.subarray(0, split));
+setTimeout(() => process.stdout.write(payload.subarray(split)), 10);
+`);
+    const agent = new CodexAgent({
+      provider: "codex",
+      workDir,
+      providerConfig: { codexPath: process.execPath },
+    });
+
+    const messages = await collectMessages(agent.run("unicode"));
+
+    expect(messages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "text", content: "你好" }),
+      ]),
+    );
+  });
+});
+
+async function createFakeCodexWorkDir(script: string) {
+  const workDir = await mkdtemp(join(tmpdir(), "openloomi-codex-test-"));
+  tempDirs.push(workDir);
+  await writeFakeCodexScript(workDir, script, "exec");
+  return workDir;
+}
+
+async function writeFakeCodexScript(
+  workDir: string,
+  script: string,
+  filename = "exec",
+) {
+  await writeFile(join(workDir, filename), script, "utf8");
+}
+
+function defaultFakeCodexScript() {
+  // Emits a representative Codex NDJSON event stream:
+  // thread.started -> item.started (command_execution) -> item.completed
+  // (agent_message + command_execution) -> turn.completed (with usage).
+  return `
+const args = process.argv.slice(2);
+require("node:fs").writeFileSync("args.json", JSON.stringify(args));
+console.log(JSON.stringify({ type: "thread.started", thread_id: "thread-1" }));
+console.log(JSON.stringify({
+  type: "item.started",
+  item: { type: "command_execution", id: "cmd-1", command: "pwd" }
+}));
+console.log(JSON.stringify({
+  type: "item.completed",
+  item: { type: "command_execution", id: "cmd-1", command: "pwd", aggregated_output: "/workspace\\n", exit_code: 0, status: "completed" }
+}));
+console.log(JSON.stringify({
+  type: "item.completed",
+  item: { type: "agent_message", id: "msg-1", text: "hello" }
+}));
+console.log(JSON.stringify({
+  type: "turn.completed",
+  usage: { input_tokens: 9, cached_input_tokens: 4, output_tokens: 4 }
+}));
+`;
+}
+
+async function collectMessages(
+  generator: AsyncGenerator<AgentMessage>,
+): Promise<AgentMessage[]> {
+  const messages: AgentMessage[] = [];
+  for await (const message of generator) {
+    messages.push(message);
+  }
+  return messages;
+}

@@ -16,3 +16,4 @@ export {
   createOpenClawAgent,
   OpenClawAgent,
 } from "./agent/openclaw";
+export { codexPlugin, createCodexAgent, CodexAgent } from "./agent/codex";
