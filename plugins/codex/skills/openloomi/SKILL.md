@@ -140,7 +140,6 @@ startup):
 - `OPENLOOMI_AGENT_CODEX_MODEL` — e.g. `gpt-5.4`
 - `OPENLOOMI_AGENT_CODEX_PROFILE` — passed as `-p <name>`
 - `OPENLOOMI_AGENT_CODEX_SANDBOX` — `read-only` | `workspace-write` | `danger-full-access` (default `workspace-write`; plan phase is always forced to `read-only`)
-- `OPENLOOMI_AGENT_CODEX_ASK_FOR_APPROVAL` — `untrusted` | `on-failure` | `on-request` | `never` (default `on-request`)
 - `OPENLOOMI_AGENT_CODEX_SKIP_GIT_REPO_CHECK` — default `true`
 - `OPENLOOMI_AGENT_CODEX_FULL_AUTO` — set `true` to allow `--full-auto` only under `bypassPermissions`
 - `OPENLOOMI_AGENT_CODEX_TIMEOUT_MS` — CLI runtime budget in milliseconds

@@ -40,6 +40,7 @@ const OFFICIAL_RELEASE_SOURCE = {
 };
 
 const COMMANDS = new Set([
+  "codex-runtime-info",
   "configure-ai-provider",
   "help",
   "initialize-session",
@@ -2084,6 +2085,118 @@ function version() {
   });
 }
 
+// -----------------------------------------------------------------------------
+// codex-runtime-info
+//
+// Static guidance for switching the OpenLoomi desktop app's agent runtime
+// from the default `claude` to the `codex` runtime (Codex CLI). Used by
+// the Codex SKILL so it can detect a missing `OPENLOOMI_AGENT_PROVIDER`
+// export before suggesting commands, and by humans running
+// `loomi-bridge codex-runtime-info` to confirm what the server actually
+// sees.
+//
+// The runtime resolution logic here intentionally mirrors
+// `apps/web/lib/ai/native-agent/provider-env.ts`:
+//   * empty / whitespace / unsupported value → "claude"
+//   * normalized lower-case otherwise
+// Anything else (e.g. unknown value) is surfaced verbatim so the caller
+// can spot a typo.
+// -----------------------------------------------------------------------------
+const CODEX_RUNTIME_INFO_KEY = "OPENLOOMI_AGENT_PROVIDER";
+const DEFAULT_RUNTIME_PROVIDER = "claude";
+const CODEX_RUNTIME_PROVIDER = "codex";
+
+const CODEX_RUNTIME_COMPANION_ENV_VARS = [
+  {
+    name: "OPENLOOMI_AGENT_CODEX_COMMAND",
+    description: "Path to the Codex CLI binary (default: `codex` on PATH).",
+  },
+  {
+    name: "OPENLOOMI_AGENT_CODEX_MODEL",
+    description: "Model identifier, e.g. `gpt-5.4`.",
+  },
+  {
+    name: "OPENLOOMI_AGENT_CODEX_PROFILE",
+    description: "Passed to the CLI as `-p <name>`.",
+  },
+  {
+    name: "OPENLOOMI_AGENT_CODEX_SANDBOX",
+    description:
+      "`read-only` | `workspace-write` | `danger-full-access` (default `workspace-write`; plan phase is always forced to `read-only`).",
+  },
+  {
+    name: "OPENLOOMI_AGENT_CODEX_ASK_FOR_APPROVAL",
+    description:
+      "`untrusted` | `on-failure` | `on-request` | `never` (default `on-request`).",
+  },
+  {
+    name: "OPENLOOMI_AGENT_CODEX_SKIP_GIT_REPO_CHECK",
+    description: "Default `true`.",
+  },
+  {
+    name: "OPENLOOMI_AGENT_CODEX_FULL_AUTO",
+    description: "Set `true` to allow `--full-auto` only under `bypassPermissions`.",
+  },
+  {
+    name: "OPENLOOMI_AGENT_CODEX_TIMEOUT_MS",
+    description: "CLI runtime budget in milliseconds.",
+  },
+];
+
+const CODEX_RUNTIME_PREREQUISITES = [
+  "`which codex` resolves to a working Codex CLI binary (`brew install --cask codex` or `npm i -g @openai/codex`).",
+  "`~/.codex/config.toml` is configured and `OPENAI_API_KEY` (or Codex CLI's other auth) is available to the spawned process.",
+  "The desktop app's web server is reachable at the URL printed by the OpenLoomi launcher (default `http://localhost:3515`).",
+];
+
+function resolveCurrentDefaultProvider(env = process.env) {
+  const raw = env[CODEX_RUNTIME_INFO_KEY];
+  if (typeof raw !== "string") return DEFAULT_RUNTIME_PROVIDER;
+  const trimmed = raw.trim();
+  if (!trimmed) return DEFAULT_RUNTIME_PROVIDER;
+  return trimmed.toLowerCase();
+}
+
+function codexRuntimeInfo() {
+  const currentDefaultProvider = resolveCurrentDefaultProvider();
+
+  writeJson({
+    purpose:
+      "Switch the OpenLoomi desktop app agent runtime from the built-in Claude runtime to the Codex CLI.",
+    envProviderKey: CODEX_RUNTIME_INFO_KEY,
+    switch: {
+      oneOff:
+        "export OPENLOOMI_AGENT_PROVIDER=codex\nopen /Applications/openloomi.app",
+      permanent:
+        "echo 'export OPENLOOMI_AGENT_PROVIDER=codex' >> ~/.zshrc",
+      notes:
+        "Set the variable in the same shell that opens the app so it reaches the Tauri-launched web server. Restart the app after exporting.",
+    },
+    prerequisites: CODEX_RUNTIME_PREREQUISITES,
+    companionEnvVars: CODEX_RUNTIME_COMPANION_ENV_VARS,
+    defaults: {
+      currentDefaultProvider,
+      isCodexActive: currentDefaultProvider === CODEX_RUNTIME_PROVIDER,
+      resolvedValue: currentDefaultProvider,
+      rawValue:
+        typeof process.env[CODEX_RUNTIME_INFO_KEY] === "string"
+          ? process.env[CODEX_RUNTIME_INFO_KEY]
+          : null,
+    },
+    verify: {
+      endpoint: "/api/native/providers",
+      expectDefaultAgent: CODEX_RUNTIME_PROVIDER,
+      expectAgentType: CODEX_RUNTIME_PROVIDER,
+      instructions:
+        "After launching the app, GET /api/native/providers should report `defaultAgent: \"codex\"` and include a `codex` entry in `agents`. If `defaultAgent` is still `\"claude\"`, the env var did not reach the web server.",
+    },
+    bridge: {
+      name: "openloomi-codex-bridge",
+      version: BRIDGE_VERSION,
+    },
+  });
+}
+
 // Run another bridge subcommand as a child process and capture the JSON it
 // prints to stdout. Used by `setup` to chain install / session init without
 // having to refactor the underlying writeJson() early-returns.
@@ -3287,6 +3400,9 @@ async function main() {
   }
 
   switch (command) {
+    case "codex-runtime-info":
+      codexRuntimeInfo();
+      break;
     case "configure-ai-provider":
       await configureAiProvider(process.argv.slice(3));
       break;
