@@ -39,21 +39,14 @@ function install({ yes }) {
   const settings = readJsonSafe(settingsFile);
   if (!settings.hooks || typeof settings.hooks !== 'object') settings.hooks = {};
 
+  // Legacy cleanup: drop the old nested block from previous broken versions.
   if (settings.hooks[PLUGIN_BLOCK_KEY]) {
-    return {
-      ok: true,
-      alreadyInstalled: true,
-      path: settingsFile,
-    };
+    delete settings.hooks[PLUGIN_BLOCK_KEY];
   }
 
   const tpl = loadHooksTemplate();
   const templateHooks = (tpl?.hooks) || {};
-  const block = {};
-  for (const [event, entries] of Object.entries(templateHooks)) {
-    block[event] = Array.isArray(entries) ? entries : [entries];
-  }
-  if (Object.keys(block).length === 0) {
+  if (Object.keys(templateHooks).length === 0) {
     return {
       ok: false,
       error: 'No hooks loaded from template',
@@ -61,18 +54,39 @@ function install({ yes }) {
     };
   }
 
-  settings.hooks[PLUGIN_BLOCK_KEY] = {
-    [MARKER]: true,
-    hooks: block,
-    installedAt: new Date().toISOString(),
-  };
+  // Merge per-event into settings.hooks (Claude Code's actual schema is
+  // `{ EventName: [matcher-group, ...] }`). Each entry carries the marker
+  // so uninstall can strip just our entries.
+  let added = 0;
+  let already = 0;
+  for (const [event, rawEntries] of Object.entries(templateHooks)) {
+    const entries = Array.isArray(rawEntries) ? rawEntries : [rawEntries];
+    if (!Array.isArray(settings.hooks[event])) settings.hooks[event] = [];
+    for (const entry of entries) {
+      const cmd0 = (entry?.hooks?.[0]?.command) || '';
+      const isDup = settings.hooks[event].some(
+        (e) => e && e[MARKER] === true && e.hooks && e.hooks.some((h) => h && h.command === cmd0)
+      );
+      if (isDup) {
+        already++;
+        continue;
+      }
+      settings.hooks[event].push(Object.assign({}, entry, { [MARKER]: true }));
+      added++;
+    }
+  }
 
   atomicWriteJson(settingsFile, settings);
   return {
     ok: true,
-    alreadyInstalled: false,
+    alreadyInstalled: added === 0,
     path: settingsFile,
-    summary: { events: Object.keys(block) },
+    summary: {
+      events: Object.keys(templateHooks),
+      added,
+      alreadyInstalled: already,
+      note: 'Per-event merge into settings.hooks (Claude Code schema-compliant).',
+    },
   };
 }
 
@@ -80,11 +94,16 @@ function uninstall() {
   const settingsFile = settingsPath();
   const settings = readJsonSafe(settingsFile);
   let removed = false;
-  if (settings.hooks?.[PLUGIN_BLOCK_KEY]) {
-    delete settings.hooks[PLUGIN_BLOCK_KEY];
-    removed = true;
-  } else if (settings.hooks) {
+  if (settings.hooks && typeof settings.hooks === 'object') {
+    // Always strip the legacy nested block from older broken versions.
+    if (settings.hooks[PLUGIN_BLOCK_KEY]) {
+      delete settings.hooks[PLUGIN_BLOCK_KEY];
+      removed = true;
+    }
+    // Strip per-event marker entries (current schema) and any inner
+    // loomi-bridge.mjs commands from mixed entries.
     for (const event of Object.keys(settings.hooks)) {
+      if (event === PLUGIN_BLOCK_KEY) continue;
       const arr = settings.hooks[event];
       if (!Array.isArray(arr)) continue;
       const before = arr.length;
@@ -111,8 +130,38 @@ function uninstall() {
 function status() {
   const settingsFile = settingsPath();
   const settings = readJsonSafe(settingsFile);
-  const installed = !!(settings.hooks?.[PLUGIN_BLOCK_KEY]);
-  return { ok: true, installed, path: settingsFile, marker: MARKER, blockKey: PLUGIN_BLOCK_KEY };
+  let installed = false;
+  const hooks = settings.hooks || {};
+  if (hooks[PLUGIN_BLOCK_KEY]) {
+    installed = true;
+  } else {
+    for (const event of Object.keys(hooks)) {
+      if (event === PLUGIN_BLOCK_KEY) continue;
+      const arr = hooks[event];
+      if (!Array.isArray(arr)) continue;
+      for (const entry of arr) {
+        if (entry?.[MARKER]) { installed = true; break; }
+        if (entry && Array.isArray(entry.hooks)) {
+          for (const h of entry.hooks) {
+            if (h && typeof h.command === 'string' && h.command.includes('loomi-bridge.mjs')) {
+              installed = true;
+              break;
+            }
+          }
+        }
+        if (installed) break;
+      }
+      if (installed) break;
+    }
+  }
+  return {
+    ok: true,
+    installed,
+    path: settingsFile,
+    marker: MARKER,
+    legacyBlockKey: PLUGIN_BLOCK_KEY,
+    schema: 'per-event',
+  };
 }
 
 function printResult(obj) {

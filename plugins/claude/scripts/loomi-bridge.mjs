@@ -985,28 +985,20 @@ function loadHooksTemplate() {
   }
 }
 
-function pluginHookEntriesPerEvent(template) {
-  // template = { hooks: { SessionStart: [...], UserPromptSubmit: [...], ... } }
-  // Returns a wrapper that we'll insert under settings.hooks.__openloomi_claude_plugin_hooks__
-  const wrapped = {};
-  for (const [event, entries] of Object.entries(template?.hooks || {})) {
-    wrapped[event] = Array.isArray(entries) ? entries : [entries];
-  }
-  return wrapped;
-}
-
 function detectHooksInstalled() {
   const s = readSettings();
   if (!s.json || typeof s.json !== 'object') return false;
   const hooks = s.json.hooks || {};
+  // Legacy nested block from older broken versions.
   if (hooks[PLUGIN_BLOCK_KEY]) return true;
+  // Current schema: per-event arrays with _openloomi_plugin marker.
   for (const event of Object.keys(hooks)) {
     if (event === PLUGIN_BLOCK_KEY) continue;
     const arr = hooks[event];
     if (!Array.isArray(arr)) continue;
     for (const entry of arr) {
-      if (entry && entry[MARKER]) return true;
-      if (entry && entry.hooks) {
+      if (entry?.[MARKER]) return true;
+      if (entry?.hooks) {
         for (const h of entry.hooks) {
           if (h && typeof h.command === 'string' && h.command.includes('loomi-bridge.mjs')) return true;
         }
@@ -1021,56 +1013,91 @@ function installHooks({ yes = false } = {}) {
   const j = settings.json || {};
   if (!j.hooks || typeof j.hooks !== 'object') j.hooks = {};
 
+  // Legacy cleanup: drop the old nested block from previous broken versions.
+  // Safe to run unconditionally — if absent, this is a no-op.
   if (j.hooks[PLUGIN_BLOCK_KEY]) {
-    return { ok: true, alreadyInstalled: true, path: settings.path };
+    delete j.hooks[PLUGIN_BLOCK_KEY];
   }
 
   const template = loadHooksTemplate();
-  const block = pluginHookEntriesPerEvent(template);
-  if (Object.keys(block).length === 0) {
+  const templateHooks = template?.hooks || {};
+  if (Object.keys(templateHooks).length === 0) {
     return { ok: false, error: 'No hooks loaded from template', path: settings.path };
   }
 
-  j.hooks[PLUGIN_BLOCK_KEY] = { [MARKER]: true, hooks: block, installedAt: new Date().toISOString() };
+  // Merge per-event into settings.hooks (Claude Code's actual schema is
+  // `{ EventName: [matcher-group, ...] }`). Each entry we add carries the
+  // `_openloomi_plugin: true` marker so uninstallHooks can strip just our
+  // entries without touching other plugins.
+  let added = 0;
+  let already = 0;
+  for (const [event, rawEntries] of Object.entries(templateHooks)) {
+    const entries = Array.isArray(rawEntries) ? rawEntries : [rawEntries];
+    if (!Array.isArray(j.hooks[event])) j.hooks[event] = [];
+    for (const entry of entries) {
+      const cmd0 = entry?.hooks?.[0]?.command || '';
+      const isDup = j.hooks[event].some(
+        (e) => e && e[MARKER] === true && e.hooks?.some((h) => h?.command === cmd0)
+      );
+      if (isDup) {
+        already++;
+        continue;
+      }
+      j.hooks[event].push({ ...entry, [MARKER]: true });
+      added++;
+    }
+  }
 
-  // Diff summary
   const summary = {
-    events: Object.keys(block),
-    note: 'Plugin block stored under hooks.__openloomi_claude_plugin_hooks__. Other plugins untouched.',
+    events: Object.keys(templateHooks),
+    added,
+    alreadyInstalled: already,
+    note: 'Per-event merge into settings.hooks (Claude Code schema-compliant). Other plugins untouched.',
   };
 
   atomicWriteJson(settings.path, j);
-  return { ok: true, alreadyInstalled: false, path: settings.path, summary };
+  return { ok: true, alreadyInstalled: added === 0, path: settings.path, summary };
 }
 
 function uninstallHooks() {
   const settings = readSettings();
   const j = settings.json || {};
   let removed = false;
-  if (j.hooks && j.hooks[PLUGIN_BLOCK_KEY]) {
+  if (!j.hooks || typeof j.hooks !== 'object') {
+    atomicWriteJson(settings.path, j);
+    return { ok: true, removed, path: settings.path };
+  }
+
+  // Always strip the legacy nested block from older broken versions, even
+  // if per-event marker entries also exist.
+  if (j.hooks[PLUGIN_BLOCK_KEY]) {
     delete j.hooks[PLUGIN_BLOCK_KEY];
     removed = true;
-  } else if (j.hooks) {
-    // Legacy / per-event fallback — strip our marker entries.
-    for (const event of Object.keys(j.hooks)) {
-      const arr = j.hooks[event];
-      if (!Array.isArray(arr)) continue;
-      const before = arr.length;
-      const filtered = arr.filter((entry) => {
-        if (!entry) return false;
-        if (entry[MARKER]) return false;
-        if (entry.hooks && Array.isArray(entry.hooks)) {
-          const inner = entry.hooks.filter((h) => !(h && typeof h.command === 'string' && h.command.includes('loomi-bridge.mjs')));
-          if (inner.length === 0) return false;
-          entry.hooks = inner;
-          return true;
-        }
-        return true;
-      });
-      j.hooks[event] = filtered;
-      if (filtered.length !== before) removed = true;
-    }
   }
+
+  // Strip per-event marker entries (current schema) and any inner
+  // loomi-bridge.mjs commands from mixed entries — defensive against any
+  // future tool that merges our marker-bearing entry into someone else's.
+  for (const event of Object.keys(j.hooks)) {
+    if (event === PLUGIN_BLOCK_KEY) continue;
+    const arr = j.hooks[event];
+    if (!Array.isArray(arr)) continue;
+    const before = arr.length;
+    const filtered = arr.filter((entry) => {
+      if (!entry) return false;
+      if (entry[MARKER]) return false;
+      if (entry.hooks && Array.isArray(entry.hooks)) {
+        const inner = entry.hooks.filter((h) => !(h && typeof h.command === 'string' && h.command.includes('loomi-bridge.mjs')));
+        if (inner.length === 0) return false;
+        entry.hooks = inner;
+        return true;
+      }
+      return true;
+    });
+    j.hooks[event] = filtered;
+    if (filtered.length !== before) removed = true;
+  }
+
   atomicWriteJson(settings.path, j);
   return { ok: true, removed, path: settings.path };
 }
@@ -1855,7 +1882,8 @@ async function main() {
         installed,
         settingsPath: settings.path,
         marker: MARKER,
-        blockKey: PLUGIN_BLOCK_KEY,
+        legacyBlockKey: PLUGIN_BLOCK_KEY,
+        schema: 'per-event',
       });
       return;
     }

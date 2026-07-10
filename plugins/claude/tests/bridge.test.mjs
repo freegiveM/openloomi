@@ -15,7 +15,7 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { join, dirname, delimiter } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { mkdtempSync, writeFileSync, rmSync, existsSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, rmSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 
 const PLUGIN_DIR = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -434,11 +434,12 @@ test('hooks-status reads ~/.claude/settings.json without crashing', () => {
     assert.equal(j.ok, true);
     assert.equal(typeof j.installed, 'boolean');
     assert.equal(j.marker, '_openloomi_plugin');
-    assert.equal(j.blockKey, '__openloomi_claude_plugin_hooks__');
+    assert.equal(j.schema, 'per-event');
+    assert.equal(j.legacyBlockKey, '__openloomi_claude_plugin_hooks__');
   });
 });
 
-test('hooks-merge.cjs install adds plugin block; uninstall removes it', () => {
+test('hooks-merge.cjs install merges per-event into settings.hooks; uninstall removes it', () => {
   withClaHome((env) => {
     const merge = join(PLUGIN_DIR, 'scripts', 'hooks-merge.cjs');
     const settingsPath = join(env.HOME, '.claude', 'settings.json');
@@ -454,10 +455,28 @@ test('hooks-merge.cjs install adds plugin block; uninstall removes it', () => {
     assert.equal(installJson.ok, true);
     assert.equal(existsSync(settingsPath), true);
 
+    // Verify the per-event schema: each known event must be a top-level
+    // key in settings.hooks, NOT nested under __openloomi_claude_plugin_hooks__.
+    const afterInstall = JSON.parse(readFileSync(settingsPath, 'utf8'));
+    assert.ok(afterInstall.hooks, 'settings.hooks must exist');
+    assert.ok(!afterInstall.hooks.__openloomi_claude_plugin_hooks__,
+      'legacy nested block must NOT be written');
+    assert.ok(Array.isArray(afterInstall.hooks.SessionStart),
+      'SessionStart must be a top-level array in settings.hooks');
+    assert.ok(afterInstall.hooks.SessionStart.length > 0,
+      'SessionStart must have at least one entry');
+    const marked = afterInstall.hooks.SessionStart.some(
+      (e) => e && e._openloomi_plugin === true
+    );
+    assert.ok(marked, 'installed entries must carry _openloomi_plugin marker');
+
     // Verify a second install is idempotent.
     const second = execFileSync('node', [merge, 'install'], { env, encoding: 'utf8' });
     const secondJson = JSON.parse(second);
     assert.equal(secondJson.alreadyInstalled, true);
+    const afterSecond = JSON.parse(readFileSync(settingsPath, 'utf8'));
+    assert.equal(afterSecond.hooks.SessionStart.length, afterInstall.hooks.SessionStart.length,
+      'second install must not duplicate entries');
 
     const uninstallOut = execFileSync('node', [merge, 'uninstall'], {
       env,
@@ -466,6 +485,11 @@ test('hooks-merge.cjs install adds plugin block; uninstall removes it', () => {
     const uninstallJson = JSON.parse(uninstallOut);
     assert.equal(uninstallJson.ok, true);
     assert.equal(uninstallJson.removed, true);
+
+    const afterUninstall = JSON.parse(readFileSync(settingsPath, 'utf8'));
+    const stillMarked = (afterUninstall.hooks?.SessionStart || [])
+      .some((e) => e && e._openloomi_plugin === true);
+    assert.ok(!stillMarked, 'no marker entries may remain after uninstall');
   });
 });
 
