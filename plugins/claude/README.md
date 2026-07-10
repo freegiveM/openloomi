@@ -24,8 +24,8 @@ Pick the channel that matches your situation:
 /plugin install openloomi
 
 # Hacking on the plugin itself (local source after clone opneloomi GitHub repo)
-git clone https://github.com/melandlabs/openloomi.git
-claude --plugin-dir openloomi/plugins/claude
+git clone https://github.com/melandlabs/openloomi.git && cd openloomi
+claude --plugin-dir plugins/claude
 ```
 
 Inside the running session `/openloomi:help` lists all 8 commands.
@@ -42,8 +42,8 @@ Nothing GUI is required from you. The bridge:
 - downloads & installs OpenLoomi.app if missing,
 - launches the desktop app via `open -a`,
 - polls the local HTTP API until it answers,
-- mints a one-tap guest bearer,
-- POSTs your shell's `ANTHROPIC_API_KEY` to `/api/ai/provider/config`.
+- calls `POST /api/remote-auth/guest` to register a guest user in the runtime's local DB and mint a bearer token (saved to `~/.openloomi/token`),
+- PUTs your shell's `ANTHROPIC_API_KEY` to `/api/preferences/ai` (the runtime's per-user AI settings — source of truth since the LLM\_\* env-var fallback refactor).
 
 The only thing it ever prompts for is the install y/N — and only if the
 shell has a TTY. From Claude Code's Bash tool you pass `--yes`.
