@@ -9,6 +9,7 @@ function createResponse(
     baseUrl?: string | null;
     model?: string | null;
     systemHasApiKey?: boolean;
+    defaultAgent?: string;
   } = {},
 ) {
   return {
@@ -26,6 +27,7 @@ function createResponse(
         hasApiKey: overrides.systemHasApiKey ?? false,
       },
     },
+    defaultAgent: overrides.defaultAgent,
   };
 }
 
@@ -87,5 +89,36 @@ describe("conversation API configuration", () => {
         createResponse({ systemHasApiKey: true }),
       ),
     ).toBe(true);
+  });
+
+  it("treats a non-claude defaultAgent as configured even without an API key", () => {
+    expect(
+      hasUsableConversationApiConfiguration(
+        createResponse({ defaultAgent: "codex" }),
+      ),
+    ).toBe(true);
+    expect(
+      hasUsableConversationApiConfiguration(
+        createResponse({ defaultAgent: "opencode" }),
+      ),
+    ).toBe(true);
+    expect(
+      hasUsableConversationApiConfiguration(
+        createResponse({ defaultAgent: "hermes" }),
+      ),
+    ).toBe(true);
+    expect(
+      hasUsableConversationApiConfiguration(
+        createResponse({ defaultAgent: "openclaw" }),
+      ),
+    ).toBe(true);
+  });
+
+  it("still requires an Anthropic key when defaultAgent is claude", () => {
+    expect(
+      hasUsableConversationApiConfiguration(
+        createResponse({ defaultAgent: "claude" }),
+      ),
+    ).toBe(false);
   });
 });

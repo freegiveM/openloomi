@@ -149,10 +149,11 @@ fn watch_loop(
     let mut last_reviewed_recently: bool = false;
 
     // One-shot first-run detection: if `~/.openloomi/loop/decisions.json`
-    // doesn't exist AND there's no env-level Anthropic key, surface a
-    // setup hint so the pet sprite + bubble invite the user to click
-    // through to AI settings. Without this, the watcher stays silent on
-    // a brand-new install — the pet sprite defaults to "idle" and the
+    // doesn't exist AND the runtime isn't configured (no env-level
+    // Anthropic key, and `OPENLOOMI_AGENT_PROVIDER` is unset or `claude`),
+    // surface a setup hint so the pet sprite + bubble invite the user to
+    // click through to AI settings. Without this, the watcher stays silent
+    // on a brand-new install — the pet sprite defaults to "idle" and the
     // bubble never appears, so the user has no visual cue that anything
     // is needed. The pet card self-shows its no-api-key CTA via
     // `apply()` in `loomi-card.html` (GET /api/preferences/ai returns
@@ -924,14 +925,27 @@ fn current_hour_local() -> u32 {
     ((secs / 3600 + 8) % 24) as u32
 }
 
-/// Whether the process has a usable Anthropic env key. Mirrors the
-/// `systemDefaults.anthropic_compatible.hasApiKey` check on the JS side
-/// (see `apps/web/app/(chat)/api/preferences/ai/route.ts`). We use this
-/// to decide whether the watcher should emit the `needs-setup` hint —
-/// if an env key is set, the user is already configured and we stay
-/// silent. User-set DB keys aren't visible to the watcher; the pet card
-/// surfaces those via its own `apply()` flow.
+/// Whether the runtime already has a usable conversation-model
+/// configuration from the watcher's point of view. Mirrors the
+/// combined `defaultAgent` + `systemDefaults.anthropic_compatible.hasApiKey`
+/// gate on the JS side (see `apps/web/app/(chat)/api/preferences/ai/route.ts`
+/// and `apps/web/lib/ai/conversation-api-configuration.ts`). Used to decide
+/// whether the watcher should emit the `needs-setup` hint — if either an
+/// env key is set or the active agent runtime ships its own auth, the user
+/// is already configured and we stay silent. User-set DB keys aren't
+/// visible to the watcher; the pet card surfaces those via its own
+/// `apply()` flow.
 fn has_anthropic_env_key() -> bool {
+    // Non-claude runtimes (codex/opencode/hermes/openclaw) bring their own
+    // CLI auth, so an anthropic key is irrelevant. We still read the env
+    // var ourselves instead of shelling out because the watcher runs
+    // before the web server is reachable on first launch.
+    if let Ok(value) = std::env::var("OPENLOOMI_AGENT_PROVIDER") {
+        let trimmed = value.trim();
+        if !trimmed.is_empty() && !trimmed.eq_ignore_ascii_case("claude") {
+            return true;
+        }
+    }
     let set = |name: &str| {
         std::env::var(name)
             .ok()

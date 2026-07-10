@@ -9,6 +9,7 @@ import {
   upsertUserLlmApiSetting,
 } from "@/lib/db/queries";
 import { isTauriMode } from "@/lib/env/constants";
+import { getConfiguredDefaultAgentProvider } from "@/lib/ai/native-agent/provider-env";
 import { AppError } from "@openloomi/shared/errors";
 
 const providerTypeSchema = z.enum([
@@ -154,9 +155,16 @@ export async function GET() {
   // and shares no cookie jar). System defaults aren't user-specific, so
   // it's safe to return them without auth — the client uses
   // `systemDefaults.anthropic_compatible.hasApiKey` to decide whether to
-  // surface the missing-key CTA on the pet card.
+  // surface the missing-key CTA on the pet card. `defaultAgent` is the
+  // server's resolved agent runtime (e.g. `claude`, `codex`); clients
+  // skip the anthropic-key gate entirely when it isn't `claude`, since
+  // providers like codex/opencode/hermes/openclaw bring their own auth.
   if (!session?.user?.id) {
-    return NextResponse.json({ settings: [], systemDefaults });
+    return NextResponse.json({
+      settings: [],
+      systemDefaults,
+      defaultAgent: getConfiguredDefaultAgentProvider(),
+    });
   }
 
   try {
@@ -164,6 +172,7 @@ export async function GET() {
     return NextResponse.json({
       settings,
       systemDefaults,
+      defaultAgent: getConfiguredDefaultAgentProvider(),
     });
   } catch (error) {
     console.error("[AI Preferences] Failed to load settings", error);
