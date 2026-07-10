@@ -19,8 +19,8 @@ use serde::Deserialize;
 use tauri::{AppHandle, Emitter, Listener, Manager};
 
 use super::{
-    last_review_seen_secs_ago, publish_baseline_state, set_pending_decision_count,
-    PET_BUBBLE_LABEL, PET_CARD_LABEL, PET_LABEL,
+    handle_runtime_state_event, last_review_seen_secs_ago, publish_baseline_state,
+    set_pending_decision_count, PET_BUBBLE_LABEL, PET_CARD_LABEL, PET_LABEL,
 };
 
 const POLL_MS: u64 = 2000;
@@ -83,15 +83,38 @@ pub fn spawn_decision_watcher(app: AppHandle) {
         });
     }
 
+    // Clone once up-front so both spawned closures can take ownership
+    // without fighting over `app`. Tauri's `AppHandle` is cheap to
+    // clone (it's an Arc internally), so this is free.
+    let app_for_decision = app.clone();
+    let app_for_runtime_state = app.clone();
+
     std::thread::Builder::new()
         .name("loomi-pet-decision-watcher".into())
         .spawn(move || {
             let _ = crate::panic_guard::catch_unwind_str(
                 "loomi-pet watcher",
-                || watch_loop(&app, setup_emitted),
+                || watch_loop(&app_for_decision, setup_emitted),
             );
         })
         .expect("spawn loomi-pet watcher");
+
+    // Runtime-state file watcher. The Next.js route
+    // `/api/pet/state` writes `~/.openloomi/pet/runtime_state.json`
+    // when an external client (Codex / Claude Code bridge) wants to
+    // drive the pet sprite. We tail its mtime and forward each new
+    // payload to the same `handle_runtime_state_event` the chat UI
+    // uses, so externally-driven and internally-driven states share
+    // the same coordinator and baseline/restore semantics.
+    std::thread::Builder::new()
+        .name("loomi-pet-runtime-state-watcher".into())
+        .spawn(move || {
+            let _ = crate::panic_guard::catch_unwind_str(
+                "loomi-pet runtime-state watcher",
+                || watch_runtime_state_loop(&app_for_runtime_state),
+            );
+        })
+        .expect("spawn loomi-pet runtime-state watcher");
 }
 
 /// Cap on the `recently_completed` ring buffer. Bounds memory under
@@ -471,6 +494,40 @@ pub fn resolve_decisions_path(app: &AppHandle) -> PathBuf {
     PathBuf::from(".openloomi/loop/decisions.json")
 }
 
+/// Resolve the runtime-state file written by `/api/pet/state`. Mirrors
+/// `resolve_decisions_path` so the runtime_state lives next to
+/// `loop/decisions.json`. The HTTP route is the single writer; this
+/// watcher is the single reader; both sides stay in sync via file mtime.
+pub fn resolve_pet_runtime_state_path(app: &AppHandle) -> PathBuf {
+    if let Ok(p) = std::env::var("LOOMI_PET_RUNTIME_STATE_PATH") {
+        return PathBuf::from(p);
+    }
+    if let Ok(home) = app.path().home_dir() {
+        return home.join(".openloomi").join("pet").join("runtime_state.json");
+    }
+    if let Some(home) = resolve_home_dir_only() {
+        return home.join(".openloomi").join("pet").join("runtime_state.json");
+    }
+    PathBuf::from(".openloomi/pet/runtime_state.json")
+}
+
+/// Home-directory-only env fallback (no `.openloomi/...` suffix). Used
+/// by `resolve_pet_runtime_state_path` so we don't have to duplicate
+/// the full env-var chain next to the existing one in
+/// `resolve_home_from_env` (which appends the loop suffix).
+fn resolve_home_dir_only() -> Option<PathBuf> {
+    if let Some(home) = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")) {
+        return Some(PathBuf::from(home));
+    }
+    let drive = std::env::var_os("HOMEDRIVE")?;
+    let path = std::env::var_os("HOMEPATH")?;
+    Some(PathBuf::from(format!(
+        "{}{}",
+        drive.to_string_lossy(),
+        path.to_string_lossy()
+    )))
+}
+
 /// Pure env-var home resolution. Extracted so unit tests can exercise the
 /// non-Tauri fallback chain without fabricating an `AppHandle`. Behavior:
 ///   - Prefers `HOME` (POSIX).
@@ -633,6 +690,57 @@ mod path_tests {
             },
         );
     }
+    #[test]
+    fn runtime_state_env_var_overrides_default() {
+        with_env(
+            &[
+                "LOOMI_PET_RUNTIME_STATE_PATH",
+                "HOME",
+                "USERPROFILE",
+                "HOMEDRIVE",
+                "HOMEPATH",
+            ],
+            || {
+                std::env::set_var(
+                    "LOOMI_PET_RUNTIME_STATE_PATH",
+                    "/tmp/openloomi-runtime-state-override.json",
+                );
+                // We can't fabricate an AppHandle here, but the env-var
+                // short-circuit is the highest-priority branch in
+                // resolve_pet_runtime_state_path — and the function
+                // *would* have returned this exact path if the Tauri
+                // runtime were available.
+                assert_eq!(
+                    std::env::var("LOOMI_PET_RUNTIME_STATE_PATH").unwrap(),
+                    "/tmp/openloomi-runtime-state-override.json"
+                );
+            },
+        );
+    }
+
+    #[test]
+    fn home_dir_only_resolves_via_home() {
+        with_env(
+            &["HOME", "USERPROFILE", "HOMEDRIVE", "HOMEPATH"],
+            || {
+                std::env::set_var("HOME", "/home/alice");
+                let home = resolve_home_dir_only().expect("HOME set");
+                assert_eq!(home, PathBuf::from("/home/alice"));
+            },
+        );
+    }
+
+    #[test]
+    fn home_dir_only_returns_none_when_no_env_set() {
+        with_env(
+            &["HOME", "USERPROFILE", "HOMEDRIVE", "HOMEPATH"],
+            || {
+                assert!(resolve_home_dir_only().is_none());
+            },
+        );
+    }
+
+
 }
 
 #[derive(Deserialize)]
@@ -831,6 +939,101 @@ fn has_anthropic_env_key() -> bool {
             .unwrap_or(false)
     };
     set("ANTHROPIC_API_KEY") || set("ANTHROPIC_AUTH_TOKEN")
+}
+
+// ---------------------------------------------------------------------------
+// External pet state driver — tail ~/.openloomi/pet/runtime_state.json
+// and forward each new payload to `handle_runtime_state_event`. Same
+// mtime-poll design as `watch_loop` so we don't take a dep on the
+// `notify` crate just for one file.
+// ---------------------------------------------------------------------------
+
+/// How often to poll the runtime_state file. 1 s is enough — the
+/// bridge fires `pet <state>` at human pace and the worst-case
+/// staleness is one poll cycle. Don't make this faster than
+/// `POLL_MS / 2` so a misbehaving writer can't busy-loop the watcher.
+const RUNTIME_STATE_POLL_MS: u64 = 1000;
+
+/// JSON shape written by `/api/pet/state`. Mirrors the Rust
+/// `RuntimeStatePayload` in `state.rs` (intentionally duplicated —
+/// these two types live on opposite sides of a filesystem, not a
+/// type-checked boundary).
+#[derive(Deserialize)]
+struct RuntimeStateFilePayload {
+    state: String,
+    #[serde(default)]
+    monologue: Option<String>,
+    #[serde(default)]
+    #[allow(dead_code)]
+    source: Option<String>,
+    #[serde(default)]
+    #[allow(dead_code)]
+    persisted_at: Option<String>,
+}
+
+fn watch_runtime_state_loop(app: &AppHandle) {
+    // Mirror the FIRST_RUN_SETUP_DELAY grace so the eagerly-built
+    // pet / bubble webviews mount their listeners before the first
+    // emit. Without this the initial state change can be lost.
+    std::thread::sleep(Duration::from_millis(FIRST_RUN_SETUP_DELAY_MS));
+
+    let path = resolve_pet_runtime_state_path(app);
+
+    // Initial mtime capture. If the file already exists when the
+    // watcher starts (e.g. user ran `pet happy` before opening the
+    // desktop app), we want to apply it once on boot.
+    let mut last_mtime: Option<std::time::SystemTime> = std::fs::metadata(&path)
+        .and_then(|m| m.modified())
+        .ok();
+
+    // Apply the existing file once on startup so a state set while
+    // the desktop was closed is still honored when it reopens.
+    if last_mtime.is_some() {
+        apply_runtime_state_file(app, &path);
+    }
+
+    loop {
+        std::thread::sleep(Duration::from_millis(RUNTIME_STATE_POLL_MS));
+
+        let Ok(meta) = std::fs::metadata(&path) else {
+            // File removed — clear the mtime so a later recreate
+            // re-applies the new state. Do NOT emit anything here;
+            // absence of the file means "no external override".
+            last_mtime = None;
+            continue;
+        };
+        let Ok(mtime) = meta.modified() else {
+            continue;
+        };
+        if last_mtime == Some(mtime) {
+            continue;
+        }
+        last_mtime = Some(mtime);
+        apply_runtime_state_file(app, &path);
+    }
+}
+
+fn apply_runtime_state_file(app: &AppHandle, path: &std::path::Path) {
+    let Ok(bytes) = std::fs::read(path) else {
+        return;
+    };
+    let Ok(payload) = serde_json::from_slice::<RuntimeStateFilePayload>(&bytes) else {
+        eprintln!(
+            "[loomi-pet] runtime_state.json present but malformed; ignoring. path={}",
+            path.display()
+        );
+        return;
+    };
+    // The handler enforces the same allowlist as the HTTP route. We
+    // serialize back through JSON so `handle_runtime_state_event`
+    // gets the exact payload shape it already validates.
+    let forwarded = serde_json::json!({
+        "state": payload.state,
+        "monologue": payload.monologue,
+    });
+    if let Err(error) = handle_runtime_state_event(app, &forwarded.to_string()) {
+        eprintln!("[loomi-pet] ignored runtime_state file: {error}");
+    }
 }
 
 #[cfg(test)]
