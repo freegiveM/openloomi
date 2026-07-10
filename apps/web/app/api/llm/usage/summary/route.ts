@@ -20,6 +20,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/app/(auth)/auth";
 import { getAuthUser } from "@/lib/auth/dual-auth";
 import { getUserLlmProviderEarliestEnabledSince } from "@/lib/db/queries";
+import { getConfiguredDefaultAgentProvider } from "@/lib/ai/native-agent/provider-env";
 import { getUserUsageSummary } from "@/lib/llm-usage/summary";
 
 export const dynamic = "force-dynamic";
@@ -39,6 +40,26 @@ export async function GET(req: Request) {
     const providerContext = await getUserLlmProviderEarliestEnabledSince(
       authUser.id,
     );
+
+    // Non-claude runtimes (codex/opencode/hermes/openclaw) ship their own
+    // CLI auth and don't require a `user_llm_api_settings` row. When the
+    // env-resolved runtime is one of those and no DB row exists, the
+    // user is *still* configured from a runtime perspective — synthesize
+    // an epoch-0 baseline so the SQL filter counts every recorded
+    // native-agent row for this user (including prior claude calls), and
+    // surface the runtime as the current provider in the card tooltip.
+    // The pet card detects the epoch sentinel and suppresses the
+    // "since X" line because we don't actually know when the env var
+    // was first set.
+    const defaultAgent = getConfiguredDefaultAgentProvider();
+    if (!providerContext.providerSince && defaultAgent !== "claude") {
+      providerContext.providerSince = new Date(0);
+      providerContext.currentProvider = {
+        providerType: defaultAgent,
+        model: null,
+        enabledSince: new Date(0),
+      };
+    }
 
     const summary = await getUserUsageSummary(authUser.id, providerContext);
     return NextResponse.json(summary);

@@ -50,23 +50,62 @@ const summaryState = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/llm-usage/summary", () => ({
-  getUserUsageSummary: vi.fn(async () => ({
-    configured: summaryState.configured,
-    providerSince: null,
-    currentProvider: undefined,
-    totals: {
-      inputTokens: 0,
-      outputTokens: 0,
-      totalTokens: summaryState.totalTokens,
-    },
-    runCount: summaryState.runCount,
-    firstRunAt: null,
-    lastRunAt: null,
-    trackedEndpoints: ["native-agent"],
-    trackedProviders: ["anthropic_compatible"],
-    asOf: "2026-07-09T00:00:00.000Z",
-    error: summaryState.error,
-  })),
+  // Pass through the providerContext the route hands us so the new
+  // env-runtime override (synthesized currentProvider for codex / etc.)
+  // is visible in the response. The other summary fields stay controlled
+  // by summaryState for the existing assertions.
+  getUserUsageSummary: vi.fn(
+    async (
+      _userId: string,
+      providerContext: {
+        providerSince: Date | null;
+        currentProvider?: {
+          providerType: string;
+          model: string | null;
+          enabledSince: Date;
+        };
+      },
+    ) => ({
+      configured: summaryState.configured,
+      providerSince: providerContext.providerSince
+        ? providerContext.providerSince.toISOString()
+        : null,
+      currentProvider: providerContext.currentProvider
+        ? {
+            providerType: providerContext.currentProvider.providerType,
+            model: providerContext.currentProvider.model,
+            enabledSince:
+              providerContext.currentProvider.enabledSince.toISOString(),
+          }
+        : undefined,
+      totals: {
+        inputTokens: 0,
+        outputTokens: 0,
+        totalTokens: summaryState.totalTokens,
+      },
+      runCount: summaryState.runCount,
+      firstRunAt: null,
+      lastRunAt: null,
+      trackedEndpoints: ["native-agent"],
+      trackedProviders: ["anthropic_compatible"],
+      asOf: "2026-07-09T00:00:00.000Z",
+      error: summaryState.error,
+    }),
+  ),
+}));
+
+// Hoist the env-resolved agent runtime so individual tests can flip it.
+// Default "claude" matches the existing contract; the new codex-specific
+// test flips it to "codex" before calling GET. Hoisted because
+// `vi.mock` factories run before the test module is parsed and need
+// captured state via `vi.hoisted`.
+const agentProviderState = vi.hoisted(() => ({
+  currentDefaultProvider: "claude" as "claude" | "codex",
+}));
+
+vi.mock("@/lib/ai/native-agent/provider-env", () => ({
+  getConfiguredDefaultAgentProvider: () =>
+    agentProviderState.currentDefaultProvider,
 }));
 
 import { GET } from "@/app/api/llm/usage/summary/route";
@@ -81,6 +120,7 @@ describe("GET /api/llm/usage/summary", () => {
     summaryState.error = undefined;
     dualAuthState.reject = false;
     dualAuthState.user = { id: "user-llm-usage", type: "regular" };
+    agentProviderState.currentDefaultProvider = "claude";
   });
 
   test("returns 401 when unauthenticated", async () => {
@@ -138,5 +178,30 @@ describe("GET /api/llm/usage/summary", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.error).toBe("usage_unavailable");
+  });
+
+  test("treats non-claude env runtime as configured even with no DB row", async () => {
+    // Simulate `OPENLOOMI_AGENT_PROVIDER=codex` and a fresh user with
+    // no `user_llm_api_settings` row. Without the route-level override
+    // the card would render "No LLM provider" — the env-resolved runtime
+    // should still flip `configured: true` and surface the runtime name.
+    dbState.providerSince = null;
+    dbState.currentProvider = undefined;
+    summaryState.configured = true;
+    summaryState.runCount = 0;
+    summaryState.totalTokens = 0;
+    agentProviderState.currentDefaultProvider = "codex";
+
+    const res = await GET(
+      new Request("http://localhost/api/llm/usage/summary"),
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.configured).toBe(true);
+    expect(body.currentProvider?.providerType).toBe("codex");
+    // The route synthesizes an epoch-0 baseline so the SQL filter
+    // counts every historical native-agent row for this user. The pet
+    // card detects the sentinel and suppresses the "since X" line.
+    expect(body.providerSince).toBe("1970-01-01T00:00:00.000Z");
   });
 });
