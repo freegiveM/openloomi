@@ -36,11 +36,25 @@ require curl
 require hdiutil
 require rsync
 
-# 1. Resolve latest stable asset (.dmg).
+# 1. Resolve latest stable asset (.dmg) AND its tag_name. We hit the
+#    GitHub releases API once and pull both fields from the same payload —
+#    no second round-trip, no `--version` call on the inner Tauri binary
+#    (which would flash a GUI window). The bridge parses the JSON line we
+#    print to stdout at the end of this script.
 log "Resolving latest OpenLoomi macOS release…"
-asset_url=$(curl -fsSL "${GITHUB_RELEASE_URL}" \
+release_json=$(curl -fsSL "${GITHUB_RELEASE_URL}" || true)
+
+asset_url=$(printf '%s' "${release_json}" \
   | sed -n 's/.*"browser_download_url":[[:space:]]*"\([^"]*\.dmg\)".*/\1/p' \
   | head -n1 || true)
+tag_name=$(printf '%s' "${release_json}" \
+  | sed -n 's/.*"tag_name":[[:space:]]*"\([^"]*\)".*/\1/p' \
+  | head -n1 || true)
+
+# Strip a leading "v" / "V" from tag_name so downstream consumers get a
+# clean semver-ish version (e.g. "v0.7.3" → "0.7.3"). Fall back to "" if
+# the API didn't return a tag_name.
+version=$(printf '%s' "${tag_name}" | sed -E 's/^[vV]//')
 
 if [[ -z "${asset_url}" ]]; then
   fail "Could not resolve the .dmg asset URL. Visit ${DOCS_BASE}/docs/install/macos and install manually."
@@ -72,20 +86,25 @@ fi
 
 # 4. Verify install.
 bin="/Applications/OpenLoomi.app/Contents/MacOS/openloomi"
-if [[ ! -x "${bin}" ]]; then
-  # OpenLoomi.app is on disk — the user-visible install succeeded. The
-  # inner main binary may not have been laid down by the .dmg copy alone
-  # (some macOS quarantine paths require a first launch). Exit 0 with a
-  # clear, friendly note so the bridge can route the user to the next
-  # step instead of pretending the install failed.
-  log "OpenLoomi.app was installed successfully to /Applications."
-  log "Note: the inner main binary will be placed the first time you launch OpenLoomi."
-  log "Next step from Claude Code: just open OpenLoomi.app once, then re-run /openloomi:setup."
-  exit 0
+if [[ -x "${bin}" ]]; then
+  log "Verifying the OpenLoomi install…"
+  log "  found main binary at: ${bin}"
+  log "  resolved version: ${version:-unknown} (from tag ${tag_name:-unknown})"
+else
+  # OpenLoomi.app is on disk but the inner helper binary isn't laid down
+  # yet. For signed .app bundles this is rare (the DMG already carries
+  # the inner binary), but if it does happen we still exit 0 — the bridge
+  # will detect this and launch OpenLoomi.app to finalize.
+  bin=""
+  log "OpenLoomi.app was installed to /Applications, but the inner helper binary is not yet present."
+  log "The bridge will launch OpenLoomi.app to finalize the install on the next /openloomi:setup call."
 fi
 
-log "Verifying the OpenLoomi install…"
-log "  found main binary at: ${bin}"
-log "  (version is reported by the desktop app on first launch — calling --version on the Tauri main binary would flash a GUI window)"
+# Emit a structured JSON line on stdout that the bridge parses for the
+# resolved version and asset URL. We print to stdout (not stderr) so the
+# bridge's stdout capture picks it up cleanly. Human-readable progress
+# goes to stderr above.
+printf '{"version":"%s","tag":"%s","assetUrl":"%s","binPath":"%s"}\n' \
+  "${version}" "${tag_name}" "${asset_url}" "${bin}"
 
-log "Install complete. Open OpenLoomi from /Applications and run /openloomi:setup again to continue."
+log "Install complete. Re-run /openloomi:setup from Claude Code to continue."

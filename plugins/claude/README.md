@@ -36,11 +36,22 @@ Inside the running session `/openloomi:help` lists all 8 commands.
 /openloomi:setup
 ```
 
-A 4-step wizard: **discover → install? → login check → Claude-env sync → status**.
-Nothing downloads without y/N. Your `ANTHROPIC_API_KEY` is read locally and never
-printed (see [§5.2](#52-where-does-the-api-key-come-from)).
+A fully automated wizard: **install → launch → wait API → guest login → sync Claude env → ready**.
+Nothing GUI is required from you. The bridge:
 
-A successful run prints `{ready: true, reason: "READY"}` — you're done.
+- downloads & installs OpenLoomi.app if missing,
+- launches the desktop app via `open -a`,
+- polls the local HTTP API until it answers,
+- mints a one-tap guest bearer,
+- POSTs your shell's `ANTHROPIC_API_KEY` to `/api/ai/provider/config`.
+
+The only thing it ever prompts for is the install y/N — and only if the
+shell has a TTY. From Claude Code's Bash tool you pass `--yes`.
+
+Your `ANTHROPIC_API_KEY` is read locally and never printed (see
+[§5.2](#52-where-does-the-api-key-come-from)).
+
+A successful run prints `{setup: "ready", steps: [...]}` — you're done.
 
 ## 3. Daily use
 
@@ -97,10 +108,10 @@ When `/openloomi:status` says `ready: false`, look at `reason`:
 | `reason`                     | What it means                                                                                                             | Fix                                                                                                                                                    |
 | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `OPENLOOMI_NOT_INSTALLED`    | OpenLoomi Desktop isn't detected anywhere on this machine.                                                                | `/openloomi:install` — the desktop bundle will land and finalize on first launch.                                                                      |
-| `OPENLOOMI_NOT_FINALIZED`    | OpenLoomi Desktop is installed, but the local helper binary isn't on disk yet (the first launch of the app lays it down). | Launch OpenLoomi from `desktopMarker` once, then re-run `/openloomi:setup`. **Don't re-run the installer** — it will just fail again at the same step. |
+| `OPENLOOMI_NOT_FINALIZED`    | OpenLoomi Desktop is installed, but the local helper binary isn't on disk yet (the first launch of the app lays it down). | `/openloomi:setup` auto-launches the app and waits for the API — no manual launch needed. **Don't re-run the installer** — it will just fail again at the same step. |
 | `SOURCE_FOUND_CLI_NOT_BUILT` | `OPENLOOMI_REPO_DIR` is set but the Rust crate isn't built yet.                                                           | `cd $OPENLOOMI_REPO_DIR/apps/web/src-tauri && cargo build --release`                                                                                   |
-| `LOGIN_REQUIRED`             | OpenLoomi is installed but you haven't signed in.                                                                         | Open OpenLoomi Desktop and sign in                                                                                                                     |
-| `AI_PROVIDER_REQUIRED`       | Signed in, but no provider set.                                                                                           | Set `ANTHROPIC_API_KEY` and run `/openloomi:sync-claude-env`                                                                                           |
+| `LOGIN_REQUIRED`             | OpenLoomi is installed but you haven't signed in.                                                                         | `/openloomi:setup` auto-mints a guest bearer. For a real account, sign in via the desktop app and re-run setup.                                          |
+| `AI_PROVIDER_REQUIRED`       | Signed in, but no provider set.                                                                                           | `/openloomi:setup` auto-syncs `ANTHROPIC_API_KEY` from the env. If no key is set, walk through OpenLoomi Desktop → API Settings.                       |
 | `CLAUDE_ENV_NOT_SET`         | `ANTHROPIC_API_KEY` / `ANTHROPIC_AUTH_TOKEN` isn't in your shell.                                                         | `export ANTHROPIC_API_KEY=…` and retry                                                                                                                 |
 | `READY`                      | All good.                                                                                                                 | Use any other command                                                                                                                                  |
 

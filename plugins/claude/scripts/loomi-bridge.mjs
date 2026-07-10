@@ -223,9 +223,11 @@ function packageDefaults() {
     case 'macos':
       return [
         // Standard macOS install (where Drag-to-Applications puts it).
+        // We deliberately do NOT also look at ~/Applications — the user
+        // installed OpenLoomi system-wide and we want a single source of
+        // truth (/Applications) so the bridge never disagrees with the
+        // desktop app about where the bundle lives.
         '/Applications/OpenLoomi.app/Contents/MacOS/openloomi',
-        // Some users install to a per-user Applications folder.
-        join(home, 'Applications', 'OpenLoomi.app', 'Contents', 'MacOS', 'openloomi'),
       ];
     case 'windows':
       return [
@@ -251,8 +253,11 @@ function detectDesktopInstalled() {
   const home = homedir();
   switch (detectPlatform()) {
     case 'macos':
-      for (const root of ['/Applications', join(home, 'Applications')]) {
-        const marker = join(root, 'OpenLoomi.app');
+      // System-wide /Applications only. We do NOT fall back to
+      // ~/Applications — the bridge and the desktop app must agree on
+      // a single install location.
+      {
+        const marker = '/Applications/OpenLoomi.app';
         if (existsSync(marker)) return { installed: true, marker };
       }
       return { installed: false, marker: null };
@@ -331,6 +336,24 @@ function searchRepoLayout(root) {
   return null;
 }
 
+// Given a binary path, returns the parent .app bundle if the binary lives
+// inside one (e.g. /Applications/OpenLoomi.app/Contents/MacOS/openloomi
+// → /Applications/OpenLoomi.app). Returns null otherwise. Used so callers
+// have a stable bundle path for `open -a` regardless of how discovery
+// resolved the inner binary.
+function desktopBundleForBin(binPath) {
+  if (!binPath) return null;
+  // Walk up from Contents/MacOS/<exe> to Contents to <App>.app.
+  const macos = dirname(binPath); // Contents/MacOS
+  const contents = dirname(macos); // Contents
+  const bundle = dirname(contents); // <App>.app
+  if (!bundle || bundle === '.' || bundle === contents) return null;
+  if (!bundle.endsWith('.app')) return null;
+  // Sanity check: Info.plist must exist for this to be a real bundle.
+  if (!existsSync(join(bundle, 'Contents', 'Info.plist'))) return null;
+  return bundle;
+}
+
 function discovery({ explicit = null } = {}) {
   // Step 1: OPENLOOMI_BIN
   if (process.env.OPENLOOMI_BIN && isExecutable(process.env.OPENLOOMI_BIN)) {
@@ -368,7 +391,17 @@ function discovery({ explicit = null } = {}) {
   // Step 5: Platform default packaged install paths
   for (const def of packageDefaults()) {
     if (isExecutable(def)) {
-      return { binPath: normPath(def), mode: 'packaged', source: 'platform-default' };
+      // When the resolved binary lives inside a macOS .app bundle, surface
+      // the bundle path as desktopMarker so callers can `open -a` it
+      // without re-deriving the path.
+      const desktopMarker = desktopBundleForBin(def);
+      return {
+        binPath: normPath(def),
+        mode: 'packaged',
+        source: 'platform-default',
+        desktopInstalled: !!desktopMarker,
+        desktopMarker,
+      };
     }
   }
   // Step 6: Saved plugin config
@@ -606,17 +639,72 @@ async function apiPOST(path, body, { timeoutMs = 10_000 } = {}) {
 // Status
 // ---------------------------------------------------------------------------
 
+// Module-level cache of the last install script's structured stdout line.
+// The install scripts print a single JSON object describing what they
+// installed (version / tag / assetUrl / binPath). We keep it here so
+// `buildStatus` can surface the resolved version without re-curl'ing the
+// GitHub API and without calling --version on the inner Tauri binary
+// (which flashes a GUI window).
+let _installInfo = null;
+function getInstallInfo() { return _installInfo; }
+function setInstallInfo(info) { _installInfo = info; }
+
+// Reads CFBundleShortVersionString from an .app bundle's Info.plist.
+// We deliberately avoid calling --version on the main Tauri binary
+// because it launches the GUI. Info.plist is the canonical, side-
+// effect-free source for the version of a packaged macOS app.
+// Uses `plutil -p` on macOS (always present) and falls back to a
+// minimal binary plist scan if plutil isn't available.
+async function readBundleVersion(appPath) {
+  if (!appPath) return null;
+  const platformName = detectPlatform();
+  if (platformName !== 'macos') return null;
+  const infoPlist = join(appPath, 'Contents', 'Info.plist');
+  if (!existsSync(infoPlist)) return null;
+  // Try plutil first — it prints a stable `key: "value"` text format.
+  const r = await runBin('plutil', ['-p', infoPlist], { timeoutMs: 3000 });
+  if (r.ok && r.stdout) {
+    // plutil output is like:  "CFBundleShortVersionString" => "0.7.3"
+    // or (older):            CFBundleShortVersionString = "0.7.3"
+    const m = r.stdout.match(/["']?CFBundleShortVersionString["']?\s*(?:=>|=)\s*["']([^"']+)["']/);
+    if (m) return m[1].trim();
+  }
+  // Binary plist fallback: scan for the ASCII run "CFBundleShortVersionString"
+  // followed shortly by a UTF-16 string token. This is best-effort; on real
+  // installs plutil will always succeed.
+  try {
+    const raw = readFileSync(infoPlist);
+    const ascii = raw.toString('binary');
+    const idx = ascii.indexOf('CFBundleShortVersionString');
+    if (idx >= 0) {
+      // After the key, look for a UTF-16BE string value. Format in binary
+      // plist: ...<len-byte><UTF-16BE bytes>. We just grab the next chunk
+      // of printable UTF-16.
+      const slice = ascii.slice(idx, idx + 256);
+      const m2 = slice.match(/[A-Za-z0-9.\-+]+\x00/);
+      if (m2) return m2[0].replace(/\x00+$/g, '').trim();
+    }
+  } catch { /* fallthrough */ }
+  return null;
+}
+
 async function readBinVersion(binPath) {
   if (!binPath) return null;
   // The OpenLoomi main `openloomi` binary launches the GUI app on any CLI
-  // invocation, so calling --version would flash a window. Skip the call
-  // for that case and return null — the user can confirm the version by
-  // launching the app. Anything else (a different binary the user pointed
-  // us at via OPENLOOMI_BIN, etc.) gets probed with --version.
+  // invocation, so calling --version would flash a window. For that case,
+  // we resolve the version from the .app bundle's Info.plist instead.
   const base = basename(binPath).toLowerCase();
   const isMainTauriBinary =
     (base === 'openloomi' || base === 'openloomi.exe');
-  if (isMainTauriBinary) return null;
+  if (isMainTauriBinary) {
+    // Walk up from .../<App>.app/Contents/MacOS/openloomi to .../<App>.app
+    const parent = dirname(binPath); // Contents/MacOS
+    const grand = dirname(parent);   // Contents
+    const great = dirname(grand);    // <App>.app
+    return await readBundleVersion(great);
+  }
+  // For non-main binaries (e.g. an OPENLOOMI_BIN pointing at a CLI helper),
+  // --version is safe and doesn't flash a GUI.
   const r = await runBin(binPath, ['--version'], { timeoutMs: 5000 });
   if (!r.ok) return null;
   // Match a semver-ish version (e.g. "0.7.0", "1.2.3-rc.1") anywhere in
@@ -729,6 +817,11 @@ async function buildStatus({ json = true, explicit = null } = {}) {
   }
 
   const version = await readBinVersion(disc.binPath);
+  // Fall back to the version reported by the install script. We don't
+  // want to call --version on the main Tauri binary (it flashes a GUI
+  // window) and Info.plist is sometimes stripped from dev builds, so the
+  // install-time tag is the most reliable source when both are missing.
+  const resolvedVersion = version || (getInstallInfo()?.version || null);
 
   const aiProvider = await probeAiProvider();
   const apiReachable = await probeApiReachable();
@@ -738,7 +831,7 @@ async function buildStatus({ json = true, explicit = null } = {}) {
       mode: disc.mode,
       installed: true,
       binPath: disc.binPath,
-      version,
+      version: resolvedVersion,
       tokenPresent: false,
       aiProviderConfigured: aiProvider.configured,
       claudeEnvSyncable,
@@ -749,6 +842,7 @@ async function buildStatus({ json = true, explicit = null } = {}) {
       nextAction: 'login_openloomi',
       reason: 'LOGIN_REQUIRED',
       source: disc.source,
+      desktopMarker: disc.desktopMarker,
     };
   }
 
@@ -757,7 +851,7 @@ async function buildStatus({ json = true, explicit = null } = {}) {
       mode: disc.mode,
       installed: true,
       binPath: disc.binPath,
-      version,
+      version: resolvedVersion,
       tokenPresent: true,
       aiProviderConfigured: false,
       claudeEnvSyncable,
@@ -768,6 +862,7 @@ async function buildStatus({ json = true, explicit = null } = {}) {
       nextAction: 'configure_ai_provider',
       reason: 'AI_PROVIDER_REQUIRED',
       source: disc.source,
+      desktopMarker: disc.desktopMarker,
       claudeEnvHint: { hasKey: true, hasBase: !!process.env.ANTHROPIC_BASE_URL, hasModel: !!process.env.ANTHROPIC_MODEL },
     };
   }
@@ -777,7 +872,7 @@ async function buildStatus({ json = true, explicit = null } = {}) {
       mode: disc.mode,
       installed: true,
       binPath: disc.binPath,
-      version,
+      version: resolvedVersion,
       tokenPresent: true,
       aiProviderConfigured: false,
       claudeEnvSyncable: false,
@@ -788,6 +883,7 @@ async function buildStatus({ json = true, explicit = null } = {}) {
       nextAction: 'configure_ai_provider',
       reason: 'AI_PROVIDER_REQUIRED',
       source: disc.source,
+      desktopMarker: disc.desktopMarker,
       claudeEnvHint: {
         hasKey: false,
         hasBase: !!process.env.ANTHROPIC_BASE_URL,
@@ -800,7 +896,7 @@ async function buildStatus({ json = true, explicit = null } = {}) {
     mode: disc.mode,
     installed: true,
     binPath: disc.binPath,
-    version,
+    version: resolvedVersion,
     tokenPresent: true,
     aiProviderConfigured: true,
     claudeEnvSyncable,
@@ -811,6 +907,7 @@ async function buildStatus({ json = true, explicit = null } = {}) {
     nextAction: 'run',
     reason: 'READY',
     source: disc.source,
+    desktopMarker: disc.desktopMarker,
   };
 }
 
@@ -1357,9 +1454,21 @@ async function runInstallScript({ platformName, yes }) {
     child.stdout.on('data', (b) => (stdout += b.toString('utf8')));
     child.stderr.on('data', (b) => (stderr += b.toString('utf8')));
     child.on('error', (e) => resolve({ ok: false, code: 'SPAWN_FAILED', message: String(e?.message || e) }));
-    child.on('exit', (code) =>
-      resolve({ ok: code === 0, code: code === 0 ? 'OK' : `EXIT_${code}`, stdout, stderr })
-    );
+    child.on('exit', (code) => {
+      // Parse the install script's structured stdout line (if any). The
+      // script emits a single JSON object describing what it installed.
+      // We extract it from the captured stdout so we don't have to re-curl
+      // the GitHub API and we never call --version on the inner Tauri
+      // binary.
+      const infoLineMatch = stdout.match(/\{[^{}]*"version"[^{}]*\}/);
+      if (infoLineMatch) {
+        try {
+          const parsed = JSON.parse(infoLineMatch[0]);
+          setInstallInfo(parsed);
+        } catch { /* ignore malformed */ }
+      }
+      resolve({ ok: code === 0, code: code === 0 ? 'OK' : `EXIT_${code}`, stdout, stderr });
+    });
   });
 }
 
@@ -1368,7 +1477,98 @@ async function cmdInstall({ yes = false } = {}) {
   const r = await runInstallScript({ platformName, yes });
   // After install, refresh discovery state.
   const status = await buildStatus({ json: true });
-  return { install: r, status };
+  return { install: r, status, installInfo: getInstallInfo() };
+}
+
+// Programmatically launches the OpenLoomi desktop app so the helper binary
+// gets laid down and the local HTTP API comes up. This is what unblocks
+// `canGuestLogin: true` and the auto-login step in the setup state
+// machine. We do NOT touch the GUI (no AppleScript, no keystrokes); the
+// app starts in its normal state and we just poll for the API.
+//
+// Per-platform: macOS uses `open -a <bundle>`, Linux uses
+// `gtk-launch <desktopId>` (best-effort) and Windows uses `cmd /c start "" <exe>`.
+// If the platform doesn't support auto-launch, we return ok=false with
+// a clear reason and let the user launch it once manually.
+async function launchDesktopApp({ desktopMarker, binPath } = {}) {
+  const platformName = detectPlatform();
+  // We need either the .app bundle (macOS) or a runnable exe (Win/Linux).
+  const target = desktopMarker || binPath || null;
+  if (!target) {
+    return { ok: false, code: 'NO_LAUNCH_TARGET', message: 'No OpenLoomi app path or binary to launch.' };
+  }
+  let cmd;
+  let args;
+  if (platformName === 'macos') {
+    cmd = 'open';
+    args = ['-a', desktopMarker || target];
+  } else if (platformName === 'windows') {
+    cmd = 'cmd';
+    args = ['/c', 'start', '""', target];
+  } else {
+    // Linux: try gtk-launch with a guessed desktopId; fall back to executing the
+    // binary directly if that fails. We don't ship a .desktop file from the
+    // plugin, so gtk-launch is best-effort.
+    cmd = 'gtk-launch';
+    args = ['openloomi'];
+  }
+  return await new Promise((resolve) => {
+    let stderr = '';
+    let stdout = '';
+    let child;
+    try {
+      child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'], detached: true });
+    } catch (e) {
+      resolve({ ok: false, code: 'SPAWN_FAILED', message: String(e?.message || e) });
+      return;
+    }
+    child.stdout?.on('data', (b) => (stdout += b.toString('utf8')));
+    child.stderr?.on('data', (b) => (stderr += b.toString('utf8')));
+    child.on('error', (e) => resolve({ ok: false, code: 'SPAWN_FAILED', message: String(e?.message || e) }));
+    // `open -a` and `start ""` return immediately; gtk-launch returns after
+    // the app is forked. Treat any non-error exit (or no exit within the
+    // short window) as success — what we really care about is whether the
+    // API comes up, which we verify in waitForApi().
+    child.on('exit', (code) => {
+      if (code === 0 || code === null) {
+        resolve({ ok: true, code: 'OK', stdout, stderr, via: cmd });
+      } else {
+        // Try the binary directly as a Linux fallback before giving up.
+        if (platformName === 'linux' && binPath) {
+          spawn(binPath, [], { stdio: 'ignore', detached: true }).unref();
+          resolve({ ok: true, code: 'OK_FALLBACK_DIRECT', via: binPath });
+          return;
+        }
+        resolve({ ok: false, code: `EXIT_${code}`, stdout, stderr, via: cmd });
+      }
+    });
+    // Hard cap so we don't block forever on platforms where the launcher
+    // doesn't exit (some `open -a` invocations under launchd behave that way).
+    setTimeout(() => resolve({ ok: true, code: 'OK_TIMEOUT', via: cmd, stdout, stderr }), 2000).unref();
+  });
+}
+
+// Polls the local OpenLoomi HTTP API until it responds, or the timeout
+// elapses. Used after launching the desktop app to confirm the runtime
+// is up before minting a guest bearer / syncing the AI provider.
+async function waitForApi({ timeoutMs = 30_000, intervalMs = 500 } = {}) {
+  const start = Date.now();
+  let lastError = null;
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const url = await probeOpenLoomiBaseUrl();
+      if (url) return { ok: true, elapsedMs: Date.now() - start, url };
+    } catch (e) {
+      lastError = e;
+    }
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+  return {
+    ok: false,
+    code: 'TIMEOUT',
+    elapsedMs: Date.now() - start,
+    message: `OpenLoomi local API did not respond within ${timeoutMs}ms.${lastError ? ' last error: ' + String(lastError?.message || lastError) : ''}`,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -1391,55 +1591,158 @@ async function main() {
       return;
     }
     case 'setup': {
-      const status = await buildStatus({ json: true, explicit: args['bin-path'] || null });
-      if (!status.installed && status.nextAction === 'install_openloomi') {
-        const r = await cmdInstall({ yes: !!args.yes });
-        out({ ok: r.install?.ok, setup: 'install_attempted', install: r.install, status: r.status });
-        return;
-      }
-      if (status.installed && status.reason === 'OPENLOOMI_NOT_FINALIZED') {
-        // The user-visible desktop app IS installed; we just need the user
-        // to launch it once so it lays down the local helper binary.
-        // Do NOT re-run the installer — that path will fail again.
+      // End-to-end wizard. Walks the full state machine in one invocation:
+      //   install → launch app → wait API → guest login → sync env → READY.
+      // Every transition is automatic — we never ask the user to click
+      // anything. If a step can't be auto-resolved (e.g. AI provider needed
+      // but no env key, or login failed), we return `awaiting_user_action`
+      // with a clear `nextAction` and stop.
+      const explicit = args['bin-path'] || null;
+      const yesFlag = !!args.yes;
+      const maxWaitMs = Number(args['max-wait'] || 30_000);
+      const maxSteps = 8; // hard ceiling on chained transitions
+      const steps = [];
+
+      const record = (name, ok, detail) => {
+        steps.push({ step: name, ok, at: Date.now(), ...detail });
+      };
+
+      for (let i = 0; i < maxSteps; i++) {
+        const status = await buildStatus({ json: true, explicit });
+
+        if (status.reason === 'READY') {
+          out({ ok: true, setup: 'ready', steps, status });
+          return;
+        }
+
+        // 1. Install.
+        if (!status.installed && status.nextAction === 'install_openloomi') {
+          const r = await cmdInstall({ yes: yesFlag });
+          record('install', !!r.install?.ok, { code: r.install?.code });
+          if (!r.install?.ok) {
+            out({ ok: false, setup: 'install_failed', steps, install: r.install, status: r.status });
+            return;
+          }
+          continue;
+        }
+
+        // 2. .app installed but helper binary / local API not yet on disk.
+        //    Auto-launch the desktop app (signed bundle, safe to do) and
+        //    poll for the API to come up.
+        if (status.installed && status.reason === 'OPENLOOMI_NOT_FINALIZED') {
+          const launch = await launchDesktopApp({
+            desktopMarker: status.desktopMarker,
+            binPath: status.binPath,
+          });
+          record('launch', launch.ok, { code: launch.code, via: launch.via });
+          if (!launch.ok) {
+            out({ ok: false, setup: 'launch_failed', steps, launch, status });
+            return;
+          }
+          const wait = await waitForApi({ timeoutMs: maxWaitMs });
+          record('wait_api', wait.ok, { elapsedMs: wait.elapsedMs, url: wait.url });
+          if (!wait.ok) {
+            out({ ok: false, setup: 'api_not_ready', steps, wait, status });
+            return;
+          }
+          continue;
+        }
+
+        // 2b. .app is installed AND inner binary exists, but the desktop
+        //     process isn't running yet so the API is unreachable. We
+        //     launch it the same way as the NOT_FINALIZED branch — this is
+        //     the normal "first time you call setup on a fresh install"
+        //     path (the user has not yet opened OpenLoomi.app).
+        if (status.installed && !status.apiReachable && status.desktopMarker) {
+          const launch = await launchDesktopApp({
+            desktopMarker: status.desktopMarker,
+            binPath: status.binPath,
+          });
+          record('launch', launch.ok, { code: launch.code, via: launch.via });
+          if (!launch.ok) {
+            out({ ok: false, setup: 'launch_failed', steps, launch, status });
+            return;
+          }
+          const wait = await waitForApi({ timeoutMs: maxWaitMs });
+          record('wait_api', wait.ok, { elapsedMs: wait.elapsedMs, url: wait.url });
+          if (!wait.ok) {
+            out({ ok: false, setup: 'api_not_ready', steps, wait, status });
+            return;
+          }
+          continue;
+        }
+
+        // 3. Login needed and API reachable → mint a one-tap guest bearer.
+        if (status.reason === 'LOGIN_REQUIRED' && status.canGuestLogin) {
+          const g = await cmdGuestLogin();
+          record('guest_login', !!g.ok, { code: g.code, user: g.user });
+          if (!g.ok) {
+            out({
+              ok: false,
+              setup: 'guest_login_failed',
+              code: g.code,
+              message: 'Guest login failed. Open OpenLoomi Desktop and sign in with an existing account, then re-run /openloomi:setup.',
+              guest: g,
+              steps,
+              status,
+            });
+            return;
+          }
+          continue;
+        }
+
+        // 4. Logged in, no AI provider, and we have a Claude env key in
+        //    the shell that spawned Claude Code → POST it to the runtime.
+        if (status.tokenPresent && status.claudeEnvSyncable && !status.aiProviderConfigured) {
+          const syncRes = await syncClaudeEnv();
+          record('sync_claude_env', !!syncRes.ok, {
+            code: syncRes.code,
+            provider: syncRes.provider,
+            model: syncRes.model,
+          });
+          if (syncRes.ok) continue;
+          // Distinguish transient (network) from permanent (endpoint
+          // missing / bad request / server error). Only retry transient
+          // failures; permanent ones we surface to the user instead of
+          // hammering the runtime.
+          const TRANSIENT = new Set(['NETWORK', 'TIMEOUT']);
+          if (!TRANSIENT.has(syncRes.code)) {
+            out({
+              ok: false,
+              setup: 'sync_failed',
+              code: syncRes.code,
+              message: syncRes.code === 'ENDPOINT_MISSING'
+                ? 'OpenLoomi runtime does not expose /api/ai/provider/config. Update OpenLoomi Desktop to a version that supports it, then re-run /openloomi:setup.'
+                : `sync-claude-env failed: ${syncRes.code}`,
+              sync: { code: syncRes.code, provider: syncRes.provider, model: syncRes.model },
+              steps,
+              status,
+            });
+            return;
+          }
+          // Transient: continue the loop so we re-probe and retry.
+          continue;
+        }
+
+        // 5. No automatic transition matches. Surface a clear next step.
+        //    The two realistic stops here are:
+        //      - LOGIN_REQUIRED but canGuestLogin=false → API is down
+        //        (we couldn't reach it after launch). Tell the user to
+        //        sign in via the GUI and re-run setup.
+        //      - AI_PROVIDER_REQUIRED with no env key → walk them through
+        //        OpenLoomi Desktop → API Settings.
         out({
-          ok: false,
-          setup: 'awaiting_user_finalization',
-          code: 'OPENLOOMI_NOT_FINALIZED',
-          message: 'OpenLoomi is installed but not yet finalized.',
-          userAction: 'Launch OpenLoomi from ' + (status.desktopMarker || 'the Applications folder') + ' once, then re-run /openloomi:setup.',
-          actions: status.hint?.actions || {},
+          ok: true,
+          setup: 'awaiting_user_action',
+          steps,
           status,
         });
         return;
       }
-      if (status.reason === 'LOGIN_REQUIRED' && status.canGuestLogin) {
-        // One-tap guest login: mint a bearer via the local runtime and
-        // persist it to ~/.openloomi/token, then re-check status. The
-        // user does NOT need to interactively open the desktop app to
-        // sign in with an existing account.
-        const g = await cmdGuestLogin();
-        if (g.ok) {
-          const refreshed = await buildStatus({ json: true, explicit: args['bin-path'] || null });
-          out({ ok: true, setup: 'guest_login_ok', guest: g, status: refreshed });
-        } else {
-          out({
-            ok: false,
-            setup: 'guest_login_failed',
-            code: g.code,
-            message: 'Guest login failed. Open OpenLoomi Desktop to sign in with your existing account, then re-run /openloomi:setup.',
-            guest: g,
-            status,
-          });
-        }
-        return;
-      }
-      if (status.tokenPresent && status.claudeEnvSyncable && !status.aiProviderConfigured) {
-        const syncRes = await syncClaudeEnv();
-        const refreshed = await buildStatus({ json: true, explicit: args['bin-path'] || null });
-        out({ ok: true, setup: 'sync_attempted', sync: { ok: syncRes.ok, code: syncRes.code, provider: syncRes.provider, model: syncRes.model }, status: refreshed });
-        return;
-      }
-      out({ ok: true, setup: 'noop', status });
+
+      // Hit the step ceiling without reaching READY — return current state.
+      const final = await buildStatus({ json: true, explicit });
+      out({ ok: false, setup: 'step_limit_reached', steps, status: final });
       return;
     }
     case 'install': {
