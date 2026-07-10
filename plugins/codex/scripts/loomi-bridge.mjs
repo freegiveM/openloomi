@@ -16,8 +16,9 @@ import { createHash } from "node:crypto";
 import https from "node:https";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const BRIDGE_VERSION = "0.8.0";
+const BRIDGE_VERSION = "0.7.3";
 const PLUGIN_PHASE = "runtime-provider-readiness";
 const COMMAND_TIMEOUT_MS = 5000;
 const RUN_TIMEOUT_MS = 120000;

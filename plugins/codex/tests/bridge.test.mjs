@@ -45,7 +45,7 @@ function runOutcome(args, env) {
 }
 
 function runJson(args, env) {
-  return JSON.parse(run(args, env));
+  return JSON.parse(run(args, { env }));
 }
 
 // Run a child command with HOME pointed at a fresh temp dir and PATH that
@@ -99,6 +99,7 @@ test('version returns bridge identity and command list', () => {
     'version',
     'help',
     'run',
+    'codex-runtime-info',
   ]) {
     assert.ok(j.commands.includes(cmd), `version.commands missing ${cmd}`);
   }
@@ -107,6 +108,41 @@ test('version returns bridge identity and command list', () => {
 // -----------------------------------------------------------------------------
 // setup-status shape contract
 // -----------------------------------------------------------------------------
+
+test('setup-status apiProbe field is present and well-formed', () => {
+  const j = runJson(['setup-status']);
+  assert.ok(j.apiProbe, 'setup-status must include apiProbe field');
+  // Top-level apiReachable boolean mirrors the apiProbe summary.
+  assert.equal(typeof j.apiReachable, 'boolean');
+  assert.equal(j.apiReachable, Boolean(j.apiProbe.reachableUrl));
+  assert.ok(Array.isArray(j.apiProbe.attempts));
+  for (const entry of j.apiProbe.attempts) {
+    assert.equal(typeof entry.baseUrl, 'string');
+    assert.ok(
+      ['NETWORK_ERROR', 'TIMEOUT', 'HTTP_RESPONSE'].includes(entry.reason) ||
+        typeof entry.status === 'number',
+      `unexpected apiProbe attempt reason: ${entry.reason}`,
+    );
+  }
+  // checks.apiProbe mirrors the same attempts list so downstream consumers
+  // can find it under the standard checks bag.
+  assert.ok(Array.isArray(j.checks.apiProbe));
+});
+
+test('setup-status reports OPENLOOMI_API_UNREACHABLE when API down and no token', () => {
+  withFakeHome((env) => {
+    // Make sure no token file is present and no local API is reachable
+    // (fake HOME guarantees ~/.openloomi/token does not exist; the fake
+    // env forces OPENLOOMI_BASE_URL to a closed port).
+    const j = JSON.parse(run(['setup-status'], env));
+    assert.equal(j.apiReachable, false);
+    if (!j.tokenPresent) {
+      assert.equal(j.ready, false);
+      assert.equal(j.nextAction, 'open_openloomi');
+      assert.equal(j.reason, 'OPENLOOMI_API_UNREACHABLE');
+    }
+  });
+});
 
 test('setup-status exposes the protocol contract fields', () => {
   const j = runJson(['setup-status']);
@@ -268,8 +304,18 @@ test('setup without --yes returns awaiting_user_action when install is required'
     const j = JSON.parse(r.stdout);
     assert.ok(j.steps && j.steps.length > 0, 'setup must record at least one step');
     if (j.setup === 'awaiting_user_action') {
+      // The state machine may now surface a new "open_openloomi" branch
+      // when the local OpenLoomi API is unreachable even though a ctl was
+      // explicitly disabled via OPENLOOMI_BIN. Accept that as an
+      // awaiting_user_action signal too — the user must launch the
+      // desktop app before the wizard can continue.
       assert.ok(
-        ['confirm_install_openloomi', 'install_openloomi', 'build_or_stage_openloomi_ctl'].includes(j.nextAction),
+        [
+          'confirm_install_openloomi',
+          'install_openloomi',
+          'build_or_stage_openloomi_ctl',
+          'open_openloomi',
+        ].includes(j.nextAction),
         `unexpected nextAction: ${j.nextAction}`,
       );
     } else {
@@ -313,6 +359,43 @@ test('setup status field mirrors setup-status when the loop exits', () => {
 // argv hardening: --api-key is never a recognised flag
 // -----------------------------------------------------------------------------
 
+// -----------------------------------------------------------------------------
+// pet <state>
+// -----------------------------------------------------------------------------
+
+test('pet without state argument returns MISSING_STATE with validStates list', () => {
+  const j = runJson(['pet']);
+  assert.equal(j.ok, false);
+  assert.equal(j.code, 'MISSING_STATE');
+  assert.ok(Array.isArray(j.validStates));
+  assert.equal(j.validStates.length, 9);
+  for (const s of ['happy', 'idle', 'juggling', 'needsinput', 'presenting', 'sleeping', 'sweeping', 'thinking', 'working']) {
+    assert.ok(j.validStates.includes(s), `validStates missing ${s}`);
+  }
+});
+
+test('pet with invalid state returns INVALID_STATE', () => {
+  const j = runJson(['pet', 'dancing']);
+  assert.equal(j.ok, false);
+  assert.equal(j.code, 'INVALID_STATE');
+  assert.equal(j.received, 'dancing');
+  assert.ok(j.validStates.includes('happy'));
+});
+
+test('pet with token missing returns TOKEN_MISSING under fake HOME', () => {
+  withFakeHome((env) => {
+    const j = JSON.parse(run(['pet', 'happy'], env));
+    assert.equal(j.ok, false);
+    // Either TOKEN_MISSING (no ~/.openloomi/token) or API_UNREACHABLE
+    // (would-be call hits a closed port). Both are valid first-line
+    // errors when neither the token nor the runtime are available.
+    assert.ok(
+      ['TOKEN_MISSING', 'API_UNREACHABLE'].includes(j.code),
+      `unexpected pet code: ${j.code}`,
+    );
+  });
+});
+
 test('argv hardening: unknown flags are not silently accepted as secrets', () => {
   withFakeHome((env) => {
     // If --api-key were a real flag, the bridge might echo or store it. We
@@ -336,4 +419,54 @@ test('argv hardening: unknown flags are not silently accepted as secrets', () =>
       );
     }
   });
+});
+
+
+// -----------------------------------------------------------------------------
+// codex-runtime-info
+// -----------------------------------------------------------------------------
+
+test('codex-runtime-info returns the desktop-app Codex runtime switch plan', () => {
+  const j = runJson(['codex-runtime-info']);
+  assert.equal(j.purpose.startsWith('Switch the OpenLoomi desktop app'), true);
+  assert.equal(j.envProviderKey, 'OPENLOOMI_AGENT_PROVIDER');
+  assert.match(j.switch.oneOff, /OPENLOOMI_AGENT_PROVIDER=codex/);
+  assert.match(j.switch.oneOff, /\/Applications\/openloomi\.app/);
+  assert.match(j.switch.permanent, /~\/\.zshrc/);
+  assert.ok(Array.isArray(j.prerequisites) && j.prerequisites.length >= 3);
+  const varNames = j.companionEnvVars.map((entry) => entry.name);
+  for (const expected of [
+    'OPENLOOMI_AGENT_CODEX_COMMAND',
+    'OPENLOOMI_AGENT_CODEX_MODEL',
+    'OPENLOOMI_AGENT_CODEX_SANDBOX',
+    'OPENLOOMI_AGENT_CODEX_ASK_FOR_APPROVAL',
+    'OPENLOOMI_AGENT_CODEX_SKIP_GIT_REPO_CHECK',
+    'OPENLOOMI_AGENT_CODEX_FULL_AUTO',
+    'OPENLOOMI_AGENT_CODEX_TIMEOUT_MS',
+  ]) {
+    assert.ok(varNames.includes(expected), `missing companion var ${expected}`);
+  }
+  assert.equal(j.verify.expectDefaultAgent, 'codex');
+  assert.equal(j.verify.expectAgentType, 'codex');
+  assert.match(j.verify.endpoint, /\/api\/native\/providers/);
+  assert.equal(j.bridge.name, 'openloomi-codex-bridge');
+  assert.equal(typeof j.bridge.version, 'string');
+});
+
+test('codex-runtime-info reflects OPENLOOMI_AGENT_PROVIDER env in defaults', () => {
+  const j = runJson(['codex-runtime-info'], {
+    OPENLOOMI_AGENT_PROVIDER: 'codex',
+  });
+  assert.equal(j.defaults.currentDefaultProvider, 'codex');
+});
+
+test('codex-runtime-info defaults to claude when env is unset', () => {
+  const j = withFakeHome((env) =>
+    runJson(['codex-runtime-info'], {
+      ...env,
+      OPENLOOMI_AGENT_PROVIDER: '',
+    }),
+  );
+  // Empty string should fall back to claude (resolver treats empty as unset).
+  assert.equal(j.defaults.currentDefaultProvider, 'claude');
 });

@@ -17,17 +17,14 @@ The plugin is designed to:
   `openloomi-memory` from Codex;
 - optionally connect Codex task lifecycle events to the OpenLoomi Pet.
 
-This directory contains the Codex plugin design. Claude Code should use the
-same top-level module layout under `plugins/claude`.
+This directory contains the Codex plugin design. The Claude Code plugin
+lives next to it under `plugins/claude/` and ships its own README, hooks, and
+slash-command layout; that surface is intentionally not mirrored here.
 
 ```text
 plugins/
   codex/
     README.md
-    ROADMAP.md
-  claude/
-    README.md
-    ROADMAP.md
 ```
 
 ## Product Positioning
@@ -116,6 +113,38 @@ From the OpenLoomi source checkout, verify the plugin bridge directly:
 node plugins/codex/scripts/loomi-bridge.mjs version
 node plugins/codex/scripts/loomi-bridge.mjs setup-status
 node plugins/codex/scripts/loomi-bridge.mjs workflow-guidance
+node plugins/codex/scripts/loomi-bridge.mjs install-instructions
+node plugins/codex/scripts/loomi-bridge.mjs install-openloomi --confirm
+node plugins/codex/scripts/loomi-bridge.mjs initialize-session
+node plugins/codex/scripts/loomi-bridge.mjs configure-ai-provider
+node plugins/codex/scripts/loomi-bridge.mjs help
+```
+
+`version` prints the bridge identity, the current plugin phase, and the full
+list of bridge commands:
+
+```bash
+node plugins/codex/scripts/loomi-bridge.mjs version
+```
+
+```json
+{
+  "name": "openloomi-codex-bridge",
+  "version": "0.8.0",
+  "pluginPhase": "runtime-provider-readiness",
+  "commands": [
+    "configure-ai-provider",
+    "help",
+    "initialize-session",
+    "install-instructions",
+    "install-openloomi",
+    "run",
+    "setup",
+    "setup-status",
+    "version",
+    "workflow-guidance"
+  ]
+}
 ```
 
 Expected readiness milestones for a fully prepared environment:
@@ -225,11 +254,21 @@ The plugin implementation lives under this module:
 ```text
 plugins/codex/
   README.md
-  ROADMAP.md
   .codex-plugin/plugin.json
-  skills/openloomi/SKILL.md
   scripts/loomi-bridge.mjs
   assets/logo.png
+  skills/
+    openloomi/SKILL.md
+    openloomi-install/SKILL.md
+    openloomi-loop/SKILL.md
+    openloomi-memory/SKILL.md
+    openloomi-connectors/SKILL.md
+    openloomi-handoff/SKILL.md
+    openloomi-api/SKILL.md
+    openloomi-feature-guide/SKILL.md
+    composio/SKILL.md
+    composio/rules/...
+  tests/bridge.test.mjs
 ```
 
 Responsibilities:
@@ -284,6 +323,73 @@ configured or when known project markers are present.
 If a source checkout exists but the CLI is not built or staged, the plugin
 should return actionable instructions rather than building automatically without
 user confirmation.
+
+### Launching the desktop app with the Codex runtime
+
+By default the packaged desktop app routes chat and agent requests through the
+Claude provider. To run the same desktop binary against the local Codex CLI
+instead, export `OPENLOOMI_AGENT_PROVIDER=codex` in the shell that launches
+the app and then open it from the same shell so the variable is inherited by
+the Tauri-launched web server:
+
+```bash
+export OPENLOOMI_AGENT_PROVIDER=codex
+open /Applications/openloomi.app
+```
+
+For a permanent switch, put the export in your shell rc (`~/.zshrc`,
+`~/.bashrc`):
+
+```bash
+echo 'export OPENLOOMI_AGENT_PROVIDER=codex' >> ~/.zshrc
+```
+
+Optional companion variables (all read by `apps/web`'s native-agent env
+resolver at startup):
+
+```bash
+export OPENLOOMI_AGENT_CODEX_COMMAND=codex           # defaults to `codex` on PATH
+export OPENLOOMI_AGENT_CODEX_MODEL=gpt-5.4            # optional model override
+export OPENLOOMI_AGENT_CODEX_PROFILE=work             # optional `-p <name>`
+export OPENLOOMI_AGENT_CODEX_SANDBOX=workspace-write # read-only | workspace-write | danger-full-access
+export OPENLOOMI_AGENT_CODEX_ASK_FOR_APPROVAL=on-request # untrusted | on-failure | on-request | never
+export OPENLOOMI_AGENT_CODEX_SKIP_GIT_REPO_CHECK=true # default true
+export OPENLOOMI_AGENT_CODEX_FULL_AUTO=false         # set true to allow --full-auto under bypassPermissions
+export OPENLOOMI_AGENT_CODEX_TIMEOUT_MS=120000       # CLI runtime budget in ms
+```
+
+Prerequisites that must hold before the desktop app will actually drive Codex:
+
+- `which codex` resolves to a working Codex CLI binary (install via
+  `brew install --cask codex` or `npm i -g @openai/codex`).
+- `~/.codex/config.toml` is configured and `OPENAI_API_KEY` (or the Codex
+  CLI's other auth) is available to the spawned process.
+
+Verification after launch: the desktop app's `GET /api/native/providers`
+should return `codex` inside `agents` and `defaultAgent: "codex"`. If you
+still see `defaultAgent: "claude"`, the env var did not reach the web server
+— relaunch the app from a shell that has the export set, or check that the
+launcher script is not stripping the environment.
+
+### Surface the switch from inside Codex
+
+The Codex plugin bridge exposes the same switch plan as structured JSON so it
+can be referenced from skills and shown verbatim in chat without retyping the
+shell snippets. From any Codex session, run:
+
+```bash
+node "$SKILL_DIR/../../scripts/loomi-bridge.mjs" codex-runtime-info
+```
+
+The bridge returns:
+
+- `envProviderKey` (`OPENLOOMI_AGENT_PROVIDER`)
+- `switch.oneOff` and `switch.permanent` — ready-to-run shell snippets
+- `prerequisites` — Codex CLI binary, `~/.codex/config.toml`, `OPENAI_API_KEY`
+- `companionEnvVars[]` — `OPENLOOMI_AGENT_CODEX_*` variables with their defaults
+- `verify.endpoint` / `verify.expectDefaultAgent` — the `GET /api/native/providers` contract
+- `defaults.currentDefaultProvider` — echoes the active `OPENLOOMI_AGENT_PROVIDER` so the model can spot a missing export before suggesting commands
+- `defaults.codexCliOnPath` — best-effort PATH probe for the `codex` binary
 
 ### Missing Install
 
@@ -421,13 +527,11 @@ is first used from Codex.
 
 Preferred paths:
 
-1. Use Codex OAuth for Codex subscribers if an official supported surface is
-   available.
-2. Otherwise, launch or guide an OpenLoomi-owned setup flow for:
+1. Launch or guide an OpenLoomi-owned setup flow for:
    - base URL;
    - API key;
    - model name.
-3. Keep OpenLoomi Desktop settings as a fallback.
+2. Keep OpenLoomi Desktop settings as a fallback.
 
 Raw API keys must not be pasted into Codex chat. If a setup flow collects an API
 key, that input must happen in an OpenLoomi-owned UI or CLI surface that avoids
@@ -450,7 +554,8 @@ following skills under `plugins/codex/skills/`:
 - `openloomi-connectors`: check whether Slack, GitHub, Gmail, Calendar, and
   other sources are configured before acting. Reports status only.
 - `openloomi-handoff`: send the current Codex task to Loomi for follow-up.
-  Codex-specific (Claude Code does not yet have an equivalent).
+  Exposed as a Codex skill; the Claude Code plugin exposes the same capability
+  through its own `/openloomi:*` slash-command surface instead.
 - `openloomi-api`: openloomi HTTP API reference (auth, chat, RAG, workspace,
   integrations, feedback). Triggered by API / backend questions.
 - `openloomi-feature-guide`: product overview, capabilities, and how-tos for
@@ -465,6 +570,46 @@ four workflow skills (`openloomi-loop`, `openloomi-memory`,
 documentation or routing helpers. The plugin must not copy OpenLoomi
 connector, memory, loop, scheduling, or handoff persistence logic into
 Codex — runtime implementations stay inside the OpenLoomi desktop runtime.
+
+## Pet State Control
+
+The bridge ships a `pet <state>` command that mirrors
+`plugins/claude/scripts/loomi-bridge.mjs::cmdPet`. It validates against the
+same 9-state sprite vocabulary and POSTs `{state, source: "codex-plugin"}`
+to `/api/pet/state` on the local OpenLoomi runtime with the bearer token
+from `~/.openloomi/token`.
+
+```bash
+node plugins/codex/scripts/loomi-bridge.mjs pet happy
+node plugins/codex/scripts/loomi-bridge.mjs pet working
+```
+
+Valid states:
+
+```text
+happy, idle, juggling, needsinput, presenting, sleeping, sweeping, thinking, working
+```
+
+Failure modes (all return structured JSON, never throw):
+
+- `MISSING_STATE` — no positional state argument.
+- `INVALID_STATE` — state not in the vocabulary; response includes
+  `validStates` and `received`.
+- `TOKEN_MISSING` — `~/.openloomi/token` does not exist or is unreadable.
+  Run `setup` or open OpenLoomi Desktop once before driving Pet state.
+- `ENDPOINT_MISSING` — runtime answered with HTTP 404. Treat as
+  non-blocking: the bridge returns the polite notice that the endpoint is
+  pending. Pet control resumes automatically once OpenLoomi ships the route.
+- `API_UNREACHABLE` — no local API responded on 3414/3515. `attempts` lists
+  every URL the bridge tried.
+- `PET_FAILED` — runtime answered but with a non-success status code.
+
+The Codex plugin deliberately does **not** ship lifecycle-driven Pet
+transitions. The Claude Code plugin wires `SessionStart` / `Stop` /
+`PreToolUse` / etc. to Pet states via `hooks/hooks.json`; the Codex plugin
+platform does not yet expose an equivalent event surface (see next
+section), so `pet` is user-driven only. Do not introduce a polling loop
+inside the Codex plugin to fake lifecycle hooks.
 
 ## Optional Codex Hooks
 
@@ -487,7 +632,7 @@ The intended Pet notification surface is:
 Until Codex adds an official lifecycle event surface, this section stays
 open. Do not ship a hand-rolled polling loop inside the Codex plugin to
 fake hooks — it would duplicate Claude-only state and conflict with the
-"thin wrapper, no business logic" rule (see `ROADMAP.md` Phase 8).
+"thin wrapper, no business logic" rule.
 
 ## Secret Handling
 
