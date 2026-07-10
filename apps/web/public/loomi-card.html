@@ -4607,6 +4607,16 @@
         function evaluateAiConfigured(payload) {
           if (!payload || !payload.settings || !payload.systemDefaults)
             return false;
+          // The server also returns the resolved agent runtime via
+          // `defaultAgent`. Non-claude runtimes (codex/opencode/hermes/
+          // openclaw) ship their own CLI auth and don't need an
+          // anthropic-compatible key — treat them as already configured
+          // so the card doesn't nag for a credential they won't use.
+          // Mirrors `hasUsableConversationApiConfiguration` in
+          // `apps/web/lib/ai/conversation-api-configuration.ts`.
+          if (payload.defaultAgent && payload.defaultAgent !== "claude") {
+            return true;
+          }
           const userSetting = (payload.settings || []).find(
             (s) => s.providerType === "anthropic_compatible",
           );
@@ -4953,6 +4963,21 @@
           });
         }
 
+        // The /api/llm/usage/summary route synthesizes `providerSince = epoch 0`
+        // for env-resolved runtimes (codex / opencode / hermes / openclaw)
+        // when no DB provider row exists, so the SQL filter still counts
+        // every historical native-agent row. We don't actually know when
+        // the env var was first set, so rendering "since Jan 1, 1970" is
+        // misleading — callers should suppress the "since" line in that
+        // case. Detected by the timestamp being at or before the year
+        // 2000 sentinel; anything ≤ that boundary is treated as the
+        // placeholder.
+        function isEpochSentinel(iso) {
+          if (!iso) return false;
+          const t = new Date(iso).getTime();
+          return Number.isFinite(t) && t <= 946684800000; // 2000-01-01 UTC
+        }
+
         function buildUsageTitle(data) {
           if (!data) {
             return "Cumulative native-agent token usage since provider was configured";
@@ -4980,12 +5005,14 @@
               `Provider: ${cp.providerType}${cp.model ? " · " + cp.model : ""}`,
             );
           }
-          if (data.providerSince) {
+          if (data.providerSince && !isEpochSentinel(data.providerSince)) {
             lines.push(
               `since ${formatSinceShort(data.providerSince)} · last ${
                 data.lastRunAt ? formatSinceShort(data.lastRunAt) : "—"
               }`,
             );
+          } else if (data.lastRunAt) {
+            lines.push(`last ${formatSinceShort(data.lastRunAt)}`);
           }
           lines.push(
             "Only counts /api/native/agent calls whose provider reports usage",
@@ -5002,17 +5029,24 @@
           strip.title = buildUsageTitle(usageSummary);
           switch (state) {
             case "unconfigured":
-              // The .usage-label span already shows "TOKENS". Here we
-              // write the chip's *value* only — never re-prefix the label
-              // or the card renders "TOKENS TOKENS …".
+              // Actionable: user has no runtime + no DB provider. Keep
+              // the chip visible as a CTA to open AI settings.
               value.textContent = "No LLM provider";
               meta.textContent = "";
+              strip.style.display = "";
               break;
             case "no-usage":
+              // Configured (DB row or env-resolved runtime) but no
+              // recorded runs yet. The chip carries no signal — hide it
+              // entirely until the first native-agent call lands. The
+              // meta line is still computed for the title tooltip.
               value.textContent = "0";
-              meta.textContent = usageSummary?.providerSince
-                ? `since ${formatSinceShort(usageSummary.providerSince)}`
-                : "";
+              meta.textContent =
+                usageSummary?.providerSince &&
+                !isEpochSentinel(usageSummary.providerSince)
+                  ? `since ${formatSinceShort(usageSummary.providerSince)}`
+                  : "";
+              strip.style.display = "none";
               break;
             case "has-usage":
               value.textContent = formatTokenCount(
@@ -5023,14 +5057,17 @@
                   ? "last " + formatRelativeShort(usageSummary.lastRunAt)
                   : "—"
               }`;
+              strip.style.display = "";
               break;
             case "error":
               value.textContent = "--";
               meta.textContent = "stats unavailable";
+              strip.style.display = "";
               break;
             default:
               value.textContent = "—";
               meta.textContent = "loading…";
+              strip.style.display = "";
           }
         }
 
