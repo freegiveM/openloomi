@@ -23,13 +23,9 @@ Pick the channel that matches your situation:
 /plugin marketplace add melandlabs/openloomi
 /plugin install openloomi
 
-# After marketplace publish
-/plugin install openloomi
-
 # Hacking on the plugin itself (local source after clone opneloomi GitHub repo)
-/plugin marketplace add .
-/plugin install openloomi
-# or: claude --plugin-dir plugins/claude
+git clone https://github.com/melandlabs/openloomi.git
+claude --plugin-dir openloomi/plugins/claude
 ```
 
 Inside the running session `/openloomi:help` lists all 8 commands.

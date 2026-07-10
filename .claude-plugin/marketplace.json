@@ -1,0 +1,37 @@
+{
+  "name": "openloomi",
+  "owner": {
+    "name": "OpenLoomi",
+    "email": "developers@melandlabs.ai"
+  },
+  "metadata": {
+    "description": "OpenLoomi local-first runtime — plugins for Claude Code and Codex",
+    "version": "0.7.2",
+    "homepage": "https://openloomi.ai",
+    "repository": "https://github.com/melandlabs/openloomi",
+    "license": "Apache-2.0"
+  },
+  "plugins": [
+    {
+      "name": "openloomi",
+      "source": "./plugins/claude",
+      "description": "Connect Claude Code to your local OpenLoomi runtime. Sync ANTHROPIC_API_KEY, mirror lifecycle onto the Loomi Pet, auto-archive Stop events into OpenLoomi memory.",
+      "version": "0.7.1",
+      "author": {
+        "name": "OpenLoomi"
+      },
+      "homepage": "https://openloomi.ai",
+      "repository": "https://github.com/melandlabs/openloomi/tree/main/plugins/claude",
+      "license": "Apache-2.0",
+      "keywords": [
+        "openloomi",
+        "memory",
+        "pet",
+        "anthropic",
+        "claude-code",
+        "local-first",
+        "loops"
+      ]
+    }
+  ]
+}
