@@ -1,8 +1,13 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "loomi-pet",
-  "description": "Capability for the Loomi pet + auxiliary windows — minimal surface",
-  "windows": ["loomi-pet", "loomi-bubble", "loomi-card", "loomi-dev"],
+  "description": "Capability for the Loomi pet + auxiliary windows \u2014 minimal surface",
+  "windows": [
+    "loomi-pet",
+    "loomi-bubble",
+    "loomi-card",
+    "loomi-dev"
+  ],
   "permissions": [
     "core:default",
     "core:event:default",
@@ -20,5 +25,11 @@
     "allow-emit-dev-state",
     "allow-get-pet-config",
     "allow-set-active-theme"
-  ]
+  ],
+  "remote": {
+    "urls": [
+      "http://localhost:*/*",
+      "http://127.0.0.1:*/*"
+    ]
+  }
 }
