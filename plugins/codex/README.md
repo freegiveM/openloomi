@@ -313,8 +313,8 @@ render each step:
   "setup": "ready",
   "steps": [
     { "step": "status_check", "ok": true, "reason": "INSTALL_REQUIRED" },
-    { "step": "install",      "ok": true },
-    { "step": "runtime_env",  "ok": true, "after": "codex" },
+    { "step": "install", "ok": true },
+    { "step": "runtime_env", "ok": true, "after": "codex" },
     { "step": "launch_desktop", "ok": true },
     { "step": "initialize-session", "ok": true, "tokenWritten": true },
     { "step": "status_check", "ok": true, "reason": "READY" }
