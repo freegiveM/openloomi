@@ -47,6 +47,7 @@ const COMMANDS = new Set([
   "install-openloomi",
   "install-instructions",
   "run",
+  "set-codex-runtime-env",
   "setup",
   "setup-status",
   "version",
@@ -1743,6 +1744,122 @@ async function requestGuestToken(baseUrl) {
     };
   }
 
+  // Prefer /api/remote-auth/guest first: this is the OpenLoomi runtime
+  // endpoint that registers a brand-new guest account in the local DB
+  // and returns a JSON bearer token in one round-trip. It mirrors the
+  // Claude plugin's cmdGuestLogin behavior so that "guest login" means
+  // the same thing across plugins. We only fall through to the legacy
+  // cookie-based path below when this endpoint is genuinely unavailable
+  // (HTTP 404 / network error before any response); transient HTTP
+  // failures or empty payloads are reported but still fall through,
+  // since the cookie path is the documented fallback for older builds.
+  const remoteAuth = await requestRemoteAuthGuestToken(baseUrl);
+  if (remoteAuth?.token) {
+    return remoteAuth;
+  }
+
+  // Fallback: legacy cookie flow (POST /api/auth/guest -> Set-Cookie,
+  // then GET /api/auth/token with that cookie). Preserved verbatim.
+  const cookie = await requestGuestTokenViaCookie(baseUrl);
+  if (cookie?.token) {
+    return cookie;
+  }
+
+  // Neither path yielded a token. Surface the more informative failure:
+  // if the remote-auth endpoint was reachable but rejected/errored, its
+  // reason is more diagnostic than the cookie-side one.
+  if (remoteAuth && remoteAuth.reason) {
+    return remoteAuth;
+  }
+  return (
+    cookie || {
+      baseUrl,
+      reason: "API_UNREACHABLE",
+    }
+  );
+}
+
+// POST /api/remote-auth/guest -> { token, user? } bearer flow.
+// Returns { baseUrl, status, reason, token?, path? }.
+async function requestRemoteAuthGuestToken(baseUrl) {
+  try {
+    const res = await fetchWithTimeout(
+      `${baseUrl}/api/remote-auth/guest`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({}),
+      },
+      SESSION_API_TIMEOUT_MS,
+    );
+
+    if (res.status === 404) {
+      // Endpoint simply not present on this OpenLoomi build -> let the
+      // caller try the cookie fallback instead of failing outright.
+      return {
+        baseUrl,
+        status: res.status,
+        reason: "REMOTE_AUTH_GUEST_MISSING",
+        path: "remote-auth-guest",
+      };
+    }
+
+    const text = await res.text().catch(() => "");
+    let payload = null;
+    try {
+      payload = text ? JSON.parse(text) : null;
+    } catch {
+      payload = { raw: text };
+    }
+
+    if (!res.ok) {
+      return {
+        baseUrl,
+        status: res.status,
+        reason: `REMOTE_AUTH_GUEST_HTTP_${res.status}`,
+        error: payload,
+        path: "remote-auth-guest",
+      };
+    }
+
+    const token = payload && typeof payload.token === "string"
+      ? payload.token.trim()
+      : "";
+    if (!token) {
+      return {
+        baseUrl,
+        status: res.status,
+        reason: "REMOTE_AUTH_GUEST_NO_TOKEN",
+        response: payload,
+        path: "remote-auth-guest",
+      };
+    }
+
+    return {
+      baseUrl,
+      status: res.status,
+      token,
+      reason: "REMOTE_AUTH_GUEST_OK",
+      path: "remote-auth-guest",
+    };
+  } catch (error) {
+    return {
+      baseUrl,
+      reason:
+        error && error.name === "AbortError" ? "API_TIMEOUT" : "API_UNREACHABLE",
+      path: "remote-auth-guest",
+    };
+  }
+}
+
+// Legacy cookie flow: POST /api/auth/guest -> Set-Cookie,
+// then GET /api/auth token with that cookie. Behavior identical to the
+// previous implementation of requestGuestToken; extracted verbatim so
+// that the new dispatch above remains easy to read.
+async function requestGuestTokenViaCookie(baseUrl) {
   try {
     const guestResponse = await fetchWithTimeout(
       `${baseUrl}/api/auth/guest?redirectUrl=/`,
@@ -1761,6 +1878,7 @@ async function requestGuestToken(baseUrl) {
         baseUrl,
         status: guestResponse.status,
         reason: "SESSION_COOKIE_MISSING",
+        path: "auth-guest-cookie",
       };
     }
 
@@ -1780,6 +1898,7 @@ async function requestGuestToken(baseUrl) {
         baseUrl,
         status: tokenResponse.status,
         reason: "TOKEN_REQUEST_FAILED",
+        path: "auth-guest-cookie",
       };
     }
 
@@ -1790,6 +1909,7 @@ async function requestGuestToken(baseUrl) {
         baseUrl,
         status: tokenResponse.status,
         reason: "TOKEN_MISSING",
+        path: "auth-guest-cookie",
       };
     }
 
@@ -1798,11 +1918,13 @@ async function requestGuestToken(baseUrl) {
       status: tokenResponse.status,
       token: payload.token,
       reason: "TOKEN_CREATED",
+      path: "auth-guest-cookie",
     };
   } catch (error) {
     return {
       baseUrl,
       reason: error?.name === "AbortError" ? "API_TIMEOUT" : "API_UNREACHABLE",
+      path: "auth-guest-cookie",
     };
   }
 }
@@ -2165,12 +2287,45 @@ function codexRuntimeInfo() {
       "Switch the OpenLoomi desktop app agent runtime from the built-in Claude runtime to the Codex CLI.",
     envProviderKey: CODEX_RUNTIME_INFO_KEY,
     switch: {
-      oneOff:
-        "export OPENLOOMI_AGENT_PROVIDER=codex\nopen /Applications/openloomi.app",
-      permanent:
-        "echo 'export OPENLOOMI_AGENT_PROVIDER=codex' >> ~/.zshrc",
+      // On macOS the desktop app's web server runs inside the GUI session
+      // and inherits its env from launchd, not from the shell that
+      // launched the .app. `export` in your terminal therefore cannot
+      // reach the running web server; you need `launchctl setenv` (and
+      // a full Quit + reopen of OpenLoomi.app so the new env reaches
+      // the freshly forked web process). On Linux a per-user env file
+      // works after the desktop session next evaluates it; on Windows
+      // the user must edit the system environment dialog.
+      //
+      // `set-codex-runtime-env` automates the GUI-session env for
+      // macOS and Linux so the next codex prompt doesn't keep getting
+      // intercepted by the Anthropic-key CTA. Always exit + reopen
+      // OpenLoomi after running it.
+      oneOff: {
+        darwin: [
+          "launchctl setenv OPENLOOMI_AGENT_PROVIDER codex",
+          "open /Applications/openloomi.app",
+        ].join("\n"),
+        linux: [
+          "systemctl --user import-environment OPENLOOMI_AGENT_PROVIDER=codex",
+          "( next desktop session reads it; restart OpenLoomi now )",
+        ].join("\n"),
+        win32:
+          "setx OPENLOOMI_AGENT_PROVIDER codex  (then restart OpenLoomi)",
+      },
+      permanent: {
+        darwin: [
+          "echo 'export OPENLOOMI_AGENT_PROVIDER=codex' >> ~/.zshrc",
+          "add a LaunchAgent plist that re-applies launchctl setenv on every",
+          "login, or run set-codex-runtime-env after each login",
+        ].join("\n"),
+        linux: [
+          "echo 'OPENLOOMI_AGENT_PROVIDER=codex' >> ~/.config/environment.d/openloomi-codex.conf",
+        ].join("\n"),
+        win32:
+          "Add OPENLOOMI_AGENT_PROVIDER=codex to User environment variables via System Settings.",
+      },
       notes:
-        "Set the variable in the same shell that opens the app so it reaches the Tauri-launched web server. Restart the app after exporting.",
+        "macOS GUI apps inherit env from launchd — `export` in a terminal does NOT reach the OpenLoomi web server. Use `launchctl setenv OPENLOOMI_AGENT_PROVIDER codex` (handled by `set-codex-runtime-env`) and then Quit + reopen OpenLoomi.app so the new env is inherited by the freshly forked web process.",
     },
     prerequisites: CODEX_RUNTIME_PREREQUISITES,
     companionEnvVars: CODEX_RUNTIME_COMPANION_ENV_VARS,
@@ -2195,6 +2350,253 @@ function codexRuntimeInfo() {
       version: BRIDGE_VERSION,
     },
   });
+}
+
+// ---------------------------------------------------------------------------
+// set-codex-runtime-env
+//
+// Persist `OPENLOOMI_AGENT_PROVIDER=<value>` into the host environment the
+// OpenLoomi web server (Tauri-launched) will actually inherit, not just the
+// shell that ran this command.
+//
+// Why this exists:
+//   On macOS the desktop app's web server runs inside the GUI launchd
+//   session, which does NOT inherit `export FOO=bar` from a terminal.
+//   Setting it from a shell works for `openloomi-ctl` and the bridge but
+//   `GET /api/native/providers` from the web server still reports
+//   `defaultAgent: "claude"`, so the conversation setup CTA keeps asking
+//   for an Anthropic-compatible provider. The fix is `launchctl setenv`
+//   in the GUI domain followed by a Quit + reopen of OpenLoomi.app.
+//
+// Behavior:
+//   • darwin: `launchctl setenv OPENLOOMI_AGENT_PROVIDER <value>` and
+//     confirm with `launchctl getenv` after.
+//   • linux: write to `~/.config/environment.d/openloomi-codex.conf`. The
+//     desktop session must pick this up on next login; a running session
+//     does not see the change unless the user re-logs in or runs
+//     `systemctl --user import-environment OPENLOOMI_AGENT_PROVIDER=codex`.
+//   • win32: emit the equivalent system-env instructions; the bridge
+//     never modifies the Windows registry directly.
+//
+// Flags:
+//   <value>      default "codex"
+//   --unset      clear the variable instead of setting it
+//   --dry-run    describe what would happen without doing it
+// ---------------------------------------------------------------------------
+const RUNTIME_ENV_KEY = "OPENLOOMI_AGENT_PROVIDER";
+const LINUX_ENV_DIR = ".config/environment.d";
+const LINUX_ENV_FILE = "openloomi-codex.conf";
+
+function parseSetRuntimeEnvFlags(args) {
+  const out = { value: "codex", unset: false, dryRun: false };
+  for (const arg of args) {
+    if (arg === "--unset") out.unset = true;
+    else if (arg === "--dry-run") out.dryRun = true;
+    else if (!arg.startsWith("--") && out.value === "codex") out.value = arg;
+  }
+  return out;
+}
+
+function runCapture(command, args, { timeoutMs = 5000 } = {}) {
+  return new Promise((resolve) => {
+    const child = spawn(command, args, {
+      shell: process.platform === "win32",
+      windowsHide: true,
+    });
+    let stdout = "";
+    let stderr = "";
+    const timer = setTimeout(() => {
+      try { child.kill("SIGKILL"); } catch {}
+    }, timeoutMs);
+    child.stdout.on("data", (c) => { stdout += c.toString("utf8"); });
+    child.stderr.on("data", (c) => { stderr += c.toString("utf8"); });
+    child.on("error", (error) => {
+      clearTimeout(timer);
+      resolve({ exitCode: null, signal: null, stdout, stderr, error: error.message });
+    });
+    child.on("close", (exitCode, signal) => {
+      clearTimeout(timer);
+      resolve({ exitCode, signal, stdout, stderr, error: null });
+    });
+  });
+}
+
+async function setCodexRuntimeEnv(args) {
+  const flags = parseSetRuntimeEnvFlags(args || []);
+  const key = RUNTIME_ENV_KEY;
+  const value = flags.unset ? null : flags.value;
+
+  // Read current GUI/host value to report before/after. We deliberately
+  // use shell helpers rather than `import fs` because the bridge keeps
+  // its dependency surface tight and a one-shot read is good enough.
+  const beforeProbe = await probeRuntimeEnvValue(key);
+  const beforeValue = beforeProbe.value;
+
+  const plan = planRuntimeEnvChange({ platform: process.platform, key, value, flags });
+
+  if (flags.dryRun) {
+    return writeJson({
+      ok: true,
+      dryRun: true,
+      platform: process.platform,
+      key,
+      value,
+      before: beforeValue,
+      actions: plan.actions,
+      notes: plan.notes,
+      requiresRestart: plan.requiresRestart,
+      commands: plan.commands,
+    });
+  }
+
+  const executed = [];
+  for (const action of plan.actions) {
+    const r = await runCapture(action.command, action.args);
+    executed.push({
+      command: [action.command, ...action.args].join(" "),
+      exitCode: r.exitCode,
+      stderr: (r.stderr || "").trim() || null,
+    });
+    if (r.exitCode !== 0) {
+      return writeJson({
+        ok: false,
+        platform: process.platform,
+        key,
+        value,
+        before: beforeValue,
+        error: {
+          stage: action.label,
+          exitCode: r.exitCode,
+          stderr: (r.stderr || "").trim() || null,
+        },
+        actions: executed,
+        notes: plan.notes,
+        commands: plan.commands,
+      }, 1);
+    }
+  }
+
+  // Re-read after the change so the caller can confirm it landed.
+  const afterProbe = await probeRuntimeEnvValue(key);
+  const afterValue = afterProbe.value;
+
+  return writeJson({
+    ok: true,
+    platform: process.platform,
+    key,
+    value,
+    before: beforeValue,
+    after: afterValue,
+    actions: executed,
+    notes: plan.notes,
+    requiresRestart: plan.requiresRestart,
+    commands: plan.commands,
+    manualSteps: plan.manualSteps || [],
+  });
+}
+
+async function probeRuntimeEnvValue(key) {
+  if (process.platform === "darwin") {
+    const r = await runCapture("launchctl", ["getenv", key]);
+    if (r.exitCode === 0) {
+      return { value: r.stdout.trim() || null, source: "launchd-gui" };
+    }
+    return { value: null, source: null };
+  }
+  if (process.platform === "linux") {
+    const file = path.join(expandHome(`~/${LINUX_ENV_DIR}`), LINUX_ENV_FILE);
+    const cat = await runCapture("/bin/sh", [
+      "-c",
+      `[ -f "${file}" ] && grep -E "^${key}=" "${file}" | head -n1 || true`,
+    ]);
+    const raw = (cat.stdout || "").trim();
+    if (!raw) return { value: null, source: null };
+    const eq = raw.indexOf("=");
+    if (eq < 0) return { value: null, source: null };
+    return {
+      value: raw.slice(eq + 1).trim() || null,
+      source: `${LINUX_ENV_DIR}/${LINUX_ENV_FILE}`,
+    };
+  }
+  if (process.platform === "win32") {
+    // `setx` writes to HKCU\Environment, but reading the live value
+    // requires either `reg query` or `$Env:`. Bridge doesn't shell out
+    // for it because the win32 path is dry-run/messages-only by design.
+    return { value: process.env[key] || null, source: "process.env" };
+  }
+  return { value: null, source: null };
+}
+
+function planRuntimeEnvChange({ platform, key, value, flags }) {
+  const actions = [];
+  const commands = [];
+  const notes = [];
+  const requiresRestart = true;
+
+  if (platform === "darwin") {
+    const args = flags.unset
+      ? ["unsetenv", key]
+      : ["setenv", key, value];
+    actions.push({
+      label: flags.unset ? "launchctl unsetenv" : "launchctl setenv",
+      command: "launchctl",
+      args,
+    });
+    commands.push(`launchctl ${flags.unset ? "unsetenv" : "setenv"} ${key}${value ? " " + value : ""}`);
+    notes.push(
+      flags.unset
+        ? "Cleared OPENLOOMI_AGENT_PROVIDER from the GUI launchd domain."
+        : "Set OPENLOOMI_AGENT_PROVIDER in the GUI launchd domain.",
+    );
+    return {
+      actions,
+      commands,
+      notes,
+      requiresRestart,
+    };
+  }
+
+  if (platform === "linux") {
+    const dir = `~/${LINUX_ENV_DIR}`;
+    const file = path.join(expandHome(dir), LINUX_ENV_FILE);
+    if (flags.unset) {
+      actions.push({ label: "rm env file", command: "rm", args: ["-f", file] });
+      commands.push(`rm -f ${dir}/${LINUX_ENV_FILE}`);
+      notes.push("Removed the per-user env file. A re-login is required for the desktop session to drop the variable.");
+      return { actions, commands, notes, requiresRestart };
+    }
+    actions.push({
+      label: "write env file",
+      command: "/bin/sh",
+      args: ["-c", `mkdir -p '${dir}' && printf '%s\n' '${key}=${value}' > '${dir}/${LINUX_ENV_FILE}'`],
+    });
+    commands.push(`printf '%s\n' '${key}=${value}' >> ${dir}/${LINUX_ENV_FILE}`);
+    notes.push(
+      "Wrote the per-user env file. Run `systemctl --user import-environment " + key + "` (or re-login) so the current desktop session picks it up.",
+    );
+    return { actions, commands, notes, requiresRestart };
+  }
+
+  if (platform === "win32") {
+    notes.push(
+      "Windows is not automated: edit the user environment via System Settings → Environment Variables, then restart OpenLoomi.",
+    );
+    commands.push(`setx ${key} ${value || ""}`);
+    return {
+      actions,
+      commands,
+      notes,
+      requiresRestart,
+      manualSteps: [
+        "Open System Settings → System → About → Advanced system settings → Environment Variables.",
+        `Under "User variables", add (or update) ${key} with value ${value || "<empty for unset>"}.`,
+        "Click OK, then Quit + reopen OpenLoomi.",
+      ],
+    };
+  }
+
+  notes.push(`Unsupported platform: ${platform}. Set ${key} manually.`);
+  return { actions, commands, notes, requiresRestart };
 }
 
 // Run another bridge subcommand as a child process and capture the JSON it
@@ -3420,6 +3822,9 @@ async function main() {
       break;
     case "run":
       await run();
+      break;
+    case "set-codex-runtime-env":
+      await setCodexRuntimeEnv(process.argv.slice(3));
       break;
     case "setup":
       await setup(process.argv.slice(3));

@@ -328,21 +328,42 @@ user confirmation.
 
 By default the packaged desktop app routes chat and agent requests through the
 Claude provider. To run the same desktop binary against the local Codex CLI
-instead, export `OPENLOOMI_AGENT_PROVIDER=codex` in the shell that launches
-the app and then open it from the same shell so the variable is inherited by
-the Tauri-launched web server:
+instead, set `OPENLOOMI_AGENT_PROVIDER=codex` in the environment the desktop
+app actually inherits.
+
+> **macOS caveat:** the desktop app's web server runs inside the GUI launchd
+> session, not your terminal. `export FOO=bar` in a terminal does **not**
+> reach the running web server. After setting the variable you must Quit and
+> reopen `OpenLoomi.app` so the new env is inherited by the freshly forked
+> web process. On Linux a per-user env file works after the next login, and
+> on Windows you edit the user environment via System Settings.
 
 ```bash
-export OPENLOOMI_AGENT_PROVIDER=codex
-open /Applications/openloomi.app
+node plugins/codex/scripts/loomi-bridge.mjs set-codex-runtime-env codex
+# macOS: writes via launchctl setenv.
+# Linux: writes ~/.config/environment.d/openloomi-codex.conf.
+# Windows: prints manual steps (System Settings → Environment Variables).
+
+# Then quit and reopen OpenLoomi so the new env reaches the web server.
 ```
 
-For a permanent switch, put the export in your shell rc (`~/.zshrc`,
-`~/.bashrc`):
+Flags accepted by `set-codex-runtime-env`:
+
+- `<value>` — defaults to `codex` (other supported values: `claude`,
+  `opencode`, `hermes`, `openclaw`).
+- `--unset` — clear `OPENLOOMI_AGENT_PROVIDER` from the host environment.
+- `--dry-run` — describe what would happen without performing the write.
+
+For a permanent shell-side switch on macOS or Linux, you can additionally
+append the export to your shell rc so future shells remember it:
 
 ```bash
 echo 'export OPENLOOMI_AGENT_PROVIDER=codex' >> ~/.zshrc
 ```
+
+The shell export helps the bridge itself and `openloomi-ctl`; the
+`set-codex-runtime-env` step is what makes the GUI launchd domain and the
+desktop session pick the variable up.
 
 Optional companion variables (all read by `apps/web`'s native-agent env
 resolver at startup):
@@ -367,9 +388,10 @@ Prerequisites that must hold before the desktop app will actually drive Codex:
 
 Verification after launch: the desktop app's `GET /api/native/providers`
 should return `codex` inside `agents` and `defaultAgent: "codex"`. If you
-still see `defaultAgent: "claude"`, the env var did not reach the web server
-— relaunch the app from a shell that has the export set, or check that the
-launcher script is not stripping the environment.
+still see `defaultAgent: "claude"` after running `set-codex-runtime-env` and
+reopening the app, the env change did not stick — re-run
+`launchctl getenv OPENLOOMI_AGENT_PROVIDER` in a terminal to confirm the
+GUI session actually has it.
 
 ### Surface the switch from inside Codex
 
@@ -384,12 +406,29 @@ node "$SKILL_DIR/../../scripts/loomi-bridge.mjs" codex-runtime-info
 The bridge returns:
 
 - `envProviderKey` (`OPENLOOMI_AGENT_PROVIDER`)
-- `switch.oneOff` and `switch.permanent` — ready-to-run shell snippets
+- `switch.oneOff` and `switch.permanent` — ready-to-run shell snippets, with
+  the macOS caveat that the snippet is `launchctl setenv …` rather than
+  `export …`
 - `prerequisites` — Codex CLI binary, `~/.codex/config.toml`, `OPENAI_API_KEY`
 - `companionEnvVars[]` — `OPENLOOMI_AGENT_CODEX_*` variables with their defaults
 - `verify.endpoint` / `verify.expectDefaultAgent` — the `GET /api/native/providers` contract
 - `defaults.currentDefaultProvider` — echoes the active `OPENLOOMI_AGENT_PROVIDER` so the model can spot a missing export before suggesting commands
 - `defaults.codexCliOnPath` — best-effort PATH probe for the `codex` binary
+
+The companion command that performs the GUI-session env write is
+`set-codex-runtime-env`:
+
+```bash
+node "$SKILL_DIR/../../scripts/loomi-bridge.mjs" set-codex-runtime-env codex
+# Clear it later:
+node "$SKILL_DIR/../../scripts/loomi-bridge.mjs" set-codex-runtime-env --unset
+# Plan only, do not write:
+node "$SKILL_DIR/../../scripts/loomi-bridge.mjs" set-codex-runtime-env --dry-run
+```
+
+After running `set-codex-runtime-env`, Quit and reopen `OpenLoomi.app` so the
+new env actually reaches the freshly forked web process — the env only
+applies to GUI processes launched **after** `launchctl setenv` (on macOS).
 
 ### Missing Install
 
@@ -511,6 +550,23 @@ installed, the bridge may initialize a guest/session token through the local
 OpenLoomi API and write the standard `~/.openloomi/token` file. If the local API
 is not reachable, the bridge may launch OpenLoomi and ask the user to let
 OpenLoomi initialize its guest session.
+
+The bridge attempts two guest endpoints, in order:
+
+1. `POST /api/remote-auth/guest` — the JSON bearer flow. This is the same
+   endpoint the Claude plugin calls and the one that registers a fresh guest
+   account in the OpenLoomi runtime's local database before returning a
+   bearer. Prefer this when the running OpenLoomi build exposes it.
+2. `POST /api/auth/guest?redirectUrl=/` followed by `GET /api/auth/token`
+   using the `Set-Cookie` header — the legacy cookie-based flow kept for
+   older OpenLoomi builds that don't ship the JSON endpoint. The bridge
+   falls back to this path only when the JSON endpoint returns 404 or is
+   unreachable before any response, so a transient 5xx or empty payload on
+   the JSON path still tries the cookie path before giving up.
+
+Both paths produce the same outcome from the bridge's perspective: a token
+written to `~/.openloomi/token`, masked out of logs and stderr, and
+reportable via `setup-status` as `session.tokenPresent: true`.
 
 AI provider readiness should respect both environment variables and
 OpenLoomi-owned UI/runtime settings. When a token is available, the bridge may
@@ -682,6 +738,12 @@ The bridge may report key names and presence. It must not print values.
 The bridge may receive a guest/session token from the local OpenLoomi API only
 to write the standard `~/.openloomi/token` file. It must keep the token out of
 argv, stdout, stderr, logs, and the Codex transcript.
+
+Which token-bearing endpoint the bridge ends up calling is implementation
+detail — both `POST /api/remote-auth/guest` and the cookie-based
+`POST /api/auth/guest` + `GET /api/auth/token` flow end up writing the same
+`~/.openloomi/token` file. From outside, the bridge exposes only that a
+guest/session token was obtained, not which path produced it.
 
 ## One-Shot Execution
 
