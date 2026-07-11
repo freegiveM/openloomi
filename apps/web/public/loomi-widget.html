@@ -544,8 +544,15 @@
             };
             img.onerror = function () {
               // If a state has no asset (e.g. demo-only ones not bundled),
-              // fall back to idle so we never paint a broken image icon.
-              fox.src = FALLBACK;
+              // fall back to this theme's idle so we never paint a broken
+              // image icon — staying within the active theme instead of
+              // clobbering it with the default fox sprite.
+              const theme = BUILTIN_THEMES[currentTheme];
+              if (theme && theme.states.idle) {
+                fox.src = theme.baseDir + theme.states.idle;
+              } else {
+                fox.src = FALLBACK;
+              }
               fox.style.opacity = "";
             };
             img.src = src;
