@@ -247,6 +247,126 @@ configuration.
 The cached plugin lives at
 `~/.codex/plugins/cache/openloomi/openloomi/<version>`.
 
+## Auto-Enable & First-Use Setup
+
+Once the plugin is installed via the marketplace, it is **enabled
+automatically**. The plugin's primary skill (`openloomi`) and its companion
+sub-skills (`openloomi-install`, `openloomi-loop`, `openloomi-memory`,
+`openloomi-connectors`, `openloomi-handoff`, `openloomi-api`,
+`openloomi-feature-guide`) are picked up from
+`plugins/codex/.codex-plugin/plugin.json` → `skills` on the next Codex
+start. No additional registration step is required — opening any new Codex
+thread and mentioning `@OpenLoomi` (or any of the trigger phrases listed in
+the skill front-matter) is enough to route into the bridge.
+
+After enablement, the plugin can also drive itself through first-use setup
+end-to-end. From a fresh shell, run:
+
+```bash
+node plugins/codex/scripts/loomi-bridge.mjs setup
+```
+
+From a Codex thread, ask:
+
+```text
+@OpenLoomi Run first-use setup.
+```
+
+The `setup` command is an auto-enable wizard that walks a small state
+machine in one invocation:
+
+```text
+1. status_check      -> read setup-status
+2. install           -> download + install OpenLoomi from the official
+                        GitHub release (only when --yes/--confirm is set)
+3. runtime_env       -> write OPENLOOMI_AGENT_PROVIDER=codex to the host
+                        GUI launchd / environment.d / registry
+4. launch_desktop    -> open OpenLoomi Desktop and wait for the local API
+                        to come up (configurable via --max-wait)
+5. initialize-session -> mint a guest/session token via the local API
+                        and write ~/.openloomi/token
+6. status_check      -> final readiness check
+```
+
+The wizard stops early at any step that requires explicit user action:
+
+- **Install** requires `--yes` (or `--confirm`). Without it, the wizard
+  returns `setup: "awaiting_user_action"` with
+  `reason: "INSTALL_CONFIRMATION_REQUIRED"` and a clear message — it will
+  never download OpenLoomi silently. Per the non-goals, the wizard never
+  installs from unofficial artifacts or non-default paths.
+- **AI provider configuration is never auto-run.** Secret entry must
+  happen in OpenLoomi-owned UI or interactive CLI surfaces. After the
+  wizard finishes, `status.aiProviderConfigured` may still be `false`; in
+  that case follow the `configure-ai-provider` guidance from the
+  `openloomi-install` sub-skill.
+- **Source checkout (`SOURCE_FOUND_CLI_NOT_BUILT`)** stops the wizard
+  with `nextAction: "build_or_stage_openloomi_ctl"`. The plugin never
+  builds OpenLoomi from source automatically.
+
+The wizard returns structured JSON so Codex (or any other caller) can
+render each step:
+
+```json
+{
+  "ok": true,
+  "setup": "ready",
+  "steps": [
+    { "step": "status_check", "ok": true, "reason": "INSTALL_REQUIRED" },
+    { "step": "install",      "ok": true },
+    { "step": "runtime_env",  "ok": true, "after": "codex" },
+    { "step": "launch_desktop", "ok": true },
+    { "step": "initialize-session", "ok": true, "tokenWritten": true },
+    { "step": "status_check", "ok": true, "reason": "READY" }
+  ],
+  "status": {
+    "installed": true,
+    "ctlPath": "/Applications/OpenLoomi.app/Contents/MacOS/openloomi-ctl",
+    "tokenPresent": true,
+    "aiProviderConfigured": false,
+    "ready": true,
+    "nextAction": "configure_ai_provider"
+  },
+  "message": "OpenLoomi is ready and the desktop app is wired to Codex."
+}
+```
+
+Flags accepted by `setup`:
+
+- `--yes` / `--confirm` — authorize the install step when OpenLoomi is
+  missing. Without this flag the wizard is read-only.
+- `--max-wait <ms>` — how long to wait for the local API after launching
+  the desktop app (default `30000`).
+- `--non-interactive` — fail fast instead of waiting for the local API;
+  useful in CI.
+
+Typical first-use run from a Codex prompt:
+
+```text
+@OpenLoomi Run first-use setup with --yes so the install step can proceed.
+```
+
+That single call enables the plugin, walks the full state machine, writes
+`~/.openloomi/token`, and leaves the plugin ready for `run`, `handoff`,
+`memory`, `loop`, and `connector` workflows in the same thread.
+
+### Re-running setup
+
+`setup` is idempotent. Re-run it any time to:
+
+- recover from `SESSION_INITIALIZATION_REQUIRED`;
+- re-apply `OPENLOOMI_AGENT_PROVIDER=codex` after a Codex upgrade wiped
+  the launchd env;
+- re-mint a guest/session token after deleting `~/.openloomi/token`;
+- confirm that all steps still resolve to `READY` after an OpenLoomi
+  Desktop upgrade.
+
+The wizard has a hard ceiling of 8 chained transitions per invocation, so
+looping is bounded. If it cannot reach `READY`, the final JSON reports
+the blocking `reason` and `nextAction` and the user can drive the
+remaining step manually (typically `configure-ai-provider` or
+`open_openloomi`).
+
 ## Plugin Package Layout
 
 The plugin implementation lives under this module:
