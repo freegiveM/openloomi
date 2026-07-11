@@ -4863,9 +4863,19 @@
           }
           usageFetchInflight = true;
           try {
+            // `credentials: "omit"` because the card webview runs at
+            // `tauri://localhost` and the Next.js session cookies are
+            // `SameSite=Lax` scoped to the `http://localhost:3414` jar.
+            // Including them on the cross-origin fetch triggers a WKWebView
+            // cookie-policy rejection that throws inside the webview, which
+            // used to leave the TOKENS chip stuck on "loading…". The server
+            // already resolves the active user from the dual-auth chain
+            // (file-storage session fallback, then provider-context synthesis
+            // for env-resolved codex/opencode/hermes/openclaw runtimes), so
+            // the response stays meaningful without the cookie.
             const res = await fetch(
               `${window.__OPENLOOMI_API__ || ""}/api/llm/usage/summary`,
-              { credentials: "include" },
+              { credentials: "omit" },
             );
             // 401 → keep the strip in "loading" so we don't claim
             // "unconfigured" for a logged-out user; the next event will retry.
@@ -4884,10 +4894,19 @@
             }
             usageSummary = data;
             renderUsageStrip({ state: deriveUsageState(data) });
-          } catch (_) {
-            // Network failure — leave the chip in its current state so
-            // it doesn't blink. We don't have an "offline" signal here,
-            // and the next refresh trigger will retry.
+          } catch (error) {
+            // Network/CORS failure — log so the cause is visible in the
+            // webview devtools, and stop the chip getting stuck on
+            // "loading…" forever. If we already have a successful summary
+            // cached, keep showing it (don't blink to "error"); otherwise
+            // fall back to the "no-usage" sentinel, which the renderer
+            // turns into a hidden strip — better than a permanent spinner.
+            console.warn("[loomi-card] usage summary fetch failed:", error);
+            if (usageSummary && usageSummary.configured) {
+              renderUsageStrip({ state: deriveUsageState(usageSummary) });
+            } else {
+              renderUsageStrip({ state: "no-usage" });
+            }
           } finally {
             usageFetchInflight = false;
             if (usageFetchQueued) {
