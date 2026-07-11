@@ -111,15 +111,45 @@ if (!fs.existsSync(scriptsDest)) {
 }
 
 console.log("Checking public directory...");
+const publicSrc = path.join(webDir, "public");
 const publicDest = path.join(standaloneDir, "apps/web/public");
-if (!fs.existsSync(publicDest)) {
-  const publicSrc = path.join(webDir, "public");
+const loomiPetDest = path.join(publicDest, "loomi-pet");
+const foxIdleDest = path.join(loomiPetDest, "assets/fox/loomi-idle.png");
+const capybaraIdleDest = path.join(
+  loomiPetDest,
+  "assets/capybara/capybara-idle.png",
+);
+
+const publicMissing =
+  !fs.existsSync(publicDest) || !fs.existsSync(loomiPetDest);
+const missingAssets = [];
+if (!fs.existsSync(foxIdleDest)) missingAssets.push("fox/loomi-idle.png");
+if (!fs.existsSync(capybaraIdleDest))
+  missingAssets.push("capybara/capybara-idle.png");
+const themesIncomplete = missingAssets.length > 0;
+
+if (publicMissing || themesIncomplete) {
   if (fs.existsSync(publicSrc)) {
+    // Hard-rebuild the entire public dir so a previous partial copy
+    // (e.g. fix-standalone-pnpm.js racing the build) can never leave
+    // us with the loomi-pet/ tree but no sprites in it.
+    fs.rmSync(publicDest, { recursive: true, force: true });
     copyDir(publicSrc, publicDest);
-    console.log("  public directory copied");
+    if (themesIncomplete) {
+      console.log(
+        `  public directory rebuilt — missing themes: ${missingAssets.join(", ")}`,
+      );
+    } else {
+      console.log("  public directory copied (loomi-pet was missing)");
+    }
+  } else {
+    console.error(
+      "  public directory missing and no source found at",
+      publicSrc,
+    );
   }
 } else {
-  console.log("  public directory exists");
+  console.log("  public directory OK (capybara + fox sprites present)");
 }
 
 const findDirs = (dir, pattern) => {
