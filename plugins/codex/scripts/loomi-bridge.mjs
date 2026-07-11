@@ -46,6 +46,7 @@ const COMMANDS = new Set([
   "initialize-session",
   "install-openloomi",
   "install-instructions",
+  "pet",
   "run",
   "set-codex-runtime-env",
   "setup",
@@ -53,6 +54,24 @@ const COMMANDS = new Set([
   "version",
   "workflow-guidance",
 ]);
+
+// Shared 9-state sprite vocabulary used by both the Claude plugin
+// (`cmdPet` in plugins/claude/scripts/loomi-bridge.mjs) and the Codex
+// plugin. The desktop runtime's /api/pet/state endpoint accepts any of
+// these strings and ignores anything else with a 400.
+const CAPYBARA_STATES = new Set([
+  "happy",
+  "idle",
+  "juggling",
+  "needsinput",
+  "presenting",
+  "sleeping",
+  "sweeping",
+  "thinking",
+  "working",
+]);
+const CAPYBARA_STATES_LIST = [...CAPYBARA_STATES];
+const PET_HTTP_TIMEOUT_MS = 2000;
 
 const WORKFLOW_GUIDANCE = [
   {
@@ -162,10 +181,80 @@ async function setupStatus() {
   writeJson(await buildSetupStatus());
 }
 
+async function getCodexRuntimeEnvStatus() {
+  const probe = await probeRuntimeEnvValue(RUNTIME_ENV_KEY);
+  const value = probe.value;
+  const set = value === "codex";
+  // Writing the launchd/environment.d value only affects processes started
+  // *after* the write. The currently running OpenLoomi GUI (if any) will not
+  // see the change until Quit + reopen. We surface that here so callers can
+  // tell the user to restart.
+  return {
+    set,
+    value,
+    source: probe.source,
+    key: RUNTIME_ENV_KEY,
+    requiresRestart: !set && value !== null, // changed away from codex → must restart GUI to clear
+  };
+}
+
+// Lightweight, unconditional reachability probe. Hits the runtime's
+// guest endpoint (the same one `initialize-session` will mint through)
+// and treats any HTTP response — including 4xx — as "the daemon is
+// listening". Used by `buildSetupStatus` to populate `apiProbe` and
+// `apiReachable` independently of whether a session token is present.
+//
+// Result shape (consumed by tests/bridge.test.mjs):
+//   {
+//     reachableUrl: <first URL that answered> | null,
+//     attempts: [
+//       { baseUrl, reason: 'HTTP_RESPONSE' | 'TIMEOUT' | 'NETWORK_ERROR', status?, error? }
+//     ]
+//   }
+async function probeApiReachable() {
+  const urls = getLocalApiBaseUrls();
+  const attempts = [];
+
+  for (const baseUrl of urls) {
+    try {
+      const res = await fetch(`${baseUrl}/api/remote-auth/guest`, {
+        method: "POST",
+        signal: AbortSignal.timeout(1500),
+        headers: { "content-type": "application/json" },
+        body: "{}",
+      });
+      attempts.push({
+        baseUrl,
+        reason: "HTTP_RESPONSE",
+        status: res.status,
+      });
+      return {
+        reachableUrl: baseUrl,
+        attempts,
+      };
+    } catch (e) {
+      const isAbort =
+        e && (e.name === "AbortError" || e.name === "TimeoutError");
+      attempts.push({
+        baseUrl,
+        reason: isAbort ? "TIMEOUT" : "NETWORK_ERROR",
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
+
+  return {
+    reachableUrl: null,
+    attempts,
+  };
+}
+
 async function buildSetupStatus() {
   const discovery = await discoverOpenLoomi();
   const token = getTokenStatus();
   const aiProvider = await getAiProviderStatus(token);
+  const codexRuntimeEnv = await getCodexRuntimeEnvStatus();
+  const apiProbe = await probeApiReachable();
 
   const baseStatus = {
     mode: discovery.mode,
@@ -176,7 +265,18 @@ async function buildSetupStatus() {
     aiProviderConfigured: aiProvider.configured,
     aiProviderStatus: aiProvider.status,
     connectorStatusAvailable: false,
-    apiReachable: false,
+    apiReachable: Boolean(apiProbe.reachableUrl),
+    apiProbe: {
+      reachableUrl: apiProbe.reachableUrl,
+      attempts: apiProbe.attempts,
+    },
+    codexRuntimeEnvSet: codexRuntimeEnv.set,
+    codexRuntimeEnv: {
+      key: codexRuntimeEnv.key,
+      value: codexRuntimeEnv.value,
+      source: codexRuntimeEnv.source,
+      requiresRestart: codexRuntimeEnv.requiresRestart,
+    },
     session: {
       tokenPresent: token.present,
       guestBootstrapSupported: true,
@@ -195,12 +295,19 @@ async function buildSetupStatus() {
       aiProvider: aiProvider.checked,
       aiProviderRuntime: aiProvider.runtime,
       discovery: discovery.checked,
+      codexRuntimeEnv: {
+        key: codexRuntimeEnv.key,
+        present: codexRuntimeEnv.set,
+        value: codexRuntimeEnv.value,
+        source: codexRuntimeEnv.source,
+      },
+      apiProbe: apiProbe.attempts,
     },
   };
 
   return {
     ...baseStatus,
-    ...getReadinessDecision(discovery, token, aiProvider),
+    ...getReadinessDecision(discovery, token, aiProvider, codexRuntimeEnv, apiProbe),
   };
 }
 
@@ -1972,10 +2079,25 @@ function summarizeSessionAttempt(result) {
 }
 
 function getLocalApiBaseUrls() {
-  const configured = normalizeLocalApiUrl(process.env.OPENLOOMI_API_URL);
+  // Resolve API URLs in priority order:
+  //   1. OPENLOOMI_API_URL — explicit override (canonical)
+  //   2. OPENLOOMI_BASE_URL — same explicit override, used by
+  //      `apiGET/apiPOST/apiPUT` and by the integration tests'
+  //      `withFakeHome` helper.
+  //   3. Loopback defaults (3414 / 3515) as a last-resort discovery aid
+  //      for callers that didn't pin anything.
+  //
+  // When an explicit URL is set (1 or 2), we use ONLY that URL. This
+  // matches the test contract: callers that pin a closed port
+  // (e.g. http://127.0.0.1:1) expect "unreachable" to be reported,
+  // not "reachable because some Next.js dev server happens to be
+  // answering 429s on localhost:3414".
+  const apiUrl = normalizeLocalApiUrl(process.env.OPENLOOMI_API_URL);
+  if (apiUrl) return [apiUrl];
+  const baseUrl = normalizeLocalApiUrl(process.env.OPENLOOMI_BASE_URL);
+  if (baseUrl) return [baseUrl];
 
   return unique([
-    configured,
     "http://localhost:3414",
     "http://127.0.0.1:3414",
     "http://localhost:3515",
@@ -2045,6 +2167,157 @@ function launchOpenLoomiForSession(ctlPath) {
       ...debugPath("appPath", appPath),
     };
   }
+}
+
+// Walk up from a ctlPath looking for the enclosing `.app` bundle on
+// macOS. ctlPath typically lives at
+//   /Applications/OpenLoomi.app/Contents/Resources/cli/openloomi-ctl
+// so we walk up parent directories until we find one whose name ends
+// with `.app`. Returns null if no .app ancestor is found (e.g. a source
+// checkout).
+function findMacAppBundleForCtl(ctlPath) {
+  if (!ctlPath) return null;
+  let current = path.dirname(path.resolve(ctlPath));
+  for (let index = 0; index < 8 && current && current !== path.dirname(current); index += 1) {
+    if (current.endsWith(".app") && isDirectory(current)) {
+      return current;
+    }
+    current = path.dirname(current);
+  }
+  return null;
+}
+
+// Programmatically launches the OpenLoomi desktop app so the local HTTP
+// API comes up. This is what unblocks `waitForApi` and the auto-login
+// step in the setup state machine. We do NOT touch the GUI (no
+// AppleScript, no keystrokes); the app starts in its normal state and
+// we just poll for the API.
+//
+// Per-platform:
+//   macOS   -> `open -a <bundle>`
+//   Linux   -> `gtk-launch <desktopId>` (best-effort), then direct spawn fallback
+//   Windows -> `cmd /c start "" <exe>`
+async function launchDesktopApp({ ctlPath, desktopMarker } = {}) {
+  // Resolve launch target. On macOS, ctlPath typically lives at
+  //   <Foo.app>/Contents/Resources/cli/openloomi-ctl
+  // so we walk up to the .app boundary. The default helper
+  // findOpenLoomiAppForCtl() only finds executables — it never returns
+  // the .app bundle itself — so without this fallback we'd be stuck on
+  // every installed macOS user.
+  let appPath = desktopMarker || null;
+  if (!appPath && process.platform === "darwin" && ctlPath) {
+    appPath = findMacAppBundleForCtl(ctlPath);
+  }
+  if (!appPath) {
+    appPath = findOpenLoomiAppForCtl(ctlPath);
+  }
+
+  if (!appPath) {
+    return {
+      ok: false,
+      code: "NO_LAUNCH_TARGET",
+      message: "No OpenLoomi app path or ctlPath to launch.",
+    };
+  }
+
+  const platformName = process.platform;
+  let cmd;
+  let args;
+  let via;
+
+  if (platformName === "darwin") {
+    cmd = "open";
+    args = ["-a", appPath];
+    via = "open -a";
+  } else if (platformName === "win32") {
+    cmd = "cmd";
+    args = ["/c", "start", '""', appPath];
+    via = "cmd /c start";
+  } else {
+    // Linux: try gtk-launch first (a .desktop file shipped by the app
+    // bundle, if any), then fall back to spawning the binary directly.
+    cmd = "gtk-launch";
+    args = ["openloomi"];
+    via = "gtk-launch openloomi";
+  }
+
+  return await new Promise((resolve) => {
+    let stderr = "";
+    let child;
+    try {
+      child = spawn(cmd, args, {
+        stdio: ["ignore", "ignore", "pipe"],
+        detached: true,
+      });
+      child.unref();
+    } catch (e) {
+      resolve({
+        ok: false,
+        code: "SPAWN_FAILED",
+        via,
+        message: e instanceof Error ? e.message : String(e),
+        ...debugPath("appPath", appPath),
+      });
+      return;
+    }
+
+    child.stderr?.on("data", (b) => {
+      stderr += b.toString("utf8");
+    });
+
+    // `open -a` returns synchronously after handing the bundle to
+    // launchd, so we treat the lack of an immediate spawn error as
+    // "launched" and let `waitForApi` confirm the API actually came up.
+    resolve({
+      ok: true,
+      code: "LAUNCHED",
+      via,
+      ...debugPath("appPath", appPath),
+      stderr: stderr.trim() || null,
+    });
+  });
+}
+
+// Polls the local OpenLoomi HTTP API until it answers 2xx/3xx/4xx (any
+// real HTTP response — the route being 404 still means the daemon is up)
+// or the deadline expires. Used by setup() after launching the desktop
+// app to confirm the helper process laid down its listener.
+async function waitForApi({ timeoutMs = 30_000, pollMs = 1000 } = {}) {
+  const startedAt = Date.now();
+  const urls = getLocalApiBaseUrls();
+  const deadline = startedAt + timeoutMs;
+  let lastError = null;
+
+  while (Date.now() < deadline) {
+    for (const baseUrl of urls) {
+      try {
+        const res = await fetch(`${baseUrl}/api/health`, {
+          signal: AbortSignal.timeout(1500),
+        });
+        // Any HTTP response means the daemon is listening. We don't
+        // require a specific status — the runtime may not yet expose
+        // /api/health on every build, so 404 here still counts.
+        return {
+          ok: true,
+          baseUrl,
+          status: res.status,
+          elapsedMs: Date.now() - startedAt,
+          url: `${baseUrl}/api/health`,
+        };
+      } catch (e) {
+        lastError = e instanceof Error ? e.message : String(e);
+      }
+    }
+    await sleep(pollMs);
+  }
+
+  return {
+    ok: false,
+    code: "API_NOT_READY",
+    elapsedMs: Date.now() - startedAt,
+    attempted: urls.map((u) => `${u}/api/health`),
+    lastError,
+  };
 }
 
 function findOpenLoomiAppForCtl(ctlPath) {
@@ -2281,48 +2554,60 @@ function resolveCurrentDefaultProvider(env = process.env) {
 
 function codexRuntimeInfo() {
   const currentDefaultProvider = resolveCurrentDefaultProvider();
+  const platform = process.platform;
+
+  // Per-platform snippets. The current-platform string is promoted to
+  // the top-level `switch.oneOff` / `switch.permanent` fields so most
+  // callers can copy-paste a single ready-to-run snippet. The full
+  // breakdown stays available under `switch.perPlatform` for callers
+  // that need to render a multi-platform table.
+  const oneOffByPlatform = {
+    darwin: [
+      // `export OPENLOOMI_AGENT_PROVIDER=codex` reaches the shell but
+      // not the GUI web server. `launchctl setenv` does. We print both
+      // so a reader understands which one actually takes effect, and
+      // so callers can grep for `OPENLOOMI_AGENT_PROVIDER=codex` to
+      // confirm the env name + value pair is documented.
+      "export OPENLOOMI_AGENT_PROVIDER=codex",
+      "launchctl setenv OPENLOOMI_AGENT_PROVIDER codex",
+      "open /Applications/openloomi.app",
+    ].join("\n"),
+    linux: [
+      "export OPENLOOMI_AGENT_PROVIDER=codex",
+      "systemctl --user import-environment OPENLOOMI_AGENT_PROVIDER=codex",
+      "( next desktop session reads it; restart OpenLoomi now )",
+    ].join("\n"),
+    win32:
+      "setx OPENLOOMI_AGENT_PROVIDER codex  (then restart OpenLoomi)",
+  };
+  const permanentByPlatform = {
+    darwin: [
+      "echo 'export OPENLOOMI_AGENT_PROVIDER=codex' >> ~/.zshrc",
+      "add a LaunchAgent plist that re-applies launchctl setenv on every",
+      "login, or run set-codex-runtime-env after each login",
+    ].join("\n"),
+    linux: [
+      "echo 'OPENLOOMI_AGENT_PROVIDER=codex' >> ~/.config/environment.d/openloomi-codex.conf",
+    ].join("\n"),
+    win32:
+      "Add OPENLOOMI_AGENT_PROVIDER=codex to User environment variables via System Settings.",
+  };
 
   writeJson({
     purpose:
       "Switch the OpenLoomi desktop app agent runtime from the built-in Claude runtime to the Codex CLI.",
     envProviderKey: CODEX_RUNTIME_INFO_KEY,
+    platform,
     switch: {
-      // On macOS the desktop app's web server runs inside the GUI session
-      // and inherits its env from launchd, not from the shell that
-      // launched the .app. `export` in your terminal therefore cannot
-      // reach the running web server; you need `launchctl setenv` (and
-      // a full Quit + reopen of OpenLoomi.app so the new env reaches
-      // the freshly forked web process). On Linux a per-user env file
-      // works after the desktop session next evaluates it; on Windows
-      // the user must edit the system environment dialog.
-      //
-      // `set-codex-runtime-env` automates the GUI-session env for
-      // macOS and Linux so the next codex prompt doesn't keep getting
-      // intercepted by the Anthropic-key CTA. Always exit + reopen
-      // OpenLoomi after running it.
-      oneOff: {
-        darwin: [
-          "launchctl setenv OPENLOOMI_AGENT_PROVIDER codex",
-          "open /Applications/openloomi.app",
-        ].join("\n"),
-        linux: [
-          "systemctl --user import-environment OPENLOOMI_AGENT_PROVIDER=codex",
-          "( next desktop session reads it; restart OpenLoomi now )",
-        ].join("\n"),
-        win32:
-          "setx OPENLOOMI_AGENT_PROVIDER codex  (then restart OpenLoomi)",
-      },
-      permanent: {
-        darwin: [
-          "echo 'export OPENLOOMI_AGENT_PROVIDER=codex' >> ~/.zshrc",
-          "add a LaunchAgent plist that re-applies launchctl setenv on every",
-          "login, or run set-codex-runtime-env after each login",
-        ].join("\n"),
-        linux: [
-          "echo 'OPENLOOMI_AGENT_PROVIDER=codex' >> ~/.config/environment.d/openloomi-codex.conf",
-        ].join("\n"),
-        win32:
-          "Add OPENLOOMI_AGENT_PROVIDER=codex to User environment variables via System Settings.",
+      // Current-platform snippets — kept as strings so most callers
+      // can copy-paste directly. Field name is unchanged; type just
+      // narrows from `object` to `string`.
+      oneOff: oneOffByPlatform[platform] || oneOffByPlatform.darwin,
+      permanent:
+        permanentByPlatform[platform] || permanentByPlatform.darwin,
+      perPlatform: {
+        oneOff: oneOffByPlatform,
+        permanent: permanentByPlatform,
       },
       notes:
         "macOS GUI apps inherit env from launchd — `export` in a terminal does NOT reach the OpenLoomi web server. Use `launchctl setenv OPENLOOMI_AGENT_PROVIDER codex` (handled by `set-codex-runtime-env`) and then Quit + reopen OpenLoomi.app so the new env is inherited by the freshly forked web process.",
@@ -2673,13 +2958,18 @@ function runBridgeSubcommand(args, { timeoutMs = 5 * 60 * 1000 } = {}) {
 
 async function setup(args) {
   // End-to-end wizard for Codex. Walks the state machine in one invocation:
-  //   install (only if --yes) -> initialize-session -> re-check status.
+  //   1. install (with --yes/--confirm)
+  //   2. set OPENLOOMI_AGENT_PROVIDER=codex in the GUI launchd/environment.d
+  //      so the OpenLoomi Desktop app routes its chat/agent through Codex
+  //   3. launch the OpenLoomi desktop app and wait for the local API
+  //   4. mint a guest/session token via the local API
+  //
   // We deliberately do NOT auto-configure the AI provider: secret entry
   // must happen in OpenLoomi-owned UI per the SKILL secrets contract.
   const flags = parseFlags(args);
   const yesFlag = !!flags.yes || !!flags.confirm;
   const maxWaitMs = Number(flags["max-wait"] || 30_000);
-  const maxSteps = 6; // hard ceiling on chained transitions
+  const maxSteps = 8; // hard ceiling on chained transitions
   const steps = [];
 
   const record = (name, ok, detail) => {
@@ -2689,19 +2979,28 @@ async function setup(args) {
   for (let i = 0; i < maxSteps; i += 1) {
     const status = await buildSetupStatus();
 
-    if (status.reason === "READY" || status.reason === "READY_SESSION_BOOTSTRAP_PENDING") {
-      record("status_check", true, { reason: status.reason });
+    // Final-readiness check. We treat BOTH READY and
+    // READY_SESSION_BOOTSTRAP_PENDING as success states because step 4
+    // (initialize-session) below will mint the token on the next loop
+    // iteration when we get there.
+    if (status.reason === "READY" && status.codexRuntimeEnvSet) {
+      record("status_check", true, {
+        reason: status.reason,
+        codexRuntimeEnvSet: true,
+      });
       writeJson({
         ok: true,
-        setup: status.reason === "READY" ? "ready" : "ready_session_bootstrap_pending",
+        setup: "ready",
         steps,
         status,
-        message:
-          status.reason === "READY"
-            ? "OpenLoomi is ready."
-            : "OpenLoomi is installed and the bridge will initialize a guest session on the next run.",
+        message: "OpenLoomi is ready and the desktop app is wired to Codex.",
       });
       return;
+    }
+
+    if (status.reason === "READY" && !status.codexRuntimeEnvSet) {
+      // Runtime is good but the GUI is still on Claude. Fall through to
+      // step 2 to set OPENLOOMI_AGENT_PROVIDER.
     }
 
     // 1. Install (only with explicit user approval via --yes / --confirm).
@@ -2737,7 +3036,7 @@ async function setup(args) {
           status,
           install: r.parsed,
           message:
-            (r.parsed && r.parsed.message) ||
+            (r.parsed?.message) ||
             "OpenLoomi installation did not complete. Follow the reported nextAction.",
         });
         return;
@@ -2745,14 +3044,109 @@ async function setup(args) {
       continue;
     }
 
-    // 2. Installed, no token yet -> ask the local OpenLoomi API to mint one.
+    // 2. Set OPENLOOMI_AGENT_PROVIDER=codex in the host GUI launchd /
+    //    environment.d / registry. On macOS the change only affects
+    //    processes started AFTER launchctl setenv, so we additionally
+    //    return runtime_env_set_pending_restart when we know the GUI is
+    //    already running.
+    if (status.installed && !status.codexRuntimeEnvSet) {
+      record("status_check", false, {
+        reason: status.reason,
+        codexRuntimeEnvSet: false,
+      });
+      const r = await runBridgeSubcommand(
+        ["set-codex-runtime-env", "codex"],
+        { timeoutMs: 10_000 },
+      );
+      const ok = r.ok && r.parsed && r.parsed.ok === true;
+      record("runtime_env", ok, {
+        code: r.code,
+        before: r.parsed && r.parsed.before,
+        after: r.parsed && r.parsed.after,
+        platform: r.parsed && r.parsed.platform,
+      });
+      if (!ok) {
+        writeJson({
+          ok: false,
+          setup: "runtime_env_failed",
+          steps,
+          status,
+          runtimeEnv: r.parsed,
+          message:
+            (r.parsed?.message) ||
+            "Failed to write OPENLOOMI_AGENT_PROVIDER=codex to the host environment. Follow the manual steps in codex-runtime-info.",
+        });
+        return;
+      }
+      // Even when the write succeeded, the GUI app already running
+      // didn't inherit the change. Surface that so the caller knows
+      // Quit+Reopen is still required.
+      writeJson({
+        ok: true,
+        setup: "runtime_env_set_pending_restart",
+        steps,
+        status,
+        runtimeEnv: r.parsed,
+        message:
+          "OPENLOOMI_AGENT_PROVIDER=codex is now set in the host environment, but the running OpenLoomi Desktop app must be Quit and reopened for the change to take effect.",
+      });
+      return;
+    }
+
+    // 3. Installed + runtime env set, but the desktop app is not yet
+    //    running (or the API isn't reachable). Launch the app and wait
+    //    for the local HTTP API to come up.
+    if (status.installed && !status.apiReachable) {
+      record("status_check", false, {
+        reason: status.reason,
+        apiReachable: false,
+      });
+      const launch = await launchDesktopApp({ ctlPath: status.ctlPath });
+      record("launch", !!launch.ok, {
+        code: launch.code,
+        via: launch.via,
+        appPath: launch.appPath,
+      });
+      if (!launch.ok) {
+        writeJson({
+          ok: false,
+          setup: "launch_failed",
+          steps,
+          status,
+          launch,
+          message:
+            launch.message ||
+            "Could not launch OpenLoomi Desktop. Open it manually once, then re-run setup.",
+        });
+        return;
+      }
+      const wait = await waitForApi({ timeoutMs: maxWaitMs });
+      record("wait_api", !!wait.ok, {
+        elapsedMs: wait.elapsedMs,
+        url: wait.url,
+        code: wait.code,
+      });
+      if (!wait.ok) {
+        writeJson({
+          ok: false,
+          setup: "api_not_ready",
+          steps,
+          status,
+          wait,
+          message:
+            "OpenLoomi was launched but the local HTTP API did not become reachable in time. Wait for the desktop app to finish loading, then re-run setup.",
+        });
+        return;
+      }
+      continue;
+    }
+
+    // 4. Installed, API reachable, no token yet -> ask the local OpenLoomi
+    //    API to mint a guest/session bearer.
     if (
       status.installed &&
-      !status.tokenPresent &&
-      (status.reason === "SESSION_INITIALIZATION_REQUIRED" ||
-        status.reason === "READY_SESSION_BOOTSTRAP_PENDING" ||
-        status.nextAction === "initialize_openloomi_session" ||
-        status.nextAction === "open_openloomi")
+      status.apiReachable &&
+      !status.tokenPresent
     ) {
       record("status_check", false, { reason: status.reason });
       const r = await runBridgeSubcommand(["initialize-session"], {
@@ -2781,7 +3175,7 @@ async function setup(args) {
       continue;
     }
 
-    // 3. No automatic transition matches. Surface a clear next step.
+    // 5. No automatic transition matches. Surface a clear next step.
     //    The realistic stops here are:
     //      - AI_PROVIDER_REQUIRED -> walk the user through OpenLoomi Desktop
     //        Settings. Do NOT auto-call configure-ai-provider with a key.
@@ -3215,7 +3609,13 @@ async function validateCtlPath(candidate, options) {
   };
 }
 
-function getReadinessDecision(discovery, token, aiProvider) {
+function getReadinessDecision(discovery, token, aiProvider, codexRuntimeEnv, apiProbe) {
+  // codexRuntimeEnv is intentionally NOT a gate here: a missing
+  // OPENLOOMI_AGENT_PROVIDER only blocks the OpenLoomi GUI desktop from
+  // routing through Codex; the bridge itself can still drive openloomi-ctl.
+  // The setup state machine handles that branch separately.
+  void codexRuntimeEnv;
+
   if (discovery.status === "invalid") {
     return {
       ready: false,
@@ -3237,6 +3637,20 @@ function getReadinessDecision(discovery, token, aiProvider) {
       ready: false,
       nextAction: "install_openloomi",
       reason: "INSTALL_REQUIRED",
+    };
+  }
+
+  // The setup state machine has its own launch + wait_api step. When the
+  // API is unreachable and we don't yet have a token, surface that
+  // explicitly so callers know to either open the app or wait for setup
+  // to drive launchDesktopApp.
+  if (!token.present && apiProbe && !apiProbe.reachableUrl) {
+    return {
+      ready: false,
+      nextAction: "open_openloomi",
+      reason: "OPENLOOMI_API_UNREACHABLE",
+      message:
+        "OpenLoomi is installed but the local API is not reachable. Open OpenLoomi Desktop, or run `setup --yes` to install + launch + mint a guest session automatically.",
     };
   }
 
@@ -3786,6 +4200,128 @@ function readStdin() {
   });
 }
 
+// ---------------------------------------------------------------------------
+// pet <state>
+//
+// Mirrors `cmdPet` in plugins/claude/scripts/loomi-bridge.mjs. Validates
+// the requested state against the shared 9-state vocabulary and POSTs
+// {state, source} to /api/pet/state on the local OpenLoomi runtime with
+// the bearer token from ~/.openloomi/token. Returns structured failure
+// codes (MISSING_STATE / INVALID_STATE / TOKEN_MISSING /
+// ENDPOINT_MISSING / API_UNREACHABLE / PET_FAILED) and never throws.
+// ---------------------------------------------------------------------------
+async function petCommand(args) {
+  const state = args && args.length > 0 ? args[0] : null;
+
+  if (!state) {
+    return writeJson(
+      {
+        ok: false,
+        code: "MISSING_STATE",
+        message: "pet requires a state argument.",
+        validStates: CAPYBARA_STATES_LIST,
+      },
+      0,
+    );
+  }
+
+  if (!CAPYBARA_STATES.has(state)) {
+    return writeJson(
+      {
+        ok: false,
+        code: "INVALID_STATE",
+        message: `pet state '${state}' is not recognised.`,
+        received: state,
+        validStates: CAPYBARA_STATES_LIST,
+      },
+      0,
+    );
+  }
+
+  const tokenStatus = getTokenStatus();
+  const token = readOpenLoomiAuthToken(tokenStatus);
+  if (!token) {
+    return writeJson(
+      {
+        ok: false,
+        code: "TOKEN_MISSING",
+        message:
+          "OpenLoomi session token is missing. Run setup (or initialize-session) first so ~/.openloomi/token is populated, then retry pet.",
+        state,
+      },
+      0,
+    );
+  }
+
+  const baseUrl = getLocalApiBaseUrls()[0];
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), PET_HTTP_TIMEOUT_MS);
+
+  try {
+    const res = await fetch(`${baseUrl}/api/pet/state`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ state, source: "codex-plugin" }),
+      signal: ctrl.signal,
+    });
+
+    if (res.status === 404) {
+      return writeJson(
+        {
+          ok: false,
+          code: "ENDPOINT_MISSING",
+          message:
+            `OpenLoomi runtime does not yet expose POST /api/pet/state. Pending endpoint — would have set state to '${state}'.`,
+          state,
+        },
+        0,
+      );
+    }
+
+    const text = await res.text().catch(() => "");
+    let json = null;
+    try {
+      json = text ? JSON.parse(text) : null;
+    } catch {
+      json = { raw: text };
+    }
+
+    if (!res.ok) {
+      return writeJson(
+        {
+          ok: false,
+          code: "PET_FAILED",
+          state,
+          status: res.status,
+          response: json,
+        },
+        0,
+      );
+    }
+
+    return writeJson({ ok: true, state, response: json });
+  } catch (e) {
+    const isAbort = e && (e.name === "AbortError" || e.name === "TimeoutError");
+    return writeJson(
+      {
+        ok: false,
+        code: "API_UNREACHABLE",
+        message:
+          (e && (e.message || String(e))) ||
+          `Could not reach ${baseUrl}/api/pet/state.`,
+        state,
+      },
+      0,
+    );
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function main() {
   const command = process.argv[2] || "help";
 
@@ -3819,6 +4355,9 @@ async function main() {
       break;
     case "install-instructions":
       installInstructions();
+      break;
+    case "pet":
+      await petCommand(process.argv.slice(3));
       break;
     case "run":
       await run();

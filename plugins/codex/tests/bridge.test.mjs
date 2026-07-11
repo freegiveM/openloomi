@@ -21,7 +21,11 @@ import { tmpdir } from 'node:os';
 const PLUGIN_DIR = dirname(dirname(fileURLToPath(import.meta.url)));
 const BRIDGE = join(PLUGIN_DIR, 'scripts', 'loomi-bridge.mjs');
 
-function run(args, { env = {} } = {}) {
+// Accept env directly (positional) so callers can write `run(args, env)`
+// without wrapping it in `{ env }`. This matches the convention used
+// throughout the file (see `withFakeHome` → `runOutcome(... , env)` and
+// `runJson(args, env)`).
+function run(args, env = {}) {
   return execFileSync('node', [BRIDGE, ...args], {
     encoding: 'utf8',
     env: { ...process.env, ...env },
@@ -45,7 +49,7 @@ function runOutcome(args, env) {
 }
 
 function runJson(args, env) {
-  return JSON.parse(run(args, { env }));
+  return JSON.parse(run(args, env));
 }
 
 // Run a child command with HOME pointed at a fresh temp dir and PATH that
