@@ -1254,7 +1254,7 @@ async function cmdState(name, { event } = {}) {
   try {
     const res = await apiPOST(
       '/api/pet/state',
-      { state: name, source: 'claude-code-hook', event: event || null },
+      { state: name, source: 'claude-code-plugin', event: event || null },
       { timeoutMs: STATE_HTTP_TIMEOUT_MS }
     );
     if (res.status === 404) {
@@ -1359,8 +1359,10 @@ async function cmdArchive() {
     '/api/insights',
     {
       type: 'note',
+      title: `Claude Code session${payload.session_id ? ' ' + String(payload.session_id).slice(0, 8) : ''} (${new Date().toISOString().slice(0, 10)})`,
+      description: summaryText,
+      platform: 'claude-code',
       groups: ['claude-code'],
-      content: summaryText,
       sessionId: payload.session_id || null,
       source: 'claude-code-plugin-stop-hook',
       capturedAt: new Date().toISOString(),
