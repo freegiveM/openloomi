@@ -880,6 +880,37 @@
         color: var(--green-text);
         margin-top: 2px;
       }
+      /* Empty-state block for the noise layout — replaces the
+         fabricated "Trashed: newsletter@trythis.app" sample when
+         there is no mail source connected or no mail has actually
+         been swept. Fixes #312. */
+      .noise-empty {
+        padding: 12px 10px;
+        border: 1px dashed rgba(88, 101, 128, 0.24);
+        border-radius: 8px;
+        background: rgba(88, 101, 128, 0.04);
+        flex: 0 0 auto;
+      }
+      .noise-empty .noise-empty-title {
+        font-family: var(--font-display);
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--ink);
+        line-height: 1.25;
+      }
+      .noise-empty .noise-empty-sub {
+        font-family: var(--font-body);
+        font-size: 10px;
+        color: var(--muted);
+        line-height: 1.3;
+        margin-top: 4px;
+      }
+      .noise-empty .footer {
+        margin-top: 8px;
+      }
+      .noise-empty .footer button.primary {
+        width: 100%;
+      }
 
       /* ============================================================
          Layout: DECISION  (Forms 4/5/8 · todo / draft_reply /
@@ -1802,24 +1833,39 @@
           </button>
         </div>
         <div class="noise-title">Trashing the noise</div>
-        <div class="trash-message">
-          <span class="tag-trashed">▼ Trashed</span>
-          <span class="msg-from" id="noise-from">newsletter@trythis.app</span>
-          <span class="msg-subject" id="noise-subject"
-            >"Try this bundle — 50% off!"</span
-          >
+        <!-- Live "what was just trashed" block — only populated when
+             we have a real noise-reduction payload to render. When
+             empty / not applicable, renderNoise() hides this and
+             surfaces the honest empty-state block below instead.
+             Fixes #312 (no more fabricated newsletter samples). -->
+        <div class="noise-live" id="noise-live">
+          <div class="trash-message">
+            <span class="tag-trashed">▼ Trashed</span>
+            <span class="msg-from" id="noise-from">—</span>
+            <span class="msg-subject" id="noise-subject">—</span>
+          </div>
+          <div class="context-checks" id="context-checks">
+            <div class="context-pill">Not in contacts</div>
+            <div class="context-pill">Newsletter tag</div>
+            <div class="context-pill">No thread</div>
+            <div class="context-pill">Off-hours send</div>
+          </div>
         </div>
-        <div class="context-checks" id="context-checks">
-          <div class="context-pill">Not in contacts</div>
-          <div class="context-pill">Newsletter tag</div>
-          <div class="context-pill">No thread</div>
-          <div class="context-pill">Off-hours send</div>
+        <!-- Empty state — shown when there's no mail source connected
+             (cold install) or when no mail has actually been swept
+             (idle inbox). The footer CTA only renders for the
+             "no source" branch; for the "clean inbox" branch the
+             user already has a connector and just needs reassurance. -->
+        <div class="noise-empty" id="noise-empty" hidden>
+          <div class="noise-empty-title" id="noise-empty-title"></div>
+          <div class="noise-empty-sub" id="noise-empty-sub"></div>
+          <div class="footer" id="noise-empty-footer"></div>
         </div>
         <div class="triage-log">
-          <div class="log-title" id="triage-log-title">
-            12 sent to trash today
+          <div class="log-title" id="triage-log-title">—</div>
+          <div class="log-sub" id="triage-log-sub">
+            Urgent noise still wakes you · lane kept
           </div>
-          <div class="log-sub">Urgent noise still wakes you · lane kept</div>
         </div>
       </section>
 
@@ -2761,32 +2807,98 @@
         }
 
         // ---------- Noise layout (Form 3) ----------
+        // Identify mail-source connectors. The noise card is only
+        // meaningful when at least one of these is connected — without
+        // a mail source, "Trashing the noise" is a lie. Mirrors the
+        // `d.source === "gmail"` checks elsewhere in the card.
+        const MAIL_CONNECTOR_HINTS = [
+          "gmail",
+          "outlook",
+          "mail",
+          "inbox",
+          "imap",
+          "fastmail",
+          "protonmail",
+        ];
+        function isMailConnector(c) {
+          if (!c || !c.connected) return false;
+          const hay = ((c.id || "") + " " + (c.label || "")).toLowerCase();
+          return MAIL_CONNECTOR_HINTS.some((hint) => hay.includes(hint));
+        }
         function renderNoise() {
-          // Top dismissed item, if any, becomes the trashed message
-          // shown in the demo. Otherwise we show a representative
-          // newsletter.
-          const noiseSamples = [
-            {
-              from: "newsletter@trythis.app",
-              subject: "Try this bundle — 50% off!",
-            },
-            {
-              from: "digest@producthunt.com",
-              subject: "Today's top 5 launches",
-            },
-            {
-              from: "promo@stripe-news.com",
-              subject: "Webinar replay — payments 2026",
-            },
-          ];
-          const sample =
-            noiseSamples[
-              Math.floor((Date.now() / 60000) % noiseSamples.length)
-            ];
-          const fromEl = document.getElementById("noise-from");
-          const subEl = document.getElementById("noise-subject");
-          if (fromEl) fromEl.textContent = sample.from;
-          if (subEl) subEl.textContent = '"' + sample.subject + '"';
+          // Three honest states. The previous implementation always
+          // fell through to a fabricated newsletter sample (issue
+          // #312); we now distinguish cold-install (no mail source)
+          // from connected-but-quiet (no mail swept). A live "what I
+          // just trashed" block is reserved for the future case where
+          // a noise-reduction payload actually arrives — none of the
+          // data sources currently available to this card carry one,
+          // so today both branches show empty-state copy. The block
+          // is wired in markup so the live render is a one-line
+          // change when the payload lands.
+          const live = document.getElementById("noise-live");
+          const empty = document.getElementById("noise-empty");
+          const emptyTitle = document.getElementById("noise-empty-title");
+          const emptySub = document.getElementById("noise-empty-sub");
+          const emptyFooter = document.getElementById("noise-empty-footer");
+          const logTitle = document.getElementById("triage-log-title");
+          const logSub = document.getElementById("triage-log-sub");
+
+          const anyMail = connectors.some(isMailConnector);
+
+          // The live block is never populated today (no payload
+          // source), so we keep it hidden. Wipe the placeholder text
+          // so it can't ever leak through if it does get shown.
+          if (live) {
+            live.hidden = true;
+            const fromEl = document.getElementById("noise-from");
+            const subEl = document.getElementById("noise-subject");
+            if (fromEl) fromEl.textContent = "—";
+            if (subEl) subEl.textContent = "—";
+          }
+
+          if (!empty || !emptyTitle || !emptySub || !emptyFooter) return;
+
+          empty.hidden = false;
+          emptyFooter.innerHTML = "";
+
+          if (!anyMail) {
+            // Cold install: no mail source connected. Honest about
+            // why the noise card is empty, with a CTA into the
+            // connectors page (same destination as the wrap card's
+            // empty state, so the user lands somewhere useful).
+            emptyTitle.textContent =
+              "Nothing swept — I don't have eyes on your inbox yet.";
+            emptySub.textContent =
+              "Connect a mail source and I'll start catching the junk. " +
+              "Until then, this panel stays empty on purpose.";
+            const cta = document.createElement("button");
+            cta.className = "primary";
+            cta.type = "button";
+            cta.setAttribute("data-action", "guide-connect-more");
+            cta.textContent = "Add mail source";
+            emptyFooter.appendChild(cta);
+            if (logTitle) logTitle.textContent = "—";
+            if (logSub)
+              logSub.textContent =
+                "Connect a mail source to start the sweep.";
+            return;
+          }
+
+          // Connected mail source, but no real noise payload is
+          // available to the card (today, always). Reassure the
+          // user without fabricating data. The wording is in the
+          // pet's voice so the layout still feels alive.
+          emptyTitle.textContent =
+            "Broom's clean — no noise made it past me today.";
+          emptySub.textContent =
+            "Anything that looks like junk lands here as soon as I trash it. " +
+            "Right now nothing qualifies.";
+          // No CTA — the user already has the connector they need;
+          // a button would invent work that isn't there.
+          if (logTitle) logTitle.textContent = "0 sent to trash today";
+          if (logSub)
+            logSub.textContent = "Urgent noise still wakes you · lane kept";
         }
 
         // ---------- Decision layout (Forms 4/5/8) ----------
