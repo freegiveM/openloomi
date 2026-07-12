@@ -785,6 +785,67 @@
         color: var(--orange-text);
         text-align: right;
       }
+      /* Pipeline empty-state block. Shown when there is no connector
+         to pull signals from — the live indicator can't move, and
+         "Step 1 of 4 · see signal" reads as a frozen wizard (see
+         #311). This block replaces the steps + progress with an
+         honest CTA explaining the gap. */
+      .pipeline-empty {
+        padding: 14px 12px;
+        border: 1px dashed rgba(88, 101, 128, 0.24);
+        border-radius: 8px;
+        background: rgba(88, 101, 128, 0.04);
+        flex: 1 1 auto;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 6px;
+      }
+      .pipeline-empty .pipeline-empty-title {
+        font-family: var(--font-display);
+        font-size: 13px;
+        font-weight: 700;
+        color: var(--ink);
+        line-height: 1.25;
+      }
+      .pipeline-empty .pipeline-empty-sub {
+        font-family: var(--font-body);
+        font-size: 10px;
+        color: var(--muted);
+        line-height: 1.35;
+      }
+      .pipeline-empty .footer {
+        margin-top: 8px;
+      }
+      .pipeline-empty .footer button.primary {
+        width: 100%;
+      }
+      /* Steps become hoverable affordances — cursor + subtle border
+         lift signal that they're interactive, addressing the wizard
+         expectation in #311 ("Step 1 of 4") without making the
+         indicator pretend to be navigation. The description stays
+         one line (truncated with ellipsis when needed) so the card
+         never reflows on hover. */
+      .pipeline-step {
+        cursor: pointer;
+        transition:
+          border-color 120ms ease,
+          background 120ms ease;
+      }
+      .pipeline-step:hover {
+        border-color: rgba(88, 101, 128, 0.32);
+      }
+      .pipeline-step .step-desc {
+        display: -webkit-box;
+        -webkit-line-clamp: 1;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+      .pipeline-step.active .step-desc {
+        -webkit-line-clamp: unset;
+        display: block;
+        overflow: visible;
+      }
 
       /* ============================================================
          Layout: NOISE  (Form 3 · noise-reduction)
@@ -1768,11 +1829,18 @@
           </button>
         </div>
         <div class="pipeline-title">Judgment system</div>
+        <!-- Self-identifying subtitle — the original "see signal →
+             read state → triage → wait for approval" reads as a
+             sequence diagram, not a live view, and confuses fresh
+             users (#311). Now the panel names what it is up front. -->
         <div class="pipeline-sub">
-          see signal → read state → triage → wait for approval
+          Live view — updates as I process incoming signals.
         </div>
+        <!-- Live indicator. renderPipeline() drives both this block
+             and the empty-state block below; only one is visible at
+             a time. -->
         <div class="pipeline-steps" id="pipeline-steps">
-          <div class="pipeline-step active" data-step="1">
+          <div class="pipeline-step active" data-step="1" tabindex="0">
             <span class="num">01</span>
             <div>
               <strong class="step-title">See signal</strong>
@@ -1781,7 +1849,7 @@
               >
             </div>
           </div>
-          <div class="pipeline-step" data-step="2">
+          <div class="pipeline-step" data-step="2" tabindex="0">
             <span class="num">02</span>
             <div>
               <strong class="step-title">Read state</strong>
@@ -1790,7 +1858,7 @@
               >
             </div>
           </div>
-          <div class="pipeline-step" data-step="3">
+          <div class="pipeline-step" data-step="3" tabindex="0">
             <span class="num">03</span>
             <div>
               <strong class="step-title">Triage attention</strong>
@@ -1799,7 +1867,7 @@
               >
             </div>
           </div>
-          <div class="pipeline-step" data-step="4">
+          <div class="pipeline-step" data-step="4" tabindex="0">
             <span class="num">04</span>
             <div>
               <strong class="step-title">Wait for approval</strong>
@@ -1810,7 +1878,32 @@
           </div>
         </div>
         <div class="pipeline-progress" id="pipeline-progress">
-          Step 1 of 4 · see signal
+          Now: see signal
+        </div>
+        <!-- Empty-state block for the pipeline layout — shown when
+             no source is connected. Without signals the live
+             indicator sits on step 1 forever, which users read as a
+             broken wizard (#311). The CTA routes to the connectors
+             page so the next time the user opens the card the
+             indicator actually moves. -->
+        <div class="pipeline-empty" id="pipeline-empty" hidden>
+          <div class="pipeline-empty-title">
+            Connect a source and you'll see this pipeline run for real.
+          </div>
+          <div class="pipeline-empty-sub">
+            Right now there's nothing to watch — the indicator is stuck on "see
+            signal" because no events are arriving. Link a connector and the
+            lights will start moving.
+          </div>
+          <div class="footer" id="pipeline-empty-footer">
+            <button
+              class="primary"
+              data-action="guide-connect-more"
+              type="button"
+            >
+              Add a source
+            </button>
+          </div>
         </div>
       </section>
 
@@ -2769,9 +2862,19 @@
 
         // ---------- Pipeline layout (Form 2) ----------
         function renderPipeline() {
-          // Active step picks the pet state's hint if available. Without
-          // extra watcher context we default to step 1; the user can
-          // see the rest of the pipeline at a glance.
+          // Three honest states. The original implementation always
+          // landed on "Step 1 of 4 · see signal" — wizard vocabulary
+          // for what is actually a live indicator — and never moved
+          // when no signals were arriving. See #311.
+          const stepsEl = document.getElementById("pipeline-steps");
+          const progress = document.getElementById("pipeline-progress");
+          const empty = document.getElementById("pipeline-empty");
+          const emptyFooter = document.getElementById("pipeline-empty-footer");
+
+          const anyConnected = connectors.some((c) => c && c.connected);
+          // Map a pet state to whichever pipeline step it's currently
+          // working through. Kept from the original implementation;
+          // the difference is what we render around the highlight.
           const stepMap = {
             greet: 1,
             thinking: 1,
@@ -2780,30 +2883,61 @@
             juggling: 2,
             sweeping: 3,
             happy: 4,
-            // `presenting` is the post-completion handoff — the loop
-            // has reached the final step ("wait for approval" →
-            // "done"). Mapping it to step 4 keeps the pipeline
-            // indicator consistent with `happy` and `needsinput`.
             presenting: 4,
             idle: 1,
             sleeping: 1,
           };
-          const step = stepMap[state] || 1;
-          document
-            .querySelectorAll("#pipeline-steps .pipeline-step")
-            .forEach((el) => {
-              el.classList.toggle("active", Number(el.dataset.step) === step);
-            });
           const labels = [
             "see signal",
             "read state",
             "triage attention",
             "wait for approval",
           ];
-          const progress = document.getElementById("pipeline-progress");
-          if (progress)
-            progress.textContent =
-              "Step " + step + " of 4 · " + labels[step - 1];
+          const step = stepMap[state] || 1;
+          const isIdle =
+            state === "idle" || state === "sleeping" || state === "greet";
+
+          if (!anyConnected) {
+            // Cold install: nothing to watch. Hide the live block
+            // and surface the empty-state CTA instead so the panel
+            // never reads as a frozen wizard.
+            if (stepsEl) stepsEl.hidden = true;
+            if (progress) progress.hidden = true;
+            if (empty) empty.hidden = false;
+            // Keep the footer in place — the markup already wires the
+            // button to data-action="guide-connect-more".
+            void emptyFooter;
+            return;
+          }
+
+          // Connected. Show the live indicator.
+          if (stepsEl) stepsEl.hidden = false;
+          if (progress) progress.hidden = false;
+          if (empty) empty.hidden = true;
+
+          document
+            .querySelectorAll("#pipeline-steps .pipeline-step")
+            .forEach((el) => {
+              el.classList.toggle("active", Number(el.dataset.step) === step);
+            });
+
+          if (progress) {
+            if (isIdle) {
+              // Connected but quiet — the indicator would otherwise
+              // sit on step 1 forever and look like a stuck wizard.
+              // Use unmistakably live / idle vocabulary.
+              progress.textContent =
+                "No signals right now — the pipeline lights up when something arrives.";
+            } else {
+              // Active: live vocabulary ("Now: …") beats "Step N of
+              // 4" because the panel is a status indicator, not a
+              // navigation. The next step is still surfaced so the
+              // user knows what is queued.
+              const nextIdx = step < labels.length ? step : labels.length - 1;
+              progress.textContent =
+                "Now: " + labels[step - 1] + " · next: " + labels[nextIdx];
+            }
+          }
         }
 
         // ---------- Noise layout (Form 3) ----------
@@ -2880,8 +3014,7 @@
             emptyFooter.appendChild(cta);
             if (logTitle) logTitle.textContent = "—";
             if (logSub)
-              logSub.textContent =
-                "Connect a mail source to start the sweep.";
+              logSub.textContent = "Connect a mail source to start the sweep.";
             return;
           }
 
@@ -4923,12 +5056,12 @@
             // failed attempts we stop scheduling and wait for an
             // event-driven retry.
             const nextDelays = [1000, 3000, 8000];
-            const lastDelay =
-              aiConfigRetryDelay > 0 ? aiConfigRetryDelay : 0;
+            const lastDelay = aiConfigRetryDelay > 0 ? aiConfigRetryDelay : 0;
             const idx = nextDelays.indexOf(lastDelay);
-            const nextDelay = idx >= 0 && idx < nextDelays.length - 1
-              ? nextDelays[idx + 1]
-              : null;
+            const nextDelay =
+              idx >= 0 && idx < nextDelays.length - 1
+                ? nextDelays[idx + 1]
+                : null;
             if (nextDelay !== null) {
               scheduleAiConfigRetry(nextDelay);
             }
