@@ -2035,48 +2035,31 @@
             ×
           </button>
         </div>
-        <div class="wrap-title" id="wrap-title">
-          Today wrapped. Tomorrow staged.
-        </div>
-        <div class="wrap-sub" id="wrap-sub">
-          end of day · 4 done · 1 dismissed · 2 carried
-        </div>
-        <div class="review-columns" id="wrap-columns">
-          <div class="review-card">
-            <span class="pill green">DONE 4</span>
-            <div class="rc-body">
-              <strong>Resolved</strong>
-              <p>Mira · BigCo · PR #482 · RSVP Wed</p>
-            </div>
-          </div>
-          <div class="review-card">
-            <span class="pill">SKIP 1</span>
-            <div class="rc-body">
-              <strong>Dismissed</strong>
-              <p>Newsletter bundle (off-circle)</p>
-            </div>
-          </div>
-          <div class="review-card">
-            <span class="pill blue">CARRY 2</span>
-            <div class="rc-body">
-              <strong>Tomorrow</strong>
-              <p>Security review · Triage api-clients inbox</p>
-            </div>
-          </div>
-        </div>
+        <!-- The wrap layout intentionally ships with NO demo content as
+             the default DOM. Previously the static markup contained a
+             hardcoded evening wrap ("Today wrapped. Tomorrow staged." +
+             "4 done · 1 dismissed · 2 carried" + Mira / PR #482 /
+             Newsletter bundle / Security review / Triage api-clients),
+             which rendered for any user whose `decision.wrap_summary`
+             was missing — including fresh installs with zero activity.
+             On a quiet install that fabricated summary read like data
+             from another account. Everything below is filled in (or
+             hidden) by renderWrap() from real data; if JS fails to
+             run the card simply shows blank instead of inventing
+             activity. See issue #310. -->
+        <div class="wrap-title" id="wrap-title"></div>
+        <div class="wrap-sub" id="wrap-sub"></div>
+        <div class="review-columns" id="wrap-columns"></div>
         <div
           class="brief-narrative"
           id="wrap-narrative"
           style="display: none"
         ></div>
-        <div class="memory-ledger">
+        <div class="memory-ledger" id="wrap-ledger-block" style="display: none">
           <div class="memory-ledger-title">Tomorrow starts with</div>
-          <div class="ledger-rows" id="wrap-ledger">
-            <div class="ledger-row">Security review with Mira (10:00)</div>
-            <div class="ledger-row">Triage api-clients inbox</div>
-          </div>
+          <div class="ledger-rows" id="wrap-ledger"></div>
         </div>
-        <div class="footer single-col">
+        <div class="footer single-col" id="wrap-footer">
           <button class="primary" data-action="open" type="button">
             View details
           </button>
@@ -3762,17 +3745,97 @@
         }
 
         // ---------- Wrap layout (Form 7) ----------
+        // Renders the evening wrap card. Two principles:
+        //
+        //   1. Never fabricate activity. Counts default to 0 (never the
+        //      demo constants 4 / 1 / 2 that used to ship in this
+        //      function and in the static markup). The review columns
+        //      and the "Tomorrow starts with" ledger only render when
+        //      they have real data.
+        //
+        //   2. Distinguish "no connectors linked" (blindfolded) from
+        //      "connectors linked, nothing captured" (a quiet day). The
+        //      two deserve different copy and a different footer CTA —
+        //      the former turns the wrap into a real onboarding nudge
+        //      instead of an empty success screen. See issue #310.
         function renderWrap() {
           // Pull counts from a `wrap_summary` field on the decision if
-          // present, else from the recent done/dismissed buckets — we
-          // only have the pending list here, so we fall back to a
-          // reasonable demo summary.
+          // present, otherwise default to 0. `wrap_summary.carried` is
+          // authoritative when present; pendingList is only a soft
+          // hint when the backend hasn't published a count yet.
           const summary = decision?.wrap_summary;
-          const doneCount = summary?.done ?? 4;
-          const dismissedCount = summary?.dismissed ?? 1;
+          const doneCount = summary?.done ?? 0;
+          const dismissedCount = summary?.dismissed ?? 0;
           const carriedCount =
-            summary?.carried ?? Math.min(pendingList.length, 2);
+            summary?.carried ??
+            (pendingList.length ? Math.min(pendingList.length, 2) : 0);
+
           const sub = document.getElementById("wrap-sub");
+          const title = document.getElementById("wrap-title");
+          const columns = document.getElementById("wrap-columns");
+          const ledgerBlock = document.getElementById("wrap-ledger-block");
+          const ledger = document.getElementById("wrap-ledger");
+          const footer = document.getElementById("wrap-footer");
+
+          const isEmpty =
+            doneCount === 0 &&
+            dismissedCount === 0 &&
+            carriedCount === 0 &&
+            pendingList.length === 0;
+
+          // `connectors` is populated by refreshConnectors() / the
+          // `loop:connectors` event (see below). An empty array means
+          // we haven't fetched yet (or the user has nothing
+          // configured). Either way the right empty-state copy is the
+          // "I can't see anything yet" line — for a fresh install
+          // those states are observationally identical.
+          const anyConnected = connectors.some((c) => c && c.connected);
+
+          if (isEmpty) {
+            if (title) title.textContent = "Nothing to wrap tonight.";
+            if (sub)
+              sub.textContent = anyConnected
+                ? "A quiet day on my radar. Rest counts as progress."
+                : "End of day — but I can't see anything yet (no sources linked).";
+            if (columns) {
+              columns.style.display = "none";
+              columns.innerHTML = "";
+            }
+            if (ledgerBlock) ledgerBlock.style.display = "none";
+            if (ledger) ledger.innerHTML = "";
+
+            // Footer CTA: when nothing is connected, route the user to
+            // the connectors page so the next wrap has real data.
+            // Otherwise keep the dashboard link.
+            if (footer) {
+              footer.innerHTML = "";
+              if (!anyConnected) {
+                const cta = document.createElement("button");
+                cta.className = "primary";
+                cta.type = "button";
+                cta.setAttribute("data-action", "guide-connect-more");
+                cta.textContent = "Connect a source";
+                footer.appendChild(cta);
+              } else {
+                const cta = document.createElement("button");
+                cta.className = "primary";
+                cta.type = "button";
+                cta.setAttribute("data-action", "open");
+                cta.textContent = "View details";
+                footer.appendChild(cta);
+              }
+            }
+
+            renderNarrative("wrap-narrative", decision?.context?.narrative, {
+              generating: "Generating evening wrap…",
+            });
+            return;
+          }
+
+          // Non-empty: rebuild the title / sub / columns from real data
+          // only. Anything the backend doesn't carry is omitted rather
+          // than filled in with a placeholder.
+          if (title) title.textContent = "Today wrapped. Tomorrow staged.";
           if (sub)
             sub.textContent =
               "end of day · " +
@@ -3783,15 +3846,48 @@
               carriedCount +
               " carried";
 
-          renderNarrative("wrap-narrative", decision?.context?.narrative, {
-            generating: "Generating evening wrap…",
-          });
+          if (columns) {
+            columns.style.display = "";
+            columns.innerHTML = "";
+            if (doneCount > 0) {
+              columns.appendChild(
+                buildReviewCard(
+                  "DONE " + doneCount,
+                  "pill green",
+                  "Resolved",
+                  summary?.done_detail || "Closed out today.",
+                ),
+              );
+            }
+            if (dismissedCount > 0) {
+              columns.appendChild(
+                buildReviewCard(
+                  "SKIP " + dismissedCount,
+                  "pill",
+                  "Dismissed",
+                  summary?.dismissed_detail || "Skipped.",
+                ),
+              );
+            }
+            if (carriedCount > 0) {
+              columns.appendChild(
+                buildReviewCard(
+                  "CARRY " + carriedCount,
+                  "pill blue",
+                  "Tomorrow",
+                  summary?.carried_detail || "Carrying over.",
+                ),
+              );
+            }
+          }
 
-          // Optional: pre-render the carried rows from pendingList when
-          // we have them, otherwise keep the static demo copy.
-          const ledger = document.getElementById("wrap-ledger");
-          if (ledger && pendingList.length) {
-            ledger.innerHTML = "";
+          // Pre-render the carried rows from pendingList when we have
+          // them. Hide the ledger block entirely when there's nothing
+          // to carry — don't fall back to demo items.
+          if (ledger) ledger.innerHTML = "";
+          if (ledgerBlock)
+            ledgerBlock.style.display = pendingList.length ? "" : "none";
+          if (pendingList.length && ledger) {
             for (const d of pendingList.slice(0, 3)) {
               const row = document.createElement("div");
               row.className = "ledger-row";
@@ -3801,6 +3897,44 @@
               ledger.appendChild(row);
             }
           }
+
+          // Reset the footer to the default dashboard link in case a
+          // prior empty-state render swapped in the Connect CTA.
+          if (footer) {
+            footer.innerHTML = "";
+            const btn = document.createElement("button");
+            btn.className = "primary";
+            btn.type = "button";
+            btn.setAttribute("data-action", "open");
+            btn.textContent = "View details";
+            footer.appendChild(btn);
+          }
+
+          renderNarrative("wrap-narrative", decision?.context?.narrative, {
+            generating: "Generating evening wrap…",
+          });
+        }
+
+        // Builds one of the three DONE / SKIP / CARRY rows in the wrap
+        // card. Used only by renderWrap() so the structure matches the
+        // original CSS exactly.
+        function buildReviewCard(pillText, pillClass, label, detail) {
+          const card = document.createElement("div");
+          card.className = "review-card";
+          const pill = document.createElement("span");
+          pill.className = pillClass;
+          pill.textContent = pillText;
+          const body = document.createElement("div");
+          body.className = "rc-body";
+          const strong = document.createElement("strong");
+          strong.textContent = label;
+          const p = document.createElement("p");
+          p.textContent = detail;
+          body.appendChild(strong);
+          body.appendChild(p);
+          card.appendChild(pill);
+          card.appendChild(body);
+          return card;
         }
 
         // ---------- Narrative overlay (shared by brief / wrap) ----------
