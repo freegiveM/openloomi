@@ -4767,7 +4767,30 @@
           return hasUserConfig || Boolean(sysDefault.hasApiKey);
         }
 
+        // Track inflight + retry state for the AI-config fetch. A
+        // single boot-time failure (e.g. `window.__OPENLOOMI_API__`
+        // not yet bridged into the Tauri webview — see issue #313)
+        // used to leave `apiConfigured = null` forever because the
+        // original code only retried on `openloomi:ai-settings-changed`,
+        // an event a brand-new user never fires. We now:
+        //   1. retry with exponential backoff on the initial fetch
+        //   2. let any `loop:state` / `loop:decision` event re-arm
+        //      the fetch when the gate is still open
+        //   3. throttle the re-arm so we don't hammer the API
+        let aiConfigInflight = false;
+        let aiConfigRetryDelay = 0; // ms; 0 means "not scheduled"
+        let aiConfigRetryTimer = null;
+        function scheduleAiConfigRetry(delay) {
+          if (aiConfigRetryTimer) return;
+          aiConfigRetryDelay = delay;
+          aiConfigRetryTimer = setTimeout(() => {
+            aiConfigRetryTimer = null;
+            void refreshAiConfig();
+          }, delay);
+        }
         async function refreshAiConfig() {
+          if (aiConfigInflight) return;
+          aiConfigInflight = true;
           let payload = null;
           try {
             const res = await fetch(
@@ -4778,10 +4801,27 @@
               payload = await res.json().catch(() => null);
             }
           } catch (_) {}
-          // Network failure → leave `apiConfigured` null so we don't
-          // permanently hide the connection layout. The next
-          // `openloomi:ai-settings-changed` event will retry.
-          if (!payload) return;
+          aiConfigInflight = false;
+          if (!payload) {
+            // Self-heal from a transient boot failure. Backoff ladder
+            // (1s → 3s → 8s) is short enough that a fresh install
+            // resolves within ~12s, and the loop:* event listener
+            // below will re-arm the fetch if the user opens the card
+            // (or the watcher reports state) before that. After three
+            // failed attempts we stop scheduling and wait for an
+            // event-driven retry.
+            const nextDelays = [1000, 3000, 8000];
+            const lastDelay =
+              aiConfigRetryDelay > 0 ? aiConfigRetryDelay : 0;
+            const idx = nextDelays.indexOf(lastDelay);
+            const nextDelay = idx >= 0 && idx < nextDelays.length - 1
+              ? nextDelays[idx + 1]
+              : null;
+            if (nextDelay !== null) {
+              scheduleAiConfigRetry(nextDelay);
+            }
+            return;
+          }
           aiSettings = payload;
           apiConfigured = evaluateAiConfigured(payload);
           apply();
@@ -4886,6 +4926,16 @@
             }
             decision = next;
             apply();
+            // If the initial AI-config fetch failed (apiConfigured is
+            // still null), every decision event is a chance to retry.
+            // The inflight guard inside refreshAiConfig prevents us
+            // from piling up requests, and the backoff ladder caps the
+            // total number of retries so this can't loop forever.
+            // Fixes #313 — the boot-time fetch on a fresh install can
+            // fail (e.g. before window.__OPENLOOMI_API__ is bridged),
+            // and without this re-arm the no-api-key CTA would never
+            // surface.
+            if (apiConfigured === null) void refreshAiConfig();
             // Terminal decision events (done / dismissed) usually mean a
             // native agent run just finished. Debounce-refresh the usage
             // strip so the new totals land without flooding the API.
@@ -4916,6 +4966,10 @@
               (typeof p === "object" && p.state) ||
               (typeof p === "string" ? p : "idle");
             apply();
+            // Re-arm the AI-config fetch when the gate is still open
+            // (see loop:decision branch above for the same pattern and
+            // the original issue: #313).
+            if (apiConfigured === null) void refreshAiConfig();
           });
           tauri.event.listen("loop:pending-list", (e) => {
             const p = (e && e.payload) || {};
