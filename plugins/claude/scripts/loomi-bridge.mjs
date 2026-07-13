@@ -691,8 +691,8 @@ async function readBundleVersion(appPath) {
   // Try plutil first — it prints a stable `key: "value"` text format.
   const r = await runBin('plutil', ['-p', infoPlist], { timeoutMs: 3000 });
   if (r.ok && r.stdout) {
-    // plutil output is like:  "CFBundleShortVersionString" => "0.7.4"
-    // or (older):            CFBundleShortVersionString = "0.7.4"
+    // plutil output is like:  "CFBundleShortVersionString" => "0.7.5"
+    // or (older):            CFBundleShortVersionString = "0.7.5"
     const m = r.stdout.match(/["']?CFBundleShortVersionString["']?\s*(?:=>|=)\s*["']([^"']+)["']/);
     if (m) return m[1].trim();
   }
