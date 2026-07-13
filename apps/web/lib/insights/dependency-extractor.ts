@@ -138,16 +138,3 @@ Output:
 }
 
 Now analyze the given events and output dependencies in JSON format.`;
-
-/**
- * Convert dependencies to edge format required by EventRank
- */
-export function dependenciesToEventEdges(
-  dependencies: InsightDependency[],
-): Array<{ fromId: string; toId: string; weight: number }> {
-  return dependencies.map((dep) => ({
-    fromId: dep.fromId,
-    toId: dep.toId,
-    weight: DEPENDENCY_WEIGHTS[dep.type] * dep.confidence,
-  }));
-}

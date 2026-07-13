@@ -13,7 +13,6 @@ import { TaskComposer } from "@/components/task-composer/task-composer";
 import useSWR from "swr";
 import { fetcher } from "@/lib/utils";
 import type { Attachment } from "@openloomi/shared";
-import type { SuggestedPrompt } from "@/components/suggested-actions";
 import { useChatContext } from "../chat-context";
 import { ArrowUpIcon, ArrowDownIcon } from "@/components/icons";
 import { Button } from "@openloomi/ui";
@@ -55,11 +54,6 @@ export function AgentChatPanel({
 
   // Note: previousChatIdRef is not needed because the component gets the latest messages from context
   // When chatId changes, useChat in parent AgentPageClient handles the message switch automatically
-  // Manages suggestion state
-  const [allSuggestions, setAllSuggestions] = useState<SuggestedPrompt[]>([]);
-  const [usedSuggestionIds, setUsedSuggestionIds] = useState<Set<string>>(
-    new Set(),
-  );
   // Scroll state management
   const [isScrolled, setIsScrolled] = useState(false);
   // Whether near the bottom (used to determine scroll-to-top or scroll-to-bottom button)
@@ -221,36 +215,6 @@ export function AgentChatPanel({
     },
     [],
   );
-
-  /**
-   * Handle suggestions list ready
-   * Supports incremental updates: show default suggestions first, then update to full list after AI generates
-   */
-  const handleSuggestionsReady = useCallback(
-    (suggestions: SuggestedPrompt[]) => {
-      setAllSuggestions((prev) => {
-        // If the new list has more suggestions, update (from default to full list)
-        // Keep used suggestion IDs, do not reset
-        if (suggestions.length >= prev.length) {
-          return suggestions;
-        }
-        // If the new list has fewer, it may be a reset, use the new list
-        return suggestions;
-      });
-    },
-    [],
-  );
-
-  /**
-   * Mark a suggestion as used
-   */
-  const handleSuggestionUsed = useCallback((suggestionId: string) => {
-    setUsedSuggestionIds((prev) => {
-      const next = new Set(prev);
-      next.add(suggestionId);
-      return next;
-    });
-  }, []);
 
   /**
    * Listen to scroll events and detect scroll state
@@ -535,8 +499,6 @@ export function AgentChatPanel({
                       sendMessage={sendMessagePresent}
                       setMessages={setMessages}
                       onRefresh={handleRefresh}
-                      onSuggestionsReady={handleSuggestionsReady}
-                      onSuggestionUsed={handleSuggestionUsed}
                       isAgentRunning={isAgentRunningForChat}
                     />
                   </div>

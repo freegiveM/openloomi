@@ -1,10 +1,7 @@
 import type { JobTimezoneSource } from "@/lib/cron/types";
 
 import { pickEffectiveTimezone } from "./pick-effective-timezone";
-import {
-  normalizeExplicitTimezone,
-  resolveUserTimezone,
-} from "./resolve-user-timezone";
+import { normalizeExplicitTimezone } from "./resolve-user-timezone";
 
 /**
  * A scheduled job's materialized timezone and where it came from.
@@ -56,30 +53,4 @@ export function materializeJobTimezone(input: {
     timezone: pickEffectiveTimezone(input.accountTimezone, undefined, "UTC"),
     timezoneSource: "user_preference",
   };
-}
-
-/**
- * Async convenience for entry points that have a `userId`/`request` but have not
- * yet resolved the account timezone (HTTP routes, bootstrap). Resolves the
- * account preference only when there is no explicit override, then applies the
- * same {@link materializeJobTimezone} rule.
- *
- * A `null` / blank `explicitTimezone` therefore means "follow the account"
- * (resolved here) — this is the single seam that also expresses "revert a job
- * back to following the account timezone".
- */
-export async function resolveJobTimezone(input: {
-  userId: string;
-  request?: Request;
-  explicitTimezone?: unknown;
-}): Promise<MaterializedJobTimezone> {
-  const explicit = normalizeExplicitTimezone(input.explicitTimezone);
-  if (explicit) {
-    return { timezone: explicit, timezoneSource: "explicit" };
-  }
-  const accountTimezone = await resolveUserTimezone(
-    input.userId,
-    input.request,
-  );
-  return { timezone: accountTimezone, timezoneSource: "user_preference" };
 }

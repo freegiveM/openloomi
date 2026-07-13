@@ -6,7 +6,6 @@ import type { UseChatHelpers } from "@ai-sdk/react";
 import { useMessages } from "@/hooks/use-messages";
 import type { ChatMessage } from "@openloomi/shared";
 import type { IntegrationId } from "@/hooks/use-integrations";
-import type { SuggestedPrompt } from "./suggested-actions";
 import { useVirtualizer } from "@tanstack/react-virtual";
 
 interface MessagesProps {
@@ -24,8 +23,6 @@ interface MessagesProps {
   selectedAccountId?: string | null;
   onAccountChange?: (accountId: string) => void;
   accountSelectorPlatforms?: IntegrationId[];
-  onSuggestionsReady?: (suggestions: SuggestedPrompt[]) => void;
-  onSuggestionUsed?: (suggestionId: string) => void;
   isAgentRunning?: boolean;
 }
 
@@ -49,8 +46,6 @@ function PureVirtualizedMessages({
   selectedAccountId,
   onAccountChange,
   accountSelectorPlatforms,
-  onSuggestionsReady,
-  onSuggestionUsed,
   isAgentRunning = false,
 }: MessagesProps) {
   const {
@@ -122,13 +117,7 @@ function PureVirtualizedMessages({
       className="flex flex-col min-w-0 overflow-x-hidden pt-2 sm:pt-4 relative"
     >
       {messages.length === 0 && (
-        <Greeting
-          chatId={chatId}
-          sendMessage={sendMessage}
-          onSuggestionsReady={onSuggestionsReady}
-          onSuggestionUsed={onSuggestionUsed}
-          isAgentRunning={isAgentRunning}
-        />
+        <Greeting sendMessage={sendMessage} isAgentRunning={isAgentRunning} />
       )}
 
       {/* Virtual list container */}

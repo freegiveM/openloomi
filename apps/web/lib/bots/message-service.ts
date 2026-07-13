@@ -155,12 +155,3 @@ export async function sendMessage(
     return result;
   }
 }
-
-/**
- * Validate message parameters without sending
- */
-export async function validateMessage(
-  params: SendMessageParams,
-): Promise<SendMessageResult> {
-  return sendMessage({ ...params, dryRun: true });
-}

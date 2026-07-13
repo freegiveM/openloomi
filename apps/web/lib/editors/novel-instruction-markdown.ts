@@ -286,14 +286,3 @@ export function htmlToMarkdown(
   const raw = turndown.turndown(html ?? "");
   return normalizeEditorMarkdownOutput(raw);
 }
-
-/**
- * Test helper for verifying markdown round-trips remain stable.
- */
-export function roundTripMarkdown(
-  markdown: string,
-  skillNameById: Record<string, string> = {},
-): string {
-  const turndown = createNovelInstructionTurndown();
-  return htmlToMarkdown(markdownToBasicHtml(markdown, skillNameById), turndown);
-}

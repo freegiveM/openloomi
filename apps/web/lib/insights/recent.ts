@@ -67,16 +67,3 @@ export function getRecentInsights(): RecentInsight[] {
     return [];
   }
 }
-
-/**
- * Clear recently viewed insights
- */
-export function clearRecentInsights(): void {
-  if (typeof window === "undefined") return;
-
-  try {
-    window.localStorage.removeItem(STORAGE_KEY);
-  } catch (error) {
-    console.error("[RecentInsights] Failed to clear recent insights:", error);
-  }
-}

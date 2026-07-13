@@ -21,20 +21,3 @@ export enum AuthErrorCode {
   // Other errors
   RATE_LIMITED = "RATE_LIMITED",
 }
-
-/**
- * Get error message mapping by error code (for debugging)
- * Frontend should use i18n to display user-friendly messages
- */
-export const errorMessageMap: Record<AuthErrorCode, string> = {
-  [AuthErrorCode.INVALID_CREDENTIALS]: "Invalid email or password",
-  [AuthErrorCode.USER_NOT_FOUND]: "User not found",
-  [AuthErrorCode.USER_EXISTS]: "User already exists",
-  [AuthErrorCode.MISSING_EMAIL]: "Email is required",
-  [AuthErrorCode.MISSING_PASSWORD]: "Password is required",
-  [AuthErrorCode.INVALID_EMAIL]: "Invalid email format",
-  [AuthErrorCode.INVALID_PASSWORD]: "Invalid password format",
-  [AuthErrorCode.INTERNAL_ERROR]: "Internal server error",
-  [AuthErrorCode.SERVICE_UNAVAILABLE]: "Service unavailable",
-  [AuthErrorCode.RATE_LIMITED]: "Too many requests",
-};

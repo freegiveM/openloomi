@@ -254,39 +254,6 @@ export async function setInsightValidityPeriod(
 }
 
 /**
- * Expire an insight (set validTo to current time)
- *
- * This marks an insight as no longer current/relevant without archiving it.
- * Archived insights are hidden; expired insights are still visible but marked as historical.
- *
- * @param insightId - The insight ID to expire
- * @param db - Database connection (optional)
- */
-export async function expireInsight(
-  insightId: string,
-  dbInstance?: DrizzleDB,
-): Promise<void> {
-  return setInsightValidityPeriod(insightId, null, new Date(), dbInstance);
-}
-
-/**
- * Mark an insight as valid from a future date
- *
- * Useful for scheduled insights or events that haven't happened yet.
- *
- * @param insightId - The insight ID
- * @param validFrom - The future date when the insight becomes valid
- * @param db - Database connection (optional)
- */
-export async function deferInsightValidity(
-  insightId: string,
-  validFrom: Date,
-  dbInstance?: DrizzleDB,
-): Promise<void> {
-  return setInsightValidityPeriod(insightId, validFrom, null, dbInstance);
-}
-
-/**
  * Get "current" insights - those with no validTo (currently relevant)
  *
  * @param userId - User ID

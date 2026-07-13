@@ -3,11 +3,16 @@
  * Hybrid approach: DB query + single LLM call to generate structured focus reports.
  */
 
-import type { DailyFocusSnapshot, DailyFocusEvent } from "./daily-focus-types";
+import type {
+  DailyFocusSnapshot,
+  DailyFocusEvent,
+  FocusSource,
+} from "../types/daily-focus";
 import {
   buildDailyFocusHistorySummary,
   type FocusPriority,
-} from "./daily-focus-types";
+} from "../types/daily-focus";
+import { normalizeReasoningSourceType } from "../types/execution-result";
 import {
   ACTIONABLE_SIGNAL_PATTERN,
   WAITING_EXTERNAL_SIGNAL_PATTERN,
@@ -130,7 +135,7 @@ export interface DailyFocusCandidate {
   context: string;
   priorityHint: FocusPriority;
   deadlineAt?: string;
-  sources: Array<{ type: string; label: string }>;
+  sources: FocusSource[];
   sourceSnippets: string[];
   isActionable: boolean;
   isWaitingExternal: boolean;
@@ -241,7 +246,7 @@ export function buildDailyFocusCandidates(
       deadlineAt: analysis.deadlineAt,
       sources: [
         {
-          type: insight.platform || "unknown",
+          type: normalizeReasoningSourceType(insight.platform, "unknown"),
           label: insight.platform
             ? capitalizeFirst(insight.platform)
             : "Unknown",
