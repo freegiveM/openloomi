@@ -1,6 +1,35 @@
 /**
- * Tauri API helper functions
- * Used to call native functionality in Tauri environment
+ * Tauri API helper functions (CLIENT-SIDE ONLY)
+ * --------------------------------------------------------------
+ * All exports in this module are CLIENT-SIDE methods. They run in
+ * the browser/webview (the Next.js frontend bundled by Tauri) and
+ * are never executed on the Next.js Node.js server.
+ *
+ * How they work:
+ *   1. Each function checks `isTauri()` first. In a plain browser
+ *      (web preview), they short-circuit with a safe fallback
+ *      (`null` / `false` / no-op) so the UI still works.
+ *   2. Inside the Tauri webview, they call `invoke()` from
+ *      `@tauri-apps/api/core` to dispatch a command to the Rust
+ *      backend (see `apps/web/src-tauri/src/`).
+ *
+ * Categories of client-side methods exported here:
+ *   - Environment detection: isTauri, getPlatform, getOS / getCachedOS
+ *   - Path / directory helpers: getDataDirectory, getStorageDirectory,
+ *     getMemoryDirectory, homeDirCustom, getSystemLocale, getAppInfo
+ *   - Native shell / browser: openUrl, openDevTools, openPathCustom,
+ *     revealItemInDir, sendNotification
+ *   - File system: readFile, readFileBinary, readTextFileCustom,
+ *     writeTextFileCustom, mkdirCustom, removeFileCustom, fileStat,
+ *     fileExists
+ *   - Clipboard: copyFileToClipboard
+ *   - Updates: checkForUpdate, startUpdateDownload,
+ *     pollUpdateDownloadProgress, finishUpdateDownload,
+ *     restartForUpdate, restartApp
+ *   - Embedded Next.js server (Tauri only): getServerStatus, restartServer
+ *   - Render engine (LibreOffice pipeline): getRenderEngineStatus,
+ *     ensureRenderEngineDownloadStarted
+ *   - Bundled aggregate: `tauriApi` object groups the common ones
  */
 
 import { invoke } from "@tauri-apps/api/core";
@@ -708,7 +737,10 @@ export async function sendNotification(
 }
 
 /**
- * Tauri API exports
+ * Tauri API exports (CLIENT-SIDE)
+ * Aggregate of the most commonly used client-side helpers above.
+ * Safe to import from any client component; do not import from
+ * server-side code (Server Components, route handlers, API routes).
  */
 export const tauriApi = {
   isTauri,

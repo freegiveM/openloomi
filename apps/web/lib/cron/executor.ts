@@ -31,18 +31,6 @@ import { desc, eq } from "drizzle-orm";
 import { mkdirSync } from "node:fs";
 import { generateUUID } from "@/lib/utils";
 import { stripMalformedToolCalls } from "@/lib/utils/tool-names";
-import {
-  buildStructuredExecutionReport,
-  parseStructuredOutput,
-  type ExecutionTraceEvent,
-  type ReasoningFile,
-  type StructuredExecutionOutput,
-} from "@/lib/types/execution-result";
-import {
-  reconcileExecutionArtifacts,
-  type ArtifactToolPart,
-} from "./artifact-reconciliation";
-import { getAllFilesAtPathWithSize } from "@/lib/files/workspace/sessions";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { DEFAULT_JOB_TIMEOUT_MS } from "../env/config/constants";
@@ -61,6 +49,13 @@ export const customJobHandlers: Record<
   string,
   (context: JobExecutionContext) => Promise<JobExecutionResult>
 > = {};
+
+export type ArtifactToolPart = {
+  toolName?: string;
+  toolInput?: unknown;
+  toolOutput?: unknown;
+  isError?: boolean;
+};
 
 /**
  * Register a custom job handler
@@ -593,21 +588,12 @@ ${characterContextSection}`,
       chatId,
     );
 
-    let lastTextContent = ""; // Track only the last text for output
-    let submittedStructuredData: StructuredExecutionOutput | undefined;
+    let lastTextContent = "";
     const internalToolUseIds = new Set<string>();
     let hasError = false;
     let errorMessage = "";
     const executionToolParts: ArtifactToolPart[] = [];
     const executionToolPartsById = new Map<string, ArtifactToolPart>();
-    const traceEvents: ExecutionTraceEvent[] = [
-      {
-        type: "task_received",
-        title: traceTitles.taskReceived,
-        detail: jobDescription || config.handler || context.jobId,
-        timestamp: new Date().toISOString(),
-      },
-    ];
 
     try {
       // Get job name for chat title
@@ -894,11 +880,10 @@ ${characterContextSection}`,
         if (message.type === "text") {
           // With stream: false, text messages are complete (not incremental deltas)
           // Use the complete text directly without accumulation
-          const textContent = message.content || "";
-          const { cleanText: displayText } = parseStructuredOutput(textContent);
+          const displayText = message.content || "";
           const sanitizedText = stripMalformedToolCalls(displayText);
 
-          lastTextContent = textContent;
+          lastTextContent = displayText;
           if (sanitizedText) {
             await options?.onAgentEvent?.({
               type: "text",
@@ -1119,61 +1104,9 @@ ${characterContextSection}`,
     }
 
     // --- Extract structured output from agent response ---
-    const { data: parsedStructuredData, cleanText } =
-      parseStructuredOutput(lastTextContent);
-    const artifactReconciliation = reconcileExecutionArtifacts({
-      sessionDir,
-      sessionsRoot: join(homedir(), APP_DIR_NAME, "sessions"),
-      executionId: context.executionId,
-      toolParts: executionToolParts,
-      finalText: lastTextContent,
-      structuredData: submittedStructuredData ?? parsedStructuredData,
-    });
-    const structuredData = artifactReconciliation.structuredData;
-
-    const sessionFiles: ReasoningFile[] = [];
-    try {
-      const result = await getAllFilesAtPathWithSize(chatId, sessionDir);
-      for (const file of result.files) {
-        if (file.isDirectory) continue;
-        sessionFiles.push({
-          name: file.name,
-          path: file.absolutePath ?? file.path,
-          type: file.type,
-          role: "output",
-        });
-      }
-    } catch (error) {
-      console.warn("[JobExecutor] Failed to scan execution files:", error);
-    }
-
-    const structuredReport = buildStructuredExecutionReport({
-      structuredData,
-      cleanText,
-      rawText: lastTextContent,
-      taskText: messageText,
-      traceEvents,
-      sessionFiles,
-      hasError,
-      errorMessage,
-      language: userLanguage,
-    });
-
-    if (structuredReport.diagnostics?.source === "model") {
-      console.log(
-        "[JobExecutor] Parsed structured output from agent response:",
-        JSON.stringify(structuredReport).slice(0, 200),
-      );
-    } else {
-      console.log(
-        "[JobExecutor] Repaired structured execution report:",
-        JSON.stringify(structuredReport).slice(0, 200),
-      );
-    }
-
+    const cleanText = lastTextContent;
     const jobResult: JobExecutionResult = {
       status: (hasError ? "error" : "success") as "error" | "success",
-      // Use cleanText (structured-output block stripped) for display
       output: stripMalformedToolCalls(cleanText) || "Task completed",
       error: hasError ? errorMessage : undefined,
       result: {

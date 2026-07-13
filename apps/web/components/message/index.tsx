@@ -29,7 +29,6 @@ import { useInsightPagination } from "@/hooks/use-insight-data";
 import { useInsightActions } from "@/hooks/use-insight-actions";
 import { getFileIcon, getFileColor } from "@/components/file-icons";
 import { stripMalformedToolCalls } from "@/lib/utils/tool-names";
-import { parseStructuredOutput } from "@/lib/types/execution-result";
 import { QuestionInput } from "../question-input";
 import { PasswordInput } from "../password-input";
 import { PermissionDialog } from "../permission-dialog";
@@ -758,10 +757,8 @@ const PurePreviewMessage = ({
                     if (type === "text") {
                       const rawText =
                         (part as any).text ?? (part as any).content ?? "";
-                      // Strip <structured-output> block from display text
-                      const { cleanText } = parseStructuredOutput(rawText);
                       // Filter out malformed tool calls (XML format output by some models like MiniMax)
-                      const textContent = stripMalformedToolCalls(cleanText);
+                      const textContent = stripMalformedToolCalls(rawText);
                       const isUserMessage = message.role === "user";
 
                       // Check if buttons need to be displayed (only show once, in the first text part)
