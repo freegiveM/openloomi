@@ -42,6 +42,18 @@ pub fn configure_for_all_spaces(window: &tauri::WebviewWindow) {
             }
         };
 
+        // Configure the pet/aux windows to be visible across macOS
+        // Spaces and full-screen apps. We deliberately do NOT also
+        // call `setAcceptsFirstMouse:` here — the underlying window
+        // is tao's `TaoWindow`, which does not implement that
+        // selector and would throw
+        // `NSInvalidArgumentException: unrecognized selector`,
+        // taking the app down during `did_finish_launching`. The
+        // right-click menu fix from issue #314 is delivered by
+        // Tauri's builder-level `.accept_first_mouse(true)`
+        // (see `pet/window.rs`), which routes the first mouse event
+        // — including right-click — into WKWebView through a
+        // different code path.
         unsafe {
             let current: usize = msg_send![raw, collectionBehavior];
             let desired = collection_behavior_for_pet(current);
