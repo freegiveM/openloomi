@@ -256,7 +256,7 @@ fn main() {
 
     println!("╔══════════════════════════════════════╗");
     println!(
-        "║       openloomi Tauri App v{}        ║",
+             "║       openloomi Tauri App v{}     ║",
         env!("CARGO_PKG_VERSION")
     );
     println!("╚══════════════════════════════════════╝");

@@ -92,6 +92,28 @@ fn desired_window_level() -> i64 {
     NS_SCREEN_SAVER_WINDOW_LEVEL
 }
 
+/// Window level for a given panel, taking its Tauri label so we can
+/// keep the pet visually on top of the aux windows (card / bubble)
+/// when they overlap — the fox sprite should never be hidden behind
+/// the decision card or the speech bubble. Both the pet and the aux
+/// windows sit well above normal / floating app windows
+/// (`NSStatusWindowLevel` and above), so the pet stays above
+/// full-screen apps while still winning the overlap against the
+/// card / bubble that share its float layer.
+///
+/// One notch above `NS_SCREEN_SAVER_WINDOW_LEVEL` (Apple's
+/// `NSPopUpMenuWindowLevel` is 101 and is reserved for live menus —
+/// we don't want a desktop pet sitting at the menu level because
+/// the OS may treat it as a transient and demote it under the
+/// foreground app on focus changes).
+fn desired_window_level_for(label: &str) -> i64 {
+    if label == super::PET_LABEL {
+        NS_SCREEN_SAVER_WINDOW_LEVEL + 1
+    } else {
+        NS_SCREEN_SAVER_WINDOW_LEVEL
+    }
+}
+
 #[cfg(target_os = "macos")]
 pub fn configure_for_all_spaces(window: &tauri::WebviewWindow) {
     use objc2::{msg_send, runtime::AnyObject};
@@ -266,13 +288,17 @@ pub fn configure_as_floating_panel(window: &tauri::WebviewWindow) {
                 let _: () = msg_send![raw_window, setWorksWhenModal: true];
             }
 
-            // 3. Lift the panel to NSScreenSaverWindowLevel (25) so
-            //    it sits above every full-screen app Space. This
-            //    is what makes the pet visible above TextEdit's
-            //    full-screen window — without it, even with the
-            //    collection flags, the OS will hide the panel
-            //    when the foreground app enters full-screen.
-            let level = desired_window_level();
+            // 3. Lift the panel to its target window level so it sits
+            //    above every full-screen app Space. The pet gets one
+            //    notch above the aux windows (card / bubble) so any
+            //    overlap keeps the pet on top — see
+            //    `desired_window_level_for`. Both levels still sit
+            //    well above full-screen app Spaces, so the pet stays
+            //    visible above TextEdit's full-screen window. Without
+            //    these levels, even with the collection flags, the OS
+            //    will hide the panel when the foreground app enters
+            //    full-screen.
+            let level = desired_window_level_for(&label_on_main);
             let _: () = msg_send![raw_window, setLevel: level];
 
             // 4. Apply the full collectionBehavior bitmask (CanJoin
@@ -358,6 +384,35 @@ mod tests {
         // full-screen Spaces, re-introducing issue #330.
         assert_eq!(desired_window_level(), 25);
         assert_eq!(desired_window_level(), NS_SCREEN_SAVER_WINDOW_LEVEL);
+    }
+
+    #[test]
+    fn pet_window_level_sits_one_above_aux_windows() {
+        // The pet must render above the card / bubble when they
+        // overlap so the fox sprite never gets hidden by the
+        // decision card. We do that by giving the pet a higher
+        // `setLevel:` than the aux windows while keeping both
+        // above full-screen app Spaces.
+        let pet = desired_window_level_for(super::super::PET_LABEL);
+        let card = desired_window_level_for(super::super::PET_CARD_LABEL);
+        let bubble = desired_window_level_for(super::super::PET_BUBBLE_LABEL);
+        assert!(
+            pet > card,
+            "pet window level ({pet}) must sit above the card ({card})"
+        );
+        assert!(
+            pet > bubble,
+            "pet window level ({pet}) must sit above the bubble ({bubble})"
+        );
+        // Aux windows share the base screen-saver level so they
+        // both stay above full-screen apps and don't fight for the
+        // same z-slot.
+        assert_eq!(card, NS_SCREEN_SAVER_WINDOW_LEVEL);
+        assert_eq!(bubble, NS_SCREEN_SAVER_WINDOW_LEVEL);
+        // Pet is exactly one tick above so the relationship is
+        // obvious in Activity Monitor / `lsappinfo` and the
+        // difference is documented at the call site.
+        assert_eq!(pet, NS_SCREEN_SAVER_WINDOW_LEVEL + 1);
     }
 
     #[test]
