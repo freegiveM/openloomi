@@ -274,19 +274,35 @@
         // events update the *fallback* phrasing only.
         let currentDecision = null;
         let currentState = "idle";
+        // One-shot transient message set by a `loop:state` event that
+        // carries a `monologue` string (e.g. a cron completion). Consumed
+        // on the next render and cleared, so the bubble's re-show cycle
+        // (`pet:bubble-shown`) won't resurrect stale text. The following
+        // monologue-free `loop:state` reverts to STATE_PHRASES.
+        let pendingMonologue = null;
 
         function renderState() {
           // The "idle" CSS class is used to dim/hide the bubble. We only
-          // apply it when the pet's *state* is literally idle — i.e. there's
-          // genuinely nothing to say. Other states (thinking / sweeping /
-          // working / etc.) still surface their phrases even when there's no
-          // pending decision, so the bubble keeps the user oriented while
-          // the pet is doing background work.
-          const noContent = currentState === "idle";
+          // apply it when the pet's *state* is literally idle AND there's
+          // no pending monologue — i.e. there's genuinely nothing to say.
+          // Other states (thinking / sweeping / working / etc.) still
+          // surface their phrases even when there's no pending decision, so
+          // the bubble keeps the user oriented while the pet is doing
+          // background work.
+          const hasMonologue = pendingMonologue !== null;
+          const noContent = currentState === "idle" && !hasMonologue;
           body.classList.toggle("idle", noContent);
-          const phrase = STATE_PHRASES[currentState] || STATE_PHRASES.idle;
-          lead.textContent = phrase.lead;
-          sub.textContent = phrase.sub || "";
+          if (hasMonologue) {
+            // Transient message wins over the static STATE_PHRASES table
+            // for this one render, then clears.
+            lead.textContent = pendingMonologue;
+            sub.textContent = "";
+            pendingMonologue = null;
+          } else {
+            const phrase = STATE_PHRASES[currentState] || STATE_PHRASES.idle;
+            lead.textContent = phrase.lead;
+            sub.textContent = phrase.sub || "";
+          }
         }
 
         function applyDecision(p) {
@@ -322,6 +338,14 @@
             (typeof p === "string" ? p : null) ||
             "idle";
           currentState = next;
+          if (
+            p &&
+            typeof p === "object" &&
+            typeof p.monologue === "string" &&
+            p.monologue.length > 0
+          ) {
+            pendingMonologue = p.monologue;
+          }
           if (!currentDecision) {
             renderState();
           }

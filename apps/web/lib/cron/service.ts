@@ -571,6 +571,27 @@ export async function completeJobExecution(
           updatedAt: completedAt,
         })
         .where(eq(scheduledJobs.id, context.jobId));
+
+      // Fire-and-forget: transient Loomi pet bubble on completion for
+      // user-created jobs (gated by prefs.cronCompletionPetNotify, off by
+      // default; Loop's own `loop.*` handlers are skipped inside the
+      // helper). Must NOT block the status update or the next tick — a
+      // slow pet-state POST is swallowed by the helper + the void catch.
+      const handlerName = (job[0].jobConfig as { handler?: string } | null)
+        ?.handler;
+      void (async () => {
+        try {
+          const { notifyCronCompletion } = await import("./notifications");
+          await notifyCronCompletion(
+            job[0].name ?? job[0].id,
+            result.status === "success" ? "success" : "error",
+            result.error,
+            handlerName,
+          );
+        } catch (e) {
+          console.warn("[completeJobExecution] pet notify failed:", e);
+        }
+      })();
     }
   } catch (error) {
     console.error("[completeJobExecution] Failed to update job status:", error);

@@ -24,6 +24,7 @@ const ALLOWED_KEYS: (keyof LoopPreferences)[] = [
   "timezone",
   "narrative",
   "desktopNotifications",
+  "cronCompletionPetNotify",
   "quietWhenEmpty",
   "quietDayFiller",
 ];
@@ -110,6 +111,15 @@ export async function PUT(req: Request) {
     if (body.narrative !== undefined && typeof body.narrative !== "boolean") {
       return NextResponse.json(
         { error: "narrative must be a boolean" },
+        { status: 400 },
+      );
+    }
+    if (
+      body.cronCompletionPetNotify !== undefined &&
+      typeof body.cronCompletionPetNotify !== "boolean"
+    ) {
+      return NextResponse.json(
+        { error: "cronCompletionPetNotify must be a boolean" },
         { status: 400 },
       );
     }

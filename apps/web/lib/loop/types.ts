@@ -157,6 +157,19 @@ export interface LoopPreferences {
    */
   desktopNotifications?: boolean;
   /**
+   * When `true`, a *user-created* scheduled cron job POSTs a transient
+   * Loomi pet **bubble** message on completion (both success and error).
+   * This is a bubble-only surface — explicitly NOT a decision card, so it
+   * carries no Run/Dismiss buttons and auto-dismisses on the bubble's own
+   * timer. Loop's own jobs (`loop.tick` / `loop.brief` / `loop.wrap` /
+   * `loop.action`) are excluded — they already reach the pet as decision
+   * cards via the `decisions.json` watcher.
+   *
+   * Default `false` — opt-in via
+   * `PUT /api/loop/preferences { cronCompletionPetNotify: true }`.
+   */
+  cronCompletionPetNotify?: boolean;
+  /**
    * When the brief or wrap snapshot is empty (no surfaced items /
    * highlights), skip the templated "nothing to do" card entirely.
    * Snapshot still gets persisted to `~/.openloomi/loop/{brief,wrap}.json`
@@ -221,6 +234,7 @@ export const DEFAULT_LOOP_PREFERENCES: LoopPreferences = {
   promotionSkip: true,
   narrative: true,
   desktopNotifications: false, // NEW
+  cronCompletionPetNotify: false, // NEW — opt-in transient pet bubble
   quietWhenEmpty: true, // NEW (#316) — opt-out via prefs
   quietDayFiller: "none", // NEW (#316) — opt into a module
 };
