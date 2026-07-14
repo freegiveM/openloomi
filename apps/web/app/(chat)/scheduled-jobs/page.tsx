@@ -1,7 +1,9 @@
 "use client";
 
-import { AutomationTab } from "@/components/automation/automation-tab";
-import type { ScheduledJobsPanelRef } from "@/components/scheduled-jobs-panel";
+import {
+  ScheduledJobsPanel,
+  type ScheduledJobsPanelRef,
+} from "@/components/scheduled-jobs-panel";
 import { PageSectionHeader } from "@openloomi/ui";
 import { Button, Input } from "@openloomi/ui";
 import { RemixIcon } from "@/components/remix-icon";
@@ -165,8 +167,10 @@ export default function ScheduledJobsPage() {
           </div>
 
           <div className="flex-1 min-h-0 px-6 pt-3 pb-3">
-            <AutomationTab
+            <ScheduledJobsPanel
               ref={panelRef}
+              className="flex-1 min-h-0"
+              hideHeader
               statusFilter={jobStatusFilter}
               searchQuery={jobSearchQuery}
             />
