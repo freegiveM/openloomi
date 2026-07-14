@@ -242,8 +242,7 @@ export function AiApiSettings() {
     const hasDraftApiKey = nextApiKey.length > 0 || hasSavedApiKey;
     const hasDraftBaseUrl = draft.baseUrl.trim().length > 0;
     const hasDraftModel = draft.model.trim().length > 0;
-    const isCompleteDraft =
-      hasDraftApiKey && hasDraftBaseUrl && hasDraftModel;
+    const isCompleteDraft = hasDraftApiKey && hasDraftBaseUrl && hasDraftModel;
     const nextEnabled = isCompleteDraft;
     setSavingProvider(providerType);
     try {
