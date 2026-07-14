@@ -23,27 +23,6 @@
         "url": "about:blank",
         "visible": false,
         "focus": false
-      },
-      {
-        "label": "loomi-pet",
-        "title": "Loomi",
-        "url": "loomi-widget.html",
-        "width": 168,
-        "height": 168,
-        "minWidth": 168,
-        "minHeight": 168,
-        "maxWidth": 168,
-        "maxHeight": 168,
-        "resizable": false,
-        "decorations": false,
-        "transparent": true,
-        "alwaysOnTop": true,
-        "visibleOnAllWorkspaces": true,
-        "skipTaskbar": true,
-        "shadow": false,
-        "visible": true,
-        "focus": false,
-        "dragDropEnabled": false
       }
     ],
     "security": {

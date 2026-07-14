@@ -40,8 +40,7 @@ pub const DEV_PANEL_W: f64 = 340.0;
 /// the panel slides below the screen edge (880 slipped below).
 pub const DEV_PANEL_H: f64 = 800.0;
 
-static DEV_PANEL_APP_HANDLE: OnceLock<Mutex<Option<AppHandle>>> =
-    OnceLock::new();
+static DEV_PANEL_APP_HANDLE: OnceLock<Mutex<Option<AppHandle>>> = OnceLock::new();
 
 fn dev_panel_handle_slot() -> &'static Mutex<Option<AppHandle>> {
     DEV_PANEL_APP_HANDLE.get_or_init(|| Mutex::new(None))
@@ -63,9 +62,7 @@ pub fn dev_panel_requested() -> bool {
 /// Build the dev panel window if it doesn't exist yet and dev mode is
 /// enabled. Returns `Ok(None)` when dev mode is disabled so the caller
 /// can skip without a noisy error.
-pub fn build_dev_panel_window(
-    app: &AppHandle,
-) -> tauri::Result<Option<tauri::WebviewWindow>> {
+pub fn build_dev_panel_window(app: &AppHandle) -> tauri::Result<Option<tauri::WebviewWindow>> {
     if !dev_panel_requested() {
         return Ok(None);
     }
@@ -75,24 +72,21 @@ pub fn build_dev_panel_window(
     if let Some(w) = app.get_webview_window(PET_DEV_LABEL) {
         return Ok(Some(w));
     }
-    let base = WebviewWindowBuilder::new(
-        app,
-        PET_DEV_LABEL,
-        WebviewUrl::App("loomi-dev.html".into()),
-    )
-    .initialization_script(&constants::api_init_script())
-    .title("Loomi · dev panel")
-    .inner_size(DEV_PANEL_W, DEV_PANEL_H)
-    .min_inner_size(DEV_PANEL_W, DEV_PANEL_H)
-    .max_inner_size(DEV_PANEL_W, DEV_PANEL_H)
-    .resizable(false)
-    .decorations(true) // keep standard window chrome for the dev panel
-    .transparent(false)
-    .always_on_top(true)
-    .skip_taskbar(true)
-    .shadow(true)
-    .visible(true)
-    .focused(false);
+    let base =
+        WebviewWindowBuilder::new(app, PET_DEV_LABEL, WebviewUrl::App("loomi-dev.html".into()))
+            .initialization_script(&constants::api_init_script())
+            .title("Loomi · dev panel")
+            .inner_size(DEV_PANEL_W, DEV_PANEL_H)
+            .min_inner_size(DEV_PANEL_W, DEV_PANEL_H)
+            .max_inner_size(DEV_PANEL_W, DEV_PANEL_H)
+            .resizable(false)
+            .decorations(true) // keep standard window chrome for the dev panel
+            .transparent(false)
+            .always_on_top(true)
+            .skip_taskbar(true)
+            .shadow(true)
+            .visible(true)
+            .focused(false);
     // `drag_and_drop` only exists on the Windows webview builder, so we
     // gate the call to keep the build green everywhere. Not strictly
     // needed for a dev panel that never sees file drops, but kept

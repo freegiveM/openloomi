@@ -45,54 +45,49 @@ pub fn build_pet_window(app: &AppHandle) -> tauri::Result<()> {
     // first launch. `tauri.conf.json` sets `visible: true` for the
     // same reason; the builder matches.
     #[cfg(windows)]
-    let builder = WebviewWindowBuilder::new(
-        app,
-        PET_LABEL,
-        WebviewUrl::App("loomi-widget.html".into()),
-    )
-    .title("Loomi")
-    .inner_size(PET_W, PET_H)
-    .resizable(false)
-    .decorations(false)
-    .transparent(true)
-    .always_on_top(true)
-    .visible_on_all_workspaces(true)
-    .skip_taskbar(true)
-    .shadow(false)
-    .visible(true)
-    .focused(false)
-    // Right-click into a borderless transparent window is silently
-    // dropped by default — see issue #314. `accept_first_mouse(true)`
-    // routes the very first interaction (including a right-click that
-    // lands before any left-click) straight to the webview; `focusable`
-    // makes the underlying NSWindow return `true` from
-    // `canBecomeKeyWindow` so right-mouse events flow through to
-    // WKWebView the same way they do in a standalone browser.
-    .accept_first_mouse(true)
-    .focusable(true)
-    .drag_and_drop(false);
+    let builder =
+        WebviewWindowBuilder::new(app, PET_LABEL, WebviewUrl::App("loomi-widget.html".into()))
+            .title("Loomi")
+            .inner_size(PET_W, PET_H)
+            .resizable(false)
+            .decorations(false)
+            .transparent(true)
+            .always_on_top(true)
+            .visible_on_all_workspaces(true)
+            .skip_taskbar(true)
+            .shadow(false)
+            .visible(true)
+            .focused(false)
+            // Right-click into a borderless transparent window is silently
+            // dropped by default — see issue #314. `accept_first_mouse(true)`
+            // routes the very first interaction (including a right-click that
+            // lands before any left-click) straight to the webview; `focusable`
+            // makes the underlying NSWindow return `true` from
+            // `canBecomeKeyWindow` so right-mouse events flow through to
+            // WKWebView the same way they do in a standalone browser.
+            .accept_first_mouse(true)
+            .focusable(true)
+            .drag_and_drop(false);
 
     #[cfg(not(windows))]
-    let builder = WebviewWindowBuilder::new(
-        app,
-        PET_LABEL,
-        WebviewUrl::App("loomi-widget.html".into()),
-    )
-    .title("Loomi")
-    .inner_size(PET_W, PET_H)
-    .resizable(false)
-    .decorations(false)
-    .transparent(true)
-    .always_on_top(true)
-    .visible_on_all_workspaces(true)
-    .skip_taskbar(true)
-    .shadow(false)
-    .visible(true)
-    .focused(false)
-    .accept_first_mouse(true)
-    .focusable(true);
+    let builder =
+        WebviewWindowBuilder::new(app, PET_LABEL, WebviewUrl::App("loomi-widget.html".into()))
+            .title("Loomi")
+            .inner_size(PET_W, PET_H)
+            .resizable(false)
+            .decorations(false)
+            .transparent(true)
+            .always_on_top(true)
+            .visible_on_all_workspaces(true)
+            .skip_taskbar(true)
+            .shadow(false)
+            .visible(true)
+            .focused(false)
+            .accept_first_mouse(true)
+            .focusable(true);
 
     let window = builder.build()?;
+    super::macos_window::configure_as_floating_panel(&window);
     super::macos_window::configure_for_all_spaces(&window);
     wire_pet_window_events(app);
     Ok(())
@@ -109,6 +104,12 @@ pub fn show_pet_window(app: &AppHandle) {
         let _ = w.set_focus();
         let _ = w.set_always_on_top(true);
         let _ = w.set_visible_on_all_workspaces(true);
+        // Re-apply the NSPanel conversion on every show: if the OS
+        // ever rebuilds the underlying NSWindow (rare, but happens
+        // after certain screen-recording permission dialogs) the
+        // class swap would otherwise be lost. Re-running the helper
+        // is cheap and idempotent.
+        super::macos_window::configure_as_floating_panel(&w);
         super::macos_window::configure_for_all_spaces(&w);
     }
 }

@@ -67,6 +67,7 @@ pub fn build_card_window(app: &AppHandle) -> tauri::Result<tauri::WebviewWindow>
     let builder = base;
 
     let w = builder.build()?;
+    super::macos_window::configure_as_floating_panel(&w);
     super::macos_window::configure_for_all_spaces(&w);
     let app_handle = app.clone();
     let label = PET_CARD_LABEL.to_string();
@@ -93,6 +94,10 @@ pub fn show_card_window(app: &AppHandle) {
         let _ = w.set_focus();
         let _ = w.set_always_on_top(true);
         let _ = w.set_visible_on_all_workspaces(true);
+        // Re-apply the NSPanel conversion on every show so a
+        // transient rebuild of the underlying NSWindow doesn't
+        // quietly strip our non-activating-overlay behaviour.
+        super::macos_window::configure_as_floating_panel(&w);
         super::macos_window::configure_for_all_spaces(&w);
         return;
     }
@@ -105,6 +110,10 @@ pub fn show_card_window(app: &AppHandle) {
         let _ = w.set_focus();
         let _ = w.set_always_on_top(true);
         let _ = w.set_visible_on_all_workspaces(true);
+        // Re-apply the NSPanel conversion on every show so a
+        // transient rebuild of the underlying NSWindow doesn't
+        // quietly strip our non-activating-overlay behaviour.
+        super::macos_window::configure_as_floating_panel(&w);
         super::macos_window::configure_for_all_spaces(&w);
     }
 }

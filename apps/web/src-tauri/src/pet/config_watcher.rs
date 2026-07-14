@@ -24,8 +24,8 @@ use std::time::{Duration, Instant};
 use notify::{EventKind, RecursiveMode, Watcher};
 use tauri::{AppHandle, Emitter};
 
-use super::PET_LABEL;
 use super::theme;
+use super::PET_LABEL;
 
 const DEBOUNCE_MS: u64 = 250;
 
@@ -37,10 +37,9 @@ pub fn spawn_config_watcher(app: AppHandle) {
     std::thread::Builder::new()
         .name("loomi-pet-config-watcher".into())
         .spawn(move || {
-            let _ = crate::panic_guard::catch_unwind_str(
-                "loomi-pet config watcher",
-                || watch_loop(&app),
-            );
+            let _ = crate::panic_guard::catch_unwind_str("loomi-pet config watcher", || {
+                watch_loop(&app)
+            });
         })
         .expect("spawn loomi-pet config watcher");
 }
@@ -192,9 +191,7 @@ fn emit_config_changed(app: &AppHandle, cfg: &theme::PetConfig) {
     let payload = match serde_json::to_value(&view) {
         Ok(v) => v,
         Err(e) => {
-            eprintln!(
-                "[loomi-pet/config-watcher] failed to serialize PetConfigView: {e}"
-            );
+            eprintln!("[loomi-pet/config-watcher] failed to serialize PetConfigView: {e}");
             return;
         }
     };

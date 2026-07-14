@@ -67,7 +67,7 @@ core-foundation = "0.10"
 # https://github.com/openloomi/openloomi/issues/314 cold-launch abort.
 objc2 = { version = "0.6", features = ["catch-all"] }
 objc2-av-foundation = { version = "0.3.2", features = ["AVCaptureDevice", "AVMediaFormat", "block2"] }
-objc2-foundation = { version = "0.3.2", default-features = false, features = ["NSString", "alloc"] }
+objc2-foundation = { version = "0.3.2", default-features = false, features = ["NSString", "NSProcessInfo", "alloc"] }
 # Updated to 7.x: Swift concurrency issues fixed in newer versions
 # TEMPORARILY DISABLED: screencapturekit = { version = "7", features = ["macos_13_0"] }
 # Screen capture: xcap uses ScreenCaptureKit on macOS (no PipeWire/libspa dependency)

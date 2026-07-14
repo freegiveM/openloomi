@@ -25,7 +25,7 @@ use std::time::Duration;
 
 use tauri::{AppHandle, Manager, PhysicalPosition, WebviewWindow};
 
-use super::{PET_AUX_GAP, PET_BUBBLE_LABEL, PET_CARD_LABEL, PET_LABEL, bubble, card};
+use super::{bubble, card, PET_AUX_GAP, PET_BUBBLE_LABEL, PET_CARD_LABEL, PET_LABEL};
 
 const POLL_INTERVAL_MS: u64 = 50;
 const SCREEN_MARGIN_LOGICAL: f64 = 4.0;
@@ -269,9 +269,7 @@ pub fn reposition_card_to_pet(app: &AppHandle) {
     };
     if CARD_MANUAL_POSITION.load(Ordering::Acquire) {
         if card_anchor_pet_position_matches(pet) {
-            log::debug!(
-                "[loop-pet] reposition {PET_CARD_LABEL}: preserving manual card position"
-            );
+            log::debug!("[loop-pet] reposition {PET_CARD_LABEL}: preserving manual card position");
             return;
         }
         clear_card_manual_position();
@@ -316,16 +314,12 @@ pub fn spawn_position_poller(app: AppHandle) {
     std::thread::Builder::new()
         .name("loomi-pet-aux-position-poller".into())
         .spawn(move || {
-            let _ = crate::panic_guard::catch_unwind_str(
-                "loomi-pet aux position poller",
-                || {
-                    loop {
-                        reposition_bubble_to_pet(&app);
-                        reposition_card_to_pet(&app);
-                        std::thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));
-                    }
-                },
-            );
+            let _ =
+                crate::panic_guard::catch_unwind_str("loomi-pet aux position poller", || loop {
+                    reposition_bubble_to_pet(&app);
+                    reposition_card_to_pet(&app);
+                    std::thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));
+                });
         })
         .expect("spawn loomi-pet aux position poller");
 }

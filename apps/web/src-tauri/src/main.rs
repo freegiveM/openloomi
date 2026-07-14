@@ -6,7 +6,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use tauri::Manager;
-use tauri::{Emitter, Listener};
+use tauri::{ActivationPolicy, Emitter, Listener};
 
 use serde_json;
 
@@ -288,8 +288,7 @@ fn main() {
         // Resolve the resource dir before the Tauri app is built: the Next.js
         // server starts before an AppHandle exists, and on Linux resources are
         // installed to /usr/lib/<app>, not next to the executable in /usr/bin.
-        match tauri::utils::platform::resource_dir(context.package_info(), &tauri::Env::default())
-        {
+        match tauri::utils::platform::resource_dir(context.package_info(), &tauri::Env::default()) {
             Ok(dir) => {
                 let mut dir_guard =
                     panic_guard::lock_recovered(&node::RESOURCE_DIR, "store resource dir");
@@ -412,6 +411,22 @@ fn main() {
             let mut guard = panic_guard::lock_recovered(&node::APP_HANDLE, "store app handle");
             *guard = Some(app_handle.clone());
             drop(guard);
+
+            // Set the activation policy to `Accessory` BEFORE any window is
+            // built. Without this, the `loomi-pet` window would be created
+            // with the default `Regular` policy, causing macOS to register a
+            // Dock icon and treat the process as a full GUI app — which
+            // (a) breaks the `dock::sync_dock_policy` Accessory→Regular
+            // transitions later in setup, and (b) prevents our NSPanel
+            // conversion from working as documented, since Apple's
+            // cross-app-overlay pattern requires an `Accessory` host app.
+            //
+            // We do this *before* `app.get_webview_window("main")` below
+            // so both `main` and `loomi-pet` are created under `Accessory`.
+            // `pet::sync_dock_policy` (called later in setup) then flips
+            // back to `Regular` once the main window is shown.
+            #[cfg(target_os = "macos")]
+            app.set_activation_policy(ActivationPolicy::Accessory);
 
             // Route window close (traffic light / × / Cmd+W / Alt+F4) through the
             // close-behavior hub. By default this minimizes to the tray instead of

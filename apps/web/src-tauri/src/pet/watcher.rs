@@ -92,10 +92,9 @@ pub fn spawn_decision_watcher(app: AppHandle) {
     std::thread::Builder::new()
         .name("loomi-pet-decision-watcher".into())
         .spawn(move || {
-            let _ = crate::panic_guard::catch_unwind_str(
-                "loomi-pet watcher",
-                || watch_loop(&app_for_decision, setup_emitted),
-            );
+            let _ = crate::panic_guard::catch_unwind_str("loomi-pet watcher", || {
+                watch_loop(&app_for_decision, setup_emitted)
+            });
         })
         .expect("spawn loomi-pet watcher");
 
@@ -109,10 +108,9 @@ pub fn spawn_decision_watcher(app: AppHandle) {
     std::thread::Builder::new()
         .name("loomi-pet-runtime-state-watcher".into())
         .spawn(move || {
-            let _ = crate::panic_guard::catch_unwind_str(
-                "loomi-pet runtime-state watcher",
-                || watch_runtime_state_loop(&app_for_runtime_state),
-            );
+            let _ = crate::panic_guard::catch_unwind_str("loomi-pet runtime-state watcher", || {
+                watch_runtime_state_loop(&app_for_runtime_state)
+            });
         })
         .expect("spawn loomi-pet runtime-state watcher");
 }
@@ -122,10 +120,7 @@ pub fn spawn_decision_watcher(app: AppHandle) {
 /// window). 16 is generous: in practice transitions are minutes apart.
 const RECENTLY_COMPLETED_CAP: usize = 16;
 
-fn watch_loop(
-    app: &AppHandle,
-    setup_emitted: std::sync::Arc<std::sync::Mutex<bool>>,
-) {
+fn watch_loop(app: &AppHandle, setup_emitted: std::sync::Arc<std::sync::Mutex<bool>>) {
     let path = resolve_decisions_path(app);
     let mut last_buckets: (usize, usize, usize) = (0, 0, 0);
     let mut last_decision_ts: Option<String> = None;
@@ -225,11 +220,8 @@ fn watch_loop(
         // borrow because `snap.pending` is moved through several helpers
         // (`set_pending_decision_count` takes &usize, but future readers
         // may consume) and a small Vec<String> is cheap.
-        let current_pending_ids: Vec<String> = snap
-            .pending
-            .iter()
-            .filter_map(|d| d.id.clone())
-            .collect();
+        let current_pending_ids: Vec<String> =
+            snap.pending.iter().filter_map(|d| d.id.clone()).collect();
 
         let reviewed_recently = last_review_seen_secs_ago()
             .map(|s| s < PRESENTING_REVIEW_GRACE_SECS)
@@ -378,11 +370,7 @@ fn build_decision_payload(d: &DecItem) -> serde_json::Value {
         _ => "p2",
     };
     let (source, source_type, source_ts) = match d.source_signal.as_ref() {
-        Some(s) => (
-            Some(s.source.clone()),
-            Some(s.r#type.clone()),
-            s.ts.clone(),
-        ),
+        Some(s) => (Some(s.source.clone()), Some(s.r#type.clone()), s.ts.clone()),
         None => (None, None, None),
     };
     serde_json::json!({
@@ -446,7 +434,11 @@ fn diff_completed_ids(
         if curr.contains(id) {
             continue;
         }
-        let status = if snap.done.iter().any(|d| d.id.as_deref() == Some(id.as_str())) {
+        let status = if snap
+            .done
+            .iter()
+            .any(|d| d.id.as_deref() == Some(id.as_str()))
+        {
             "done"
         } else if snap
             .dismissed
@@ -504,10 +496,16 @@ pub fn resolve_pet_runtime_state_path(app: &AppHandle) -> PathBuf {
         return PathBuf::from(p);
     }
     if let Ok(home) = app.path().home_dir() {
-        return home.join(".openloomi").join("pet").join("runtime_state.json");
+        return home
+            .join(".openloomi")
+            .join("pet")
+            .join("runtime_state.json");
     }
     if let Some(home) = resolve_home_dir_only() {
-        return home.join(".openloomi").join("pet").join("runtime_state.json");
+        return home
+            .join(".openloomi")
+            .join("pet")
+            .join("runtime_state.json");
     }
     PathBuf::from(".openloomi/pet/runtime_state.json")
 }
@@ -721,27 +719,19 @@ mod path_tests {
 
     #[test]
     fn home_dir_only_resolves_via_home() {
-        with_env(
-            &["HOME", "USERPROFILE", "HOMEDRIVE", "HOMEPATH"],
-            || {
-                std::env::set_var("HOME", "/home/alice");
-                let home = resolve_home_dir_only().expect("HOME set");
-                assert_eq!(home, PathBuf::from("/home/alice"));
-            },
-        );
+        with_env(&["HOME", "USERPROFILE", "HOMEDRIVE", "HOMEPATH"], || {
+            std::env::set_var("HOME", "/home/alice");
+            let home = resolve_home_dir_only().expect("HOME set");
+            assert_eq!(home, PathBuf::from("/home/alice"));
+        });
     }
 
     #[test]
     fn home_dir_only_returns_none_when_no_env_set() {
-        with_env(
-            &["HOME", "USERPROFILE", "HOMEDRIVE", "HOMEPATH"],
-            || {
-                assert!(resolve_home_dir_only().is_none());
-            },
-        );
+        with_env(&["HOME", "USERPROFILE", "HOMEDRIVE", "HOMEPATH"], || {
+            assert!(resolve_home_dir_only().is_none());
+        });
     }
-
-
 }
 
 #[derive(Deserialize)]
@@ -996,9 +986,8 @@ fn watch_runtime_state_loop(app: &AppHandle) {
     // Initial mtime capture. If the file already exists when the
     // watcher starts (e.g. user ran `pet happy` before opening the
     // desktop app), we want to apply it once on boot.
-    let mut last_mtime: Option<std::time::SystemTime> = std::fs::metadata(&path)
-        .and_then(|m| m.modified())
-        .ok();
+    let mut last_mtime: Option<std::time::SystemTime> =
+        std::fs::metadata(&path).and_then(|m| m.modified()).ok();
 
     // Apply the existing file once on startup so a state set while
     // the desktop was closed is still honored when it reopens.
@@ -1206,22 +1195,12 @@ mod tests {
 
     #[test]
     fn watcher_emits_when_time_changes_state_without_file_changes() {
-        assert!(should_emit_update(
-            false,
-            false,
-            Some("presenting"),
-            "idle"
-        ));
+        assert!(should_emit_update(false, false, Some("presenting"), "idle"));
     }
 
     #[test]
     fn watcher_stays_quiet_when_data_review_and_state_are_unchanged() {
-        assert!(!should_emit_update(
-            false,
-            false,
-            Some("idle"),
-            "idle"
-        ));
+        assert!(!should_emit_update(false, false, Some("idle"), "idle"));
     }
 
     /// Rough "now" in the format `is_just_now` accepts. We don't need
@@ -1255,7 +1234,11 @@ mod tests {
         let mp = (5 * doy + 2) / 153;
         let d_signed = doy - (153 * mp + 2) / 5 + 1;
         let m_signed = if mp < 10 { mp + 3 } else { mp - 9 };
-        let y = if m_signed <= 2 { y_signed + 1 } else { y_signed };
+        let y = if m_signed <= 2 {
+            y_signed + 1
+        } else {
+            y_signed
+        };
         (y as u32, m_signed as u32, d_signed as u32, h, m, s)
     }
 
@@ -1326,10 +1309,7 @@ mod tests {
         assert_eq!(px.get("status").and_then(|s| s.as_str()), Some("done"));
         assert_eq!(px.get("id").and_then(|s| s.as_str()), Some("x"));
         let py = build_terminal_decision_payload("y", "dismissed", &s).expect("y payload");
-        assert_eq!(
-            py.get("status").and_then(|s| s.as_str()),
-            Some("dismissed")
-        );
+        assert_eq!(py.get("status").and_then(|s| s.as_str()), Some("dismissed"));
         // Missing item → None rather than a half-formed payload.
         assert!(build_terminal_decision_payload("z", "done", &s).is_none());
     }

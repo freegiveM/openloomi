@@ -175,14 +175,13 @@ pub fn read_config(app: &AppHandle) -> PetConfig {
 pub fn write_config(app: &AppHandle, cfg: &PetConfig) -> Result<(), String> {
     let path = config_path(app);
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("create config dir: {e}"))?;
+        std::fs::create_dir_all(parent).map_err(|e| format!("create config dir: {e}"))?;
     }
     let tmp = path.with_extension("json.tmp");
     let mut to_write = cfg.clone();
     to_write.updated_at = Some(now_iso());
-    let bytes = serde_json::to_vec_pretty(&to_write)
-        .map_err(|e| format!("serialize config: {e}"))?;
+    let bytes =
+        serde_json::to_vec_pretty(&to_write).map_err(|e| format!("serialize config: {e}"))?;
     std::fs::write(&tmp, &bytes).map_err(|e| format!("write tmp: {e}"))?;
     std::fs::rename(&tmp, &path).map_err(|e| format!("rename tmp → final: {e}"))?;
     let _ = app; // reserved: future "config persisted" event hook
@@ -216,11 +215,7 @@ pub fn builtin_theme_base_dir(theme: &str) -> Option<PathBuf> {
 /// with the legacy `loomi-` prefix while `capybara` uses `capybara-`.
 /// We centralise that mapping in `builtin_sprite_prefix` so the JS
 /// `BUILTIN_THEMES` map and the Rust resolver stay in lock-step.
-pub fn resolve_sprite(
-    cfg: &PetConfig,
-    theme: &str,
-    state: &str,
-) -> Option<OverrideRef> {
+pub fn resolve_sprite(cfg: &PetConfig, theme: &str, state: &str) -> Option<OverrideRef> {
     if let Some(path) = cfg.override_path(theme, state) {
         return Some(OverrideRef::Absolute { path });
     }
@@ -278,10 +273,7 @@ pub fn list_custom_themes(cfg: &PetConfig) -> Vec<String> {
 /// map on the config).
 pub fn build_view(cfg: PetConfig, custom_themes: Vec<String>) -> PetConfigView {
     let mut overrides: HashMap<String, HashMap<String, OverrideRef>> = HashMap::new();
-    let mut themes_to_emit: Vec<String> = BUILTIN_THEMES
-        .iter()
-        .map(|s| s.to_string())
-        .collect();
+    let mut themes_to_emit: Vec<String> = BUILTIN_THEMES.iter().map(|s| s.to_string()).collect();
     for t in &custom_themes {
         themes_to_emit.push(t.clone());
     }
@@ -317,7 +309,9 @@ fn has_known_state_png(dir: &Path) -> bool {
         if !p.is_file() {
             continue;
         }
-        if p.extension().and_then(|s| s.to_str()).map(str::to_ascii_lowercase)
+        if p.extension()
+            .and_then(|s| s.to_str())
+            .map(str::to_ascii_lowercase)
             != Some("png".into())
         {
             continue;
@@ -396,9 +390,7 @@ fn now_iso() -> String {
     // Minimal RFC3339-ish formatter — we don't need timezone precision
     // for an updatedAt stamp.
     let (year, month, day, h, m, s) = epoch_to_ymdhms(secs);
-    format!(
-        "{year:04}-{month:02}-{day:02}T{h:02}:{m:02}:{s:02}Z"
-    )
+    format!("{year:04}-{month:02}-{day:02}T{h:02}:{m:02}:{s:02}Z")
 }
 
 fn epoch_to_ymdhms(secs: u64) -> (u32, u32, u32, u32, u32, u32) {
@@ -423,7 +415,11 @@ fn civil_from_days(z: i64) -> (u32, u32, u32) {
     let mp = (5 * doy + 2) / 153;
     let d_signed = doy - (153 * mp + 2) / 5 + 1;
     let m_signed = if mp < 10 { mp + 3 } else { mp - 9 };
-    let y = if m_signed <= 2 { y_signed + 1 } else { y_signed };
+    let y = if m_signed <= 2 {
+        y_signed + 1
+    } else {
+        y_signed
+    };
     (y as u32, m_signed as u32, d_signed as u32)
 }
 
@@ -455,7 +451,9 @@ mod tests {
             .or_default()
             .insert("idle".to_string(), PathBuf::from("/tmp/foxy.png"));
         match resolve_sprite(&cfg, "fox", "idle") {
-            Some(OverrideRef::Absolute { path }) => assert_eq!(path, PathBuf::from("/tmp/foxy.png")),
+            Some(OverrideRef::Absolute { path }) => {
+                assert_eq!(path, PathBuf::from("/tmp/foxy.png"))
+            }
             other => panic!("expected Absolute override, got {other:?}"),
         }
     }
@@ -507,10 +505,22 @@ mod tests {
         let cfg = PetConfig::default();
         let view = build_view(cfg, vec!["my-pack".into()]);
         let json = serde_json::to_value(&view).unwrap();
-        assert!(json.get("activeTheme").is_some(), "expected `activeTheme` key");
-        assert!(json.get("active_theme").is_none(), "did not expect `active_theme` key");
-        assert!(json.get("customThemes").is_some(), "expected `customThemes` key");
-        assert!(json.get("custom_themes_dir").is_none(), "did not expect `custom_themes_dir` key");
+        assert!(
+            json.get("activeTheme").is_some(),
+            "expected `activeTheme` key"
+        );
+        assert!(
+            json.get("active_theme").is_none(),
+            "did not expect `active_theme` key"
+        );
+        assert!(
+            json.get("customThemes").is_some(),
+            "expected `customThemes` key"
+        );
+        assert!(
+            json.get("custom_themes_dir").is_none(),
+            "did not expect `custom_themes_dir` key"
+        );
         assert_eq!(json["activeTheme"], "fox");
     }
 }

@@ -93,8 +93,10 @@ fn apply_default_icon_to_dock(app: &AppHandle) {
 /// rejects the data — both are unrecoverable for an icon, so we log
 /// and let the caller fall back to the OS default.
 fn encode_rgba_as_png(rgba: &[u8], width: u32, height: u32) -> Option<Vec<u8>> {
-    use image::{ImageEncoder, codecs::png::PngEncoder};
-    let expected = (width as usize).checked_mul(height as usize)?.checked_mul(4)?;
+    use image::{codecs::png::PngEncoder, ImageEncoder};
+    let expected = (width as usize)
+        .checked_mul(height as usize)?
+        .checked_mul(4)?;
     if rgba.len() != expected {
         log::warn!(
             "[loomi-pet] icon RGBA buffer mismatch: got {} bytes for {}x{}, expected {}",
@@ -107,7 +109,10 @@ fn encode_rgba_as_png(rgba: &[u8], width: u32, height: u32) -> Option<Vec<u8>> {
     }
     let mut out = Vec::new();
     let encoder = PngEncoder::new(&mut out);
-    if encoder.write_image(rgba, width, height, image::ExtendedColorType::Rgba8).is_err() {
+    if encoder
+        .write_image(rgba, width, height, image::ExtendedColorType::Rgba8)
+        .is_err()
+    {
         log::warn!("[loomi-pet] PNG encoding failed for Dock icon");
         return None;
     }

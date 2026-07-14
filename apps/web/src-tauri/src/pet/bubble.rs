@@ -70,6 +70,7 @@ pub fn build_bubble_window(app: &AppHandle) -> tauri::Result<tauri::WebviewWindo
     let builder = base;
 
     let w = builder.build()?;
+    super::macos_window::configure_as_floating_panel(&w);
     super::macos_window::configure_for_all_spaces(&w);
     // CloseRequested → hide (so the OS × button on the bubble isn't a
     // destroy gesture). Tauri's webview window has decorations(false) so
@@ -106,6 +107,10 @@ pub fn show_bubble_window(app: &AppHandle) {
         let _ = w.show();
         let _ = w.set_always_on_top(true);
         let _ = w.set_visible_on_all_workspaces(true);
+        // Re-apply the NSPanel conversion on every show so a
+        // transient rebuild of the underlying NSWindow doesn't
+        // quietly strip our non-activating-overlay behaviour.
+        super::macos_window::configure_as_floating_panel(&w);
         super::macos_window::configure_for_all_spaces(&w);
         let _ = w.set_focus();
         // Tell the bubble's JS to (re)arm its auto-dismiss timer. The

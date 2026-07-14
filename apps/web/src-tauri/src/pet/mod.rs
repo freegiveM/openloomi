@@ -26,16 +26,12 @@ pub use aux_position::{
     clear_card_manual_position, reposition_bubble_to_pet, reposition_card_to_pet,
     set_card_manual_position, spawn_position_poller,
 };
-pub use bubble::{
-    build_bubble_window, hide_bubble_window, show_bubble_window, BUBBLE_H, BUBBLE_W,
-};
-pub use card::{
-    build_card_window, hide_card_window, show_card_window, CARD_H, CARD_W,
-};
+pub use bubble::{build_bubble_window, hide_bubble_window, show_bubble_window, BUBBLE_H, BUBBLE_W};
+pub use card::{build_card_window, hide_card_window, show_card_window, CARD_H, CARD_W};
 pub use config_watcher::spawn_config_watcher;
 pub use dev_panel::{
-    build_dev_panel_window, close_dev_panel_for_exit, dev_panel_requested,
-    hide_dev_panel_window, show_dev_panel_window, DEV_PANEL_H, DEV_PANEL_W,
+    build_dev_panel_window, close_dev_panel_for_exit, dev_panel_requested, hide_dev_panel_window,
+    show_dev_panel_window, DEV_PANEL_H, DEV_PANEL_W,
 };
 pub use state::{handle_runtime_state_event, publish_baseline_state};
 pub use theme::{
@@ -167,10 +163,7 @@ pub fn last_review_seen_secs_ago() -> Option<u64> {
 /// `OPENLOOMI_PET_DEV=1`) and tests. Invoking it without those
 /// sinks just no-ops the `emit_to` calls.
 #[tauri::command]
-pub async fn emit_dev_state(
-    app: tauri::AppHandle,
-    state: String,
-) -> Result<(), String> {
+pub async fn emit_dev_state(app: tauri::AppHandle, state: String) -> Result<(), String> {
     let trimmed = state.trim();
     if trimmed.is_empty() {
         return Err("state key required".into());
@@ -203,7 +196,10 @@ pub fn get_pet_config(app: tauri::AppHandle) -> PetConfigView {
 /// the click would silently no-op (the `.catch` swallows the
 /// serde error).
 #[tauri::command(rename_all = "camelCase")]
-pub fn set_active_theme(app: tauri::AppHandle, theme_name: String) -> Result<PetConfigView, String> {
+pub fn set_active_theme(
+    app: tauri::AppHandle,
+    theme_name: String,
+) -> Result<PetConfigView, String> {
     let mut cfg = theme::read_config(&app);
     cfg.active_theme = theme_name;
     theme::write_config(&app, &cfg)?;
