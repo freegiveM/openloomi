@@ -94,6 +94,18 @@ export const OpenLoomiDocsCards = (): JSX.Element => {
       description: "Automate tasks at specified times",
     },
     {
+      id: "plugins/claude",
+      title: "Claude Code Plugin",
+      description:
+        "Wire Claude Code into the local OpenLoomi runtime with /openloomi:* commands",
+    },
+    {
+      id: "plugins/codex",
+      title: "Codex Plugin",
+      description:
+        "Use Codex as your coding surface while OpenLoomi owns memory and the runtime",
+    },
+    {
       id: "skills",
       title: "Skills",
       description: "Builtin skills that extend your capabilities",
