@@ -38,7 +38,7 @@ Current agent memory systems suffer from four critical challenges:
 Unlike traditional memory systems that merely store and retrieve messages, the Holistic Context builds structured knowledge from raw data through a self-evolving closed loop:
 
 ```
-Diverse context sources (email, IM, screen, audio)
+Diverse context sources (email, IM, screen [Screen Capture], audio)
     ↓
 Raw messages (scattered)
     ↓
@@ -50,7 +50,7 @@ Spatial dimension: Hebbian Memory Connections
 Temporal dimension: Time-Travel Queries
 ```
 
-OpenLoomi transforms this pattern for personal AI agents, extracting structured insights from diverse context sources (email, IM, screen, audio) and building the Holistic Context through progressive abstraction.
+OpenLoomi transforms this pattern for personal AI agents, extracting structured insights from diverse context sources — connectors (email, IM), the [Screen Capture](#screen-capture) screen-aware memory subsystem (macOS), and audio capture — and building the Holistic Context through progressive abstraction.
 
 ---
 
@@ -507,6 +507,72 @@ When a user configures personalization in Insight Settings — focus people, top
 
 ---
 
+## Screen Capture
+
+Screen Capture is OpenLoomi's **screen-aware memory**. When enabled, a global shortcut captures the frontmost window, a vision model summarizes what's on screen, and the result is stored locally as memory you can search and reason over later.
+
+> ⚠️ Screen Capture is **macOS only**. The native screen-capture command is compiled only on macOS (it uses `xcap` / ScreenCaptureKit) and requires macOS system permissions.
+
+### Overview
+
+Screen Capture sits alongside Memory as a distinct input source. Where Memory is built from the text of your connected apps, Screen Capture is built from **what you see**:
+
+1. You press the capture shortcut (default: **Enter**).
+2. OpenLoomi captures the frontmost window as an image.
+3. The image is downscaled and sent to a vision model, which returns a `description`, `keyContent`, and any `extractedText`.
+4. That summary is stored as a Screen Capture memory with the timestamp — and, optionally, the screenshot path.
+
+Capture and analysis are decoupled: the capture returns instantly and the (slower) vision analysis runs on a background queue, so pressing the shortcut never blocks you.
+
+### How it differs from Memory
+
+|                | Memory                                    | Screen Capture                      |
+| -------------- | ----------------------------------------- | ----------------------------------- |
+| **Input**      | Text from connectors (email, chat, files) | Screenshots of your active window   |
+| **Processing** | Embedding + forgetting engine             | Vision-model summarization          |
+| **Platform**   | All builds                                | macOS desktop only                  |
+| **Trigger**    | Automatic on message ingest               | A global capture shortcut you press |
+
+Screen Capture memories carry a `description`, `keyContent[]`, `extractedText`, `capturedAt`, and a reference to the stored screenshot.
+
+### Permissions (macOS)
+
+Screen Capture needs two macOS permissions, guided by the in-app permission dialog:
+
+- **Screen Recording** — to capture the window image. Grant OpenLoomi under **System Settings → Privacy & Security → Screen Recording**.
+- **Accessibility** — required for the global capture shortcut to work. Grant OpenLoomi under **System Settings → Privacy & Security → Accessibility**.
+
+If either permission is revoked while Screen Capture is on, OpenLoomi automatically disables Screen Capture and unregisters the shortcut. If you turn Screen Capture on before granting permissions, it re-enables itself on the next launch once both are granted.
+
+### Configuration
+
+Screen Capture settings live in **Personalization**. Available options:
+
+- **Enable Screen Capture** — the master switch. Turning it on registers the global capture shortcut; turning it off unregisters it.
+- **Capture shortcut** — the key that triggers a capture. Defaults to **Enter**; a wide range of keys is supported (letters, function keys, arrows, modifiers, numpad, etc.).
+- **Capture interval (debounce)** — the minimum time between captures. Defaults to **5 seconds** (minimum 3 seconds; configurable up to 3600 seconds). This prevents a burst of captures from a single keypress.
+- **Custom Vision LLM** _(advanced, behind a feature flag)_ — point analysis at your own OpenAI-compatible endpoint by supplying an API URL, key, and model (e.g. `gpt-4o-mini`). When off, Screen Capture uses the default cloud vision path.
+- **Meeting recording** — an optional companion that records meeting audio and summarizes it; auto-detection (via microphone voice activity) is off by default.
+
+### How captured content is stored
+
+- Screenshots are uploaded to the local screenshot store; only the **path** is retained with each memory.
+- The persisted memory is the **summary** — `description`, `keyContent`, and `extractedText` — not a running video of your screen.
+- Everything stays under your local OpenLoomi data directory. See [Storage Management](/docs/storage-management) for where it lives and how to clear it.
+
+### Turning it off and purging
+
+Toggle **Enable Screen Capture** off to stop all capture — this immediately unregisters the native shortcut listener and short-circuits the capture handler. To reclaim disk space from stored screenshots and summaries, use [Storage Management](/docs/storage-management) to clear the relevant data.
+
+### Troubleshooting
+
+- **Nothing gets captured.** Confirm both **Screen Recording** and **Accessibility** are granted to OpenLoomi. If you recently updated macOS or the app, macOS may have reset the grant — toggle it off and on again in System Settings.
+- **Captures feel too frequent / too sparse.** Adjust the **capture interval (debounce)**. A single keypress cannot capture more often than this interval.
+- **Analysis is slow or missing.** Vision analysis runs on a background queue with generous timeouts; a failed analysis is logged and skipped without blocking later captures. If you use a custom Vision LLM, verify the endpoint, key, and model.
+- **It captured OpenLoomi itself.** Screen Capture captures whatever window is frontmost, including OpenLoomi. Bring your target window to the front before capturing.
+
+---
+
 ## Key Design Decisions
 
 ### Why Tiered Storage Instead of a Single Store?
@@ -624,3 +690,12 @@ The skill exposes REST endpoints at `http://localhost:3414/api/`:
 The CLI automatically reads authentication tokens from `~/.openloomi/token` (base64 encoded JWT).
 
 For full integration details, visit the [openloomi-memory Skill](https://github.com/melandlabs/openloomi/blob/main/skills/openloomi-memory/SKILL.md).
+
+---
+
+## Related
+
+- [Screen Capture](#screen-capture) — the screen-aware memory subsystem that feeds "screen" context sources
+- [Knowledge Base](/docs/library) — where uploaded documents and the RAG index live
+- [Global Search](/docs/global-search) — the search bar that hits memory, summaries, and raw messages in one go
+- [Embedding Providers](/docs/reference/embedding-providers) — cloud vs local embedding backends

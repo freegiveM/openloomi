@@ -12,48 +12,41 @@ To add a connector, open **Settings → Connectors** and click **+ Add New Conne
 
 > 🔒 **Privacy by design**: OpenLoomi only reads messages to generate insights. It does not store raw message content on its servers — data is processed locally or encrypted in transit.
 
+> 📋 **Status table accuracy.** The status column below is the source of truth for what's actually wired up in `apps/web/components/add-platform-dialog.tsx`. Several platforms the doc previously listed as "🟢 Available" are currently disabled (`disable: true`) in the Add Connector dialog. If a platform you need is grayed out there, that matches this table.
+
 ## Supported Platforms
 
 ### Messaging Platforms and Social Media
 
-| Platform        | Status         | Description          |
-| --------------- | -------------- | -------------------- |
-| Telegram        | 🟢 Available   | Personal messaging   |
-| WhatsApp        | 🟢 Available   | Personal messaging   |
-| Slack           | 🟢 Available   | Team communications  |
-| Discord         | 🟢 Available   | Community & teams    |
-| iMessage        | 🟢 Available   | Personal messaging   |
-| QQ              | 🟢 Available   | Bot messaging        |
-| Lark/Feishu     | 🟢 Available   | Bot messaging        |
-| DingTalk        | 🟢 Available   | Bot messaging        |
-| Weixin          | 🟢 Available   | Bot messaging        |
-| Gmail           | 🟢 Available   | Email                |
-| Outlook         | 🟢 Available   | Email                |
-| X               | 🟢 Available   | Marketing Automation |
-| LinkedIn        | 🟡 Coming Soon | Marketing Automation |
-| Microsoft Teams | 🟡 Coming Soon | Team communications  |
+| Platform    | Status       | Description                     |
+| ----------- | ------------ | ------------------------------- |
+| Telegram    | 🟢 Available | Personal messaging              |
+| WhatsApp    | 🟢 Available | Personal messaging              |
+| iMessage    | 🟢 Available | Personal messaging (macOS only) |
+| QQ          | 🟢 Available | Bot messaging                   |
+| Lark/Feishu | 🟢 Available | Bot messaging                   |
+| DingTalk    | 🟢 Available | Bot messaging                   |
+| Weixin      | 🟢 Available | Bot messaging                   |
+| Gmail       | 🟢 Available | Email                           |
+| Outlook     | 🟢 Available | Email                           |
 
-### Productivity Tools
+### Powered by Composio
 
-| Platform        | Status         | Description    |
-| --------------- | -------------- | -------------- |
-| Google Drive    | 🟡 Coming Soon | File storage   |
-| Notion          | 🟡 Coming Soon | Knowledge base |
-| HubSpot         | 🟡 Coming Soon | CRM            |
-| Google Calendar | 🟡 Coming Soon | Scheduling     |
-| GitHub          | 🟡 Coming Soon | R & D          |
+The productivity connectors above (Google Calendar, Google Docs, Google Drive, HubSpot, Notion, GitHub, Asana, Jira, Linear, and Outlook Calendar) authorize through **[Composio](https://composio.dev)**, a hosted OAuth broker. You don't add a "Composio" connector directly — you pick the platform you want, and OpenLoomi routes the authorization through Composio behind the scenes.
 
-### Other
+**What's different about the Composio flow:**
 
-| Platform | Status       | Description    |
-| -------- | ------------ | -------------- |
-| RSS      | 🟢 Available | News & updates |
+- **Authorization opens in your system browser**, not the OpenLoomi app window. This is expected — Composio hosts the OAuth handshake with the target platform (Google, HubSpot, etc.).
+- **Your identity is carried securely across the popup.** Because the system browser's session is separate from the app's session, OpenLoomi passes an encrypted `state` token through the flow and binds the resulting connection back to your account when you return to the app.
+- **Connections are managed per account.** Once authorized, the connector appears in **Settings → Connectors** like any other, and you can disconnect it there.
+
+> 💡 The messaging connectors (Telegram, WhatsApp, iMessage, Feishu, DingTalk, QQ, WeChat) and email (Gmail, Outlook) do **not** use Composio — they connect through their own native flows (QR / phone / bot token / app password) documented below.
 
 ## What Each Connector Does
 
 The table below compares what each connector supports across key capabilities. Use this to choose the right platform for your workflow.
 
-> **Note:** Microsoft Teams, Google Drive, Notion, HubSpot, Google Calendar, and GitHub are coming soon and not included in the table below.
+> **Note:** Slack, Discord, X, Microsoft Teams, Google Drive, GitHub, Notion, and the rest of the platforms shown in the status table as 🔒 Disabled are not yet wired up in the Add Connector dialog. This capability matrix only lists the platforms currently available.
 
 ### Messaging Platforms
 
@@ -61,8 +54,6 @@ The table below compares what each connector supports across key capabilities. U
 | ----------- | ------------- | ------------ | ---------------- | -------------- | ------------ | ------------- | ------------- |
 | Telegram    | ✅            | ✅           | ✅               | ✅             | ✅           | ✅            | QR / Phone    |
 | WhatsApp    | ✅            | ✅           | ✅               | ✅             | ✅           | ✅            | QR / Phone    |
-| Slack       | ✅            | ✅           | ❌               | ✅             | ✅           | ✅            | OAuth         |
-| Discord     | ✅            | ✅           | ❌               | ✅             | ✅           | ✅            | OAuth         |
 | iMessage    | ✅            | ✅           | ✅               | ✅             | ✅           | ✅            | Local (macOS) |
 | QQ          | ⚠️            | ✅           | ✅               | ✅             | ❌           | ❌            | Bot Token     |
 | Lark/Feishu | ⚠️            | ✅           | ✅               | ✅             | ❌           | ❌            | Bot Token     |
@@ -75,13 +66,6 @@ The table below compares what each connector supports across key capabilities. U
 | --------- | ------------- | ------------ | ---------------- | -------------- | ------------ | ------------- | ------------ |
 | Gmail     | ✅            | ✅           | ❌               | ✅             | ✅           | ✅            | App Password |
 | Outlook   | ✅            | ✅           | ❌               | ✅             | ✅           | ✅            | App Password |
-
-### Social / Content
-
-| Connector | Read Messages | Send / Reply | Interactive Chat | AI Translation | AI Polishing | Notes & Files | Setup      |
-| --------- | ------------- | ------------ | ---------------- | -------------- | ------------ | ------------- | ---------- |
-| X         | ✅            | ✅           | ❌               | ✅             | ✅           | ✅            | OAuth      |
-| RSS       | ✅            | ❌           | ❌               | ❌             | ❌           | ❌            | URL / OPML |
 
 ## Authorization Modes Explained
 
@@ -192,26 +176,6 @@ Or choose to authorize by **quick login** in the Telegram app if you have offici
 <div style={{ textAlign: "center" }}>
   <img src="/img/openloomi/telegram-login-quick.png" />
 </div>
-
-### Slack
-
-After clicking **[Connect Slack]**, you'll be redirected to Slack's authorization page. Click **[Install OpenLoomi]** to add OpenLoomi to your workspace.
-
-<div style={{ textAlign: "center" }}>
-  <img src="/img/openloomi/slack-auth.png" alt="OpenLoomi Slack Auth" />
-</div>
-
-> Note: Only workspace owners can install OpenLoomi currently.
-
-### Discord
-
-After clicking **[Connect Discord]**, select a Discord server to install OpenLoomi.
-
-<div style={{ textAlign: "center" }}>
-  <img src="/img/openloomi/discord-auth.png" alt="OpenLoomi Discord Auth" />
-</div>
-
-> Note: Only Discord server managers can install OpenLoomi currently.
 
 ### WhatsApp
 
@@ -428,23 +392,9 @@ After clicking **[Connect Outlook]**, enter your email address and app password 
   <img src="/img/openloomi/outlook-login.png" alt="OpenLoomi Outlook Login" />
 </div>
 
-### X
-
-After clicking **[Connect X]**, complete the OAuth authorization flow to link your X account.
-
-<div style={{ textAlign: "center" }}>
-  <img src="/img/openloomi/x-auth.png" alt="OpenLoomi X Auth" />
-</div>
-
-### RSS
-
-After clicking **[RSS]**, you can add individual RSS links or upload an OPML file for batch import.
-
-<div style={{ textAlign: "center" }}>
-  <img src="/img/openloomi/rss.png" alt="OpenLoomi RSS Integration" />
-</div>
-
 ---
+
+> ℹ️ **Slack, Discord, X, GitHub, Notion, Linear, and several other platforms** are listed in the Add Connector dialog but are currently disabled. The platform setup flows above cover only the platforms that are wired up in this build.
 
 ## Disconnect / Revoke Access
 

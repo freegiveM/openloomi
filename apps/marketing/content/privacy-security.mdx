@@ -253,3 +253,53 @@ You can view exactly when and why OpenLoomi accessed your data. Every access is 
 - **Reason**: Why the access was needed (e.g., "Generating insights", "Replying to messages")
 
 > 💡 **Transparency First**: You have full visibility into all data access. If you notice any suspicious activity, you can revoke access immediately from Settings.
+
+---
+
+## Audit Logs
+
+Audit Logs give you a transparent, local record of what your agents actually did on your machine: which files they read and which commands they executed. It's there for trust, debugging, and compliance.
+
+### Overview
+
+OpenLoomi runs agents that can read files and run commands on your behalf. The audit log records those actions so nothing happens invisibly. Everything is written locally to an append-only file (`~/.openloomi/logs/audit.jsonl`) — it never leaves your device. This is part of what backs OpenLoomi's data-sovereignty and SOC 2 story.
+
+The log is available in the desktop app at `/audit`.
+
+### What's logged
+
+Two event types are recorded:
+
+| Type           | When                                       | What's captured                      |
+| -------------- | ------------------------------------------ | ------------------------------------ |
+| `file_read`    | An agent reads a file outside your project | The file path, with a timestamp      |
+| `command_exec` | An agent runs a shell command              | The command string and its arguments |
+
+> Only **non-project** file reads are recorded — routine reads of your working project aren't spammed into the log. Each entry carries an ISO-8601 timestamp.
+
+### Reading an entry
+
+The `/audit` page shows a scrollable, paginated list (50 per page):
+
+- A **type filter** — All, File Read, or Command Exec — with per-type counts shown above the list.
+- Each row shows the entry type, an icon, the precise timestamp (down to milliseconds), the detail (the file path or command line), and an arguments badge for commands that had any.
+- **Auto refresh** polls for new entries every few seconds; you can also press **Refresh** (or the **r** key) to reload on demand.
+
+### Retention and export
+
+- **Storage** — entries are appended to `~/.openloomi/logs/audit.jsonl` as JSON lines.
+- **Rotation** — the log self-trims: once it grows past ~10 MB it's rewritten to keep the most recent half, so it never grows unbounded.
+- **Clearing** — the **Clear** button (with a confirmation prompt) truncates the log to empty.
+
+> There is no built-in CSV/JSON export button today. Because the log is plain JSONL on disk, you can read or process `~/.openloomi/logs/audit.jsonl` directly with any tool.
+
+### Troubleshooting
+
+- **An action I expected isn't logged.** Only non-project file reads and command executions are recorded. Reads within your active project and other activity (like an agent's chat output) aren't audit entries — check the [Tasks](/docs/scheduled-jobs) execution history or the chat transcript for those.
+- **The log looks empty after an update.** The log self-trims once it passes its size cap, and **Clear** empties it entirely. New activity will start populating it again.
+- **I'm on a different profile.** The audit log is tied to your local data directory; switching profiles or data directories shows a different log.
+
+### Related
+
+- [Skills](/docs/skills) — what agents can do that gets logged
+- [Automation](/docs/automation) — where much of this activity originates

@@ -5,7 +5,25 @@ description: "Developer and power-user reference material for OpenLoomi"
 
 # Reference
 
-Developer and power-user reference material for OpenLoomi.
+Developer and power-user reference material for OpenLoomi. The pages here document the contracts that don't fit neatly into a user-guide chapter — runtime configuration, embedding providers, credit accounting, and the public HTTP API.
+
+## Overview
+
+The reference section is grouped into two buckets:
+
+- **Runtimes & APIs** — the [Agent Runtimes](/docs/reference/agent-runtimes) you can plug into OpenLoomi, plus the [OpenLoomi CLI](/docs/reference/openloomi-ctl) for one-shot automation from a shell or CI.
+- **Configuration** — [Embedding Providers](/docs/reference/embedding-providers) for cloud-vs-local search backends.
+
+If you're looking for something end-user-facing, head back to the [top-level docs](/docs) instead — most user-facing surfaces have their own page there.
+
+## Available references
 
 - **[Agent Runtimes](/docs/reference/agent-runtimes)** — Configure the default Claude runtime, the secondary Codex option, and other CLI runtimes for native agent tasks.
 - **[OpenLoomi CLI](/docs/reference/openloomi-ctl)** — Run `openloomi-ctl` from packaged desktop installs for one-shot automation and CI/CD workflows.
+- **[Embedding Providers](/docs/reference/embedding-providers)** — Cloud vs local embedding backends, switching, and re-embedding behaviour.
+
+## Related
+
+- [Plugins](/docs/plugins) — bridge to Claude Code and Codex CLI
+- [Storage Management](/docs/storage-management) — where all this configuration lives on disk
+- [Settings Reference](/docs/settings-reference) — every `?page=` deep-link in the app
