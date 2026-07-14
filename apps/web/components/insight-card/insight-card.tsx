@@ -33,10 +33,8 @@ export function InsightCard(props: InsightCardProps) {
     platform,
     importance,
     urgency,
-    people,
     groups,
     taskLabel,
-    topKeywords,
     isSelected,
     hasMyNickname = false,
     onMarkAsRead,
@@ -49,14 +47,6 @@ export function InsightCard(props: InsightCardProps) {
 
   const { isUnread, markAsRead } = useUnreadState(id);
   const { t, i18n } = useTranslation();
-
-  const [hasTodos, todoCount] = useMemo(() => {
-    const count =
-      (props.myTasks?.length ?? 0) +
-      (props.waitingForMe?.length ?? 0) +
-      (props.waitingForOthers?.length ?? 0);
-    return [count > 0, count];
-  }, [props.myTasks, props.waitingForMe, props.waitingForOthers]);
 
   /** Normalized categories list: Insight.categories may be an array or JSON string */
   const categoriesList = useMemo((): string[] => {
