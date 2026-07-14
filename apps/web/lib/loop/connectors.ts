@@ -194,8 +194,9 @@ export function writeConnectorSnapshot(connectors: ConnectorEntry[]): void {
  *
  * On cache miss, this delegates to `refreshConnectors({ silent: true })`
  * so the user never sees "all OFF" right after install — the first
- * open of the Loomi Online card auto-probes (short 6s timeout) and the
- * pill row repaints to truth within a couple of seconds. The cache is
+ * open of the Loomi Online card auto-probes and the pill row repaints
+ * to truth once the agent returns or the `PROBE_TIMEOUT_MS` ceiling
+ * fires. The cache is
  * the fast path; the probe is the recovery.
  */
 export async function listConnectors(
@@ -214,15 +215,29 @@ export async function listConnectors(
   return refreshConnectors({ silent: true });
 }
 
-const PROBE_TIMEOUT_MS = 6 * 1000;
+// `silent` probe budget. The agent's full probe (see `composio-bridge.ts`'s
+// `invokeAgentPrompt({ timeoutMs: 10 * 60 * 1000 })`) can legitimately
+// take several minutes for a cold first probe on a fresh install — it
+// has to spin up the agent runtime, load the `composio` skill, run the
+// CLI, and enumerate all 5 toolkits. The previous 6 s budget was so
+// tight that the race almost always lost, so every card open would fall
+// back to the FALLBACK sentinel and show "Awaiting first probe".
+//
+// 10 minutes mirrors the upper bound of the underlying agent probe, so
+// the `silent` race and the underlying SSE timeout align — whichever
+// hits first is the effective ceiling. In practice the silent path
+// usually resolves much sooner; the long ceiling just makes sure a slow
+// first probe doesn't get short-circuited into the cooldown fallback.
+const PROBE_TIMEOUT_MS = 10 * 60 * 1000;
 const PROBE_COOLDOWN_MS = 30 * 1000;
 
 interface ConnectorCacheWithCooldown {
   fetchedAt?: unknown;
   connectors?: unknown;
   /**
-   * Set when `refreshConnectors({silent:true})` hits its 6s timeout
-   * and no agent probe result was available. Subsequent calls within
+   * Set when `refreshConnectors({silent:true})` hits its
+   * `PROBE_TIMEOUT_MS` ceiling and no agent probe result was
+   * available. Subsequent calls within
    * `PROBE_COOLDOWN_MS` will skip the probe entirely and short-circuit
    * to the FALLBACK sentinel — so a user double-clicking the card
    * after opening it twice in a row doesn't burn another agent round
@@ -317,12 +332,13 @@ export function clearProbeCooldown(): void {
  * composio surfaces (skill / CLI / insights) and returns a fresh
  * snapshot, which we persist via `writeConnectorSnapshot` and return.
  *
- * `opts.silent = true` wraps the probe in a short `PROBE_TIMEOUT_MS`
- * (6s) timeout and falls back to the cache / FALLBACK on timeout,
+ * `opts.silent = true` wraps the probe in a `PROBE_TIMEOUT_MS`
+ * (10 min) ceiling and falls back to the cache / FALLBACK on timeout,
  * including writing a `probeCooldownUntil` marker so a rapid re-open
  * within `PROBE_COOLDOWN_MS` skips the probe entirely. Used by
  * `listConnectors()`'s cache-miss path so the user's first card open
- * doesn't block on a potentially-slow agent call.
+ * gets the room it needs for a cold first probe without immediately
+ * falling back to "Pending first probe" pills.
  *
  * Failure modes (in order of preference):
  *

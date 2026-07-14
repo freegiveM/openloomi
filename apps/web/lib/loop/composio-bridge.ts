@@ -63,11 +63,20 @@ const DEFAULT_TOOLKITS: NonNullable<ProbeConnectorPromptOptions["toolkits"]> = [
 /**
  * Build the small prompt that asks the agent to probe the configured
  * toolkits via whatever Composio surfaces are reachable in the current
- * session (composio skill / composio CLI / openloomi-memory insights —
- * co-equal, run concurrently). The prompt is intentionally narrow —
- * no signal pull, no classify, no decision persist. The expected
- * output is a single `result` event whose `content` is a JSON
- * `connectors` block matching `ConnectorEntry[]`.
+ * session (composio CLI / composio skill / openloomi-memory insights).
+ * The prompt is intentionally narrow — no signal pull, no classify, no
+ * decision persist. The expected output is a single `result` event whose
+ * `content` is a JSON `connectors` block matching `ConnectorEntry[]`.
+ *
+ * IMPORTANT: the prompt requires the agent to **work through every
+ * surface, even after an earlier one errors**. The original wording
+ * "try in parallel" let the agent give up after the first failure
+ * (e.g. the \`composio\` skill errored with an internal exception),
+ * which produced a false "no composio surface reachable" snapshot even
+ * when \`Bash(composio connections list)\` would have worked fine. The
+ * procedure below makes the agent's responsibility explicit: the only
+ * acceptable reason to report \`surfaces_used: []\` is that ALL THREE
+ * surfaces were attempted and ALL THREE failed.
  */
 function buildProbePrompt(
   toolkits: NonNullable<ProbeConnectorPromptOptions["toolkits"]>,
@@ -81,13 +90,21 @@ function buildProbePrompt(
     })
     .join("\n");
 
-  return `You are running a **connector probe** for the openloomi Loop. Your job is to inspect the active Composio surface, identify which of the toolkits below have at least one healthy connected account, and emit a single structured \`result\` event. NO signal pull, NO classify, NO decision persist — just the connector snapshot.
+  return `You are running a **connector probe** for the openloomi Loop. Your job is to inspect active Composio surfaces, identify which of the toolkits below have at least one healthy connected account, and emit a single structured \`result\` event. NO signal pull, NO classify, NO decision persist — just the connector snapshot.
 
-# Available Composio surfaces (try in parallel)
+# Available Composio surfaces — work through ALL of them before giving up
 
-  1. **\`composio\` skill** — \`Skill composio connections list\`. The skill surface.
-  2. **\`composio\` CLI** — \`Bash(composio connections list)\`. The CLI surface.
-  3. **No surface reachable** — fall back to the insights surface and report \`connected: false\` for every entry that isn't a local-only toolkit (see catalog below).
+You MUST attempt every surface below, **in order**, even if an earlier surface errors. A non-zero exit, a "command not found", an exception from the skill runtime, or a malformed response from any one surface is NEVER sufficient reason to declare the probe done. Only after steps 1, 2, and 3 have all failed may you fall through to step 4.
+
+  1. **CLI reachable?** — Run \`Bash(composio whoami)\`. This is the cheapest sanity check; if it succeeds, the CLI is on \`$PATH\` and the user's API key is valid. Record this surface as \`"cli"\` in \`surfaces_used\`.
+
+  2. **CLI connections snapshot** — Run \`Bash(composio connections list)\`. It returns JSON of the form \`{ "<toolkit>": [{ "status": "ACTIVE", "word_id": "...", ... }, ...] }\`. Treat entries with \`status === "ACTIVE"\` as healthy connections; everything else as disconnected. Combine this result into the per-toolkit \`connected\` / \`accountCount\` / \`lastError\` fields.
+
+  3. **\`composio\` skill** — Run \`Skill composio connections list\`. Independent of the CLI; in sandboxed shells (or when \`composio\` is not on \`$PATH\`) this may be the only surface that returns data. If step 1 or 2 already succeeded, still run this step — its result can confirm or contradict the CLI.
+
+  4. **No surface reachable** — ONLY reach this step when steps 1, 2, and 3 ALL failed. Report \`surfaces_used: []\` and set every non-local-only entry to \`connected: false\` with \`lastError: "no composio surface reachable"\`.
+
+If multiple surfaces return data, merge them: a toolkit with at least one ACTIVE / healthy report from ANY surface counts as \`connected: true\` with that surface's \`accountCount\`. A later surface's failure does not invalidate an earlier surface's success.
 
 # Toolkits to probe
 
@@ -104,14 +121,14 @@ Emit exactly one SSE \`result\` event with this content:
   "muted": 0,
   "errors": 0,
   "duration_ms": <int>,
-  "surfaces_used": ["<skill|cli|insights|local-only>", ...],
+  "surfaces_used": ["cli", "skill", "insights", "local-only"],
   "connectors": [
     { "id": "<toolkit-id>", "label": "<label>", "connected": <bool>, "accountCount": <int>, "lastError": "<optional: short string>" }
   ]
 }
 \`\`\`
 
-The \`connectors\` array MUST contain one entry per toolkit in the catalog above, in the same order, with the \`id\` and \`label\` matching exactly. Do not omit any toolkit. If the active Composio surface could not be reached at all, report \`surfaces_used: []\` and set every non-local-only connector to \`connected: false\` with \`lastError: "no composio surface reachable"\`.
+The \`connectors\` array MUST contain one entry per toolkit in the catalog above, in the same order, with the \`id\` and \`label\` matching exactly. Do not omit any toolkit.
 
 Do not pull signals, do not classify, do not write to \`~/.openloomi/loop/\` — the bridge persists the snapshot for you. Just emit the \`result\` event and stop.`;
 }
@@ -287,24 +304,28 @@ export async function probeConnectorState(
   try {
     res = await invokeAgentPrompt(prompt, {
       // Generous timeout — a probe runs the agent's composio surface
-      // discovery (skill / CLI / insights) and pings 5 toolkits. Cold
-      // skill loads, OAuth token refresh, and per-toolkit network
-      // round-trips each add latency; in real environments we've seen
-      // the tail of this distribution land around 60–90s, and a
-      // particularly cold first probe (just-installed user, no cached
-      // composio surface, all 5 toolkits to enumerate) can stretch
-      // well past 2 minutes. 6 minutes gives a comfortable buffer
-      // without leaving a hung request alive forever. The full tick
-      // uses 15m because it does much more work (signal pull + enrich
-      // + classify + persist); the probe is intentionally shorter than
-      // that.
+      // discovery (CLI `whoami` + `connections list` → skill → insights)
+      // and pings 5 toolkits. Cold skill loads, OAuth token refresh, and
+      // per-toolkit network round-trips each add latency; in real
+      // environments we've seen the tail of this distribution land
+      // around 60–90s, and a particularly cold first probe (just-
+      // installed user, no cached composio surface, all 5 toolkits to
+      // enumerate) can stretch well past 2 minutes. 10 minutes gives a
+      // comfortable buffer without leaving a hung request alive forever
+      // and matches `PROBE_TIMEOUT_MS` in `connectors.ts` so the
+      // `silent` race and the underlying SSE timeout align — the lower
+      // of the two will hit first, which keeps the contract predictable.
+      // The full tick uses 15m because it does much more work (signal
+      // pull + enrich + classify + persist); the probe is intentionally
+      // shorter than that.
       //
       // This is the *full* probe timeout (used by `refreshConnectors()`
-      // without `silent`). The card-open path uses a 6s `silent` timeout
-      // + 30s cooldown to bound the worst case, but a fire-and-forget
-      // probe triggered by saving the AI key (PUT /api/preferences/ai)
-      // uses this larger budget so a cold install can actually land.
-      timeoutMs: 6 * 60 * 1000,
+      // without `silent`). The card-open path uses a 10 min `silent`
+      // ceiling + 30s cooldown to bound the worst case, but a fire-and-
+      // forget probe triggered by saving the AI key (PUT
+      // /api/preferences/ai) uses this larger budget so a cold install
+      // can actually land.
+      timeoutMs: 10 * 60 * 1000,
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
