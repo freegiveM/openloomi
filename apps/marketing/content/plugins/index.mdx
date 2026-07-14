@@ -1,0 +1,32 @@
+---
+title: "Plugins"
+description: "First-party plugins that bridge OpenLoomi to other agent shells — Claude Code and Codex CLI"
+---
+
+# Plugins
+
+First-party plugins that turn external agent shells into a coding surface for a local OpenLoomi runtime. Each plugin is a thin bridge — no business logic is reimplemented, every side effect lands on the local HTTP runtime, and no command ever prints or forwards your API keys or auth tokens.
+
+## Overview
+
+If you already live in **Claude Code** or **Codex CLI**, you don't need to leave your editor to use OpenLoomi. Install the matching plugin, run its first-use setup, and OpenLoomi's memory, connectors, scheduled jobs, and Pet become reachable as slash commands, skills, or `@OpenLoomi` prompts inside your existing shell.
+
+Both plugins follow the same contract:
+
+- A Node bridge that talks to the local OpenLoomi runtime over HTTP (`127.0.0.1:3414`, falling back to `127.0.0.1:3515`).
+- A `setup-status` command that reports readiness as stable JSON (`mode`, `installed`, `tokenPresent`, `aiProviderConfigured`, `ready`, `nextAction`, `reason`).
+- An auto-enable wizard (`setup`) that walks the install → launch → guest login → token-mint → recheck state machine.
+- An opt-in Pet mirror that maps plugin lifecycle events onto the [Pet](/docs/pet) without ever blocking the user's turn.
+
+> 🔐 **Secret handling is identical across both plugins.** API keys, OAuth tokens, connector secrets, and auth tokens never appear in chat, argv, stdout, stderr, or logs. The bridge only reports _presence_ (`hasApiKey`, `baseUrlPresent`, `modelPresent`, etc.) — never values.
+
+## Available plugins
+
+- **[Claude Code Plugin](/docs/plugins/claude)** — Wire Claude Code into the local OpenLoomi runtime with `/openloomi:*` slash commands, a first-run setup wizard, and opt-in Pet mirror + Stop-archive hooks.
+- **[Codex Plugin](/docs/plugins/codex)** — Use Codex CLI as your coding surface while OpenLoomi owns memory, connectors, and the runtime. Ships 13 bridge commands, 8 workflow skills, and a switch that makes Codex the default agent provider.
+
+## Related
+
+- [Pet](/docs/pet) — the desktop companion that mirrors plugin lifecycle events
+- [Onboarding](/docs/onboarding) — first-run setup for the OpenLoomi desktop app itself
+- [Claude Agent Runtime](/docs/reference/agent-runtimes/claude) · [Codex CLI Runtime](/docs/reference/agent-runtimes/codex) — how OpenLoomi drives the underlying runtimes

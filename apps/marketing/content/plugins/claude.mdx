@@ -1,0 +1,153 @@
+---
+title: "Claude Code Plugin"
+description: "Wire Claude Code into the local OpenLoomi runtime — /openloomi:* slash commands, a first-run setup wizard, and opt-in Pet mirror + Stop-archive hooks"
+icon: "FaRobot"
+---
+
+# Claude Code Plugin
+
+The Claude Code plugin bridges **Claude Code** and your local **OpenLoomi** runtime. It adds `/openloomi:*` slash commands, a one-command setup wizard, and optional hooks that mirror your Claude Code session onto the [Pet](/docs/pet) and archive transcripts into OpenLoomi.
+
+> Runtime implementation details (how OpenLoomi drives a Claude subprocess internally) live in [Claude Agent Runtime](/docs/reference/agent-runtimes/claude). This page is about the **external** integration — how a Claude Code user drives OpenLoomi.
+
+---
+
+## Overview
+
+The plugin is a thin bridge. It never reimplements OpenLoomi business logic — every side effect lands on the local runtime over HTTP (`127.0.0.1:3414`, falling back to `127.0.0.1:3515`). Commands are dependency-free Node wrappers around `scripts/loomi-bridge.mjs`, and no command ever prints or forwards your `ANTHROPIC_API_KEY` / `ANTHROPIC_AUTH_TOKEN`.
+
+---
+
+## Install
+
+Three paths:
+
+- **Marketplace** (once published):
+  ```
+  /plugin marketplace add melandlabs/openloomi
+  /plugin install openloomi
+  ```
+- **From source**, pointing Claude Code at the plugin directory:
+  ```
+  claude --plugin-dir plugins/claude
+  ```
+- **Local marketplace checkout** as an alternative before the marketplace listing goes live.
+
+---
+
+## First-run wizard
+
+Run **`/openloomi:setup`** once. It auto-chains the whole setup and stops early only when it needs you:
+
+```
+install OpenLoomi.app
+   → launch the desktop app
+   → wait for the local HTTP API
+   → mint a guest bearer token (→ ~/.openloomi/token)
+   → sync ANTHROPIC_API_KEY into OpenLoomi's AI provider
+   → { setup: "ready" }
+```
+
+The `setup` result reports one of: `ready`, `install_attempted`, `install_failed`, `launch_failed`, `api_not_ready`, `guest_login_failed`, `awaiting_user_action`, or `step_limit_reached`. Default API wait is 30 s (`--max-wait`).
+
+---
+
+## Slash commands
+
+| Command              | Does                                                                        | Notable failures                        |
+| -------------------- | --------------------------------------------------------------------------- | --------------------------------------- |
+| `/openloomi:setup`   | One-time end-to-end setup wizard (above)                                    | `awaiting_user_action`, `api_not_ready` |
+| `/openloomi:status`  | Prints stable readiness JSON (see below)                                    | read-only; never fails destructively    |
+| `/openloomi:usage`   | Today's LLM usage summary                                                   | `API_UNREACHABLE`                       |
+| `/openloomi:pet`     | Set the Pet to a state (`happy`, `thinking`, …)                             | `INVALID_STATE`, `ENDPOINT_MISSING`     |
+| `/openloomi:hooks`   | `install` / `uninstall` / `status` for the Pet + archive hooks              | never auto-installs                     |
+| `/openloomi:connect` | Opt-in: install `composio` skill, enable screen memory, connect a connector | never echoes tokens                     |
+| `/openloomi:help`    | Lists all commands                                                          | —                                       |
+
+The valid Pet states are: `happy`, `idle`, `juggling`, `needsinput`, `presenting`, `sleeping`, `sweeping`, `thinking`, `working`.
+
+---
+
+## Pet mirror + Stop archive
+
+Hooks are **opt-in** — run `/openloomi:hooks install` to write a marked block into `~/.claude/settings.json` (merge-no-overwrite, atomic; keyed so it can be cleanly removed). Once installed, Claude Code lifecycle events mirror onto the Pet:
+
+| Claude Code event  | Pet state         |
+| ------------------ | ----------------- |
+| `SessionStart`     | `greet`           |
+| `UserPromptSubmit` | `thinking`        |
+| `PreToolUse`       | `working`         |
+| `PostToolUse`      | `thinking`        |
+| `SubagentStart`    | `juggling`        |
+| `SubagentStop`     | `thinking`        |
+| `Notification`     | `needsinput`      |
+| `Stop`             | archive → `happy` |
+
+The **Stop** hook also archives context: it reads the session transcript, keeps the last **6 turns** (capped at ~6 KB), and POSTs a note to `/api/insights` under the `claude-code` group. The Stop hook always exits 0 — an archive failure never blocks Claude Code.
+
+> The states `idle`, `sleeping`, `sweeping`, and `presenting` are owned by OpenLoomi's Loop watcher; don't set them manually from Claude.
+
+---
+
+## Readiness JSON
+
+`/openloomi:status` (bridge `setup-status --json`) returns a stable shape:
+
+| Field                  | Meaning                                           |
+| ---------------------- | ------------------------------------------------- |
+| `mode`                 | `env` \| `packaged` \| `source` \| `unconfigured` |
+| `installed`            | desktop app found                                 |
+| `version`              | detected OpenLoomi version                        |
+| `tokenPresent`         | a local auth token exists                         |
+| `aiProviderConfigured` | a conversation provider is configured             |
+| `claudeEnvSyncable`    | `ANTHROPIC_API_KEY`/`AUTH_TOKEN` present to sync  |
+| `apiReachable`         | local HTTP API responded                          |
+| `hooksInstalled`       | Pet/archive hooks present                         |
+| `ready`                | everything needed is in place                     |
+| `nextAction`           | what to do next (see reasons below)               |
+| `reason`               | machine-readable status code                      |
+| `source`               | how the install was discovered                    |
+
+The key value behind `claudeEnvSyncable` is never read into stdout or logs — only its presence is reported.
+
+---
+
+## Troubleshooting
+
+**Reason codes → next action:**
+
+| `reason`                     | `nextAction`                   | Fix                                                                   |
+| ---------------------------- | ------------------------------ | --------------------------------------------------------------------- |
+| `READY`                      | `run`                          | All good.                                                             |
+| `OPENLOOMI_NOT_INSTALLED`    | `install_openloomi`            | Install the desktop app.                                              |
+| `OPENLOOMI_NOT_FINALIZED`    | `launch_openloomi_to_finalize` | Launch the app once so the helper binary is written.                  |
+| `SOURCE_FOUND_CLI_NOT_BUILT` | `build_or_stage_openloomi`     | `cd $OPENLOOMI_REPO_DIR/apps/web/src-tauri && cargo build --release`. |
+| `LOGIN_REQUIRED`             | `login_openloomi`              | `/openloomi:setup` mints a guest bearer.                              |
+| `AI_PROVIDER_REQUIRED`       | `configure_ai_provider`        | `/openloomi:setup` syncs `ANTHROPIC_API_KEY`.                         |
+| `CLAUDE_ENV_NOT_SET`         | (sync error)                   | `export ANTHROPIC_API_KEY=…` and retry.                               |
+
+- **Pet doesn't switch states.** Confirm hooks are installed (`/openloomi:hooks status`) and the app is running (`/openloomi:status` → `apiReachable`). `ENDPOINT_MISSING` is non-blocking.
+- **Where do Stop archives go?** They're posted to `/api/insights` under the `claude-code` group and surface in your Insight Box.
+- **`unconfigured` mode.** The plugin couldn't locate an install — run `/openloomi:setup` or provide a path.
+
+---
+
+## Architecture
+
+```
+Claude Code
+   → /openloomi:* slash command
+      → skills/openloomi/SKILL.md
+         → scripts/loomi-bridge.mjs
+            → local OpenLoomi runtime (127.0.0.1:3414 / :3515)
+```
+
+The bridge discovers the install through an ordered chain (`OPENLOOMI_BIN` → `OPENLOOMI_HOME` → `OPENLOOMI_REPO_DIR` → `PATH` → platform defaults → saved config → `--bin-path` flag).
+
+---
+
+## Related
+
+- [Codex Plugin](/docs/plugins/codex) — the Codex CLI counterpart
+- [Claude Agent Runtime](/docs/reference/agent-runtimes/claude) — the internal runtime
+- [Pet](/docs/pet) · [Onboarding](/docs/onboarding) · [Getting Started](/docs/getting-started) · [Automation](/docs/automation)

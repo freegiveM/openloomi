@@ -2,5 +2,9 @@
   "title": "Reference",
   "defaultOpen": false,
   "collapsible": true,
-  "pages": ["agent-runtimes", "openloomi-ctl"]
+  "pages": [
+    "agent-runtimes",
+    "openloomi-ctl",
+    "embedding-providers"
+  ]
 }

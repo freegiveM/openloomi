@@ -1,0 +1,66 @@
+---
+title: "Embedding Providers"
+description: "Choose how OpenLoomi generates embeddings — a cloud provider or a fully local model — and understand switching and re-embedding"
+icon: "FaChartLine"
+---
+
+# Embedding Providers
+
+Embeddings turn your text into vectors so OpenLoomi can search it semantically. OpenLoomi can generate embeddings either through a **cloud** provider or a **local**, on-device model. Configure this in **Embedding settings** (surfaced within AI Settings).
+
+---
+
+## Overview
+
+Embeddings power [Memory](/docs/memory) semantic search, the knowledge-base RAG, and the semantic groups in [Global Search](/docs/global-search). Every stored item is embedded once and compared by cosine similarity at query time. The provider you pick determines where that embedding computation happens.
+
+---
+
+## Cloud provider
+
+The cloud path sends text to a hosted embedding API.
+
+- Default base URL: `https://openrouter.ai/api/v1`
+- Default model: `text-embedding-3-small`
+
+Provide an API key for your provider (OpenAI or OpenRouter-compatible). This path requires network access and an embedding API key.
+
+---
+
+## Local provider
+
+The local path runs an embedding model on your machine — no data leaves your device. Built-in options:
+
+| Model                      | Best for | Dimensions |
+| -------------------------- | -------- | ---------- |
+| `Xenova/all-MiniLM-L6-v2`  | English  | 384        |
+| `Xenova/bge-large-zh-v1.5` | Chinese  | 1024       |
+
+You can also supply a **custom** Hugging Face model ID or local path. A **local-files-only** switch lets you disable model downloads once a model is cached, so the app never reaches the network for embeddings.
+
+---
+
+## Switching providers
+
+You can switch between cloud and local, and between models, from the embedding settings. Keep in mind:
+
+- Different models produce **different vector dimensions** (e.g. 384 vs 1024 vs 1536). Existing vectors were computed with the old model, so switching means new content is embedded with the new model.
+- To make search consistent after a switch, existing content needs to be **re-embedded** with the new model. Until that happens, retrieval quality can dip because queries and stored vectors were produced by different models.
+- The settings remember the last model you used per provider type, so toggling back restores your previous choice.
+
+---
+
+## Troubleshooting
+
+- **"I switched models but vectors still look like the old dimension."** Stored vectors keep their original dimension until re-embedded. New items use the new model immediately; existing items need a re-embed pass.
+- **Retrieval quality dropped after switching.** Mismatched query/stored embeddings degrade similarity. Let re-embedding complete, or switch back to the model your existing content was embedded with.
+- **Local model won't load.** If **local-files-only** is on, the model must already be cached. Turn it off once to allow the initial download, then re-enable it.
+- **Cloud embeddings fail.** Confirm the base URL and API key. Semantic search throws when no embedding provider is configured.
+
+---
+
+## Related
+
+- [Memory](/docs/memory) — how embeddings feed tiered storage and search
+- [Onboarding](/docs/onboarding) — initial provider setup
+- [Getting Started](/docs/getting-started) — configuration basics
