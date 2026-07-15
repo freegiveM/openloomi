@@ -2400,11 +2400,22 @@ function getInstallerCommandLabel(filePath) {
   return extension ? `installer${extension}` : "installer";
 }
 
-function getPermissionMode(value) {
-  const allowed = new Set(["allow", "ask", "deny"]);
+// Bridge-facing writable permission mode (`allow | ask | deny`). Translates
+// `allow` to the CLI-facing `bypass` value before constructing the
+// `openloomi-ctl` argv. Keeps `ask` and `deny` unchanged so the bridge's
+// public contract stays stable while the CLI's canonical contract remains
+// `bypass | ask | deny` (see apps/web/src-tauri/src/cli.rs). Unknown or
+// omitted values fall back to `deny` so the default cannot escalate.
+const BRIDGE_PERMISSION_MODES = new Set(["allow", "ask", "deny"]);
+const BRIDGE_TO_CLI_PERMISSION_MODE = Object.freeze({
+  allow: "bypass",
+  ask: "ask",
+  deny: "deny",
+});
 
-  if (allowed.has(value)) {
-    return value;
+function getPermissionMode(value) {
+  if (BRIDGE_PERMISSION_MODES.has(value)) {
+    return BRIDGE_TO_CLI_PERMISSION_MODE[value];
   }
 
   return "deny";

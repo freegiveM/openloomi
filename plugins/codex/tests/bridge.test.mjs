@@ -266,6 +266,7 @@ function writeFakeCtl(home) {
       "  console.log(JSON.stringify({",
       "    ok: true,",
       "    env: { OPENLOOMI_API_URL: process.env.OPENLOOMI_API_URL || null },",
+      "    argv: process.argv.slice(2),",
       "    prompt: input,",
       "  }));",
       "});",
@@ -880,6 +881,104 @@ test("run cleans stale lock and proceeds", () => {
     assert.equal(j.result.prompt, "Stale lock should be ignored.");
     assert.equal(existsSync(lockPath), false, "run lock should be released");
   });
+});
+
+test("run translates --permission-mode to openloomi-ctl canonical values", () => {
+  const cases = [
+    { input: "allow", expected: "bypass" },
+    { input: "ask", expected: "ask" },
+    { input: "deny", expected: "deny" },
+  ];
+
+  for (const { input, expected } of cases) {
+    withFakeHome((env) => {
+      const ctl = writeFakeCtl(env.HOME);
+      writeFakeToken(env.HOME);
+      const r = runOutcomeWithInput(
+        ["run", "--permission-mode", input],
+        {
+          ...env,
+          OPENLOOMI_CTL: ctl,
+          ANTHROPIC_API_KEY: "sk-test-never-print",
+        },
+        `bridge input ${input}`,
+      );
+      assert.equal(r.code, 0, r.stderr || r.stdout);
+      const j = JSON.parse(r.stdout);
+      assert.equal(j.ready, true);
+      assert.equal(j.reason, "RUN_COMPLETE");
+      assert.ok(Array.isArray(j.result.argv), "fake ctl must expose argv");
+      assert.deepEqual(j.result.argv.slice(0, 4), [
+        "--one-shot",
+        "--stdin",
+        "--json",
+        "--permission-mode",
+      ]);
+      assert.equal(j.result.argv[4], expected);
+    });
+  }
+});
+
+test("run omits --permission-mode and forwards deny to openloomi-ctl", () => {
+  withFakeHome((env) => {
+    const ctl = writeFakeCtl(env.HOME);
+    writeFakeToken(env.HOME);
+    const r = runOutcomeWithInput(
+      ["run"],
+      {
+        ...env,
+        OPENLOOMI_CTL: ctl,
+        ANTHROPIC_API_KEY: "sk-test-never-print",
+      },
+      "No permission flag at all.",
+    );
+    assert.equal(r.code, 0, r.stderr || r.stdout);
+    const j = JSON.parse(r.stdout);
+    assert.equal(j.reason, "RUN_COMPLETE");
+    assert.ok(Array.isArray(j.result.argv));
+    assert.deepEqual(j.result.argv.slice(0, 4), [
+      "--one-shot",
+      "--stdin",
+      "--json",
+      "--permission-mode",
+    ]);
+    assert.equal(j.result.argv[4], "deny");
+  });
+});
+
+test("run refuses to escalate on unsupported --permission-mode values", () => {
+  for (const unsupported of ["", "approve", "yes", "BYPASS", "  allow  "]) {
+    withFakeHome((env) => {
+      const ctl = writeFakeCtl(env.HOME);
+      writeFakeToken(env.HOME);
+      const r = runOutcomeWithInput(
+        ["run", "--permission-mode", unsupported],
+        {
+          ...env,
+          OPENLOOMI_CTL: ctl,
+          ANTHROPIC_API_KEY: "sk-test-never-print",
+        },
+        `unsupported mode: ${JSON.stringify(unsupported)}`,
+      );
+      assert.equal(r.code, 0, r.stderr || r.stdout);
+      const j = JSON.parse(r.stdout);
+      assert.equal(j.reason, "RUN_COMPLETE");
+      assert.ok(Array.isArray(j.result.argv));
+      assert.deepEqual(j.result.argv.slice(0, 4), [
+        "--one-shot",
+        "--stdin",
+        "--json",
+        "--permission-mode",
+      ]);
+      assert.equal(
+        j.result.argv[4],
+        "deny",
+        `unsupported mode ${JSON.stringify(unsupported)} must fall back to deny`,
+      );
+      assert.notEqual(j.result.argv[4], "bypass");
+      assert.notEqual(j.result.argv[4], "allow");
+    });
+  }
 });
 
 test("setup-status is not blocked by an active run lock", () => {
