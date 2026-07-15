@@ -50,6 +50,18 @@ export const LOGS_DIR_NAME = "logs";
 /** Cache subdirectory name */
 export const CACHE_DIR_NAME = "cache";
 
+/**
+ * Per-user runtime subdirectory. Used for files we generate at runtime that
+ * must NOT be written inside a sealed code-signed bundle (e.g. the Claude
+ * Code wrapper script on macOS .app, see issue #342).
+ */
+export const RUNTIME_DIR_NAME = "runtime";
+
+/** Get openloomi runtime directory (~/.openloomi/runtime) */
+export function getRuntimeDir(): string {
+  return join(getAppDir(), RUNTIME_DIR_NAME);
+}
+
 // ============================================================================
 // Configuration Files
 // ============================================================================

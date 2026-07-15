@@ -5,7 +5,8 @@
  */
 
 import { exec, execSync, spawn, type ChildProcess } from "node:child_process";
-import { existsSync, readdirSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, readdirSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { arch, homedir, platform } from "node:os";
 import { dirname, join } from "node:path";
@@ -44,6 +45,7 @@ import type {
 } from "@openloomi/ai/agent/types";
 import { MAX_CONVERSATION_HISTORY_TOKENS } from "@/lib/ai/runtime/shared";
 import {
+  APP_DIR_NAME,
   DEFAULT_API_HOST,
   DEFAULT_API_PORT,
   DEFAULT_WORK_DIR,
@@ -155,7 +157,23 @@ function spawnClaudeCodeProcess(options: {
   if (isBundledClaude) {
     // Normalize path separators for cross-platform use
     const normalizedCommand = options.command.replace(/\\/g, "/");
-    const bundleDir = normalizedCommand.split("/").slice(0, -1).join("/");
+    const wrapperDir = normalizedCommand.split("/").slice(0, -1).join("/");
+    // The wrapper script lives under ~/.openloomi/runtime/cli-bundle/<hash>/.
+    // The actual bundle (cli.js, vendor/, node) may be elsewhere — recover it
+    // via the `.bundle-path` marker file written by `getSidecarClaudeCodePath`.
+    // Fall back to the wrapper directory itself for legacy in-bundle wrappers.
+    const markerPath = join(wrapperDir, ".bundle-path");
+    let bundleDir = wrapperDir;
+    if (existsSync(markerPath)) {
+      try {
+        const marker = readFileSync(markerPath, "utf-8").trim();
+        if (marker && existsSync(marker)) {
+          bundleDir = marker;
+        }
+      } catch {
+        // ignore and fall through to legacy behavior
+      }
+    }
     const cliJsPath = join(bundleDir, "cli.js");
 
     let nodeToUse: string;
@@ -462,8 +480,22 @@ export function getTargetTriple(): string {
  */
 /**
  * Get the path to the bundled sidecar Claude Code.
- * Searches for cli-bundle directory and creates a wrapper script to use the bundled node.
- * The wrapper script is written to the exec directory and returned as the Claude Code path.
+ *
+ * Searches candidate bundle locations for a cli-bundle directory, then ensures
+ * a wrapper script (claude.sh on Unix / claude.cmd on Windows) exists to invoke
+ * the bundled `cli.js` with the bundled `node` (or the system node as a
+ * fallback).
+ *
+ * IMPORTANT: The wrapper script and a small `.bundle-path` marker are written
+ * to a per-user runtime directory at `~/.openloomi/runtime/cli-bundle/<hash>/`
+ * instead of inside the bundle directory. On macOS, `Contents/Resources` is
+ * part of the signed `.app` bundle; writing to it at runtime would mutate the
+ * sealed bundle and invalidate the code signature (see issue #342). Each unique
+ * bundle location gets its own hashed runtime directory so multiple
+ * installations don't share state.
+ *
+ * Downstream code (see `spawnClaudeCodeProcess`) recovers the actual bundle
+ * directory by reading the `.bundle-path` marker next to the wrapper script.
  */
 function getSidecarClaudeCodePath(): string | undefined {
   const os = platform();
@@ -517,50 +549,92 @@ function getSidecarClaudeCodePath(): string | undefined {
     const nodeBinPath = join(bundleDir, os === "win32" ? "node.exe" : "node");
     const vendorDir = join(bundleDir, "vendor");
 
-    if (existsSync(claudeCliPath) && existsSync(vendorDir)) {
-      // Create a wrapper script directly in the bundle directory
-      const wrapperScriptName = os === "win32" ? "claude.cmd" : "claude.sh";
-      const wrapperScriptPath = join(bundleDir, wrapperScriptName);
-      const hasBundledNode = existsSync(nodeBinPath);
+    if (!(existsSync(claudeCliPath) && existsSync(vendorDir))) continue;
 
-      // Only create the wrapper if it doesn't exist
-      if (!existsSync(wrapperScriptPath)) {
+    // Resolve to a stable absolute path so the hash is deterministic across
+    // runs even if the binary is launched via different cwd or symlinks.
+    const bundleHash = createHash("sha256")
+      .update(bundleDir)
+      .digest("hex")
+      .slice(0, 12);
+
+    const userDataCliBundleDir = join(
+      homedir(),
+      APP_DIR_NAME,
+      "runtime",
+      "cli-bundle",
+      bundleHash,
+    );
+    const wrapperScriptName = os === "win32" ? "claude.cmd" : "claude.sh";
+    const wrapperScriptPath = join(userDataCliBundleDir, wrapperScriptName);
+    const bundleMarkerPath = join(userDataCliBundleDir, ".bundle-path");
+    const hasBundledNode = existsSync(nodeBinPath);
+
+    // Ensure the runtime wrapper directory exists. mkdirSync is idempotent.
+    try {
+      mkdirSync(userDataCliBundleDir, { recursive: true });
+    } catch {
+      // best-effort; downstream fallbacks handle failure
+    }
+
+    // Record the actual bundle dir next to the wrapper so
+    // `spawnClaudeCodeProcess` can resolve bundled `cli.js` / `node` paths
+    // even though the wrapper itself lives outside the bundle.
+    try {
+      const previousMarker = existsSync(bundleMarkerPath)
+        ? readFileSync(bundleMarkerPath, "utf-8")
+        : "";
+      if (previousMarker.trim() !== bundleDir) {
+        writeFile(bundleMarkerPath, bundleDir, "utf-8");
+      }
+    } catch {
+      // best-effort; legacy fallback below will still work
+    }
+
+    // Only write the wrapper if it doesn't exist. The wrapper content is
+    // deterministic per-bundle (uses absolute paths), so we don't need to
+    // rewrite it on subsequent runs.
+    if (!existsSync(wrapperScriptPath)) {
+      try {
         if (os === "win32") {
-          // Windows batch file
-          // Priority: bundled node.exe > .openloomi\node\node.exe (Rust-downloaded) > system node
+          // Windows batch file. Priority: bundled node.exe >
+          // .openloomi\node\node.exe (Rust-downloaded) > system node.
+          // Uses absolute paths to the bundled cli.js so it works from any cwd.
           const wrapperContent = `@echo off
 setlocal
 chcp 65001 >nul
-cd /d "%~dp0"
 set NODE_OPTIONS=--max-old-space-size=8192
-if exist "%~dp0\\node.exe" (
-  "%~dp0\\node.exe" --max-old-space-size=8192 "%~dp0\\cli.js" %*
+if exist "${nodeBinPath}" (
+  "${nodeBinPath}" --max-old-space-size=8192 "${claudeCliPath}" %*
 ) else (
   if exist "%USERPROFILE%\\.openloomi\\node\\node.exe" (
-    "%USERPROFILE%\\.openloomi\\node\\node.exe" --max-old-space-size=8192 "%~dp0\\cli.js" %*
+    "%USERPROFILE%\\.openloomi\\node\\node.exe" --max-old-space-size=8192 "${claudeCliPath}" %*
   ) else (
-    node --max-old-space-size=8192 "%~dp0\\cli.js" %*
+    node --max-old-space-size=8192 "${claudeCliPath}" %*
   )
 )
 endlocal`;
           writeFile(wrapperScriptPath, wrapperContent, { mode: 0o644 });
         } else {
-          // Unix shell script - prefer bundled node, fall back to system node
-          // Use \n to ensure Unix line endings
+          // Unix shell script. Use absolute paths so the wrapper works from
+          // any cwd (the wrapper lives under ~/.openloomi, not inside the
+          // bundle, so we can't rely on `$(dirname "$0")` to find cli.js).
           const wrapperContent = hasBundledNode
-            ? `#!/bin/bash\ncd "$(dirname "$0")"\nexec "$(dirname "$0")/node" --max-old-space-size=8192 "$(dirname "$0")/cli.js" "$@"\n`
-            : `#!/bin/bash\ncd "$(dirname "$0")"\nif [ -x "$(dirname "$0")/node" ]; then\n  exec "$(dirname "$0")/node" --max-old-space-size=8192 "$(dirname "$0")/cli.js" "$@"\nelse\n  exec node --max-old-space-size=8192 "$(dirname "$0")/cli.js" "$@"\nfi\n`;
+            ? `#!/bin/bash\nexec "${nodeBinPath}" --max-old-space-size=8192 "${claudeCliPath}" "$@"\n`
+            : `#!/bin/bash\nif [ -x "${nodeBinPath}" ]; then\n  exec "${nodeBinPath}" --max-old-space-size=8192 "${claudeCliPath}" "$@"\nelse\n  exec node --max-old-space-size=8192 "${claudeCliPath}" "$@"\nfi\n`;
           writeFile(wrapperScriptPath, wrapperContent, { mode: 0o755 });
         }
+      } catch {
+        // best-effort; surface the failure via the missing-wrapper path below
       }
-
-      console.log(
-        `[Claude] Using bundled Claude Code: ${wrapperScriptPath}${
-          hasBundledNode ? " (bundled node)" : " (system node)"
-        }`,
-      );
-      return wrapperScriptPath;
     }
+
+    console.log(
+      `[Claude] Using bundled Claude Code: ${wrapperScriptPath}${
+        hasBundledNode ? " (bundled node)" : " (system node)"
+      }`,
+    );
+    return wrapperScriptPath;
   }
 }
 

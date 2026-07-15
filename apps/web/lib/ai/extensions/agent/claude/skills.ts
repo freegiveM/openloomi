@@ -54,7 +54,14 @@ export function syncSkillsForClaudeSession({
       const bundleDir = dirname(bundledCliPath);
       // On Windows, the Skill tool can resolve relative files from the bundled
       // Claude Code directory, so mirror skills there as well.
-      if (bundleDir !== sessionCwd) {
+      //
+      // On macOS / Linux, do NOT mirror into the bundle directory: on macOS the
+      // bundle lives inside a code-signed `.app/Contents/Resources/...` and any
+      // symlink/file added there at runtime invalidates the signature (see
+      // issue #342). Mirroring only happens on Windows where we have a real
+      // user-writable install path. The project-level sync above already gives
+      // Claude Code access to the skills through `settingSources: ['project']`.
+      if (bundleDir !== sessionCwd && process.platform === "win32") {
         const bundleSyncStart = Date.now();
         syncSkillsToClaude(bundleDir);
         const bundleTiming = includeTimings
