@@ -60,6 +60,13 @@ export interface WatcherOptions {
    * button. Default false.
    */
   force?: boolean;
+  /**
+   * Test seam — override the child-process executor so unit tests can
+   * inject a vi.fn() / fake promise without going through promisify
+   * (which has callback-vs-Promise shape quirks when called against
+   * vi.fn() mocks). Production code leaves this `undefined`.
+   */
+  execImpl?: typeof execFileAsync;
 }
 
 // ---------------------------------------------------------------------------
@@ -181,71 +188,199 @@ interface CliCallResult {
  * carries the user's auth context — no parallel API key, no
  * double-management. The CLI prints the tool's return value to stdout
  * (already a JSON shape on success), which we parse and return.
+ *
+ * Contract — current Composio CLI (>=0.2.0):
+ *   composio execute <TOOL_SLUG> -d '<args-json>'
+ *
+ * Pre-0.2.0 (legacy) shape, kept as a fallback so the watcher still
+ * works on older CLI installs:
+ *   composio <toolkit> <action> --json '<args-json>'
+ *
+ * The two branches run sequentially. The current shape is tried first;
+ * we only fall back to legacy when the current shape returns a
+ * well-known "unknown command" / "usage" error. Any other failure
+ * surfaces immediately so the channel's `lastError` is accurate.
+ *
+ * The `execImpl` parameter is a test seam — production code passes
+ * `undefined` to use the real `promisify(execFile)`. Tests pass a stub
+ * that returns `{stdout, stderr}` objects to avoid the callback/Promise
+ * shape mismatch that `util.promisify` triggers against vi.fn() mocks.
  */
-async function callComposioTool(
+export async function callComposioTool(
   channel: CustomChannel,
   args: Record<string, unknown> = {},
+  execImpl: typeof execFileAsync = execFileAsync,
 ): Promise<CliCallResult> {
-  try {
-    const { stdout, stderr } = await execFileAsync(
-      "composio",
-      [
-        channel.toolkit,
-        channel.toolSlug.replace(/^[A-Z]+_/, "").toLowerCase(),
-        "--json",
-        JSON.stringify(args),
-      ],
-      { timeout: COMPOSIO_CLI_TIMEOUT_MS, maxBuffer: 16 * 1024 * 1024 },
-    );
-    const trimmed = stdout.trim();
-    if (!trimmed) {
-      return { ok: false, records: [], error: stderr.trim() || "empty stdout" };
-    }
-    let parsed: unknown;
+  const tryCurrent = async (): Promise<CliCallResult> => {
     try {
-      parsed = JSON.parse(trimmed);
+      const { stdout, stderr } = await execImpl(
+        "composio",
+        ["execute", channel.toolSlug, "-d", JSON.stringify(args)],
+        { timeout: COMPOSIO_CLI_TIMEOUT_MS, maxBuffer: 16 * 1024 * 1024 },
+      );
+      const trimmed = stdout.trim();
+      if (!trimmed) {
+        return {
+          ok: false,
+          records: [],
+          error: stderr.trim() || "empty stdout",
+        };
+      }
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(trimmed);
+      } catch (e) {
+        return {
+          ok: false,
+          records: [],
+          error: `non-json response: ${
+            e instanceof Error ? e.message : String(e)
+          }`,
+        };
+      }
+      return { ok: true, records: extractRecords(parsed) };
     } catch (e) {
-      return {
-        ok: false,
-        records: [],
-        error: `non-json response: ${e instanceof Error ? e.message : String(e)}`,
+      const err = e as NodeJS.ErrnoException & {
+        killed?: boolean;
+        stdout?: string;
+        stderr?: string;
       };
+      if (err.killed) return { ok: false, records: [], error: "timeout" };
+      if (err.code === "ENOENT") {
+        return { ok: false, records: [], error: "composio CLI not on $PATH" };
+      }
+      const text =
+        `${err.stderr ?? ""}\n${err.stdout ?? ""}\n${err.message ?? ""}`.toLowerCase();
+      // The legacy `<toolkit> <action>` shape on a current CLI surfaces
+      // either "unknown command" or, for legacy subcommands, the CLI's
+      // usage banner. Both signal "you're on the new shape" — fall back.
+      if (
+        text.includes("unknown command") ||
+        text.includes("usage:") ||
+        text.includes("execute <slug>")
+      ) {
+        return { ok: false, records: [], error: "__FALLBACK_LEGACY__" };
+      }
+      const msg =
+        err.stderr?.trim() ||
+        err.stdout?.trim() ||
+        err.message ||
+        "composio CLI failed";
+      return { ok: false, records: [], error: msg };
     }
-    // The CLI wraps tool output under a few possible keys. Be liberal.
-    const records = extractRecords(parsed);
-    return { ok: true, records };
-  } catch (e) {
-    const err = e as NodeJS.ErrnoException & {
-      killed?: boolean;
-      stdout?: string;
-      stderr?: string;
-    };
-    if (err.killed) {
-      return { ok: false, records: [], error: "timeout" };
+  };
+  const tryLegacy = async (): Promise<CliCallResult> => {
+    try {
+      const { stdout, stderr } = await execImpl(
+        "composio",
+        [
+          channel.toolkit,
+          channel.toolSlug.replace(/^[A-Z]+_/, "").toLowerCase(),
+          "--json",
+          JSON.stringify(args),
+        ],
+        { timeout: COMPOSIO_CLI_TIMEOUT_MS, maxBuffer: 16 * 1024 * 1024 },
+      );
+      const trimmed = stdout.trim();
+      if (!trimmed) {
+        return {
+          ok: false,
+          records: [],
+          error: stderr.trim() || "empty stdout",
+        };
+      }
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(trimmed);
+      } catch (e) {
+        return {
+          ok: false,
+          records: [],
+          error: `non-json response: ${
+            e instanceof Error ? e.message : String(e)
+          }`,
+        };
+      }
+      return { ok: true, records: extractRecords(parsed) };
+    } catch (e) {
+      const err = e as NodeJS.ErrnoException & {
+        killed?: boolean;
+        stdout?: string;
+        stderr?: string;
+      };
+      if (err.killed) return { ok: false, records: [], error: "timeout" };
+      const msg =
+        err.code === "ENOENT"
+          ? "composio CLI not on $PATH"
+          : err.stderr?.trim() ||
+            err.stdout?.trim() ||
+            err.message ||
+            "composio CLI failed";
+      return { ok: false, records: [], error: msg };
     }
-    const msg =
-      err.code === "ENOENT"
-        ? "composio CLI not on $PATH"
-        : err.stderr?.trim() ||
-          err.stdout?.trim() ||
-          err.message ||
-          "composio CLI failed";
-    return { ok: false, records: [], error: msg };
+  };
+  const primary = await tryCurrent();
+  if (primary.ok) return primary;
+  if (primary.error === "__FALLBACK_LEGACY__") {
+    return await tryLegacy();
   }
+  return primary;
 }
 
-function extractRecords(parsed: unknown): unknown[] {
+/**
+ * Normalize a Composio CLI response into a flat record array.
+ *
+ * Current tools (Gmail, Google Calendar, GitHub, ...) wrap the array
+ * under tool-specific keys:
+ *   - Gmail:        data.messages
+ *   - Google Calendar: data.items
+ *   - GitHub:       data.notifications
+ *
+ * Some tools double-wrap under `data.data.<key>`; some return the raw
+ * array (older envelopes) or a single record object. Walk the
+ * envelope in priority order, then fall back to a broad sweep so a
+ * new tool whose envelope we haven't seen yet still surfaces records
+ * instead of returning 0.
+ *
+ * Exported (as `__testExtractRecords`) so unit tests can pin the
+ * envelope-walk order without spinning up the full watcher pass.
+ */
+export function extractRecords(parsed: unknown): unknown[] {
+  // Walk a path of dotted keys through `parsed`, returning the first
+  // array we land on. Empty / non-object intermediate nodes short-circuit.
+  const dig = (keys: string[]): unknown[] | null => {
+    if (!parsed || typeof parsed !== "object") return null;
+    let cur: unknown = parsed;
+    for (const k of keys) {
+      if (!cur || typeof cur !== "object") return null;
+      cur = (cur as Record<string, unknown>)[k];
+    }
+    return Array.isArray(cur) ? (cur as unknown[]) : null;
+  };
+  // Tool-specific known envelopes (current contract).
+  for (const path of [
+    ["data", "messages"],
+    ["data", "items"],
+    ["data", "notifications"],
+    ["data", "records"],
+    ["data", "results"],
+    ["data", "events"],
+    ["data", "data", "messages"],
+    ["data", "data", "items"],
+    ["data", "data", "notifications"],
+  ]) {
+    const got = dig(path);
+    if (got) return got;
+  }
   if (Array.isArray(parsed)) return parsed;
   if (parsed && typeof parsed === "object") {
     const obj = parsed as Record<string, unknown>;
-    for (const k of [
-      "data",
-      "records",
-      "items",
-      "results",
-      "output",
-      "response",
-    ]) {
+    // Liberal top-level fallback — covers older envelopes and tools
+    // we haven't catalogued yet. `data` must be an array, not a
+    // wrapper object (i.e. NOT { messages: [...] } — those go through
+    // the tool-specific table above).
+    if (Array.isArray(obj.data)) return obj.data;
+    for (const k of ["records", "items", "results", "output", "response"]) {
       const v = obj[k];
       if (Array.isArray(v)) return v;
     }
@@ -265,10 +400,16 @@ function extractRecords(parsed: unknown): unknown[] {
  * persisted in sync-state so the user can see them in
  * `connectors.json` later.
  */
-async function pullChannel(
+/**
+ * Pull one custom channel. Returns the number of signals appended
+ * (0 on throttle / error). Never throws — failures are logged and
+ * persisted in sync-state so the user can see them in
+ * `connectors.json` later. Exported for unit tests.
+ */
+export async function pullChannel(
   channel: CustomChannel,
   sync: SyncStateFile,
-  opts: { force?: boolean } = {},
+  opts: { force?: boolean; execImpl?: typeof execFileAsync } = {},
 ): Promise<number> {
   const cur = sync[channel.id] ?? {};
   // Throttle: skip if the channel polled within pollIntervalSec.
@@ -283,7 +424,7 @@ async function pullChannel(
   }
   let result: CliCallResult;
   try {
-    result = await callComposioTool(channel);
+    result = await callComposioTool(channel, {}, opts.execImpl);
   } catch (e) {
     result = {
       ok: false,
@@ -375,7 +516,10 @@ export async function runOnce(
   let total = 0;
   for (const ch of channels) {
     try {
-      total += await pullChannel(ch, sync, { force: _opts.force });
+      total += await pullChannel(ch, sync, {
+        force: _opts.force,
+        ...(_opts.execImpl ? { execImpl: _opts.execImpl } : {}),
+      });
     } catch (e) {
       log(
         `[watcher.custom] channel ${ch.id} threw: ${
