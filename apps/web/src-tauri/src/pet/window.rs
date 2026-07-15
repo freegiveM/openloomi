@@ -4,7 +4,7 @@
 
 use std::sync::{Mutex, OnceLock};
 
-use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, LogicalSize, Manager, WebviewUrl, WebviewWindowBuilder};
 
 use super::PET_LABEL;
 
@@ -89,6 +89,19 @@ pub fn build_pet_window(app: &AppHandle) -> tauri::Result<()> {
     let window = builder.build()?;
     super::macos_window::configure_as_floating_panel(&window);
     super::macos_window::configure_for_all_spaces(&window);
+    // Defensively re-apply the canonical inner size. The Pet window
+    // label is shared between this build path and the
+    // `tauri-plugin-window-state` persistence file
+    // (`~/Library/Application Support/com.openloomi.app/.window-state.json`),
+    // and an upgrade can leave the persisted size out of sync with the
+    // current widget sprite (issue #341 — a v0.7.6 upgrade restored
+    // `loomi-pet=84x84`, clipping the fox). The position side of the
+    // saved state is still honoured so the user's drag position is
+    // remembered; only the size is normalised back to PET_W × PET_H.
+    // `set_size` on a `resizable(false)` window is a no-op when the
+    // value already matches, so the steady-state cost is one equality
+    // check.
+    let _ = window.set_size(LogicalSize::new(PET_W, PET_H));
     wire_pet_window_events(app);
     Ok(())
 }
@@ -187,4 +200,33 @@ fn wire_pet_window_events(app: &AppHandle) {
 pub fn on_pet_moved_reposition_aux(app: &AppHandle) {
     super::aux_position::reposition_bubble_to_pet(app);
     super::aux_position::reposition_card_to_pet(app);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Canonical Pet dimensions must match the widget sprite. This is
+    /// the regression guard for issue #341: when an upgrade left an
+    /// invalid persisted size in `.window-state.json`, the Pet was
+    /// restored at the wrong inner size and the fox got clipped. The
+    /// builder is the single source of truth, and `build_pet_window`
+    /// re-applies these constants defensively after the window is
+    /// constructed — both sides must agree.
+    #[test]
+    fn pet_canonical_dimensions_match_widget_sprite() {
+        assert_eq!(PET_W, 168.0, "Pet width must match the widget sprite");
+        assert_eq!(PET_H, 168.0, "Pet height must match the widget sprite");
+        assert_eq!(PET_W, PET_H, "Pet window must be square");
+        assert!(PET_W > 0.0, "Pet width must be positive");
+        assert!(PET_H > 0.0, "Pet height must be positive");
+        // Reject the half-size clip that #341 reported. If a future
+        // refactor accidentally halves either dimension the sprite
+        // will be clipped exactly like the upgrade did, so we assert
+        // the value is strictly larger than the regression threshold.
+        assert!(
+            PET_W > 84.0,
+            "Pet width must exceed the #341 half-size clip (84px)"
+        );
+    }
 }

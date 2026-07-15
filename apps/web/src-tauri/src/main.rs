@@ -318,7 +318,40 @@ fn main() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_window_state::Builder::new().build())
+        .plugin(
+            tauri_plugin_window_state::Builder::new()
+                // The Card, Bubble, and DevPanel are transient
+                // always-on-top panels whose visibility + dimensions
+                // are owned by the Rust side (decision watcher / user
+                // gesture / dev panel toggle). Persisting their size
+                // across upgrades was part of the root cause of issue
+                // #341: an older build wrote `loomi-card=92160x107520`
+                // and `loomi-bubble=81920x21504` into
+                // `~/Library/Application Support/com.openloomi.app/
+                // .window-state.json`, and the upgrade restored those
+                // values verbatim, leaving the aux windows at
+                // impossible sizes.
+                //
+                // The Pet (`loomi-pet`) is intentionally NOT denylisted:
+                // users expect its drag position to be remembered
+                // across launches. The Pet's size is fixed by the
+                // widget sprite, so the size side of the trade is
+                // handled by `build_pet_window`, which defensively
+                // re-applies the canonical 168x168 after build (see
+                // `pet::window::build_pet_window`).
+                //
+                // Denylisting the Card / Bubble / DevPanel keeps them
+                // out of the `.window-state.json` round-trip entirely:
+                // they are always built with their builder-defined
+                // inner size and start hidden (visibility is
+                // app-driven).
+                .with_denylist(&[
+                    pet::PET_BUBBLE_LABEL,
+                    pet::PET_CARD_LABEL,
+                    pet::PET_DEV_LABEL,
+                ])
+                .build(),
+        )
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .invoke_handler(tauri::generate_handler![

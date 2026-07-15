@@ -235,4 +235,35 @@ mod review_seen_tests {
         // assert the call didn't panic.
         let _ = last_review_seen_secs_ago();
     }
+
+    /// Window labels are the keys used by `tauri-plugin-window-state`
+    /// to read / write `.window-state.json`. They must be unique and
+    /// non-empty so the denylist in `main.rs` can reliably exclude
+    /// the transient aux windows without colliding with the Pet label
+    /// (which is intentionally kept in the state round-trip so its
+    /// drag position persists across launches — see issue #341).
+    #[test]
+    fn window_labels_are_unique_and_nonempty() {
+        let labels = [
+            PET_LABEL,
+            PET_BUBBLE_LABEL,
+            PET_CARD_LABEL,
+            PET_DEV_LABEL,
+        ];
+        for label in labels {
+            assert!(!label.is_empty(), "window label must not be empty");
+        }
+        // No two labels may collide; the state plugin keys its
+        // JSON by label, so a collision would silently merge two
+        // windows' state.
+        for i in 0..labels.len() {
+            for j in (i + 1)..labels.len() {
+                assert_ne!(
+                    labels[i], labels[j],
+                    "window labels must be unique ({:?} vs {:?})",
+                    labels[i], labels[j]
+                );
+            }
+        }
+    }
 }
