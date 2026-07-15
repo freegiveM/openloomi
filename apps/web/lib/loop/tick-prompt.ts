@@ -27,6 +27,7 @@ import { LOOP_PATHS } from "./paths";
 import { customTypes } from "./custom-types";
 import { customChannels } from "./custom-channels";
 import { classifierRules } from "./classifier-rules";
+import { resolveLoopCli } from "./cli-path";
 
 export interface TickPromptOptions {
   /** Days to look back for insights / signals. Default: 1. */
@@ -41,7 +42,12 @@ export function buildTickPrompt(opts: TickPromptOptions = {}): string {
   const signalsPath = LOOP_PATHS.signals;
   const decisionsPath = LOOP_PATHS.decisions;
   const mutesPath = LOOP_PATHS.mutes;
-  const loopCli = "apps/web/scripts/loop-cli.mjs";
+  // Resolve `loop-cli.mjs` at prompt-build time so the agent's
+  // `node ${loopCli} …` invocations always point at a path that
+  // exists in the current runtime. Issue #348: the previous
+  // hardcoded `apps/web/scripts/loop-cli.mjs` did not exist in the
+  // packaged Tauri build, so decision persistence silently failed.
+  const loopCli = resolveLoopCli() ?? "apps/web/scripts/loop-cli.mjs";
   const sinceDaysStr = String(sinceDays);
 
   const userTypes = customTypes.list();
@@ -103,8 +109,10 @@ CLI not on $PATH, etc.) and let the other surfaces cover the toolkit.
 
   • **\`composio\` skill** — \`Skill composio execute <TOOL> on <toolkit>\`
     (when the skill is installed in this session)
-  • **\`composio\` CLI** — \`Bash(composio <toolkit> <action> …)\`
-    (when on $PATH)
+  • **\`composio\` CLI** — \`Bash(composio execute <TOOL_SLUG> -d '<args-json>')\`
+    (when on $PATH; current Composio CLI contract — legacy
+    \`composio <toolkit> <action> --json\` is auto-detected by the
+    watcher fallback for older CLI installs)
   • **openloomi-memory insights** — \`node $OPENLOOMI_MEMORY_DIR/scripts/
     openloomi-memory.cjs list-insights --channel=<X> --days=<N>\`
     (always available when insights are seeded)
@@ -165,7 +173,7 @@ uniformly.
                  with '{"query":"is:unread OR is:important newer_than:1d","max_results":25}'\`
                  (adjust per the schema the skill reports).
     composio CLI (if on $PATH):
-                 \`composio gmail fetch_emails --json
+                 \`composio execute GMAIL_FETCH_EMAILS -d
                  '{"query":"is:unread OR is:important newer_than:1d","max_results":25}'\`
                  (the CLI prints the tool output to stdout).
     openloomi-memory insights (always):
@@ -178,7 +186,7 @@ uniformly.
                  with '{"timeMin":"<now ISO>","timeMax":"<now+7d ISO>","singleEvents":true,
                  "orderBy":"startTime","maxResults":25}'\`.
     composio CLI (if on $PATH):
-                 \`composio googlecalendar events_list --json '{"timeMin":"<now ISO>",
+                 \`composio execute GOOGLECALENDAR_EVENTS_LIST -d '{"timeMin":"<now ISO>",
                  "timeMax":"<now+7d ISO>","singleEvents":true,"orderBy":"startTime",
                  "maxResults":25}'\`.
     openloomi-memory insights (always):
@@ -195,7 +203,7 @@ uniformly.
                  \`Skill composio execute GITHUB_LIST_NOTIFICATIONS on github
                  with '{"all":false}'\`.
     composio CLI (if on $PATH):
-                 \`composio github list_notifications --json '{"all":false}'\`.
+                 \`composio execute GITHUB_LIST_NOTIFICATIONS -d '{"all":false}'\`.
     openloomi-memory insights (always):
                  node $OPENLOOMI_MEMORY_DIR/scripts/openloomi-memory.cjs list-insights --days=${sinceDaysStr}
                  Same as googlecalendar — pull unfiltered insights and let the
@@ -213,7 +221,7 @@ uniformly.
                  \`Skill composio execute SLACK_LIST_MESSAGES on slack
                  with '{"channel":"@me","limit":20}'\`.
     composio CLI (if on $PATH):
-                 \`composio slack list_messages --json '{"channel":"@me","limit":20}'\`.
+                 \`composio execute SLACK_LIST_MESSAGES -d '{"channel":"@me","limit":20}'\`.
     openloomi-memory insights (always):
                  node $OPENLOOMI_MEMORY_DIR/scripts/openloomi-memory.cjs list-insights --channel=slack --days=${sinceDaysStr}
 

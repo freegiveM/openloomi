@@ -96,18 +96,46 @@ if (!fs.existsSync(envDest)) {
 
 console.log("Checking scripts directory...");
 const scriptsDest = path.join(standaloneDir, "apps/web/scripts");
-if (!fs.existsSync(scriptsDest)) {
-  const scriptsSrc = path.join(webDir, "scripts");
-  if (fs.existsSync(scriptsSrc)) {
-    fs.mkdirSync(scriptsDest, { recursive: true });
-    copyFile(
-      path.join(scriptsSrc, "init-db.cjs"),
-      path.join(scriptsDest, "init-db.cjs"),
-    );
-    console.log("  scripts directory copied");
+const scriptsSrc = path.join(webDir, "scripts");
+// Always copy the assistant-bootstrap and Loop-cli shims into the
+// standalone layout even when `scripts/` already exists. Issue #348:
+// the Loop prompt used to assume `apps/web/scripts/loop-cli.mjs`
+// existed at runtime and silently failed to persist decisions when
+// it didn't. `init-db.cjs` predates the bug; `loop-cli.mjs` is the
+// fix. Both shims are tiny (~3 KB each) so the size cost is trivial.
+const STANDALONE_SHIM_FILES = ["init-db.cjs", "loop-cli.mjs"];
+if (fs.existsSync(scriptsSrc)) {
+  fs.mkdirSync(scriptsDest, { recursive: true });
+  for (const fileName of STANDALONE_SHIM_FILES) {
+    const srcFile = path.join(scriptsSrc, fileName);
+    const destFile = path.join(scriptsDest, fileName);
+    if (fs.existsSync(srcFile)) {
+      copyFile(srcFile, destFile);
+    } else {
+      console.log(`  scripts/${fileName} not in source — skipping`);
+    }
   }
+  console.log("  scripts shims copied (init-db.cjs, loop-cli.mjs)");
 } else {
-  console.log("  scripts directory exists");
+  console.log("  no scripts source dir, skipping shim copy");
+}
+// Also copy `loop-cli.mjs` to the user-runtime dir so the desktop
+// app's `lib/loop/cli-path.ts` resolver can find it via the
+// `~/.openloomi/runtime/` probe path. The signed .app bundle lives
+// under codesign-protected roots (sandbox + hardened runtime), so
+// the runtime dir is the only stable location the resolver can
+// always reach with read perms.
+try {
+  const runtimeDir = path.join(os.homedir(), ".openloomi", "runtime");
+  fs.mkdirSync(runtimeDir, { recursive: true });
+  const runtimeLoopCli = path.join(runtimeDir, "loop-cli.mjs");
+  const sourceLoopCli = path.join(scriptsSrc, "loop-cli.mjs");
+  if (fs.existsSync(sourceLoopCli)) {
+    copyFile(sourceLoopCli, runtimeLoopCli);
+    console.log(`  loop-cli.mjs staged to ${runtimeLoopCli}`);
+  }
+} catch (err) {
+  console.warn("  failed to stage loop-cli.mjs to runtime dir:", err);
 }
 
 console.log("Checking public directory...");
