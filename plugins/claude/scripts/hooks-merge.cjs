@@ -31,7 +31,40 @@ function atomicWriteJson(filePath, obj) {
 function loadHooksTemplate() {
   const pluginDir = path.resolve(__dirname, '..');
   const hooksFile = path.join(pluginDir, 'hooks', 'hooks.json');
-  return readJsonSafe(hooksFile);
+  return { pluginDir, template: readJsonSafe(hooksFile) };
+}
+
+// Resolve `${CLAUDE_PLUGIN_ROOT}` placeholders in a hook command to the
+// plugin's absolute path. Claude Code only injects this env var when hooks
+// are loaded directly from a plugin manifest; when we install them into
+// user-level `~/.claude/settings.json` we have to substitute ourselves or
+// the placeholder expands to empty and Node tries to resolve
+// `/scripts/loomi-bridge.mjs` from the filesystem root.
+function substitutePluginRoot(command, pluginDir) {
+  if (typeof command !== 'string' || !command.includes('${CLAUDE_PLUGIN_ROOT}')) {
+    return command;
+  }
+  // Wrap the substituted path in double quotes so paths with spaces parse
+  // correctly under the shell. The original template has the placeholder
+  // unquoted (e.g. `node ${CLAUDE_PLUGIN_ROOT}/scripts/...`), so quote just
+  // the path component by replacing the placeholder with `"<pluginDir>"`.
+  const quoted = `"${pluginDir}"`;
+  return command.split('${CLAUDE_PLUGIN_ROOT}').join(quoted);
+}
+
+function materializeHookEntry(entry, pluginDir) {
+  // Deep-clone so we don't mutate the shared template, then rewrite each
+  // inner command's placeholder to an absolute path.
+  const cloned = JSON.parse(JSON.stringify(entry));
+  if (cloned && Array.isArray(cloned.hooks)) {
+    cloned.hooks = cloned.hooks.map((h) => {
+      if (h && typeof h.command === 'string') {
+        return { ...h, command: substitutePluginRoot(h.command, pluginDir) };
+      }
+      return h;
+    });
+  }
+  return cloned;
 }
 
 function install({ yes }) {
@@ -44,7 +77,7 @@ function install({ yes }) {
     delete settings.hooks[PLUGIN_BLOCK_KEY];
   }
 
-  const tpl = loadHooksTemplate();
+  const { pluginDir, template: tpl } = loadHooksTemplate();
   const templateHooks = (tpl?.hooks) || {};
   if (Object.keys(templateHooks).length === 0) {
     return {
@@ -63,7 +96,7 @@ function install({ yes }) {
     const entries = Array.isArray(rawEntries) ? rawEntries : [rawEntries];
     if (!Array.isArray(settings.hooks[event])) settings.hooks[event] = [];
     for (const entry of entries) {
-      const cmd0 = (entry?.hooks?.[0]?.command) || '';
+      const cmd0 = substitutePluginRoot(entry?.hooks?.[0]?.command || '', pluginDir);
       const isDup = settings.hooks[event].some(
         (e) => e && e[MARKER] === true && e.hooks && e.hooks.some((h) => h && h.command === cmd0)
       );
@@ -71,7 +104,9 @@ function install({ yes }) {
         already++;
         continue;
       }
-      settings.hooks[event].push(Object.assign({}, entry, { [MARKER]: true }));
+      settings.hooks[event].push(
+        Object.assign({}, materializeHookEntry(entry, pluginDir), { [MARKER]: true })
+      );
       added++;
     }
   }

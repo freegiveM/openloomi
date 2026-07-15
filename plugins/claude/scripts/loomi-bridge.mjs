@@ -1499,6 +1499,39 @@ function loadHooksTemplate() {
   }
 }
 
+// Resolve `${CLAUDE_PLUGIN_ROOT}` placeholders in a hook command to the
+// plugin's absolute path. Claude Code only injects this env var when hooks
+// are loaded directly from a plugin manifest; when we install them into
+// user-level `~/.claude/settings.json` we have to substitute ourselves or
+// the placeholder expands to empty and Node tries to resolve
+// `/scripts/loomi-bridge.mjs` from the filesystem root.
+function substitutePluginRoot(command) {
+  if (typeof command !== "string" || !command.includes("${CLAUDE_PLUGIN_ROOT}")) {
+    return command;
+  }
+  // Wrap the substituted path in double quotes so paths with spaces parse
+  // correctly under the shell. The original template has the placeholder
+  // unquoted (e.g. `node ${CLAUDE_PLUGIN_ROOT}/scripts/...`), so quote just
+  // the path component by replacing the placeholder with `"<pluginDir>"`.
+  const quoted = `"${PLUGIN_DIR}"`;
+  return command.split("${CLAUDE_PLUGIN_ROOT}").join(quoted);
+}
+
+function materializeHookEntry(entry) {
+  // Deep-clone so we don't mutate the shared template, then rewrite each
+  // inner command's placeholder to an absolute path.
+  const cloned = JSON.parse(JSON.stringify(entry));
+  if (cloned && Array.isArray(cloned.hooks)) {
+    cloned.hooks = cloned.hooks.map((h) => {
+      if (h && typeof h.command === "string") {
+        return { ...h, command: substitutePluginRoot(h.command) };
+      }
+      return h;
+    });
+  }
+  return cloned;
+}
+
 function detectHooksInstalled() {
   const s = readSettings();
   if (!s.json || typeof s.json !== "object") return false;
@@ -1558,7 +1591,11 @@ function installHooks({ yes = false } = {}) {
     const entries = Array.isArray(rawEntries) ? rawEntries : [rawEntries];
     if (!Array.isArray(j.hooks[event])) j.hooks[event] = [];
     for (const entry of entries) {
-      const cmd0 = entry?.hooks?.[0]?.command || "";
+      // Compare against the post-substitution command so dedup still
+      // works after the placeholder has been rewritten to the absolute
+      // plugin path (otherwise the second run would see a fresh-looking
+      // template string and append a duplicate entry).
+      const cmd0 = substitutePluginRoot(entry?.hooks?.[0]?.command || "");
       const isDup = j.hooks[event].some(
         (e) =>
           e && e[MARKER] === true && e.hooks?.some((h) => h?.command === cmd0),
@@ -1567,7 +1604,7 @@ function installHooks({ yes = false } = {}) {
         already++;
         continue;
       }
-      j.hooks[event].push({ ...entry, [MARKER]: true });
+      j.hooks[event].push({ ...materializeHookEntry(entry), [MARKER]: true });
       added++;
     }
   }
