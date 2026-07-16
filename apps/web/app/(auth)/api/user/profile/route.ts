@@ -3,11 +3,6 @@ import { z } from "zod";
 
 import { auth } from "@/app/(auth)/auth";
 import { getUserProfile, updateUserProfile } from "@/lib/db/queries";
-import { isTauriMode } from "@/lib/env/constants";
-import {
-  createCloudClientForRequest,
-  type CloudApiClient,
-} from "@/lib/auth/remote-client";
 
 const profileUpdateSchema = z.object({
   name: z
@@ -31,87 +26,17 @@ const profileUpdateSchema = z.object({
     }),
 });
 
-/**
- * Check if shadow user (cloud user in Tauri mode)
- */
-function isShadowUser(userId: string): boolean {
-  return userId.startsWith("cloud_");
-}
-
-/**
- * Sync user information from cloud to local
- * DISABLED: Cloud sync not needed in this version
- */
-async function syncUserFromCloud(
-  _cloudClient: CloudApiClient | null,
-  _userId: string,
-): Promise<{ name: string | null; avatarUrl: string | null } | null> {
-  // Cloud sync disabled - return null to use local profile only
-  return null;
-}
-
-export async function GET(request: Request) {
+export async function GET(_request: Request) {
   const session = await auth();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
   try {
-    // First get user profile from local database
+    // Profile lives entirely in the local database. No cloud round-trip.
     const profile = await getUserProfile(session.user.id);
     if (!profile) {
       return NextResponse.json({ error: "not_found" }, { status: 404 });
-    }
-
-    // Shadow user in Tauri mode: try to sync user information from cloud
-    if (isTauriMode() && isShadowUser(session.user.id)) {
-      // Use createCloudClientForRequest to get authentication info from request
-      const cloudClient = createCloudClientForRequest(request);
-      if (cloudClient) {
-        const cloudUserData = await syncUserFromCloud(
-          cloudClient,
-          session.user.id,
-        );
-
-        // If cloud has updates, sync to local
-        if (cloudUserData) {
-          let needsUpdate = false;
-          const updates: { name?: string | null; avatarUrl?: string | null } =
-            {};
-
-          if (
-            cloudUserData.name !== null &&
-            cloudUserData.name !== profile.name
-          ) {
-            updates.name = cloudUserData.name;
-            needsUpdate = true;
-          }
-
-          if (
-            cloudUserData.avatarUrl !== null &&
-            cloudUserData.avatarUrl !== profile.avatarUrl
-          ) {
-            updates.avatarUrl = cloudUserData.avatarUrl;
-            needsUpdate = true;
-          }
-
-          // Update local shadow user data
-          if (needsUpdate) {
-            try {
-              await updateUserProfile(session.user.id, updates);
-              // Update profile variable to reflect latest data
-              profile.name = updates.name ?? profile.name;
-              profile.avatarUrl = updates.avatarUrl ?? profile.avatarUrl;
-            } catch (updateError) {
-              console.error(
-                "[UserProfile] Failed to update shadow user profile:",
-                updateError,
-              );
-              // Even if update fails, continue returning current profile
-            }
-          }
-        }
-      }
     }
 
     return NextResponse.json(
@@ -147,29 +72,7 @@ export async function PATCH(request: Request) {
     const payload = await request.json();
     const updates = profileUpdateSchema.parse(payload);
 
-    // Shadow user in Tauri mode: sync to cloud simultaneously
-    if (isTauriMode() && isShadowUser(session.user.id)) {
-      // Use createCloudClientForRequest to get authentication info from request
-      const cloudClient = createCloudClientForRequest(request);
-      if (cloudClient) {
-        try {
-          // Sync updates to cloud
-          // Cloud API does not accept null values, need to filter
-          const cloudUpdates = {
-            name: updates.name ?? undefined,
-            avatarUrl: updates.avatarUrl ?? undefined,
-          };
-          await cloudClient.updateUser(cloudUpdates);
-        } catch (cloudError) {
-          console.error(
-            "[UserProfile] Failed to sync profile to cloud:",
-            cloudError,
-          );
-          // Even if cloud sync fails, continue updating local
-        }
-      }
-    }
-
+    // Profile lives entirely in the local database. No cloud sync needed.
     const updated = await updateUserProfile(session.user.id, updates);
     if (!updated) {
       return NextResponse.json({ error: "not_found" }, { status: 404 });

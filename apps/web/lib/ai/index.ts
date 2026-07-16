@@ -71,31 +71,8 @@ export {
   getAIUserContext,
 } from "@openloomi/ai/agent/ai";
 export type { AIUserContext, UserType } from "@openloomi/ai/agent/ai";
-export {
-  routeModelCall,
-  getRecommendedMode,
-  // Note: checkCloudAIAvailability from package is excluded to avoid conflict
-  // with cloud-client version below; use checkCloudAIAvailability from ./cloud-client
-} from "@openloomi/ai/agent/ai";
+export { routeModelCall, getRecommendedMode } from "@openloomi/ai/agent/ai";
 export type { ModelCallOptions, ModelCallResult } from "@openloomi/ai/agent/ai";
-
-// Local app-specific cloud client (depends on @/lib/api/remote-client)
-export {
-  canUseCloudAI,
-  checkCloudAIAvailability,
-  callCloudAIStream,
-  callCloudAI,
-  callCloudAIGeneric,
-  type CloudAIRequest,
-  type CloudAIResponse,
-} from "./cloud-client";
-
-// Local app-specific router (extends package router with cloud fallback)
-export {
-  routeModelCall as routeModelCallLocal,
-  routeModelCallCloud,
-} from "./router";
-export type { CloudAIRequest as RouterCloudAIRequest } from "./router";
 
 // Local app-specific request context (app-specific helpers only)
 export {

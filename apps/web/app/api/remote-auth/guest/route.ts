@@ -70,9 +70,9 @@ export async function POST(request: NextRequest) {
       userName = created.name ?? guestEmail.split("@")[0] ?? "guest";
     }
 
-    // Mint a bearer token. Same token format as /api/remote-auth/login
-    // and /api/remote-auth/register, so the Tauri `load_token` verifier
-    // accepts it without any extra wiring.
+    // Mint a bearer token. The cookie-based guest flow at
+    // `app/(auth)/api/auth/guest/route.ts` uses the same payload shape,
+    // so the Tauri `load_token` verifier accepts both with no extra wiring.
     const token = generateToken(userId, guestEmail);
 
     const now = Math.floor(Date.now() / 1000);

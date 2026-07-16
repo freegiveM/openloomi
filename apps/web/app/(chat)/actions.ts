@@ -8,7 +8,7 @@ import {
   getMessageById,
 } from "@/lib/db/queries";
 import { auth } from "@/app/(auth)/auth";
-import { getCloudUrl } from "@/lib/auth/cloud-proxy";
+import { resolveLlmProvider } from "@/lib/ai/provider-resolver";
 import {
   parseRawEmail,
   type ParsedEmailResult,
@@ -33,67 +33,61 @@ export async function setCookiePreference(value: string) {
 
 /**
  * Cached title generation function using React.cache()
- * This prevents duplicate AI calls for the same message within a request
+ * This prevents duplicate AI calls for the same message within a request.
+ *
+ * Uses {@link resolveLlmProvider} to dispatch through the user's configured
+ * LLM provider (saved settings, agent runtime, or built-in default). No HTTP
+ * round-trip to any external service — title generation stays local.
  */
-const generateTitleCached = cache(async (token: string, message: UIMessage) => {
-  // Extract message text
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const msg = message as any;
-  const userContent =
-    typeof msg.content === "string"
-      ? msg.content
-      : typeof msg.content === "object" && msg.content !== null
-        ? JSON.stringify(msg.content)
-        : "";
+const generateTitleCached = cache(
+  async (userId: string, message: UIMessage) => {
+    // Extract message text
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const msg = message as any;
+    const userContent =
+      typeof msg.content === "string"
+        ? msg.content
+        : typeof msg.content === "object" && msg.content !== null
+          ? JSON.stringify(msg.content)
+          : "";
 
-  const cloudUrl = getCloudUrl();
-  const url = `${cloudUrl}/api/ai/v1/chat/completions`;
+    const provider = await resolveLlmProvider({
+      userId,
+      prefer: "chat_completions",
+    });
 
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({
-      model: "moonshotai/kimi-k2.5",
-      max_tokens: 80,
-      stream: false,
-      messages: [
-        {
-          role: "system",
-          content:
-            "You will generate a short title based on the first message a user begins a conversation with. Ensure it is not more than 80 characters long. The title should be a summary of the user's message. Do not use quotes or colons. Return only the title text, no extra explanation.",
-        },
-        {
-          role: "user",
-          content: userContent,
-        },
-      ],
-    }),
-  });
+    if (!provider) {
+      throw new Error(
+        "No LLM provider configured. Save an OpenAI-compatible API key in AI provider settings, or set OPENLOOMI_AGENT_PROVIDER to a local runtime.",
+      );
+    }
 
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Failed to generate title: ${response.status} ${error}`);
-  }
+    const result = await provider.complete({
+      system:
+        "You will generate a short title based on the first message a user begins a conversation with. Ensure it is not more than 80 characters long. The title should be a summary of the user's message. Do not use quotes or colons. Return only the title text, no extra explanation.",
+      userContent,
+      maxTokens: 80,
+      timeoutMs: 60_000,
+    });
 
-  const data = await response.json();
-  const title = data.choices?.[0]?.message?.content?.trim();
-  if (!title) {
-    throw new Error("Invalid AI response: no title in choices");
-  }
-  return title;
-});
+    const title = result.text?.trim();
+    if (!title) {
+      throw new Error("Invalid AI response: no title in result");
+    }
+    return title;
+  },
+);
 
 export async function generateTitleFromUserMessage({
-  token,
   message,
 }: {
-  token: string;
   message: UIMessage;
 }) {
-  return generateTitleCached(token, message);
+  const session = await auth();
+  if (!session?.user) {
+    throw new Error("Unauthorized");
+  }
+  return generateTitleCached(session.user.id, message);
 }
 
 export async function deleteTrailingMessages({ id }: { id: string }) {

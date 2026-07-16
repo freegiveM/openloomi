@@ -117,8 +117,8 @@ export async function POST(request: Request) {
       });
 
       // Asynchronously generate better title and update
-      if (firstUserMessage && token) {
-        generateTitleFromUserMessage({ token, message: firstUserMessage })
+      if (firstUserMessage) {
+        generateTitleFromUserMessage({ message: firstUserMessage })
           .then(async (title) => {
             await saveChat({
               id: chatId,

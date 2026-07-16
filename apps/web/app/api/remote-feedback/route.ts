@@ -1,8 +1,8 @@
 /**
  * Feedback API
  *
- * - Web (cloud or local dev): save directly to database
- * - Tauri desktop: forward to cloud
+ * Always saves to local database. No cloud forwarding — OpenLoomi is open
+ * source and self-hosted, so feedback lives in the operator's own DB.
  */
 
 import type { NextRequest } from "next/server";
@@ -12,8 +12,6 @@ import { AppError } from "@openloomi/shared/errors";
 import { withRateLimit, RateLimitPresets } from "@/lib/rate-limit/middleware";
 import { saveFeedback } from "@/lib/db/queries";
 import { generateUUID } from "@/lib/utils";
-import { forwardToCloud } from "@/lib/auth/cloud-proxy";
-import { isTauriMode } from "@/lib/env/constants";
 
 const feedbackRequestBodySchema = z.object({
   content: z
@@ -38,11 +36,9 @@ type FeedbackRequestBody = z.infer<typeof feedbackRequestBodySchema>;
 
 export async function POST(request: NextRequest) {
   let requestBody: FeedbackRequestBody;
-  let rawBody: string;
 
   try {
-    rawBody = await request.text();
-    const json = JSON.parse(rawBody);
+    const json = await request.json();
     requestBody = feedbackRequestBodySchema.parse(json);
   } catch (error) {
     console.error("[Remote Feedback] Invalid request body", error);
@@ -52,12 +48,6 @@ export async function POST(request: NextRequest) {
     ).toResponse();
   }
 
-  // Tauri desktop: forward to cloud
-  if (isTauriMode()) {
-    return forwardToCloud(request, "/api/remote-feedback", rawBody);
-  }
-
-  // Web: direct handling (includes rate limiting)
   // Rate limit check: 10 requests/hour
   const rateLimitResult = await withRateLimit(
     request,

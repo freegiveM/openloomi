@@ -1,6 +1,9 @@
 /**
  * Dual auth utility functions
  * Supports both Session Cookie (Web) and Bearer Token (Tauri)
+ *
+ * OpenLoomi is open source and self-hosted, so user identity always comes
+ * from the local token signature + local DB. No cloud round-trip.
  */
 
 import { auth } from "@/app/(auth)/auth";
@@ -14,7 +17,9 @@ export interface AuthUser {
 }
 
 /**
- * Check if is shadow user (cloud user in Tauri mode)
+ * Check if is shadow user (legacy `cloud_` prefix carried over from the
+ * Tauri guest identity). Kept for backward-compat reads; we no longer
+ * derive identity from a remote service.
  */
 function isShadowUser(userId: string): boolean {
   return userId.startsWith("cloud_");
@@ -23,7 +28,7 @@ function isShadowUser(userId: string): boolean {
 /**
  * Get authenticated user from request
  * Priority:
- * 1. Bearer Token (Tauri local) - prefer getting from local database
+ * 1. Bearer Token (Tauri local) - verify signature, hydrate from local DB
  * 2. Session Cookie (Web)
  */
 export async function getAuthUser(request: Request): Promise<AuthUser | null> {
@@ -34,54 +39,22 @@ export async function getAuthUser(request: Request): Promise<AuthUser | null> {
     if (isTokenValid(token)) {
       const userId = getUserIdFromToken(token);
       if (userId) {
-        // For shadow users (Tauri mode), get user info from local database
-        // Avoid calling cloud API every time
-        if (isShadowUser(userId)) {
-          try {
-            const { getUserById } = await import("@/lib/db/queries");
-            const localUser = await getUserById(userId);
-            if (localUser) {
-              return {
-                id: localUser.id,
-                email: localUser.email,
-                name: localUser.name,
-              };
-            }
-          } catch (error) {
-            console.error(
-              "[DualAuth] Failed to get shadow user from DB:",
-              error,
-            );
-          }
-        }
-
-        // Non-shadow user or local fetch failed, try to get from cloud
         try {
-          const response = await fetch(
-            `${process.env.CLOUD_API_URL || process.env.NEXT_PUBLIC_CLOUD_API_URL || "https://app.alloomi.ai"}/api/remote-auth/user`,
-            {
-              headers: {
-                Authorization: `Bearer ${token}`,
-              },
-            },
-          );
-
-          if (response.ok) {
-            const data = await response.json();
+          const { getUserById } = await import("@/lib/db/queries");
+          const localUser = await getUserById(userId);
+          if (localUser) {
             return {
-              id: data.id,
-              email: data.email,
-              name: data.name,
-              type: data.subscription,
+              id: localUser.id,
+              email: localUser.email,
+              name: localUser.name,
             };
           }
-
-          // If failed to get user info, at least return ID
-          return { id: userId };
         } catch (error) {
-          console.error("[DualAuth] Failed to fetch user from cloud:", error);
-          return { id: userId };
+          console.error("[DualAuth] Failed to get user from local DB:", error);
         }
+        // Token is valid but the local user row is missing — surface the
+        // id so the caller can decide; never fall back to a remote service.
+        return { id: userId };
       }
     }
   }
@@ -107,3 +80,7 @@ export async function isAuthenticated(request: Request): Promise<boolean> {
   const user = await getAuthUser(request);
   return user !== null;
 }
+
+// Keep the helper exported for tests / external callers; it no longer
+// affects getAuthUser behavior.
+export { isShadowUser };

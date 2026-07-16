@@ -10,7 +10,6 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { useSWRConfig } from "swr";
 import { TelegramLoginWidget } from "./telegram-login-widget";
-import { isTauri as checkIsTauri, openUrl } from "@/lib/tauri";
 import {
   createIntegrationAccount,
   updateIntegrationAccountCredentials,
@@ -871,25 +870,6 @@ export function TelegramTokenForm({
                     </p>
                   </div>
                 </div>
-
-                {checkIsTauri() ? (
-                  <button
-                    type="button"
-                    onClick={() => openUrl("https://app.alloomi.ai/privacy")}
-                    className="text-sky-500 hover:underline text-sm flex items-center bg-transparent border-none cursor-pointer p-0"
-                  >
-                    {t("securityPrompt.learnMore")}
-                  </button>
-                ) : (
-                  <a
-                    href="/privacy"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-sky-500 hover:underline text-sm flex items-center"
-                  >
-                    {t("securityPrompt.learnMore")}
-                  </a>
-                )}
 
                 {/* Authorization steps */}
                 <div className="mt-6">

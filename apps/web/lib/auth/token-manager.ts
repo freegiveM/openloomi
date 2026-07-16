@@ -1,13 +1,15 @@
 /**
  * Auth Token Management Utilities
- * Used to store and retrieve cloud auth tokens in Tauri mode
+ * Used to store and retrieve local auth tokens in Tauri mode
  *
  * Migration strategy: cookie-first reads, localStorage fallback.
  * New sessions: token stored in httpOnly + non-httpOnly cookie
  * Old sessions (not through login/register flow): continue reading from localStorage
+ *
+ * The legacy cloud-token refresh path has been removed — tokens are
+ * now minted and verified entirely against the local AUTH_SECRET.
  */
 
-import { shouldUseCloudAuth } from "@/lib/auth/remote-client";
 import { AUTH_TOKEN_CLIENT_COOKIE } from "./cookie-names";
 
 // Token refresh related constants
@@ -269,10 +271,11 @@ export function getValidToken(): string | null {
 }
 
 /**
- * Check if using cloud auth
+ * Check if using remote (cloud) auth — always false now.
+ * Kept for backward compatibility with existing call sites.
  */
 export function shouldUseRemoteAuth(): boolean {
-  return shouldUseCloudAuth() && hasAuthToken();
+  return false;
 }
 
 /**
@@ -294,57 +297,29 @@ export function shouldRefreshToken(token: string): boolean {
 
 /**
  * Refresh auth token
+ *
+ * No-op stub: the legacy cloud-token refresh endpoint has been removed.
+ * Tokens are signed locally with AUTH_SECRET and never need to be
+ * refreshed against a remote server. This function is kept so existing
+ * import paths keep working; callers that hit it just see "not supported".
  */
 export async function refreshToken(): Promise<{
   success: boolean;
   token?: string;
   error?: string;
 }> {
-  const currentToken = getAuthToken();
-
-  if (!currentToken) {
-    return { success: false, error: "No token to refresh" };
-  }
-
-  try {
-    const cloudUrl =
-      process.env.CLOUD_API_URL || process.env.NEXT_PUBLIC_CLOUD_API_URL;
-
-    if (!cloudUrl) {
-      return { success: false, error: "Cloud API URL not configured" };
-    }
-
-    const response = await fetch(`${cloudUrl}/api/remote-auth/refresh`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${currentToken}`,
-      },
-    });
-
-    if (!response.ok) {
-      const error = await response.text();
-      return { success: false, error: `Refresh failed: ${error}` };
-    }
-
-    const data = await response.json();
-
-    // Store new token
-    storeAuthToken(data.token);
-
-    // Cookie is auto-updated by refresh response's Set-Cookie
-    // (Note: server also needs to call setAuthCookies in refresh route)
-
-    return { success: true, token: data.token };
-  } catch (error) {
-    console.error("[TokenManager] Failed to refresh token:", error);
-    return { success: false, error: "Network error" };
-  }
+  return {
+    success: false,
+    error: "Token refresh is not supported in the local-only build",
+  };
 }
 
 /**
  * Auto-refresh token (if needed)
  * Use this function before calling API to ensure token is valid
+ *
+ * No cloud refresh — just returns the current token if it's still
+ * valid locally, otherwise null (caller should re-auth).
  */
 export async function ensureValidToken(): Promise<string | null> {
   const token = getAuthToken();
@@ -353,26 +328,7 @@ export async function ensureValidToken(): Promise<string | null> {
     return null;
   }
 
-  // If token is valid and doesn't need refresh, return directly
-  if (isTokenValid(token) && !shouldRefreshToken(token)) {
-    return token;
-  }
-
-  // If token is expired, try to refresh
-  if (!isTokenValid(token)) {
-    const result = await refreshToken();
-    return result.success ? result.token || null : null;
-  }
-
-  // If refresh is needed, refresh in background (don't block current request)
-  if (shouldRefreshToken(token)) {
-    // Silent refresh, don't wait for result
-    refreshToken().catch((error) => {
-      console.warn("[TokenManager] Background refresh failed:", error);
-    });
-  }
-
-  return token;
+  return isTokenValid(token) ? token : null;
 }
 
 /**

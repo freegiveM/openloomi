@@ -3,7 +3,6 @@ import { Button, Card, CardContent } from "@openloomi/ui";
 import { RemixIcon } from "@/components/remix-icon";
 import { useTranslation } from "react-i18next";
 import { useRouter } from "next/navigation";
-import { isTauri, openUrl } from "@/lib/tauri";
 
 export function IntegrationAuthCard({ showTitle }: { showTitle: boolean }) {
   const { t } = useTranslation();
@@ -47,45 +46,6 @@ export function IntegrationAuthCard({ showTitle }: { showTitle: boolean }) {
             </ul>
             <p>
               {t("auth.infoItem4")}
-              {isTauri() ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => openUrl("https://app.alloomi.ai/privacy")}
-                    className="text-blue-500 hover:underline bg-transparent border-none cursor-pointer p-0"
-                  >
-                    {t("auth.privacy")}
-                  </button>
-                  {t("auth.and")}
-                  <button
-                    type="button"
-                    onClick={() => openUrl("https://app.alloomi.ai/terms")}
-                    className="text-blue-500 hover:underline bg-transparent border-none cursor-pointer p-0"
-                  >
-                    {t("auth.tos")}
-                  </button>
-                </>
-              ) : (
-                <>
-                  <a
-                    href="/privacy"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-500 hover:underline"
-                  >
-                    {t("auth.privacy")}
-                  </a>
-                  {t("auth.and")}
-                  <a
-                    href="/terms"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-500 hover:underline"
-                  >
-                    {t("auth.tos")}
-                  </a>
-                </>
-              )}
               {t("auth.end")}
             </p>
           </div>
