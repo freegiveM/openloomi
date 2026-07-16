@@ -43,6 +43,10 @@ yarn-error.log*
 /playwright-report/
 /blob-report/
 /playwright/*
+apps/*/test-results/
+apps/*/playwright-report/
+apps/*/blob-report/
+apps/*/playwright/*
 
 # Ts build info
 tsconfig.tsbuildinfo
