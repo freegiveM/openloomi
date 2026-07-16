@@ -387,7 +387,8 @@ describe("classify — email automated-sender gate (#367)", () => {
   it("does NOT create a draft_reply for a GitHub notification titled 'restructure RSVP cards'", () => {
     const sig = makeEmailSignal({
       from: "notifications@github.com",
-      subject: "Re: [melandlabs/openloomi] ux(loop): restructure RSVP cards (#363)",
+      subject:
+        "Re: [melandlabs/openloomi] ux(loop): restructure RSVP cards (#363)",
       snippet: "xingxingluolei commented on this issue.",
       threadId: "t1",
     });
@@ -432,9 +433,9 @@ describe("classify — email automated-sender gate (#367)", () => {
     expect(decision).not.toBeNull();
     expect(decision?.type).toBe("draft_reply");
     expect(decision?.action.kind).toBe("email_reply");
-    expect(
-      (decision?.action.params as Record<string, unknown>).to,
-    ).toBe("mira@acme.dev");
+    expect((decision?.action.params as Record<string, unknown>).to).toBe(
+      "mira@acme.dev",
+    );
   });
 
   it("still surfaces a human email wrapped in a display name", () => {
