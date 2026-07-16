@@ -30,4 +30,16 @@ export interface LibraryItem {
   toolExecution?: ToolExecution;
   knowledgeFile?: KnowledgeFile;
   isTemporary?: boolean;
+  /**
+   * Forwarded from the latest tool-native part that referenced this file.
+   * `"incomplete"` surfaces an "Incomplete" pill in the row so users can tell
+   * timed-out / errored tool runs apart from final deliverables.
+   */
+  readiness?: "completed" | "incomplete";
+  /**
+   * Forwarded from the latest tool-native part that referenced this file.
+   * `"work"` is reserved for intermediate scripts / scratch files; the
+   * existing temp badge already conveys this for temp paths.
+   */
+  role?: "deliverable" | "work";
 }

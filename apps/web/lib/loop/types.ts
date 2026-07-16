@@ -62,6 +62,49 @@ export interface LoopDecisionContext {
   [extra: string]: unknown;
 }
 
+// ---------------------------------------------------------------------------
+// Decision semantics (#359) — three separate questions, not one score
+// ---------------------------------------------------------------------------
+//
+// A single `confidence` value used to be overloaded across three unrelated
+// product questions:
+//   1. How likely is the signal to belong to a decision `type`? (classification)
+//   2. Is there enough information to decide/execute safely?     (readiness)
+//   3. How well do we know the person/entity involved?           (relationship)
+//
+// These are now separated. `confidence` stays a DIAGNOSTIC classification
+// probability and is NEVER used to derive urgency or priority. `readiness`
+// gates execution. `relationship` is optional colour that only surfaces when
+// it materially helps the user judge risk/relevance. See `readiness.ts` for
+// the derivation helpers and `derivePriority` (urgency × impact, independent
+// of `confidence`).
+
+/**
+ * Decision readiness — is there enough information to act safely?
+ *   - "ready"          → decision-critical fields present; safe to execute.
+ *   - "needs_context"  → missing fields; execution is gated until resolved.
+ *   - "not_actionable" → nothing to do (e.g. an event you own with no guests).
+ */
+export type ReadinessStatus = "ready" | "needs_context" | "not_actionable";
+
+export interface DecisionReadiness {
+  status: ReadinessStatus;
+  /** Human-readable decision-critical fields absent from the signal. */
+  missing?: string[];
+}
+
+/**
+ * Relationship context — how well OpenLoomi knows the counterparty. Optional
+ * by design; absence means "no evidence", and it NEVER blocks a decision by
+ * itself. It only sharpens the plain-language state (e.g. an unknown sender
+ * asking for an external action becomes "Confirm carefully").
+ */
+export type RelationshipLevel = "self" | "known" | "unknown";
+
+export interface DecisionRelationship {
+  level: RelationshipLevel;
+}
+
 export interface LoopDecision {
   id: string;
   ts: string;
@@ -71,13 +114,74 @@ export interface LoopDecision {
   title: string;
   action: LoopAction;
   context?: LoopDecisionContext;
+  /**
+   * Classification confidence — how likely the signal belongs to `type`.
+   * DIAGNOSTIC ONLY (#359): never used to derive urgency or priority. A high
+   * value means "we're confident this is an RSVP", NOT "this is urgent",
+   * "safe to execute", or "the sender is trusted".
+   */
   confidence?: number;
+  /**
+   * Decision readiness — gates execution (#359). When absent, consumers
+   * derive it from the action/signal via `readiness.ts::deriveReadiness`.
+   */
+  readiness?: DecisionReadiness;
+  /**
+   * Relationship context — optional colour (#359). When absent, consumers
+   * may derive it via `readiness.ts::deriveRelationship`. Never blocks a
+   * decision by itself.
+   */
+  relationship?: DecisionRelationship;
   source_signal?: LoopSignal;
   result?: unknown;
   completed_at?: string;
   /** Card-flavored dialogue/next step for the pet and web UI. */
   dialogue?: string;
   nextStep?: string;
+  /**
+   * #358 — structured execution outcome. Records what actually happened when
+   * the runner executed this decision: did the agent perform an external
+   * write, refuse, skip, get blocked, or fail? Persisted so the activity
+   * trail, briefs, wraps, and audits don't claim an external side-effect
+   * happened when nothing did. Optional for backward compatibility — legacy
+   * `done` rows without this field render as `done / executed` by default.
+   */
+  execution?: LoopDecisionExecution;
+}
+
+// ---------------------------------------------------------------------------
+// Execution outcome (#358) — what actually happened during a `run`
+// ---------------------------------------------------------------------------
+//
+// Distinguishes "transport + model completed" from "the user-visible action
+// was actually performed". A clean HTTP 200 from the agent is not enough —
+// the agent may have refused, no-op'd, or hit a connector error.
+
+/** Verdict from a single `runDecision` execution attempt. */
+export type ExecutionOutcome = "executed" | "skipped" | "blocked" | "failed";
+
+export interface LoopDecisionExecution {
+  /** The structured verdict the runner parsed from the agent's response. */
+  outcome: ExecutionOutcome;
+  /**
+   * Human-readable reason — required for skipped/blocked/failed. Optional
+   * for executed (used as a short summary line in the UI).
+   */
+  reason?: string;
+  /**
+   * Connector-specific evidence of the external write. Populated whenever
+   * the agent returned an id (calendar eventId, gmail messageId, slack ts,
+   * github reviewId, tool call id). Open-ended for forward-compat.
+   */
+  evidence?: {
+    eventId?: string;
+    messageId?: string;
+    reviewId?: string;
+    toolCallId?: string;
+    [k: string]: unknown;
+  };
+  /** ISO timestamp of when the agent returned this outcome. */
+  evaluatedAt: string;
 }
 
 export interface LoopDecisionBuckets {

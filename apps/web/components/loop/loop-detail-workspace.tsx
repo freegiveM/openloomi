@@ -26,7 +26,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslation } from "react-i18next";
 
-import { Badge, Button } from "@openloomi/ui";
+import { Button } from "@openloomi/ui";
 
 import { RemixIcon } from "@/components/remix-icon";
 import { Spinner } from "@/components/spinner";
@@ -44,6 +44,15 @@ import { DryRunPreview } from "@/components/loop/dry-run-preview";
 import { DismissInput } from "@/components/loop/dismiss-input";
 import { ActionParamsViewer } from "@/components/loop/action-params-viewer";
 import { MemoryChips } from "@/components/loop/memory-chips";
+import {
+  canExecute,
+  deriveReadiness,
+  derivePriority,
+  readinessState,
+  stateLabel,
+  type DecisionState,
+  type LoopPriority,
+} from "@/lib/loop/readiness";
 
 import { cn } from "@/lib/utils";
 
@@ -73,17 +82,23 @@ const STATUS_TONE: Record<
   },
 };
 
-function priorityFromConfidence(c?: number): "P0" | "P1" | "P2" {
-  if (c == null) return "P2";
-  if (c >= 0.85) return "P0";
-  if (c >= 0.75) return "P1";
-  return "P2";
-}
-
-function priorityClass(p: "P0" | "P1" | "P2"): string {
+function priorityClass(p: LoopPriority): string {
   if (p === "P0") return "bg-red-100 text-red-700";
   if (p === "P1") return "bg-amber-100 text-amber-700";
   return "bg-muted text-muted-foreground";
+}
+
+function stateClass(state: DecisionState): string {
+  switch (state) {
+    case "ready":
+      return "bg-emerald-100 text-emerald-700";
+    case "confirm":
+      return "bg-amber-100 text-amber-700";
+    case "needs_context":
+      return "bg-sky-100 text-sky-700";
+    case "not_actionable":
+      return "bg-muted text-muted-foreground";
+  }
 }
 
 function formatResult(result: unknown): string {
@@ -168,10 +183,18 @@ export function LoopDetailWorkspace({
   const { t } = useTranslation();
   const [running, setRunning] = useState(false);
   const [promoting, setPromoting] = useState(false);
+  // #358 — separate spinner state for the resurrect action so it doesn't
+  // collide with the regular Run / Promote buttons.
+  const [resurrecting, setResurrecting] = useState(false);
 
   const status = decision.status;
   const statusMeta = STATUS_TONE[status];
-  const priority = priorityFromConfidence(decision.confidence);
+  // #359 — priority from urgency × impact (readiness), not confidence.
+  const priority = derivePriority(decision);
+  const readiness = deriveReadiness(decision);
+  const state = readinessState(decision);
+  const stateMeta = stateLabel(state);
+  const executable = canExecute(readiness);
   const dryRunText =
     typeof decision.context?.dry_run === "string"
       ? decision.context.dry_run
@@ -180,6 +203,16 @@ export function LoopDetailWorkspace({
     typeof decision.context?.last_error === "string"
       ? decision.context.last_error
       : null;
+  // #358 — structured verdict, when present, wins over the legacy
+  // `context.last_error` for both the pending banner and the done panel.
+  const execution = decision.execution;
+  const executedOutcome =
+    status === "done" && execution?.outcome === "executed";
+  const skippedOutcome =
+    status === "done" && execution?.outcome === "skipped";
+  const blockedOrFailedPending =
+    status === "pending" &&
+    (execution?.outcome === "blocked" || execution?.outcome === "failed");
   const result = decision.result;
 
   const whyBullets =
@@ -260,6 +293,50 @@ export function LoopDetailWorkspace({
     }
   }
 
+  // #358 — move a `done / skipped` decision back into pending so the user
+  // can re-run after an agent refusal. Mirrors `promote()` for dismissed
+  // rows. The "Run again" button only renders when the done row has a
+  // non-executed outcome — an executed decision doesn't need a resurrect.
+  async function resurrect() {
+    if (status !== "done") return;
+    setResurrecting(true);
+    try {
+      const res = await fetch(`/api/loop/decision/${decision.id}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "resurrect" }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok) {
+        toast({
+          type: "error",
+          description: t(
+            "loop.detail.resurrectFailed",
+            "Re-run failed: {{msg}}",
+            { msg: data?.error ?? res.statusText },
+          ),
+        });
+        return;
+      }
+      toast({
+        type: "success",
+        description: t("loop.detail.resurrectedToast", "Back to pending"),
+      });
+      await onRefresh();
+    } catch (e) {
+      toast({
+        type: "error",
+        description: t(
+          "loop.detail.resurrectFailed",
+          "Re-run failed: {{msg}}",
+          { msg: e instanceof Error ? e.message : "unknown" },
+        ),
+      });
+    } finally {
+      setResurrecting(false);
+    }
+  }
+
   return (
     <div className="mx-auto grid w-full max-w-6xl gap-4 lg:grid-cols-[minmax(0,2fr)_320px]">
       {/* ── Main column ───────────────────────────────────────── */}
@@ -276,6 +353,15 @@ export function LoopDetailWorkspace({
               <RemixIcon name={statusMeta.icon} className="size-3" />
               {t(`loop.detail.statusLabel.${status}`, statusMeta.label)}
             </span>
+            {/* Primary decision surface — plain-language readiness state. */}
+            <span
+              className={cn(
+                "rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                stateClass(state),
+              )}
+            >
+              {t(stateMeta.key, stateMeta.fallback)}
+            </span>
             <span
               className={cn(
                 "rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
@@ -287,17 +373,34 @@ export function LoopDetailWorkspace({
             <span className="text-xs uppercase tracking-wide text-muted-foreground">
               {decision.type}
             </span>
+            {/* Classification confidence — diagnostic only, demoted. */}
             {decision.confidence != null && (
-              <Badge variant="secondary" className="ml-auto">
+              <span
+                className="ml-auto text-[11px] font-medium text-muted-foreground"
+                title={t(
+                  "loop.confidenceDiagnostic",
+                  "Classification confidence (diagnostic — not urgency)",
+                )}
+              >
                 {t("loop.detail.confidenceBadge", "conf {{n}}", {
                   n: decision.confidence.toFixed(2),
                 })}
-              </Badge>
+              </span>
             )}
           </div>
           <h2 className="text-xl font-semibold leading-tight">
             {decision.title}
           </h2>
+          {/* Missing decision-critical fields (#359). */}
+          {readiness.status === "needs_context" &&
+            readiness.missing &&
+            readiness.missing.length > 0 && (
+              <p className="text-xs text-muted-foreground">
+                {t("loop.readiness.missing", "Missing: {{fields}}", {
+                  fields: readiness.missing.join(", "),
+                })}
+              </p>
+            )}
           <div className="flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground">
             <span className="inline-flex items-center gap-1">
               <RemixIcon name="ri-time-line" className="size-3" />
@@ -348,23 +451,30 @@ export function LoopDetailWorkspace({
             {/* Action footer */}
             <div className="flex flex-col gap-3 rounded-lg border bg-card p-4 shadow-sm">
               <div className="flex flex-wrap items-center gap-2">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="default"
-                  onClick={runNow}
-                  disabled={running}
-                  className="gap-1.5"
-                >
-                  {running ? (
-                    <Spinner size={14} label="" className="!size-3.5" />
-                  ) : (
-                    <RemixIcon name="ri-play-line" className="size-3.5" />
-                  )}
-                  {running
-                    ? t("loop.detail.running", "Running…")
-                    : t("loop.detail.runButton", "Run")}
-                </Button>
+                {/* #359 — a non-actionable decision must not expose the
+                    default Run CTA. Mirrors DecisionCard's executable gate
+                    so web detail and pet card stay in sync. */}
+                {executable && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={state === "ready" ? "default" : "outline"}
+                    onClick={runNow}
+                    disabled={running}
+                    className="gap-1.5"
+                  >
+                    {running ? (
+                      <Spinner size={14} label="" className="!size-3.5" />
+                    ) : (
+                      <RemixIcon name="ri-play-line" className="size-3.5" />
+                    )}
+                    {running
+                      ? t("loop.detail.running", "Running…")
+                      : state === "confirm"
+                        ? t("loop.confirmRun", "Confirm & run")
+                        : t("loop.detail.runButton", "Run")}
+                  </Button>
+                )}
                 <Button
                   type="button"
                   size="sm"
@@ -382,13 +492,29 @@ export function LoopDetailWorkspace({
                   />
                 </div>
               </div>
-              {lastError && (
+              {/* #358 — banner prefers the structured `execution.reason`
+                  when the previous run was blocked/failed. Falls back to the
+                  legacy `last_error` for rows that predate the verdict field. */}
+              {(blockedOrFailedPending || lastError) && (
                 <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
                   <RemixIcon
                     name="ri-error-warning-line"
                     className="mt-0.5 size-3.5 shrink-0"
                   />
-                  <span className="break-words">{lastError}</span>
+                  <span className="break-words">
+                    {blockedOrFailedPending
+                      ? t(
+                          "loop.detail.lastAttemptFailed",
+                          "Last attempt failed: {{reason}} — retry Run below.",
+                          {
+                            reason:
+                              execution?.reason ??
+                              lastError ??
+                              String(execution?.outcome ?? "failed"),
+                          },
+                        )
+                      : lastError}
+                  </span>
                 </div>
               )}
             </div>
@@ -397,30 +523,116 @@ export function LoopDetailWorkspace({
 
         {status === "done" && (
           <div className="flex flex-col gap-3 rounded-lg border bg-card p-4 shadow-sm">
+            {/* #358 — header reflects the structured verdict instead of a
+                flat "Result". `executed` keeps the existing Result panel;
+                `skipped` shows the reason + a Run again CTA. */}
             <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              <RemixIcon name="ri-check-double-line" className="size-3.5" />
-              {t("loop.detail.resultLabel", "Result")}
+              {skippedOutcome ? (
+                <>
+                  <RemixIcon
+                    name="ri-checkbox-circle-line"
+                    className="size-3.5"
+                  />
+                  {t("loop.detail.skippedLabel", "Skipped")}
+                </>
+              ) : (
+                <>
+                  <RemixIcon
+                    name="ri-check-double-line"
+                    className="size-3.5"
+                  />
+                  {executedOutcome
+                    ? t("loop.detail.executedLabel", "Executed")
+                    : t("loop.detail.resultLabel", "Result")}
+                </>
+              )}
             </div>
-            {formatResult(result).trim() ? (
-              <pre className="max-h-96 overflow-auto rounded-md border bg-muted/40 p-3 text-xs leading-relaxed text-foreground/90">
-                <code>{formatResult(result)}</code>
-              </pre>
+            {skippedOutcome ? (
+              <>
+                <div className="rounded-md border bg-muted/40 px-3 py-2 text-xs italic text-foreground/80">
+                  {execution?.reason ??
+                    t("loop.outcome.reason", "Reason: {{reason}}", {
+                      reason: t("loop.outcome.skipped", "Skipped"),
+                    })}
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={resurrect}
+                    disabled={resurrecting}
+                    className="gap-1.5"
+                  >
+                    {resurrecting ? (
+                      <Spinner
+                        size={14}
+                        label=""
+                        className="!size-3.5"
+                      />
+                    ) : (
+                      <RemixIcon
+                        name="ri-restart-line"
+                        className="size-3.5"
+                      />
+                    )}
+                    {t("loop.detail.resurrect", "Run again")}
+                  </Button>
+                </div>
+              </>
             ) : (
-              <div className="rounded-md border border-dashed bg-muted/20 px-3 py-4 text-center text-xs text-muted-foreground">
-                {t(
-                  "loop.detail.noResult",
-                  "Ran without attaching a result payload — check the agent logs.",
+              <>
+                {formatResult(result).trim() ? (
+                  <pre className="max-h-96 overflow-auto rounded-md border bg-muted/40 p-3 text-xs leading-relaxed text-foreground/90">
+                    <code>{formatResult(result)}</code>
+                  </pre>
+                ) : (
+                  <div className="rounded-md border border-dashed bg-muted/20 px-3 py-4 text-center text-xs text-muted-foreground">
+                    {t(
+                      "loop.detail.noResult",
+                      "Ran without attaching a result payload — check the agent logs.",
+                    )}
+                  </div>
                 )}
-              </div>
+                <div className="flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground">
+                  <span className="inline-flex items-center gap-1">
+                    <RemixIcon name="ri-time-line" className="size-3" />
+                    {t("loop.detail.ranAt", "Ran at {{ts}}", {
+                      ts: formatTs(decision.completed_at ?? decision.ts),
+                    })}
+                  </span>
+                </div>
+                {/* Surface the resurrect affordance for any non-executed
+                    done row too — e.g. a pre-#358 done row whose legacy
+                    `result` payload doesn't carry a verdict. */}
+                {!executedOutcome && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={resurrect}
+                      disabled={resurrecting}
+                      className="gap-1.5"
+                    >
+                      {resurrecting ? (
+                        <Spinner
+                          size={14}
+                          label=""
+                          className="!size-3.5"
+                        />
+                      ) : (
+                        <RemixIcon
+                          name="ri-restart-line"
+                          className="size-3.5"
+                        />
+                      )}
+                      {t("loop.detail.resurrect", "Run again")}
+                    </Button>
+                  </div>
+                )}
+              </>
             )}
-            <div className="flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground">
-              <span className="inline-flex items-center gap-1">
-                <RemixIcon name="ri-time-line" className="size-3" />
-                {t("loop.detail.ranAt", "Ran at {{ts}}", {
-                  ts: formatTs(decision.completed_at ?? decision.ts),
-                })}
-              </span>
-            </div>
           </div>
         )}
 

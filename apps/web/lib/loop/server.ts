@@ -12,12 +12,22 @@ import {
 import { listConnectors, refreshConnectors } from "./connectors";
 import { decisions, log, readStatus, signals } from "./store";
 import { readPreferences, writePreferences } from "./preferences";
-import { dismissDecision, promoteDecision, runDecision } from "./runner";
+import {
+  dismissDecision,
+  promoteDecision,
+  resurrectDecision,
+  runDecision,
+} from "./runner";
 import { run as runTick, setActiveUser as setTickActiveUser } from "./tick";
 import { buildAndEnqueue as buildWrap, build as buildWrapOnly } from "./wrap";
+import { recordEvent as recordActivationEvent } from "./activation";
+import { deriveReadiness, deriveRelationship } from "./readiness";
 import type {
+  DecisionReadiness,
+  DecisionRelationship,
   DecisionStatus,
   LoopDecision,
+  LoopDecisionExecution,
   LoopPreferences,
   LoopState,
   LoopTickResult,
@@ -59,6 +69,14 @@ export interface LoopCardPayload extends LoopDecision {
   why: string[];
   dialogue: string;
   nextStep: string;
+  /**
+   * #359 — resolved decision semantics. `readiness` gates execution and is
+   * always present (derived from the action when the stored decision omits
+   * it). `relationship` is optional colour and is only set when there is
+   * evidence for it.
+   */
+  readiness: DecisionReadiness;
+  relationship?: DecisionRelationship;
 }
 
 export function getCard(id: string): LoopCardPayload | null {
@@ -68,12 +86,16 @@ export function getCard(id: string): LoopCardPayload | null {
   const sourceChain = dec.source_signal
     ? [dec.source_signal.source, dec.source_signal.type, dec.source_signal.ts]
     : [];
+  const readiness = deriveReadiness(dec);
+  const relationship = deriveRelationship(dec);
   return {
     ...dec,
     why,
     source_chain: sourceChain,
     dialogue: dec.dialogue ?? defaultDialogue(dec),
     nextStep: dec.nextStep ?? defaultNextStep(dec),
+    readiness,
+    ...(relationship ? { relationship } : {}),
   };
 }
 
@@ -113,9 +135,9 @@ function defaultNextStep(dec: LoopDecision): string {
   return `Tap Run to let the agent handle this ${dec.type}.`;
 }
 
-/** POST /api/loop/decision/[id] with { action: 'run' | 'dry' | 'dismiss' | 'promote' } */
+/** POST /api/loop/decision/[id] with { action: 'run' | 'dry' | 'dismiss' | 'promote' | 'resurrect' } */
 export interface DecisionActionInput {
-  action: "run" | "dry" | "dismiss" | "promote";
+  action: "run" | "dry" | "dismiss" | "promote" | "resurrect";
   reason?: string;
 }
 
@@ -128,45 +150,76 @@ export async function applyDecisionAction(
   decision: LoopDecision | null;
   result?: unknown;
   error?: string;
+  /**
+   * #358 — structured execution verdict from the runner. Surfaced to the
+   * web UI so the card can render the actual outcome without re-reading
+   * the decision. Absent for dismiss/promote/resurrect because they don't
+   * execute anything.
+   */
+  execution?: LoopDecisionExecution;
 }> {
+  let out: {
+    ok: boolean;
+    status: DecisionStatus | "pending";
+    decision: LoopDecision | null;
+    result?: unknown;
+    error?: string;
+    execution?: LoopDecisionExecution;
+  };
   switch (input.action) {
     case "run": {
-      const out = await runDecision(id);
-      return {
-        ok: out.ok,
-        status: out.status,
-        decision: out.decision,
-        ...(out.result !== undefined ? { result: out.result } : {}),
-        ...(out.error ? { error: out.error } : {}),
+      const r = await runDecision(id);
+      out = {
+        ok: r.ok,
+        status: r.status,
+        decision: r.decision,
+        ...(r.result !== undefined ? { result: r.result } : {}),
+        ...(r.error ? { error: r.error } : {}),
+        ...(r.execution ? { execution: r.execution } : {}),
       };
+      break;
     }
     case "dry": {
-      const out = await runDecision(id, { dry: true });
-      return {
-        ok: out.ok,
-        status: out.status,
-        decision: out.decision,
-        ...(out.result !== undefined ? { result: out.result } : {}),
-        ...(out.error ? { error: out.error } : {}),
+      const r = await runDecision(id, { dry: true });
+      out = {
+        ok: r.ok,
+        status: r.status,
+        decision: r.decision,
+        ...(r.result !== undefined ? { result: r.result } : {}),
+        ...(r.error ? { error: r.error } : {}),
+        ...(r.execution ? { execution: r.execution } : {}),
       };
+      break;
     }
     case "dismiss": {
-      const out = await dismissDecision(id, input.reason);
-      return {
-        ok: out.ok,
-        status: out.status,
-        decision: out.decision,
-        ...(out.error ? { error: out.error } : {}),
+      const r = await dismissDecision(id, input.reason);
+      out = {
+        ok: r.ok,
+        status: r.status,
+        decision: r.decision,
+        ...(r.error ? { error: r.error } : {}),
       };
+      break;
     }
     case "promote": {
-      const out = await promoteDecision(id);
-      return {
-        ok: out.ok,
-        status: out.status,
-        decision: out.decision,
-        ...(out.error ? { error: out.error } : {}),
+      const r = await promoteDecision(id);
+      out = {
+        ok: r.ok,
+        status: r.status,
+        decision: r.decision,
+        ...(r.error ? { error: r.error } : {}),
       };
+      break;
+    }
+    case "resurrect": {
+      const r = await resurrectDecision(id);
+      out = {
+        ok: r.ok,
+        status: r.status,
+        decision: r.decision,
+        ...(r.error ? { error: r.error } : {}),
+      };
+      break;
     }
     default:
       return {
@@ -176,6 +229,28 @@ export async function applyDecisionAction(
         error: `unknown action ${String(input.action)}`,
       };
   }
+
+  // #351 — flip `firstDecisionSeen` whenever a decision lands in a
+  // terminal bucket (`done` or `dismissed`). `dry` keeps it in
+  // pending so we don't count a "Dry run" tap as a review; `promote`
+  // pushes it back into pending which would otherwise flip the
+  // user back into `decision_pending`. Only act on the *forward*
+  // edge into a terminal bucket.
+  if (out.ok && (out.status === "done" || out.status === "dismissed")) {
+    try {
+      recordActivationEvent("decision_seen", { coreReady: true });
+    } catch (activationErr) {
+      log(
+        `applyDecisionAction: failed to record activation event: ${
+          activationErr instanceof Error
+            ? activationErr.message
+            : String(activationErr)
+        }`,
+      );
+    }
+  }
+
+  return out;
 }
 
 /** GET /api/loop/connectors */

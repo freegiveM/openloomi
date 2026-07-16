@@ -82,6 +82,16 @@ const en = {
     actionFailed: "Action failed: {{msg}}",
     ranAt: "Ran at {{ts}}",
     dismissedAt: "Dismissed",
+    // #358 — structured execution outcome surfaced by the runner.
+    outcome: {
+      executed: "Executed",
+      skipped: "Skipped",
+      blocked: "Blocked",
+      failed: "Failed",
+      reason: "Reason: {{reason}}",
+    },
+    lastAttemptFailed:
+      "Last attempt failed: {{reason}} — retry Run below.",
     tab: {
       pending: "Pending",
       done: "Done",
@@ -96,6 +106,39 @@ const en = {
         "Dismissed decisions live here so you can revisit them later.",
       runTick: "Run tick",
     },
+    activation: {
+      title: {
+        activated: "Loop is ready",
+        working: "Set up your first decision",
+      },
+      subtitle:
+        "Connect a data source so Loomi can watch for decisions worth your attention.",
+      step: {
+        setup: "Setup",
+        runtime: "Connect a source",
+        source: "First check",
+        check: "Wait for first decision",
+        decision: "Review decision",
+      },
+      cta: {
+        connectSource: "Connect a data source",
+        runFirstCheck: "Run first check",
+        reviewDecision: "Review first decision",
+        finishSetup: "Finish setup",
+        activated: "You're all set",
+      },
+      badge: {
+        decision: "Decision waiting",
+        check: "Run first check",
+        source: "Connect a source",
+        aiProvider: "Add AI key",
+        setup: "Finish setup",
+        title: {
+          decision: "Open the Loop page to review your first decision",
+          next: "Next activation step",
+        },
+      },
+    },
     dialogue: {
       draftReply:
         "This email looks like it's waiting on you — should I draft a reply?",
@@ -103,6 +146,20 @@ const en = {
     nextStep: {
       tapRun: "Tap Run to let the agent handle this decision.",
     },
+    // #359 — plain-language decision state. Confidence (if shown elsewhere)
+    // is diagnostic; the state pill is the primary surface and never derived
+    // from classification confidence.
+    readiness: {
+      ready: "Ready to decide",
+      needsContext: "Needs more context",
+      notActionable: "No action needed",
+      confirm: "Confirm carefully",
+      missing: "Missing: {{fields}}",
+    },
+    confirmRun: "Confirm & run",
+    confidenceShort: "conf {{n}}",
+    confidenceDiagnostic:
+      "Classification confidence (diagnostic — not urgency)",
     detailTitle: "Decision",
     backToList: "Back to loop",
     detail: {
@@ -112,6 +169,12 @@ const en = {
         dismissed: "Dismissed",
       },
       confidenceBadge: "conf {{n}}",
+      openFirstDecision: "Open first decision",
+      backToLoop: "Back to Loop",
+      notFoundDesc: {
+        firstTime:
+          "This decision isn't around anymore — but your top pending one is waiting.",
+      },
       created: "Created {{ts}}",
       dryRunLabel: "Dry run plan",
       dryReady: "Ready",
@@ -148,6 +211,16 @@ const en = {
       ranAt: "Ran at {{ts}}",
       dismissedLabel: "Dismissed",
       dismissedNoReason: "No reason recorded.",
+      // #358 — verdict-specific labels for the result panel header and
+      // the resurrect button on a skipped/non-executed done row.
+      executedLabel: "Executed",
+      skippedLabel: "Skipped",
+      executedBadge: "Executed",
+      resurrect: "Run again",
+      resurrectedToast: "Back to pending",
+      resurrectFailed: "Re-run failed: {{msg}}",
+      lastAttemptFailed:
+        "Last attempt failed: {{reason}} — retry Run below.",
       promote: "Promote back to pending",
       promotedToast: "Back to pending",
       promoteFailed: "Promote failed: {{msg}}",

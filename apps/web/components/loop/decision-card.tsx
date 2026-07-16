@@ -29,11 +29,25 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslation } from "react-i18next";
 
-import { Badge, Button } from "@openloomi/ui";
+import { Button } from "@openloomi/ui";
 import { cn } from "@/lib/utils";
 import { RemixIcon } from "@/components/remix-icon";
 import { Spinner } from "@/components/spinner";
 import { toast } from "@/components/toast";
+import {
+  canExecute,
+  deriveReadiness,
+  derivePriority,
+  readinessState,
+  stateLabel,
+  type DecisionState,
+  type LoopPriority,
+} from "@/lib/loop/readiness";
+import type {
+  DecisionReadiness,
+  DecisionRelationship,
+  LoopDecisionExecution,
+} from "@/lib/loop/types";
 
 import { LoopSourceChain, type SourceChainNode } from "./source-chain";
 
@@ -45,9 +59,17 @@ export interface LoopDecisionCardData {
   title: string;
   status: "pending" | "done" | "dismissed";
   confidence?: number;
+  /** #359 — decision readiness (gates execution). Derived when absent. */
+  readiness?: DecisionReadiness;
+  /** #359 — relationship context (optional colour). */
+  relationship?: DecisionRelationship;
   ts: string;
   completed_at?: string;
   result?: unknown;
+  /** #358 — structured execution verdict from the runner. Drives the
+   *  footer / re-run UX so the card doesn't claim "done / Ran at" when
+   *  the agent actually refused. */
+  execution?: LoopDecisionExecution;
   /** Pre-built card fields (set when the card is built via /api/loop/card/[id]). */
   why?: string[];
   dialogue?: string;
@@ -59,6 +81,7 @@ export interface LoopDecisionCardData {
     memory_refs?: string[];
     person?: string | null;
     project_ref?: string | null;
+    last_error?: string;
     [key: string]: unknown;
   };
   source_signal?: {
@@ -178,18 +201,24 @@ function useCustomTypeMeta(): {
   return { lookup };
 }
 
-function priorityFromConfidence(c?: number): "P0" | "P1" | "P2" {
-  if (c == null) return "P2";
-  if (c >= 0.85) return "P0";
-  if (c >= 0.75) return "P1";
-  return "P2";
+function priorityTone(priority: LoopPriority): string {
+  if (priority === "P0") return "bg-red-100 text-red-700";
+  if (priority === "P1") return "bg-amber-100 text-amber-700";
+  return "bg-muted text-muted-foreground";
 }
 
-function confidenceTone(c?: number): "default" | "secondary" | "outline" {
-  if (c == null) return "outline";
-  if (c >= 0.85) return "default";
-  if (c >= 0.7) return "secondary";
-  return "outline";
+/** Tone for the plain-language decision-state pill — the primary surface. */
+function stateTone(state: DecisionState): string {
+  switch (state) {
+    case "ready":
+      return "bg-emerald-100 text-emerald-700";
+    case "confirm":
+      return "bg-amber-100 text-amber-700";
+    case "needs_context":
+      return "bg-sky-100 text-sky-700";
+    case "not_actionable":
+      return "bg-muted text-muted-foreground";
+  }
 }
 
 function ActionButton({
@@ -243,13 +272,15 @@ export function DecisionCard({
   const typeIcon =
     custom?.icon ?? TYPE_ICON[decision.type] ?? TYPE_ICON.unknown;
   const typeLabel = custom?.label ?? TYPE_LABEL[decision.type] ?? decision.type;
-  const priority = priorityFromConfidence(decision.confidence);
-  const priorityTone =
-    priority === "P0"
-      ? "bg-red-100 text-red-700"
-      : priority === "P1"
-        ? "bg-amber-100 text-amber-700"
-        : "bg-muted text-muted-foreground";
+  // #359 — priority is derived from urgency × impact (via readiness), NOT
+  // from classification confidence. The plain-language `state` is the
+  // primary decision surface; `confidence` is demoted to diagnostics.
+  const priority = derivePriority(decision);
+  const readiness = deriveReadiness(decision);
+  const state = readinessState(decision);
+  const stateMeta = stateLabel(state);
+  const executable = canExecute(readiness);
+  const priorityCls = priorityTone(priority);
 
   const whyBullets = decision.why ?? decision.context?.why ?? [];
   const dialogue =
@@ -322,12 +353,14 @@ export function DecisionCard({
             {dialogue}
           </div>
         </div>
-        <Badge
-          variant={confidenceTone(decision.confidence)}
-          className="shrink-0"
+        <span
+          className={cn(
+            "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold",
+            stateTone(state),
+          )}
         >
-          {decision.confidence != null ? decision.confidence.toFixed(2) : "—"}
-        </Badge>
+          {t(stateMeta.key, stateMeta.fallback)}
+        </span>
       </button>
     );
   }
@@ -348,7 +381,7 @@ export function DecisionCard({
         <div
           className={cn(
             "flex size-9 shrink-0 items-center justify-center rounded-md",
-            priorityTone,
+            priorityCls,
           )}
         >
           <RemixIcon name={typeIcon} className="size-5" />
@@ -358,26 +391,51 @@ export function DecisionCard({
             <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               {typeLabel}
             </span>
+            {/* Primary decision surface — plain-language readiness state. */}
             <span
               className={cn(
                 "rounded-full px-2 py-0.5 text-[10px] font-semibold",
-                priorityTone,
+                stateTone(state),
+              )}
+            >
+              {t(stateMeta.key, stateMeta.fallback)}
+            </span>
+            <span
+              className={cn(
+                "rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                priorityCls,
               )}
             >
               {priority}
             </span>
-            <Badge
-              variant={confidenceTone(decision.confidence)}
-              className="ml-auto"
-            >
-              {decision.confidence != null
-                ? `conf ${decision.confidence.toFixed(2)}`
-                : "conf —"}
-            </Badge>
+            {/* Classification confidence — diagnostic, kept muted + secondary. */}
+            {decision.confidence != null && (
+              <span
+                className="ml-auto text-[10px] font-medium text-muted-foreground"
+                title={t(
+                  "loop.confidenceDiagnostic",
+                  "Classification confidence (diagnostic — not urgency)",
+                )}
+              >
+                {t("loop.confidenceShort", "conf {{n}}", {
+                  n: decision.confidence.toFixed(2),
+                })}
+              </span>
+            )}
           </div>
           <h3 className="mt-1 text-base font-semibold leading-snug">
             {decision.title}
           </h3>
+          {/* Missing decision-critical fields (#359). */}
+          {readiness.status === "needs_context" &&
+            readiness.missing &&
+            readiness.missing.length > 0 && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                {t("loop.readiness.missing", "Missing: {{fields}}", {
+                  fields: readiness.missing.join(", "),
+                })}
+              </p>
+            )}
         </div>
       </header>
 
@@ -415,64 +473,132 @@ export function DecisionCard({
 
       {/* Footer: actions or status */}
       {isPending ? (
-        <footer className="flex flex-wrap items-center gap-2 border-t pt-3">
-          <ActionButton
-            icon="ri-flask-line"
-            label={t("loop.dryRun", "Dry run")}
-            variant="outline"
-            onClick={() => act("dry")}
-            pending={pendingAction === "dry"}
-          />
-          <ActionButton
-            icon="ri-pencil-line"
-            label={t("loop.edit", "Edit")}
-            variant="ghost"
-            onClick={() => router.push(`/loop/${decision.id}?edit=1`)}
-          />
-          <ActionButton
-            icon="ri-play-line"
-            label={t("loop.run", "Run")}
-            variant="default"
-            onClick={() => act("run")}
-            pending={pendingAction === "run"}
-          />
-          <ActionButton
-            icon="ri-close-line"
-            label={t("loop.dismiss", "Dismiss")}
-            variant="ghost"
-            onClick={() => act("dismiss")}
-            pending={pendingAction === "dismiss"}
-          />
+        <footer className="flex flex-col gap-2 border-t pt-3">
+          {/* #358 — when a previous run was blocked/failed, surface the
+              structured reason from `execution` (falls back to the legacy
+              `context.last_error` for rows that predate the verdict field).
+              Action buttons remain so a retry is one tap. */}
+          {(decision.execution?.outcome === "blocked" ||
+            decision.execution?.outcome === "failed" ||
+            decision.context?.last_error) && (
+            <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+              <RemixIcon
+                name="ri-error-warning-line"
+                className="mt-0.5 size-3.5 shrink-0"
+              />
+              <span className="break-words">
+                {decision.execution?.outcome === "blocked" ||
+                decision.execution?.outcome === "failed"
+                  ? t(
+                      "loop.lastAttemptFailed",
+                      "Last attempt failed: {{reason}} — retry Run below.",
+                      {
+                        reason:
+                          decision.execution?.reason ??
+                          (typeof decision.context?.last_error === "string"
+                            ? decision.context.last_error
+                            : decision.execution?.outcome),
+                      },
+                    )
+                  : typeof decision.context?.last_error === "string"
+                    ? decision.context.last_error
+                    : ""}
+              </span>
+            </div>
+          )}
+          <div className="flex flex-wrap items-center gap-2">
+            <ActionButton
+              icon="ri-flask-line"
+              label={t("loop.dryRun", "Dry run")}
+              variant="outline"
+              onClick={() => act("dry")}
+              pending={pendingAction === "dry"}
+            />
+            <ActionButton
+              icon="ri-pencil-line"
+              label={t("loop.edit", "Edit")}
+              variant="ghost"
+              onClick={() => router.push(`/loop/${decision.id}?edit=1`)}
+            />
+            {/* #359 — a non-actionable decision must not expose a default Run.
+                For ready/needs_context we still show Run, but demote it from
+                the default CTA when the card isn't cleanly "ready". */}
+            {executable && (
+              <ActionButton
+                icon="ri-play-line"
+                label={
+                  state === "confirm"
+                    ? t("loop.confirmRun", "Confirm & run")
+                    : t("loop.run", "Run")
+                }
+                variant={state === "ready" ? "default" : "outline"}
+                onClick={() => act("run")}
+                pending={pendingAction === "run"}
+              />
+            )}
+            <ActionButton
+              icon="ri-close-line"
+              label={t("loop.dismiss", "Dismiss")}
+              variant="ghost"
+              onClick={() => act("dismiss")}
+              pending={pendingAction === "dismiss"}
+            />
+          </div>
         </footer>
       ) : (
-        <footer className="flex items-center gap-2 border-t pt-3 text-xs text-muted-foreground">
-          <RemixIcon
-            name={
-              decision.status === "done"
-                ? "ri-check-double-line"
-                : "ri-eye-off-line"
-            }
-            className="size-3.5"
-          />
-          {decision.status === "done" ? (
-            <span>
-              {t("loop.ranAt", "Ran at {{ts}}", {
-                ts: decision.completed_at ?? decision.ts,
-              })}
-            </span>
-          ) : (
-            <span>{t("loop.dismissedAt", "Dismissed")}</span>
-          )}
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            onClick={() => router.push(`/loop/${decision.id}`)}
-            className="ml-auto"
-          >
-            {t("loop.viewDetails", "View details")}
-            <RemixIcon name="ri-arrow-right-line" className="ml-1 size-3.5" />
-          </Button>
+        <footer className="flex flex-col gap-2 border-t pt-3 text-xs text-muted-foreground">
+          <div className="flex items-center gap-2">
+            <RemixIcon
+              name={
+                decision.status === "done"
+                  ? decision.execution?.outcome === "skipped"
+                    ? "ri-checkbox-circle-line"
+                    : "ri-check-double-line"
+                  : "ri-eye-off-line"
+              }
+              className="size-3.5"
+            />
+            {decision.status === "done" ? (
+              decision.execution?.outcome === "skipped" ? (
+                <span>
+                  {t("loop.outcome.skipped", "Skipped")} —{" "}
+                  {decision.execution?.reason ??
+                    t("loop.outcome.reason", "Reason: {{reason}}", {
+                      reason: t("loop.outcome.skipped", "Skipped"),
+                    })}
+                </span>
+              ) : (
+                <span>
+                  {t("loop.ranAt", "Ran at {{ts}}", {
+                    ts: decision.completed_at ?? decision.ts,
+                  })}
+                </span>
+              )
+            ) : (
+              <span>{t("loop.dismissedAt", "Dismissed")}</span>
+            )}
+            {/* #358 — small "Executed" badge so the done footer is
+                unambiguous about what kind of done it was. */}
+            {decision.status === "done" &&
+              decision.execution?.outcome === "executed" && (
+                <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
+                  {t("loop.detail.executedBadge", "Executed")}
+                </span>
+              )}
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={() => router.push(`/loop/${decision.id}`)}
+              className="ml-auto"
+            >
+              {t("loop.viewDetails", "View details")}
+              <RemixIcon
+                name="ri-arrow-right-line"
+                className="ml-1 size-3.5"
+              />
+            </Button>
+          </div>
         </footer>
       )}
     </article>

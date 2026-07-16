@@ -578,6 +578,8 @@ const PurePreviewMessage = ({
           type: f.type,
         },
         isTemporary: f.isTemporary,
+        readiness: f.readiness,
+        role: f.role,
       };
     });
   }, [
@@ -1117,12 +1119,34 @@ const PurePreviewMessage = ({
 
                     // Handle error messages from Native Agent
                     if (type === "error") {
+                      // Look ahead for an adjacent data-interruption part so
+                      // a provider-timeout interruption can render an explicit
+                      // Continue action. The interruption part is rendered
+                      // inline below to keep a single card layout.
+                      const partIndex = message.parts?.indexOf(part) ?? -1;
+                      const nextPart =
+                        partIndex >= 0
+                          ? message.parts?.[partIndex + 1]
+                          : undefined;
+                      const interruption =
+                        nextPart &&
+                        (nextPart as any).type === "data-interruption"
+                          ? ((nextPart as any).data as {
+                              reason: "timeout";
+                              timeoutMs?: number;
+                              workspacePath?: string;
+                              completedArtifacts: string[];
+                              canResume: boolean;
+                            })
+                          : undefined;
                       return (
                         <ErrorMessageDisplay
                           key={key}
                           errorContent={
                             (part as any).content || "Unknown error"
                           }
+                          interruption={interruption}
+                          sendMessage={sendMessage}
                         />
                       );
                     }

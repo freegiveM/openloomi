@@ -81,6 +81,15 @@ const zh = {
     actionFailed: "操作失败:{{msg}}",
     ranAt: "执行于 {{ts}}",
     dismissedAt: "已忽略",
+    // #358 — structured execution outcome surfaced by the runner.
+    outcome: {
+      executed: "已执行",
+      skipped: "已跳过",
+      blocked: "受阻",
+      failed: "失败",
+      reason: "原因:{{reason}}",
+    },
+    lastAttemptFailed: "上次执行失败:{{reason}} —— 请重新点击「执行」重试。",
     tab: {
       pending: "待办",
       done: "已完成",
@@ -94,12 +103,56 @@ const zh = {
       dismissedDesc: "忽略的决策会留在这里,方便你回头再看。",
       runTick: "立即 Tick",
     },
+    activation: {
+      title: {
+        activated: "Loop 已就绪",
+        working: "完成首张决策卡的设置",
+      },
+      subtitle: "接入一个数据源,让 Loomi 帮你留意需要决策的事项。",
+      step: {
+        setup: "初始化",
+        runtime: "接入数据源",
+        source: "首次 check",
+        check: "等待首张决策",
+        decision: "审阅决策",
+      },
+      cta: {
+        connectSource: "接入数据源",
+        runFirstCheck: "跑首次 check",
+        reviewDecision: "查看首张决策",
+        finishSetup: "完成设置",
+        activated: "已就绪",
+      },
+      badge: {
+        decision: "有决策待审",
+        check: "跑首次 check",
+        source: "接入数据源",
+        aiProvider: "添加 AI 密钥",
+        setup: "完成设置",
+        title: {
+          decision: "打开 Loop 页审阅你的首张决策",
+          next: "下一步激活动作",
+        },
+      },
+    },
     dialogue: {
       draftReply: "这封邮件看起来在等你——要我先起草回复吗?",
     },
     nextStep: {
       tapRun: "点「执行」让代理处理。",
     },
+    // #359 — 决策状态的自然语言表达。置信度仅作诊断显示,这里的状态徽章
+    // 才是一级决策信号,且绝不由分类置信度推导。
+    readiness: {
+      ready: "可以拍板",
+      needsContext: "还差一些信息",
+      notActionable: "无需处理",
+      confirm: "请仔细确认",
+      missing: "还缺:{{fields}}",
+    },
+    confirmRun: "确认并执行",
+    confidenceShort: "置信 {{n}}",
+    confidenceDiagnostic: "分类置信度(诊断用,不表示紧急程度)",
     detailTitle: "决策详情",
     backToList: "返回 Loop",
     detail: {
@@ -107,6 +160,11 @@ const zh = {
         pending: "待办",
         done: "已完成",
         dismissed: "已忽略",
+      },
+      openFirstDecision: "打开首张决策",
+      backToLoop: "返回 Loop",
+      notFoundDesc: {
+        firstTime: "这张决策已经不在了——但你置顶的待办决策还在等你。",
       },
       confidenceBadge: "置信 {{n}}",
       created: "创建于 {{ts}}",
@@ -144,6 +202,15 @@ const zh = {
       ranAt: "执行于 {{ts}}",
       dismissedLabel: "已忽略",
       dismissedNoReason: "没有记录原因。",
+      // #358 — verdict-specific labels for the result panel header and
+      // the resurrect button on a skipped/non-executed done row.
+      executedLabel: "已执行",
+      skippedLabel: "已跳过",
+      executedBadge: "已执行",
+      resurrect: "重新执行",
+      resurrectedToast: "已回到待办",
+      resurrectFailed: "重新执行失败:{{msg}}",
+      lastAttemptFailed: "上次执行失败:{{reason}} —— 请重新点击「执行」重试。",
       promote: "升级回「待办」",
       promotedToast: "已回到待办",
       promoteFailed: "升级失败:{{msg}}",

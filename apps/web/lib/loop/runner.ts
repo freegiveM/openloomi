@@ -25,7 +25,13 @@ import {
   muteKeyFor,
   mutes,
 } from "./store";
-import type { LoopDecision } from "./types";
+import { deriveReadiness } from "./readiness";
+import { parseExecutionOutcome } from "./outcomes";
+import type {
+  ExecutionOutcome,
+  LoopDecision,
+  LoopDecisionExecution,
+} from "./types";
 
 /**
  * Resolve the URL of the native agent endpoint.
@@ -135,6 +141,12 @@ async function postNativeAgent(
         let buf = "";
         const textChunks: string[] = [];
         const reasoningChunks: string[] = [];
+        // #358 — capture every parsed SSE event so the runner's outcome
+        // parser can ask "did any tool call happen?" after the stream
+        // closes. Without this the heuristic always sees `events: []` and
+        // would default to `skipped / no external action performed` even
+        // when the agent did emit a tool_call event earlier.
+        const events: unknown[] = [];
         let result: unknown = null;
         for (;;) {
           const { value, done } = await reader.read();
@@ -149,6 +161,7 @@ async function postNativeAgent(
               if (payload) {
                 try {
                   const evt = JSON.parse(payload) as SseEvent;
+                  events.push(evt);
                   opts.onEvent?.(evt);
                   if (evt.type === "text" && typeof evt.content === "string") {
                     textChunks.push(evt.content);
@@ -174,6 +187,7 @@ async function postNativeAgent(
           text: textChunks.join(""),
           reasoning: reasoningChunks.join(""),
           result,
+          events,
         });
       })
       .catch((err: Error) => resolve({ ok: false, error: err.message }));
@@ -203,6 +217,23 @@ function buildPrompt(decision: LoopDecision, mode: "dry" | "run"): string {
   if (Array.isArray(decision.context?.why) && decision.context.why.length) {
     parts.push("", "Why:", ...decision.context.why.map((w) => `- ${w}`));
   }
+  // #358 — final instruction. The runner uses this SSE `result` event to
+  // decide whether the user-visible action actually happened. A clean HTTP
+  // 200 from the agent is not enough — the verdict MUST reflect the
+  // external side-effect (or explicit lack of one). `pure_reasoning`
+  // decisions (brief / wrap / todo prose) still emit `executed` so the
+  // `done` bucket counts them; refusing without a reason is `skipped`;
+  // connector errors are `failed`.
+  parts.push(
+    "",
+    "End with a single SSE `result` event whose `content` is JSON of this exact shape:",
+    '  {"outcome":"executed"|"skipped"|"blocked"|"failed","reason":"...","evidence":{...}}',
+    "- `executed` — the external side-effect happened (calendar event created, email sent, PR reviewed, etc.). Include connector-specific evidence ids in `evidence` (eventId, messageId, reviewId, toolCallId).",
+    "- `skipped` — the agent deliberately chose not to act (missing consent, not actionable, you-just-wrote-prose). Provide a short `reason`.",
+    "- `blocked` — execution was prevented by a precondition the agent couldn't satisfy (auth, rate limit). Provide a short `reason` so the user can fix it.",
+    "- `failed` — the agent tried but hit an error (connector 401, network). Provide a short `reason`.",
+    "Plain-text reasoning should still be emitted (as `text` events) — the system records it alongside the verdict.",
+  );
   if (decision.action?.kind === "deadline_notify") {
     parts.push(
       "",
@@ -214,7 +245,7 @@ function buildPrompt(decision: LoopDecision, mode: "dry" | "run"): string {
       '- If `params.channel === "slack"`, send a DM to the user instead via the slack toolkit',
       "  (skill: `Skill composio execute SLACK_SEND_MESSAGE on slack with {...}`",
       '   or CLI: `composio slack send_message --json {...}`) with text "<params.message> — due <params.deadlineAt>".',
-      "- Emit a single SSE `result` event whose `content` describes what you did — the system will record `completed_at` and `result` automatically. Include the calendar event id (or `skipped: <reason>` if you could not execute) so the user has a trail.",
+      "- Emit a single SSE `result` event whose `content` is JSON `{\"outcome\":\"executed\",\"reason\":\"...\",\"evidence\":{\"eventId\":\"...\"}}` so the system records the calendar event id. If you cannot execute, emit `{\"outcome\":\"skipped\",\"reason\":\"...\"}` instead.",
     );
   }
   // If the user edited the draft inline (via the pet card's #dec-editor
@@ -263,6 +294,14 @@ export interface RunResult {
   decision: LoopDecision | null;
   result?: unknown;
   error?: string;
+  /**
+   * #358 — structured execution verdict for the action API + UI. Present
+   * for `run` and `dry` paths; absent for dismiss / promote because they
+   * don't execute anything. Persisted on the decision via `decisions.moveTo`
+   * / `decisions.update` and re-exposed to the caller so the web UI can
+   * render the verdict without re-reading the decision.
+   */
+  execution?: LoopDecisionExecution;
 }
 
 /**
@@ -285,6 +324,22 @@ export async function runDecision(
       decision: dec,
       error: `not pending (${dec.status})`,
     };
+  }
+
+  // #359 — readiness is an execution gate. A `not_actionable` decision (e.g.
+  // an event you own with no other guests) must never perform an external
+  // write. Dry runs stay allowed so the user can still inspect the plan.
+  if (!opts.dry) {
+    const readiness = deriveReadiness(dec);
+    if (readiness.status === "not_actionable") {
+      log(`run ${dec.id} blocked: not_actionable`);
+      return {
+        ok: false,
+        status: "pending",
+        decision: dec,
+        error: "not_actionable: no action needed for this decision",
+      };
+    }
   }
 
   const url = resolveNativeAgentUrl();
@@ -314,13 +369,67 @@ export async function runDecision(
     return { ok: true, status: "pending", decision: dec, result: res.result };
   }
 
-  const moved = decisions.moveTo(
-    dec.id,
-    "done",
-    res.result ?? res.text ?? null,
+  // #358 — parse the agent's verdict. The transport completed, but the
+  // user-visible action may not have. Switching on `execution.outcome` lets
+  // us (a) keep blocked/failed decisions in `pending` so the user can
+  // retry, (b) move executed/skipped into `done` with the verdict attached,
+  // and (c) populate `last_error` for blocked/failed so the UI can render a
+  // "Last attempt failed: <reason>" banner without re-reading the decision.
+  const execution = parseExecutionOutcome(
+    res.result,
+    res.text ?? "",
+    Array.isArray(res.events) ? res.events : [],
   );
-  log(`run ${dec.id} → done`);
-  return { ok: true, status: "done", decision: moved, result: res.result };
+  const outcome: ExecutionOutcome = execution.outcome;
+
+  if (outcome === "executed" || outcome === "skipped") {
+    // Persist the structured verdict onto the decision and move it to
+    // `done`. `moveTo` takes a `result` payload — pass the structured
+    // execution so on-disk records carry the evidence forward. The
+    // execution field is also exposed via `decision.execution` for
+    // downstream surfaces that want richer rendering than `result`.
+    const moved = decisions.moveTo(dec.id, "done", {
+      execution,
+      // Keep the agent's plain-text summary as `result` so the existing
+      // Result panel keeps working without a special case.
+      summary: res.text ?? null,
+      outcome,
+      ...(res.result && typeof res.result === "object" && !("summary" in (res.result as Record<string, unknown>))
+        ? { agentPayload: res.result }
+        : {}),
+    });
+    // Stamp `execution` on the moved record too — `moveTo`'s `result`
+    // payload is the canonical field, but `decision.execution` is what the
+    // web UI keys on. The store layer merges via `{...d[src][idx], ...}`,
+    // so a follow-up update is the safest way to attach a new top-level
+    // field without rewriting the bucket layout.
+    const withExecution = decisions.update(dec.id, { execution });
+    log(`run ${dec.id} → done (${outcome})`);
+    return {
+      ok: true,
+      status: "done",
+      decision: withExecution ?? moved,
+      result: res.result,
+      execution,
+    };
+  }
+
+  // blocked / failed — keep the decision in `pending` so the user can
+  // retry. Store the verdict + `last_error` so the existing banner picks
+  // up the structured reason on the next render.
+  const blockedCtx = {
+    ...(dec.context ?? {}),
+    last_error: execution.reason ?? `Last attempt ${outcome}.`,
+  };
+  decisions.update(dec.id, { context: blockedCtx, execution });
+  log(`run ${dec.id} → pending (${outcome}: ${execution.reason ?? "no reason"})`);
+  return {
+    ok: false,
+    status: "pending",
+    decision: decisions.get(dec.id) ?? dec,
+    error: execution.reason ?? `agent returned outcome=${outcome}`,
+    execution,
+  };
 }
 
 export async function dismissDecision(
@@ -397,4 +506,34 @@ export async function promoteDecision(id: string): Promise<RunResult> {
   const moved = decisions.moveTo(dec.id, "pending");
   log(`promote ${dec.id} → pending`);
   return { ok: true, status: "pending", decision: moved ?? next };
+}
+
+/**
+ * #358 — re-queue a `done` decision so the user can retry after a skipped
+ * or failed execution. Mirrors `promoteDecision` for dismissed rows but
+ * also clears the structured `execution` field so the card re-renders as a
+ * fresh pending card (no stale "Ran at <ts>" footer). Idempotent.
+ */
+export async function resurrectDecision(id: string): Promise<RunResult> {
+  const dec = decisions.get(id);
+  if (!dec)
+    return { ok: false, status: "pending", decision: null, error: "not found" };
+  if (dec.status !== "done") {
+    return {
+      ok: false,
+      status: dec.status,
+      decision: dec,
+      error: "not done",
+    };
+  }
+  // Clear execution + completed_at before the move so the pending card has
+  // a clean shape. `decisions.update` is fine in the current bucket; the
+  // moveTo below takes the cleaned record with it.
+  decisions.update(dec.id, {
+    completed_at: undefined,
+    execution: undefined,
+  });
+  const moved = decisions.moveTo(dec.id, "pending");
+  log(`resurrect ${dec.id} → pending`);
+  return { ok: true, status: "pending", decision: moved };
 }

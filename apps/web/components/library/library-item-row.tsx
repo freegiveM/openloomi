@@ -602,6 +602,11 @@ export function LibraryItemRow({
                 {t("common.temporary", "Temp")}
               </span>
             )}
+            {item.readiness === "incomplete" && (
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">
+                {t("common.incomplete", "Incomplete")}
+              </span>
+            )}
           </div>
           {dateLabel && (
             <p className="text-xs text-muted-foreground truncate">
