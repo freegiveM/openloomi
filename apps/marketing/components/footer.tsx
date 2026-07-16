@@ -68,27 +68,6 @@ export function Footer({
 
   const [showWechatQR, setShowWechatQR] = useState(false);
 
-  const downloadLinks = {
-    macOS: {
-      arm64:
-        "https://github.com/melandlabs/openloomi/releases/download/v0.7.7/openloomi_0.7.7_macOS_aarch64.dmg",
-      amd64:
-        "https://github.com/melandlabs/openloomi/releases/download/v0.7.7/openloomi_0.7.7_macOS_amd64.dmg",
-    },
-    linux: {
-      amd64:
-        "https://github.com/melandlabs/openloomi/releases/download/v0.7.7/openloomi_0.7.7_linux_amd64.deb",
-      arm64:
-        "https://github.com/melandlabs/openloomi/releases/download/v0.7.7/openloomi_0.7.7_linux_aarch64.deb",
-    },
-    windows: {
-      amd64:
-        "https://github.com/melandlabs/openloomi/releases/download/v0.7.7/openloomi_0.7.7_windows_amd64.exe",
-      arm64: null,
-    },
-    github: "https://github.com/melandlabs/openloomi/releases",
-  };
-
   const detectPlatform = () => {
     if (typeof window === "undefined") {
       return "unknown";
