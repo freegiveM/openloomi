@@ -39,7 +39,7 @@ export function ErrorMessageDisplay({
   // route this through the generic timeout branch below because that branch
   // promises "the system will automatically retry", which is not true: the
   // provider was killed mid-tool-call and there is no auto-retry scheduled.
-  if (interruption && interruption.canResume) {
+  if (interruption?.canResume) {
     const artifactCount = interruption.completedArtifacts.length;
     return (
       <div
@@ -49,11 +49,7 @@ export function ErrorMessageDisplay({
         )}
       >
         <div className="flex items-start gap-3">
-          <RemixIcon
-            name="timer"
-            size="size-5"
-            className="shrink-0 mt-0.5"
-          />
+          <RemixIcon name="timer" size="size-5" className="shrink-0 mt-0.5" />
           <div className="flex-1 min-w-0 space-y-2">
             <h4 className="font-semibold text-sm">
               {t("auth.errors.agentTimeoutError.title")}

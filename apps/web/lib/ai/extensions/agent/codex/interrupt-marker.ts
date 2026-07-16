@@ -65,12 +65,9 @@ export function parseCodexInterruptedError(
     }
 
     return {
-      timeoutMs:
-        typeof parsed.timeoutMs === "number" ? parsed.timeoutMs : 0,
+      timeoutMs: typeof parsed.timeoutMs === "number" ? parsed.timeoutMs : 0,
       workspacePath:
-        typeof parsed.workspacePath === "string"
-          ? parsed.workspacePath
-          : "",
+        typeof parsed.workspacePath === "string" ? parsed.workspacePath : "",
       completedArtifacts: Array.isArray(parsed.completedArtifacts)
         ? parsed.completedArtifacts.filter(
             (entry): entry is string => typeof entry === "string",

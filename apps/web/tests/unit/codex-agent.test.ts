@@ -155,7 +155,9 @@ describe("Codex interrupted marker", () => {
   });
 
   it("returns null for unrelated errors so callers can chain safely", () => {
-    expect(parseCodexInterruptedError("Codex CLI exited with code 7")).toBeNull();
+    expect(
+      parseCodexInterruptedError("Codex CLI exited with code 7"),
+    ).toBeNull();
     expect(parseCodexInterruptedError("")).toBeNull();
     expect(
       parseCodexInterruptedError(`${CODEX_INTERRUPTED_MARKER} not-json`),
@@ -164,7 +166,6 @@ describe("Codex interrupted marker", () => {
 });
 
 describe("CodexAgent", () => {
-
   it("defaults skipGitRepoCheck to true and honours an explicit false", () => {
     expect(normalizeCodexProviderConfig({}).skipGitRepoCheck).toBe(true);
     expect(
@@ -626,8 +627,7 @@ setInterval(() => {}, 1000);
     // chat UI does not leave it stuck as "executing" forever.
     const interruptedResult = messages.find(
       (message) =>
-        message.type === "tool_result" &&
-        message.toolUseId === "cmd-hang",
+        message.type === "tool_result" && message.toolUseId === "cmd-hang",
     );
     expect(interruptedResult).toMatchObject({
       type: "tool_result",
@@ -692,10 +692,7 @@ setInterval(() => {}, 1000);
     // Second run uses a fast-finishing fake so we can assert the workspace
     // (and therefore the preserved artifact) is still the same place a
     // continuation would pick up from.
-    await writeFakeCodexScript(
-      workDir,
-      defaultFakeCodexScript(),
-    );
+    await writeFakeCodexScript(workDir, defaultFakeCodexScript());
 
     const secondAgent = new CodexAgent({
       provider: "codex",

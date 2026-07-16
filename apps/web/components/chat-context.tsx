@@ -1717,7 +1717,7 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
               // stream-level auto-retry path (handled in onError) by tagging
               // the part with an interruption payload — see issue #356.
               const interruption = parseCodexInterruptedError(errorMessage);
-              if (interruption && interruption.canResume) {
+              if (interruption?.canResume) {
                 parts.push({
                   type: "data-interruption",
                   data: {
