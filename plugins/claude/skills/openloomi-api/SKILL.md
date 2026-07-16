@@ -15,7 +15,7 @@ metadata:
 
 | Module | Base Path | Description |
 |--------|-----------|-------------|
-| **Auth** | `/api/auth/*`, `/api/remote-auth/*` | OAuth, login, register |
+| **Auth** | `/api/auth/*`, `/api/remote-auth/*` | OAuth, login, register (local-only — no cloud dependency) |
 | **User** | `/api/user/*` | User identity and entitlements |
 | **Chat** | `/api/chat/*` (app routes) | Chat/Character CRUD |
 | **Messages** | `/api/messages/*` | Message sending and sync |
@@ -33,7 +33,9 @@ metadata:
 
 ## Endpoints Reference
 
-### Auth Module (`/api/auth/*`, `/api/remote-auth/*`)
+### Auth Module (`/api/auth/*`, `/api/remote-auth/*` — local-only)
+
+All auth routes resolve against the local SQLite database. There is **no cloud dependency** — openloomi is fully self-contained. The `remote-auth` prefix is historical (the routes once proxied to a cloud server); today they are the canonical local endpoints, and the Claude/Codex plugin bridge uses `/api/remote-auth/user` as a port-discovery + auth-handshake probe.
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -42,28 +44,15 @@ metadata:
 | POST | `/api/auth/clear-auth-cookie` | Clear session |
 | POST | `/api/remote-auth/login` | Login with email/password |
 | POST | `/api/remote-auth/register` | Register new user |
-| POST | `/api/remote-auth/oauth/[provider]` | OAuth exchange |
-| POST | `/api/remote-auth/oauth/[provider]/exchange` | OAuth code exchange |
+| POST | `/api/remote-auth/guest` | Create anonymous guest session |
 | POST | `/api/remote-auth/refresh` | Refresh token |
-| GET | `/api/remote-auth/user` | Get current user |
+| GET | `/api/remote-auth/user` | Get current user (also used by plugin probe) |
 | PUT | `/api/remote-auth/user` | Update user info |
-| GET | `/api/remote-auth/subscription` | Get subscription info |
-
-#### Login Example
-
-```bash
-curl -X POST https://app.alloomi.ai/api/remote-auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"user@example.com","password":"password123"}'
-```
-
-Response:
-```json
-{
-  "user": { "id": "user_xxx", "email": "user@example.com", "name": "User" },
-  "token": "eyJhbG..."
-}
-```
+| GET | `/api/remote-auth/oauth/google` | Start Google OAuth |
+| POST | `/api/remote-auth/oauth/google/exchange` | Google OAuth code exchange |
+| GET | `/api/remote-auth/oauth/github` | Start GitHub OAuth |
+| POST | `/api/remote-auth/oauth/github/exchange` | GitHub OAuth code exchange |
+| POST | `/api/remote-auth/oauth/[provider]` | Generic OAuth provider exchange |
 
 ### User Module (`/api/user/*`)
 
@@ -183,21 +172,6 @@ Response:
 | POST | `/api/ai/v1/upload` | Upload file for AI |
 | GET | `/api/ai/v1/models` | List available models |
 
-#### Chat Example
-
-```bash
-curl -X POST https://app.alloomi.ai/api/ai/chat \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "messages": [
-      {"role": "system", "content": "You are a helpful assistant."},
-      {"role": "user", "content": "Hello!"}
-    ],
-    "stream": true
-  }'
-```
-
 ### Insights Module (`/api/insights/*`, `/api/chat-insights/*`)
 
 | Method | Endpoint | Description |
@@ -282,15 +256,15 @@ TOKEN=$(cat ~/.openloomi/token | base64 -d)
 # 1. Check AI API status (no auth required)
 curl http://localhost:3414/api/ai/chat
 
-# 2. Get current user info
+# 2. Get current user info (also used by Claude/Codex plugin as a port-discovery probe)
 TOKEN=$(cat ~/.openloomi/token | base64 -d)
 curl http://localhost:3414/api/remote-auth/user \
   -H "Authorization: Bearer $TOKEN"
 
-# 3. Get subscription info
-TOKEN=$(cat ~/.openloomi/token | base64 -d)
-curl http://localhost:3414/api/remote-auth/subscription \
-  -H "Authorization: Bearer $TOKEN"
+# 3. Create an anonymous guest session (no credentials)
+curl -X POST http://localhost:3414/api/remote-auth/guest \
+  -H "Content-Type: application/json" \
+  -d '{}'
 
 # 4. Chat with AI (streaming)
 TOKEN=$(cat ~/.openloomi/token | base64 -d)
@@ -324,23 +298,14 @@ curl -X POST http://localhost:3414/api/remote-feedback \
   -d '{"content":"Feedback message","email":"user@example.com"}'
 ```
 
-### Production API Access
-
-```bash
-# Using production API
-export TOKEN="your_production_token"
-curl https://app.alloomi.ai/api/remote-auth/user \
-  -H "Authorization: Bearer $TOKEN"
-```
-
 ---
 
 ## Summary
 
-- **129+ API endpoints** across 20+ functional modules
+- **120+ API endpoints** across 15+ functional modules
+- **Fully self-contained**: all auth, data, AI, and sync run locally — no cloud dependency
 - **Dual authentication**: Session cookies (web) and Bearer tokens (Tauri)
 - **RESTful JSON APIs** with Zod validation
-- **CloudApiClient** for desktop/Tauri integration
 - **SWR utilities** for client-side data fetching
 - **OAuth support** for Google, GitHub, Slack, Discord, X
 - **RAG** for document retrieval and search
