@@ -245,7 +245,7 @@ function buildPrompt(decision: LoopDecision, mode: "dry" | "run"): string {
       '- If `params.channel === "slack"`, send a DM to the user instead via the slack toolkit',
       "  (skill: `Skill composio execute SLACK_SEND_MESSAGE on slack with {...}`",
       '   or CLI: `composio slack send_message --json {...}`) with text "<params.message> — due <params.deadlineAt>".',
-      "- Emit a single SSE `result` event whose `content` is JSON `{\"outcome\":\"executed\",\"reason\":\"...\",\"evidence\":{\"eventId\":\"...\"}}` so the system records the calendar event id. If you cannot execute, emit `{\"outcome\":\"skipped\",\"reason\":\"...\"}` instead.",
+      '- Emit a single SSE `result` event whose `content` is JSON `{"outcome":"executed","reason":"...","evidence":{"eventId":"..."}}` so the system records the calendar event id. If you cannot execute, emit `{"outcome":"skipped","reason":"..."}` instead.',
     );
   }
   // If the user edited the draft inline (via the pet card's #dec-editor
@@ -394,7 +394,9 @@ export async function runDecision(
       // Result panel keeps working without a special case.
       summary: res.text ?? null,
       outcome,
-      ...(res.result && typeof res.result === "object" && !("summary" in (res.result as Record<string, unknown>))
+      ...(res.result &&
+      typeof res.result === "object" &&
+      !("summary" in (res.result as Record<string, unknown>))
         ? { agentPayload: res.result }
         : {}),
     });
@@ -422,7 +424,9 @@ export async function runDecision(
     last_error: execution.reason ?? `Last attempt ${outcome}.`,
   };
   decisions.update(dec.id, { context: blockedCtx, execution });
-  log(`run ${dec.id} → pending (${outcome}: ${execution.reason ?? "no reason"})`);
+  log(
+    `run ${dec.id} → pending (${outcome}: ${execution.reason ?? "no reason"})`,
+  );
   return {
     ok: false,
     status: "pending",

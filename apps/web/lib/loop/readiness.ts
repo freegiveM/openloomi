@@ -252,8 +252,7 @@ export function readinessState(
   if (readiness.status !== "ready") return readiness.status;
   const relationship = deriveRelationship(decision);
   const kind = decision.action?.kind;
-  const external =
-    typeof kind === "string" && EXTERNAL_ACTION_KINDS.has(kind);
+  const external = typeof kind === "string" && EXTERNAL_ACTION_KINDS.has(kind);
   if (external && relationship?.level === "unknown") return "confirm";
   return "ready";
 }
@@ -281,4 +280,9 @@ export function stateLabel(state: DecisionState): {
   }
 }
 
-export type { DecisionReadiness, DecisionRelationship, ReadinessStatus, RelationshipLevel };
+export type {
+  DecisionReadiness,
+  DecisionRelationship,
+  ReadinessStatus,
+  RelationshipLevel,
+};

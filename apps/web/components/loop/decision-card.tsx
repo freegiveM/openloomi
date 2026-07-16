@@ -593,10 +593,7 @@ export function DecisionCard({
               className="ml-auto"
             >
               {t("loop.viewDetails", "View details")}
-              <RemixIcon
-                name="ri-arrow-right-line"
-                className="ml-1 size-3.5"
-              />
+              <RemixIcon name="ri-arrow-right-line" className="ml-1 size-3.5" />
             </Button>
           </div>
         </footer>

@@ -244,7 +244,9 @@ export interface BuildWrapResult {
  * to count today's Chronicle observations. The narrative-only `force`
  * path still re-reads the on-disk evidence, which is cheap.
  */
-export async function build(opts: { force?: boolean } = {}): Promise<WrapSnapshot> {
+export async function build(
+  opts: { force?: boolean } = {},
+): Promise<WrapSnapshot> {
   const date = today();
   const existing = readWrap();
   if (

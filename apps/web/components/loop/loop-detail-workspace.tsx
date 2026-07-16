@@ -208,8 +208,7 @@ export function LoopDetailWorkspace({
   const execution = decision.execution;
   const executedOutcome =
     status === "done" && execution?.outcome === "executed";
-  const skippedOutcome =
-    status === "done" && execution?.outcome === "skipped";
+  const skippedOutcome = status === "done" && execution?.outcome === "skipped";
   const blockedOrFailedPending =
     status === "pending" &&
     (execution?.outcome === "blocked" || execution?.outcome === "failed");
@@ -537,10 +536,7 @@ export function LoopDetailWorkspace({
                 </>
               ) : (
                 <>
-                  <RemixIcon
-                    name="ri-check-double-line"
-                    className="size-3.5"
-                  />
+                  <RemixIcon name="ri-check-double-line" className="size-3.5" />
                   {executedOutcome
                     ? t("loop.detail.executedLabel", "Executed")
                     : t("loop.detail.resultLabel", "Result")}
@@ -565,16 +561,9 @@ export function LoopDetailWorkspace({
                     className="gap-1.5"
                   >
                     {resurrecting ? (
-                      <Spinner
-                        size={14}
-                        label=""
-                        className="!size-3.5"
-                      />
+                      <Spinner size={14} label="" className="!size-3.5" />
                     ) : (
-                      <RemixIcon
-                        name="ri-restart-line"
-                        className="size-3.5"
-                      />
+                      <RemixIcon name="ri-restart-line" className="size-3.5" />
                     )}
                     {t("loop.detail.resurrect", "Run again")}
                   </Button>
@@ -616,11 +605,7 @@ export function LoopDetailWorkspace({
                       className="gap-1.5"
                     >
                       {resurrecting ? (
-                        <Spinner
-                          size={14}
-                          label=""
-                          className="!size-3.5"
-                        />
+                        <Spinner size={14} label="" className="!size-3.5" />
                       ) : (
                         <RemixIcon
                           name="ri-restart-line"
