@@ -12,7 +12,7 @@
 
 use std::sync::{Mutex, OnceLock};
 
-use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 
 use super::PET_CARD_LABEL;
 use crate::constants;
@@ -85,9 +85,42 @@ pub fn build_card_window(app: &AppHandle) -> tauri::Result<tauri::WebviewWindow>
 /// Show the card. Called from the pet-click and bubble-click handlers
 /// when there is a pending decision. If the window doesn't exist yet
 /// the first call builds it.
+///
+/// `compact = true` opens the card in the user-facing idle / status
+/// mode introduced by #365 (title + subtitle + last-checked + sources +
+/// Collapse / Open Loop buttons). The card webview listens for
+/// `loop:card-mode` and immediately swaps its `data-active-mode`
+/// attribute; this is emitted BEFORE `show()` so the JS handler is in
+/// place before the first paint. Subsequent `loop:decision` /
+/// `loop:pending-list` events still flow into the same window, so a
+/// pending decision landing after a compact open transitions the card
+/// into the full decision layout without an extra rebuild.
 pub fn show_card_window(app: &AppHandle) {
+    show_card_window_with(app, false);
+}
+
+/// Compact-mode sibling of `show_card_window`. Same window, same
+/// positioning, but opens in the #365 idle/status surface so the user
+/// sees a quiet, plain-language answer to "what is Loomi doing?" rather
+/// than the full decision card chrome.
+pub fn show_card_compact_window(app: &AppHandle) {
+    show_card_window_with(app, true);
+}
+
+fn show_card_window_with(app: &AppHandle, compact: bool) {
     super::aux_position::clear_card_manual_position();
     super::aux_position::reposition_card_to_pet(app);
+    // Emit the mode hint BEFORE the first paint so the JS handler can
+    // set `data-active-mode` on the card root synchronously. Without
+    // this the card would briefly show the full-mode chrome before
+    // swapping to compact, which (on slower machines) is a visible
+    // flash. Same payload shape on every open — listeners that don't
+    // care about the mode field ignore it.
+    let _ = app.emit_to(
+        PET_CARD_LABEL,
+        "loop:card-mode",
+        serde_json::json!({ "compact": compact }),
+    );
     if let Some(w) = app.get_webview_window(PET_CARD_LABEL) {
         let _ = w.set_ignore_cursor_events(false);
         let _ = w.show();

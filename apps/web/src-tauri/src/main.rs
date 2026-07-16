@@ -716,6 +716,18 @@ fn main() {
                 pet::show_card_window(&open_card_app);
             });
 
+            // #365 — pet click + idle-pill click when there's no
+            // actionable work → open the card in compact (status)
+            // mode. Reuses the same window as `pet:open-card` so the
+            // position poller / stacking behaviour stays consistent;
+            // a fresh `loop:decision` event transitions the card from
+            // compact → full in-place because the JS handler keys off
+            // the most-recent `loop:state` / `loop:decision` payload.
+            let open_status_app = app_handle.clone();
+            app_handle.listen("pet:open-status", move |_event| {
+                pet::show_card_compact_window(&open_status_app);
+            });
+
             // Card header drag → let the user manually park the card.
             // The aux-position poller respects this until the pet moves
             // again, at which point card following resumes.

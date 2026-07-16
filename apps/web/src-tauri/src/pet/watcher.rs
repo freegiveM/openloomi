@@ -20,7 +20,8 @@ use tauri::{AppHandle, Emitter, Listener, Manager};
 
 use super::{
     handle_runtime_state_event, last_review_seen_secs_ago, publish_baseline_state,
-    set_pending_decision_count, PET_BUBBLE_LABEL, PET_CARD_LABEL, PET_LABEL,
+    publish_baseline_state_with_meta, set_pending_decision_count, PET_BUBBLE_LABEL, PET_CARD_LABEL,
+    PET_LABEL,
 };
 
 const POLL_MS: u64 = 2000;
@@ -142,6 +143,14 @@ fn watch_loop(app: &AppHandle, setup_emitted: std::sync::Arc<std::sync::Mutex<bo
     // opened the card.
     let mut last_emitted_state: Option<String> = None;
     let mut last_reviewed_recently: bool = false;
+    // #365 — track whether the previous poll had at least one pending
+    // decision so we can detect the non-empty → empty transition and
+    // auto-hide the card window. Without this flag the watcher would
+    // have to remember the bucket count across iterations (which it
+    // already does via `last_buckets`), but a separate boolean keeps
+    // the intent obvious at the call site and gives the unit test a
+    // dedicated seam (`should_hide_when_pending_emptied`).
+    let mut previously_had_pending: bool = false;
 
     // One-shot first-run detection: if `~/.openloomi/loop/decisions.json`
     // doesn't exist AND the runtime isn't configured (no env-level
@@ -222,6 +231,12 @@ fn watch_loop(app: &AppHandle, setup_emitted: std::sync::Arc<std::sync::Mutex<bo
         // may consume) and a small Vec<String> is cheap.
         let current_pending_ids: Vec<String> =
             snap.pending.iter().filter_map(|d| d.id.clone()).collect();
+        // #365 — hoist the boolean the auto-hide check needs so we
+        // don't borrow `current_pending_ids` after it's moved into
+        // `last_pending_ids` further down (the move is required by
+        // existing transition-diff helpers and isn't worth
+        // reordering). Mirrors the `top_changed` hoist above.
+        let current_has_pending = !current_pending_ids.is_empty();
 
         let reviewed_recently = last_review_seen_secs_ago()
             .map(|s| s < PRESENTING_REVIEW_GRACE_SECS)
@@ -271,7 +286,23 @@ fn watch_loop(app: &AppHandle, setup_emitted: std::sync::Arc<std::sync::Mutex<bo
         // Runtime chat activity temporarily wins over this baseline.
         // The coordinator still records every watcher update and restores
         // the latest one after the chat UI releases its override.
-        publish_baseline_state(app, state, monologue);
+        //
+        // #365 — fold `enabled` (loop on/off) + the current poll
+        // timestamp into the payload so the widget's idle pill and
+        // the card's compact view can read both from a single
+        // `loop:state` subscription. `enabled` is a static hint for
+        // now (the watcher only runs when loop is conceptually live);
+        // the timestamp gives the card a stable "last checked" line
+        // that ticks every poll.
+        let last_polled_at = current_poll_timestamp_iso();
+        let loop_enabled = is_loop_enabled();
+        publish_baseline_state_with_meta(
+            app,
+            state,
+            monologue,
+            loop_enabled,
+            Some(last_polled_at),
+        );
 
         // B2: keep bubble + card windows in sync. The bubble auto-shows
         // when the latest pending decision changes and auto-hides when
@@ -328,7 +359,29 @@ fn watch_loop(app: &AppHandle, setup_emitted: std::sync::Arc<std::sync::Mutex<bo
             if let Some(w) = app.get_webview_window(PET_BUBBLE_LABEL) {
                 let _ = w.hide();
             }
+            // #365 — auto-hide the card when the pending bucket drains.
+            // Mirrors the existing `top_changed`-gated auto-show path:
+            // the bubble was always auto-hidden on the same transition
+            // (see the `if let Some(w) = ...` block above), but the
+            // card had no symmetric drain handler — once opened it
+            // would stay open until the user clicked × or the layout
+            // decided to swap. With this branch, dismissing the last
+            // pending decision closes the card within one watcher
+            // poll (≤ 2 s), so the desktop never carries a stale
+            // decision card when there's nothing left to act on.
+            if should_hide_when_pending_emptied(snap.pending.is_empty(), previously_had_pending) {
+                log::info!(
+                    "[loop-pet] pending drained from non-empty to empty — auto-hiding card window"
+                );
+                super::hide_card_window(app);
+            }
         }
+        // Track whether the current poll had pending decisions so the
+        // *next* iteration's drain branch can compare against it. We
+        // update this AFTER the auto-hide check above so the helper
+        // sees the previous poll's state, not the freshly-snapshotted
+        // one (mirrors the `top_changed` hoist earlier in this loop).
+        previously_had_pending = current_has_pending;
 
         // Drain terminal transitions: for each id that left `pending`
         // between polls, emit a `loop:decision` payload that carries
@@ -488,6 +541,79 @@ fn diff_completed_ids(
         out.push((id.clone(), status.to_string()));
     }
     out
+}
+
+/// #365 — decide whether the watcher should auto-hide the card window
+/// on this poll. We hide exactly when the bucket transitions from
+/// non-empty to empty; staying empty or staying non-empty leaves the
+/// existing visibility decisions alone (the user's × / click handlers
+/// remain in charge).
+///
+/// `current_empty` is the freshly-snapshotted `snap.pending.is_empty()`
+/// value; `previous_had_pending` is the boolean we tracked from the
+/// previous poll. Both are passed by value so the function is pure
+/// and trivially unit-testable.
+fn should_hide_when_pending_emptied(current_empty: bool, previous_had_pending: bool) -> bool {
+    current_empty && previous_had_pending
+}
+
+/// #365 — render the current poll moment as an ISO-8601 / RFC3339
+/// timestamp (UTC, second precision). Reused on every watcher emit so
+/// the card's "Last checked: just now" line ticks once per poll cycle.
+/// We avoid pulling in `chrono` for this single field — the format is
+/// a fixed width and `days_from_civil` (already in this file for
+/// `is_just_now`) gives us the inverse conversion cheaply.
+fn current_poll_timestamp_iso() -> String {
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let days = secs / 86_400;
+    let secs_in_day = secs % 86_400;
+    let hour = (secs_in_day / 3600) as u32;
+    let minute = ((secs_in_day % 3600) / 60) as u32;
+    let second = (secs_in_day % 60) as u32;
+    // Howard Hinnant's `civil_from_days` (https://howardhinnant.github.io/date_algorithms.html)
+    // — inverse of `days_from_civil`. Returns y/m/d for the given day
+    // count since 1970-01-01. Branch-light, no allocations.
+    let z = days + 719_468;
+    // `days` is a non-negative day count since the Unix epoch (we
+    // early-returned on the negative branch via the `unwrap_or(0)`
+    // above), so the `z >= 0` branch is the only one that ever
+    // fires. We keep the symmetric form for clarity but suppress
+    // the useless-comparison lint explicitly.
+    #[allow(unused_comparisons)]
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = (z - era * 146_097) as u64;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe as i64 + (era * 400) as i64;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = (doy - (153 * mp + 2) / 5 + 1) as u32;
+    let m = (if mp < 10 { mp + 3 } else { mp - 9 }) as u32;
+    let y = if m <= 2 { y + 1 } else { y };
+    format!(
+        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
+        y, m, d, hour, minute, second
+    )
+}
+
+/// #365 — whether the loop subsystem should report itself as enabled
+/// in the `loop:state` payload. The widget's idle pill colours its
+/// status dot green when this is `true` and grey when `false`. Today
+/// the watcher runs whenever the host process runs, so the answer is
+/// `true` unless the user explicitly disabled loop via the
+/// `OPENLOOMI_LOOP_ENABLED` env var (read "0" / "false" / "no" /
+/// case-insensitive variants as disabled). This keeps the integration
+/// testable from the shell without a DB round-trip.
+fn is_loop_enabled() -> bool {
+    let Ok(value) = std::env::var("OPENLOOMI_LOOP_ENABLED") else {
+        return true;
+    };
+    !matches!(
+        value.trim().to_ascii_lowercase().as_str(),
+        "" | "0" | "false" | "no" | "off"
+    )
 }
 
 /// Resolve where the loop skill writes its decision JSON.
@@ -1380,5 +1506,75 @@ mod tests {
         assert_eq!(py.get("status").and_then(|s| s.as_str()), Some("dismissed"));
         // Missing item → None rather than a half-formed payload.
         assert!(build_terminal_decision_payload("z", "done", &s).is_none());
+    }
+
+    // ----------------------------------------------------------------
+    // #365 — auto-hide seam + enriched-payload helpers. Pinned here so
+    // a future refactor of the watch loop can't quietly drop the
+    // pending-drained → hide_card_window transition.
+    // ----------------------------------------------------------------
+
+    #[test]
+    fn should_hide_only_on_drain_transition() {
+        // Drained transition: previously non-empty, now empty → hide.
+        assert!(should_hide_when_pending_emptied(true, true));
+        // Stayed empty across two polls → don't repeatedly hide.
+        assert!(!should_hide_when_pending_emptied(true, false));
+        // Stayed non-empty → leave card alone (user's × / click owns it).
+        assert!(!should_hide_when_pending_emptied(false, true));
+        // Cold boot: never had pending → no spurious hide on first poll.
+        assert!(!should_hide_when_pending_emptied(true, false));
+    }
+
+    #[test]
+    fn current_poll_timestamp_iso_is_well_formed() {
+        // The helper is best-effort; we just verify the shape so a
+        // future regression (e.g. accidental truncation) is caught by
+        // tests rather than silently breaking the card's "Last
+        // checked" line.
+        let s = current_poll_timestamp_iso();
+        assert_eq!(s.len(), 20, "expected `YYYY-MM-DDTHH:MM:SSZ`, got {s:?}");
+        assert!(s.ends_with('Z'), "expected UTC suffix, got {s:?}");
+        let bytes = s.as_bytes();
+        assert_eq!(bytes[4], b'-');
+        assert_eq!(bytes[7], b'-');
+        assert_eq!(bytes[10], b'T');
+        assert_eq!(bytes[13], b':');
+        assert_eq!(bytes[16], b':');
+    }
+
+    #[test]
+    fn loop_enabled_defaults_true_when_env_missing() {
+        // Remove the var so we test the documented default branch.
+        // `with_env` in `path_tests` already wraps this — we just
+        // call it directly here rather than creating a third env
+        // helper.
+        let saved = std::env::var_os("OPENLOOMI_LOOP_ENABLED");
+        std::env::remove_var("OPENLOOMI_LOOP_ENABLED");
+        assert!(is_loop_enabled());
+        // Defensive restore so the rest of the suite sees its prior
+        // value. `None` is the expected case (env var unset on a
+        // normal host) but we still want to round-trip cleanly.
+        if let Some(v) = saved {
+            std::env::set_var("OPENLOOMI_LOOP_ENABLED", v);
+        }
+    }
+
+    #[test]
+    fn loop_enabled_recognises_falsy_env_values() {
+        let saved = std::env::var_os("OPENLOOMI_LOOP_ENABLED");
+        for falsy in ["0", "false", "FALSE", "no", "off", "Off", ""] {
+            std::env::set_var("OPENLOOMI_LOOP_ENABLED", falsy);
+            assert!(!is_loop_enabled(), "value {falsy:?} should disable");
+        }
+        for truthy in ["1", "true", "yes", "on"] {
+            std::env::set_var("OPENLOOMI_LOOP_ENABLED", truthy);
+            assert!(is_loop_enabled(), "value {truthy:?} should enable");
+        }
+        if let Some(v) = saved {
+            std::env::set_var("OPENLOOMI_LOOP_ENABLED", v);
+        } else {
+            std::env::remove_var("OPENLOOMI_LOOP_ENABLED");
+        }
     }
 }

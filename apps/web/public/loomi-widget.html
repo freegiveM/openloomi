@@ -133,6 +133,88 @@
         display: flex;
       }
 
+      /* #365 — idle status pill. Anchored at the same top-right corner
+         as `.pending-badge`, but slightly offset so a populated
+         pending badge (count > 0) doesn't collide with it. The pill
+         is keyboard-focusable (Enter / Space emit `pet:open-status`)
+         so the user can reach the compact card without a mouse.
+         Hidden by default; `applyIdlePill()` toggles `.visible`
+         based on `currentState === "idle"` AND pendingCount === 0.
+         The 14×14 dot mirrors the loop's enabled flag: green when
+         live, amber when paused, red when the watcher reported a
+         failure on a source (future-proofed — the watcher doesn't
+         currently emit per-source failure state, so today the dot
+         is either green or amber). */
+      .idle-pill {
+        position: absolute;
+        z-index: 6;
+        top: 7px;
+        right: 7px;
+        display: none;
+        align-items: center;
+        gap: 6px;
+        height: 22px;
+        padding: 0 10px 0 8px;
+        border-radius: 11px;
+        background: rgba(15, 23, 42, 0.78);
+        color: rgba(255, 255, 255, 0.95);
+        font-size: 10px;
+        font-weight: 600;
+        line-height: 1;
+        letter-spacing: 0.01em;
+        cursor: pointer;
+        outline: none;
+        -webkit-user-select: none;
+        user-select: none;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.28);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        white-space: nowrap;
+        max-width: 156px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        transition: background 0.15s ease;
+      }
+      .idle-pill.visible {
+        display: inline-flex;
+      }
+      .idle-pill:hover,
+      .idle-pill:focus-visible {
+        background: rgba(15, 23, 42, 0.92);
+      }
+      .idle-pill:focus-visible {
+        box-shadow:
+          0 0 0 2px rgba(43, 138, 247, 0.6),
+          0 4px 10px rgba(0, 0, 0, 0.28);
+      }
+      /* When the pending badge is also visible (a queued decision
+         just landed), nudge the pill down so the two chrome pieces
+         stack instead of overlapping. The badge takes its own slot
+         at the same top-right; we shift the pill below it. */
+      .pending-badge.visible ~ .idle-pill {
+        top: 35px;
+      }
+      .idle-pill .idle-dot {
+        flex: 0 0 auto;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #34d399;
+        box-shadow: 0 0 0 2px rgba(52, 211, 153, 0.28);
+      }
+      .idle-pill[data-enabled="false"] .idle-dot {
+        background: #f59e0b;
+        box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.28);
+      }
+      .idle-pill[data-enabled="failure"] .idle-dot {
+        background: #ef4444;
+        box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.28);
+      }
+      .idle-pill .idle-label {
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
       /* State-specific animations — kept in sync with the demo's
      keyframes. If you add a new state, add a rule here AND an entry
      in the STATE_IMAGES map below. */
@@ -355,6 +437,25 @@
   <body>
     <img class="fox" id="fox" data-state="idle" alt="Loomi" draggable="false" />
     <span class="pending-badge" id="pending-badge" aria-hidden="true"></span>
+    <!-- #365 — idle status affordance. The pill is hidden by default
+         and made visible by `applyIdlePill()` when state === "idle"
+         AND no pending decisions exist. Clicking (or pressing
+         Enter / Space while focused) emits `pet:open-status`, which
+         the host turns into a `show_card_compact_window` call. The
+         longer "View status" suffix lives on the right side and
+         truncates with an ellipsis if the user's locale is wider
+         than 156px. -->
+    <span
+      class="idle-pill"
+      id="idle-pill"
+      role="status"
+      aria-live="polite"
+      tabindex="0"
+      data-enabled="true"
+    >
+      <span class="idle-dot" aria-hidden="true"></span>
+      <span class="idle-label" id="idle-pill-label">Loomi is on watch</span>
+    </span>
 
     <div id="pet-menu" role="menu" aria-hidden="true">
       <button type="button" data-op="open" role="menuitem">Open Loomi</button>
@@ -438,10 +539,36 @@
 
         const fox = document.getElementById("fox");
         const pendingBadge = document.getElementById("pending-badge");
+        // #365 — idle status pill refs. The pill shows when the pet
+        // is genuinely idle (no pending work AND state === "idle")
+        // so the user can discover Loomi's status without clicking
+        // the fox. `idlePillLabel` is the inner span we re-fill with
+        // i18n copy; the parent `.idle-pill` element carries the
+        // `data-enabled` attribute that drives the dot colour.
+        const idlePill = document.getElementById("idle-pill");
+        const idlePillLabel = document.getElementById("idle-pill-label");
         // Tracked alongside `fox.dataset.state` so the click handler can
         // branch on it (e.g. `needs-setup` → `pet:open-ai-settings`
         // instead of the default `pet:open-dashboard`).
         let currentState = "idle";
+        // #365 — bookkeeping for the idle pill. `pendingCount` is
+        // populated from the existing `loop:pending-count` listener;
+        // `loopEnabled` comes from the enriched `loop:state` payload
+        // (see the listener added below). Defaults match the
+        // bootstrap state (idle sprite, no pending, loop live).
+        let pendingCount = 0;
+        let loopEnabled = true;
+        // #365 — pill copy. Standalone-preview fallback (no i18n
+        // runtime) keeps the pill legible when this file is opened
+        // directly in a browser. When running inside Tauri the
+        // host-driven i18n bootstrap (see the host-side
+        // `i18n-provider.tsx`) can override the text via the
+        // `__loomiIdlePill` global if/when we wire that, but the
+        // English fallback is good enough for the standalone path
+        // because it never sits next to a real watcher.
+        const IDLE_PILL_FALLBACK = "Loomi is on watch";
+        const IDLE_PILL_PAUSED_FALLBACK = "Monitoring paused";
+        const IDLE_PILL_WORKING_FALLBACK = "Checking sources…";
 
         // Resolve a sprite URL/path for an (theme, state) pair.
         // Priority:
@@ -585,8 +712,66 @@
 
         function setPendingCount(value) {
           const count = Math.max(0, Number(value) || 0);
+          pendingCount = count;
           pendingBadge.textContent = count > 99 ? "99+" : String(count);
           pendingBadge.classList.toggle("visible", count > 0);
+          // Recompute the idle pill on every count change — the pill
+          // must hide the moment any pending decision lands so it
+          // doesn't sit on top of the red badge. Mirrors the rule
+          // the click handler uses (`isIdle()`).
+          applyIdlePill();
+        }
+
+        // #365 — true when the pet has no actionable work to show.
+        // Combines the sprite state (we only call ourselves "idle"
+        // when the watcher actually emitted `idle`) with the live
+        // pending count. `needs-setup` is intentionally excluded —
+        // it's a setup prompt, not a calm idle, and the right-click
+        // menu / dashboard are the better escape hatches there.
+        function isIdle() {
+          return (
+            currentState === "idle" &&
+            pendingCount === 0 &&
+            currentState !== "needs-setup"
+          );
+        }
+
+        // #365 — paint the idle pill. Called on every state / pending
+        // change. Visibility comes from `isIdle()`; the dot colour
+        // comes from `loopEnabled` (false → amber dot, signalling
+        // "paused"); copy falls back to the English constants above
+        // when no i18n runtime is available (standalone preview).
+        function applyIdlePill() {
+          if (!idlePill) return;
+          idlePill.classList.toggle("visible", isIdle());
+          idlePill.dataset.enabled = loopEnabled ? "true" : "false";
+          if (idlePillLabel) {
+            // Pick the copy that matches the current dot colour so
+            // paused users see "Monitoring paused" rather than the
+            // generic "on watch" line.
+            const text = loopEnabled
+              ? IDLE_PILL_FALLBACK
+              : IDLE_PILL_PAUSED_FALLBACK;
+            idlePillLabel.textContent = text;
+          }
+        }
+
+        // #365 — emit `pet:open-status` so the host shows the compact
+        // card. Triggered by Enter / Space on the focused pill, by a
+        // click, or by the pet's own pointerup when idle. The
+        // long-press fallback path is intentionally NOT wired here:
+        // holding the pill should not open the right-click menu
+        // because the pill already offers the only action it
+        // supports.
+        function openStatusFromPill(event) {
+          if (event) {
+            event.preventDefault();
+            event.stopPropagation();
+          }
+          const t = window.__TAURI__;
+          if (t && t.event && t.event.emit) {
+            t.event.emit("pet:open-status");
+          }
         }
 
         // ---- Custom right-click menu ----------------------------------
@@ -828,6 +1013,13 @@
             // guest-login redirect with no immediate path forward.
             if (currentState === "needs-setup") {
               t.event.emit("pet:open-ai-settings");
+            } else if (isIdle()) {
+              // #365 — idle pet click now opens the compact status
+              // card instead of dumping the user onto the dashboard.
+              // The right-click menu still offers "Open Loomi" as the
+              // escape hatch to the main app for users who want to
+              // land on /loop directly.
+              t.event.emit("pet:open-status");
             } else {
               t.event.emit("pet:open-dashboard");
             }
@@ -848,10 +1040,38 @@
           t.event.listen("loop:state", (e) => {
             const p = (e && e.payload) || {};
             if (p.state) setState(p.state);
+            // #365 — read the enriched fields so the idle pill can
+            // switch its dot colour and so future updates can
+            // surface the last-polled timestamp. Both fields are
+            // optional on the wire — older hosts simply omit them.
+            if (typeof p.enabled === "boolean") {
+              loopEnabled = p.enabled;
+              applyIdlePill();
+            }
           });
           t.event.listen("loop:pending-count", (e) => {
             const p = (e && e.payload) || {};
             setPendingCount(p.count);
+          });
+        }
+
+        // #365 — wire the idle pill. Click + Enter / Space while
+        // focused emit `pet:open-status`. The handler stops
+        // propagation so the same event doesn't bubble up to the
+        // body's pointerdown (which would otherwise start a drag).
+        if (idlePill) {
+          idlePill.addEventListener("click", openStatusFromPill);
+          idlePill.addEventListener("keydown", function (e) {
+            if (e.key === "Enter" || e.key === " ") {
+              openStatusFromPill(e);
+            }
+          });
+          // Prevent the pill from initiating a window drag when the
+          // user presses-and-holds it. Without `mousedown` capture
+          // the body handler would still see the gesture and try
+          // to `startDragging()` the whole window.
+          idlePill.addEventListener("pointerdown", function (e) {
+            e.stopPropagation();
           });
         }
         // `pet:config-changed` fires whenever the host reloads the

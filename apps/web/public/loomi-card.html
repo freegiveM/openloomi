@@ -141,6 +141,219 @@
         border-color: rgba(255, 255, 255, 0.12);
       }
 
+      /* #365 — compact (idle status) layout. Toggled by the
+         `data-active-mode` attribute on `.card` so the same window
+         can switch between compact and full without rebuilding. The
+         mode attribute is set BEFORE the first paint on
+         `loop:card-mode` (the host emits the event prior to
+         `show_card_window`), so the user never sees the full layout
+         flash before compact renders.
+
+         The layout strips every implementation term that lived on
+         the old connection view ("All endpoints reachable", "Pipeline
+         ready", "Fetching from /api/loop/connectors"). The verbose
+         copy lives in `loop.compactCard.*`; the title + subtitle
+         here are the answer to "what is Loomi doing right now?" and
+         "do I need to do anything?". */
+      .card[data-active-mode="compact"] {
+        padding: 16px 14px 14px;
+        gap: 10px;
+      }
+      .card[data-active-mode="compact"] .card::before {
+        /* Inherit compact padding above; nothing per-mode here. */
+      }
+      .compact-eyebrow {
+        flex: 0 0 auto;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        align-self: flex-start;
+        padding: 3px 9px;
+        border-radius: 999px;
+        background: var(--green-soft);
+        border: 1px solid var(--green-border);
+        color: var(--green-text);
+        font-family: var(--font-mono);
+        font-size: 9.5px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+      .compact-eyebrow[data-tone="paused"] {
+        background: var(--orange-softer);
+        border-color: var(--orange-border);
+        color: var(--orange-text);
+      }
+      .compact-eyebrow[data-tone="checking"] {
+        background: var(--blue-soft);
+        border-color: var(--blue-border);
+        color: var(--blue-dark);
+      }
+      .compact-eyebrow[data-tone="failure"] {
+        background: rgba(255, 73, 36, 0.12);
+        border-color: rgba(255, 73, 36, 0.32);
+        color: var(--red);
+      }
+      .compact-eyebrow .dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: currentColor;
+      }
+      .compact-title {
+        flex: 0 0 auto;
+        font-family: var(--font-display);
+        font-weight: 800;
+        font-size: 19px;
+        line-height: 1.25;
+        letter-spacing: -0.01em;
+        color: var(--ink);
+        margin: 0;
+      }
+      .compact-subtitle {
+        flex: 0 0 auto;
+        font-size: 11.5px;
+        line-height: 1.45;
+        color: var(--muted);
+        margin: 0;
+      }
+      .compact-last-checked {
+        flex: 0 0 auto;
+        font-family: var(--font-mono);
+        font-size: 9.5px;
+        color: var(--label);
+        letter-spacing: 0.02em;
+        margin: 0;
+      }
+      .compact-sources {
+        flex: 1 1 auto;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        overflow: auto;
+        padding-right: 2px;
+      }
+      .compact-sources-label {
+        flex: 0 0 auto;
+        font-family: var(--font-mono);
+        font-size: 9px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--label);
+      }
+      .compact-source-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 8px;
+        border-radius: 8px;
+        background: var(--panel-soft);
+        border: 1px solid var(--line);
+        font-size: 11px;
+        color: var(--ink);
+      }
+      .compact-source-row[data-state="paused"] {
+        opacity: 0.62;
+      }
+      .compact-source-row .compact-source-dot {
+        flex: 0 0 auto;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #34d399;
+        box-shadow: 0 0 0 2px rgba(52, 211, 153, 0.22);
+      }
+      .compact-source-row[data-state="off"] .compact-source-dot,
+      .compact-source-row[data-state="failure"] .compact-source-dot {
+        background: var(--red);
+        box-shadow: 0 0 0 2px rgba(255, 73, 36, 0.18);
+      }
+      .compact-source-row[data-state="paused"] .compact-source-dot {
+        background: #94a3b8;
+        box-shadow: 0 0 0 2px rgba(148, 163, 184, 0.18);
+      }
+      .compact-source-row[data-state="unknown"] .compact-source-dot {
+        background: #fbbf24;
+        box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.18);
+      }
+      .compact-source-row .compact-source-name {
+        flex: 1 1 auto;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-weight: 600;
+      }
+      .compact-source-row .compact-source-status {
+        flex: 0 0 auto;
+        font-family: var(--font-mono);
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        color: var(--label);
+      }
+      .compact-sources-empty {
+        padding: 8px;
+        text-align: center;
+        font-size: 10.5px;
+        color: var(--muted);
+        border: 1px dashed var(--line);
+        border-radius: 8px;
+      }
+      .compact-footer {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding-top: 4px;
+        border-top: 1px solid var(--line);
+      }
+      .compact-footer button {
+        flex: 1 1 0;
+        height: 32px;
+        padding: 0 10px;
+        border-radius: 8px;
+        font-size: 11px;
+        font-weight: 600;
+        cursor: pointer;
+        border: 1px solid var(--line);
+        background: var(--panel);
+        color: var(--ink);
+        font-family: inherit;
+        transition:
+          background 0.15s ease,
+          border-color 0.15s ease;
+      }
+      .compact-footer button:hover,
+      .compact-footer button:focus-visible {
+        background: var(--panel-soft);
+        outline: none;
+      }
+      .compact-footer button:focus-visible {
+        border-color: var(--blue);
+        box-shadow: 0 0 0 2px rgba(43, 138, 247, 0.22);
+      }
+      .compact-footer button.primary {
+        background: var(--blue);
+        border-color: var(--blue);
+        color: #fff;
+      }
+      .compact-footer button.primary:hover,
+      .compact-footer button.primary:focus-visible {
+        background: var(--blue-dark);
+        border-color: var(--blue-dark);
+      }
+      /* Hide the legacy usage chip on compact mode — it lived at
+         the bottom-right of the card flex column and would compete
+         with the compact footer for attention. The compact card
+         has its own "Last checked" line so the token-count info
+         is non-essential here. */
+      .card[data-active-mode="compact"] .usage-strip {
+        display: none !important;
+      }
+
       /* Layout switching — only one section is visible at a time. */
       [data-layout] {
         display: none;
@@ -1750,6 +1963,45 @@
       </section>
 
       <!-- ============================================================
+           LAYOUT: COMPACT  (#365 — idle status card)
+           The compact layout replaces the old "force the connection
+           view on idle" path. It answers the user's two questions
+           ("what is Loomi doing?" / "do I need to do anything?") in
+           plain language, surfaces the watcher poll timestamp as
+           "Last checked", and offers explicit Collapse + Open Loop
+           buttons. No implementation terms in the primary path;
+           the dev panel can still pin the legacy `connection`
+           layout via `pet:dev-form` if a developer needs to inspect
+           the old chrome.
+           ============================================================ -->
+      <section data-layout="compact">
+        <span class="compact-eyebrow" id="compact-eyebrow" data-tone="healthy">
+          <span class="dot" aria-hidden="true"></span>
+          <span id="compact-eyebrow-text">Sync is healthy</span>
+        </span>
+        <h2 class="compact-title" id="compact-title">Everything is working</h2>
+        <p class="compact-subtitle" id="compact-subtitle">
+          Nothing needs your attention. Loomi will open a card when a decision
+          needs you.
+        </p>
+        <p class="compact-last-checked" id="compact-last-checked">
+          Last checked: —
+        </p>
+        <div class="compact-sources" id="compact-sources">
+          <div class="compact-sources-label">Watching</div>
+          <div id="compact-sources-list"></div>
+        </div>
+        <div class="compact-footer">
+          <button type="button" data-action="close" id="compact-collapse">
+            Collapse
+          </button>
+          <button type="button" class="primary" data-action="open-loop">
+            Open Loop
+          </button>
+        </div>
+      </section>
+
+      <!-- ============================================================
            LAYOUT: NO-API-KEY  (Form 0 · missing provider config)
            Surfaces the "no LLM reachable" state on the pet card, in
            the same visual style as the other six forms. Mirrors the
@@ -2359,6 +2611,24 @@
         let decision = null;
         let pendingList = [];
         let connectors = [];
+        // #365 — compact-mode state. `compactMode` flips to `true`
+        // when the host emits `loop:card-mode { compact: true }`
+        // (right before opening the card). `chooseLayout()` prefers
+        // the compact layout while this flag is set, and a fresh
+        // `loop:decision` event clears it so the same window can
+        // transition compact → full without a rebuild. `userStatus`
+        // is an optional override published by the host (currently
+        // unused — the renderer derives the eyebrow tone from the
+        // live state machine below) but kept here so a future
+        // watcher payload can pre-classify the surface without
+        // forcing the renderer to re-walk all its inputs.
+        let compactMode = false;
+        let userStatus = null;
+        // Cached values from the enriched `loop:state` payload.
+        // `loopEnabled` switches the dot / eyebrow tone; `lastPolledAt`
+        // is the source of the "Last checked: …" line.
+        let loopEnabled = true;
+        let lastPolledAt = null;
         // AI provider configuration status. Cached result of the
         // `hasUsableConversationApiConfiguration` predicate, evaluated
         // against `/api/preferences/ai`. `null` = not yet fetched,
@@ -2741,6 +3011,18 @@
         };
 
         function chooseLayout() {
+          // #365 — compact mode wins while the host has flagged the
+          // card as the idle status surface. We deliberately route to
+          // "compact" instead of the legacy "connection" layout so
+          // implementation terms ("All endpoints reachable", "Pipeline
+          // ready", "PENDING QUEUE · 0", "Fetching from …") stay out
+          // of the primary path. A fresh `loop:decision` event resets
+          // `compactMode` (see the listener below) and the next
+          // apply() naturally lands on `decision`. We still honour
+          // the missing-API-key gate below — that exception matters
+          // for first-run users regardless of which mode the host
+          // tried to open.
+          if (compactMode && apiConfigured !== false) return "compact";
           // 0. Missing-API-key takes priority over everything else —
           //    without an LLM the loop can't do anything, so the user
           //    needs to be nudged toward the settings page first. This
@@ -2792,12 +3074,22 @@
           // layout — including during transitions where multiple
           // layouts briefly co-exist.
           card.dataset.activeLayout = layout;
+          // #365 — `data-active-mode` lets the compact layout strip
+          // the usage chip and the legacy connection chrome. The
+          // host emits `loop:card-mode { compact: true }` BEFORE
+          // opening the window, so by the time `apply()` runs the
+          // flag is already in sync. We still derive the attribute
+          // from `compactMode` here so a subsequent layout swap
+          // (e.g. compact → decision when a pending decision lands)
+          // also clears the mode marker.
+          card.dataset.activeMode = compactMode ? "compact" : "full";
           // Hide footer / pills on layouts that don't use them — but the
           // footer lives inside each section, so layout-level switching
           // already hides them. Nothing global to do here.
           // Re-render all layouts with current data so layout switches
           // never show stale content.
           renderConnection();
+          renderCompact();
           renderPipeline();
           renderNoise();
           renderDecision();
@@ -2964,6 +3256,217 @@
               queue.appendChild(row);
             }
           }
+        }
+
+        // ---------- Compact layout (#365 — idle status) ----------
+        // Pure render of the idle-status surface. Reads the same
+        // `connectors` cache the legacy connection layout uses, plus
+        // the enriched `loop:state` payload (`loopEnabled`,
+        // `lastPolledAt`). No implementation terms appear in any
+        // user-visible string — copy comes from `loop.compactCard.*`
+        // (en-US / zh-Hans) with English fallback for the
+        // standalone-preview path (no Tauri runtime).
+        //
+        // Tone derivation is intentionally simple — the renderer
+        // looks at the connector rows first (any row in `failure` /
+        // `off` state lifts the eyebrow to "failure") and falls back
+        // to the loop-enabled flag when nothing has been probed yet.
+        function renderCompact() {
+          const eyebrow = document.getElementById("compact-eyebrow");
+          const eyebrowText = document.getElementById("compact-eyebrow-text");
+          const titleEl = document.getElementById("compact-title");
+          const subEl = document.getElementById("compact-subtitle");
+          const lastEl = document.getElementById("compact-last-checked");
+          const listEl = document.getElementById("compact-sources-list");
+
+          // 1. Decide the tone.
+          let tone = "healthy";
+          if (!loopEnabled) {
+            tone = "paused";
+          } else if (
+            connectors.some((c) => c && (c.connected === false || c.lastError))
+          ) {
+            tone = "failure";
+          }
+          // `working` only surfaces while the connector probe is in
+          // flight (no rows yet AND not paused). The "checking
+          // your sources" copy reads better than "everything is
+          // working" when the user clicks the pet within the first
+          // ~100ms after boot before /api/loop/connectors resolves.
+          if (tone === "healthy" && connectors.length === 0) {
+            tone = "checking";
+          }
+
+          // 2. Localised copy. The i18n instance is provided by the
+          // dashboard's `i18n-provider.tsx` (already bootstrapped
+          // before this card mounts) — we look it up via the
+          // `__OPENLOOMI_I18N__` global the provider exports. When
+          // running standalone (no provider), `t()` falls back to a
+          // tiny English helper so the card still renders something
+          // readable in a browser preview.
+          const t = compactT;
+          const keys = {
+            healthy: { title: "healthy", sub: "healthy" },
+            checking: { title: "checking", sub: "checking" },
+            paused: { title: "paused", sub: "paused" },
+            failure: {
+              title: "failure",
+              sub: "failure",
+              source:
+                connectors.find((c) => c && !c.connected && c.lastError)
+                  ?.label ||
+                connectors.find((c) => c && !c.connected)?.label ||
+                "Loop",
+            },
+          };
+          const toneKeys = keys[tone];
+
+          if (eyebrow) {
+            eyebrow.dataset.tone = tone;
+          }
+          if (eyebrowText) {
+            eyebrowText.textContent =
+              tone === "healthy"
+                ? t("loop.compactCard.syncHealthy")
+                : t(
+                    `loop.idlePill.${
+                      tone === "checking"
+                        ? "working"
+                        : tone === "paused"
+                          ? "paused"
+                          : "failure"
+                    }`,
+                    { source: toneKeys.source || "" },
+                  );
+          }
+          if (titleEl) {
+            titleEl.textContent = t(
+              `loop.compactCard.title.${toneKeys.title}`,
+              { source: toneKeys.source || "" },
+            );
+          }
+          if (subEl) {
+            subEl.textContent = t(`loop.compactCard.subtitle.${toneKeys.sub}`, {
+              source: toneKeys.source || "",
+            });
+          }
+          if (lastEl) {
+            lastEl.textContent = lastPolledAt
+              ? t("loop.compactCard.lastChecked", {
+                  rel: formatRelative(lastPolledAt),
+                })
+              : t("loop.compactCard.lastCheckedNever");
+          }
+
+          // 3. Sources list.
+          if (listEl) {
+            listEl.innerHTML = "";
+            if (!connectors.length) {
+              const empty = document.createElement("div");
+              empty.className = "compact-sources-empty";
+              empty.textContent = t("loop.compactCard.sourcesEmpty");
+              listEl.appendChild(empty);
+            } else {
+              for (const c of connectors) {
+                const row = document.createElement("div");
+                let rowState = "on";
+                if (!loopEnabled) rowState = "paused";
+                else if (c.connected === false || c.lastError)
+                  rowState = "failure";
+                else if (c.probed !== true) rowState = "unknown";
+                row.className = "compact-source-row";
+                row.dataset.state = rowState;
+                const name = document.createElement("span");
+                name.className = "compact-source-name";
+                name.textContent = c.label || c.id || "—";
+                const dot = document.createElement("span");
+                dot.className = "compact-source-dot";
+                dot.setAttribute("aria-hidden", "true");
+                const status = document.createElement("span");
+                status.className = "compact-source-status";
+                status.textContent =
+                  rowState === "paused"
+                    ? "PAUSED"
+                    : rowState === "failure"
+                      ? "OFF"
+                      : rowState === "unknown"
+                        ? "—"
+                        : "OK";
+                row.appendChild(dot);
+                row.appendChild(name);
+                row.appendChild(status);
+                listEl.appendChild(row);
+              }
+            }
+          }
+        }
+
+        // Tiny i18n helper used by `renderCompact()`. Looks up a key
+        // on the host-provided instance first (`__OPENLOOMI_I18N__`),
+        // then falls back to the en-US locale file shipped with the
+        // dashboard (i18n-provider imports `apps/web/i18n/locales/en-US`).
+        // The standalone-preview branch returns the key so a
+        // missing translation reads obviously wrong in the browser.
+        const COMPACT_FALLBACK = {
+          "loop.compactCard.title.healthy": "Everything is working",
+          "loop.compactCard.title.checking": "Checking your sources",
+          "loop.compactCard.title.paused": "Monitoring is paused",
+          "loop.compactCard.title.failure": "{{source}} needs attention",
+          "loop.compactCard.subtitle.healthy":
+            "Nothing needs your attention. Loomi will open a card when a decision needs you.",
+          "loop.compactCard.subtitle.checking":
+            "Loomi is checking your sources now.",
+          "loop.compactCard.subtitle.paused":
+            "Loop is paused — nothing will surface until you resume.",
+          "loop.compactCard.subtitle.failure":
+            "Loomi couldn't update {{source}} recently. Review the original before continuing.",
+          "loop.compactCard.lastChecked": "Last checked: {{rel}}",
+          "loop.compactCard.lastCheckedNever": "Last checked: never",
+          "loop.compactCard.syncHealthy": "Sync is healthy",
+          "loop.compactCard.sourcesLabel": "Watching",
+          "loop.compactCard.sourcesEmpty": "No sources connected",
+          "loop.idlePill.working": "Checking your connected sources…",
+          "loop.idlePill.paused": "Monitoring paused",
+          "loop.idlePill.failure": "Couldn't reach {{source}} · Review needed",
+        };
+        function compactT(key, vars) {
+          const host =
+            typeof window !== "undefined" ? window.__OPENLOOMI_I18N__ : null;
+          if (host && typeof host.t === "function") {
+            try {
+              const out = host.t(key, vars || {});
+              if (out && out !== key) return interpolate(out, vars || {});
+            } catch (_) {
+              /* fall through to the inline fallback */
+            }
+          }
+          const fallback = COMPACT_FALLBACK[key];
+          if (!fallback) return key;
+          return interpolate(fallback, vars || {});
+        }
+        function interpolate(template, vars) {
+          return template.replace(/\{\{(\w+)\}\}/g, (_m, name) =>
+            vars && Object.prototype.hasOwnProperty.call(vars, name)
+              ? String(vars[name])
+              : "",
+          );
+        }
+        // Render an ISO timestamp as a short relative phrase
+        // ("just now", "12s ago", "3m ago", "2h ago"). Mirrors the
+        // host-side `formatDistanceToNow` but kept inline because
+        // the card HTML is a standalone asset.
+        function formatRelative(iso) {
+          const t = Date.parse(iso);
+          if (Number.isNaN(t)) return iso;
+          const diffSec = Math.max(0, Math.round((Date.now() - t) / 1000));
+          if (diffSec < 5) return "just now";
+          if (diffSec < 60) return diffSec + "s ago";
+          const min = Math.round(diffSec / 60);
+          if (min < 60) return min + "m ago";
+          const hr = Math.round(min / 60);
+          if (hr < 24) return hr + "h ago";
+          const day = Math.round(hr / 24);
+          return day + "d ago";
         }
 
         // ---------- Pipeline layout (Form 2) ----------
@@ -4655,6 +5158,56 @@
           }, 160);
         }
 
+        // #365 — compact-card action handlers. The compact layout
+        // hosts two buttons (Collapse + Open Loop); the layout itself
+        // lives in the `<section data-layout="compact">` block above.
+        // We wire them once on script load and rely on event
+        // delegation so the listeners survive any future re-render
+        // that swaps the section's innerHTML. The actual close +
+        // open-dashboard paths are unchanged from the legacy × and
+        // "Open Loomi" actions — only the surface that surfaces them
+        // is new.
+        (function wireCompactActions() {
+          const root = document.querySelector('[data-layout="compact"]');
+          if (!root) return;
+          root.addEventListener("click", (e) => {
+            const target =
+              e.target instanceof Element
+                ? e.target.closest("[data-action]")
+                : null;
+            if (!target) return;
+            const action = target.dataset.action;
+            const t =
+              window.__TAURI__ ||
+              (window.__TAURI_INTERNALS__ && {
+                event: { emit: window.__TAURI_INTERNALS__.invoke },
+              });
+            const emit = (name) => {
+              try {
+                if (t && t.event && typeof t.event.emit === "function") {
+                  t.event.emit(name);
+                }
+              } catch (_) {
+                /* swallow — closed window */
+              }
+            };
+            if (action === "close") {
+              e.preventDefault();
+              // Reuse the same hide path the × button uses (which
+              // also handles the host-side bubble restore).
+              closeCard();
+            } else if (action === "open-loop") {
+              e.preventDefault();
+              // Reset the compact flag so a subsequent open from
+              // the bubble lands in the decision layout, not the
+              // compact surface. The host handles the actual
+              // window management.
+              compactMode = false;
+              emit("pet:open-dashboard");
+            }
+          });
+        })();
+
         async function postAction(action, body) {
           if (!decision || !decision.id) {
             setStatus("error", "No pending decision — try refreshing.");
@@ -5415,6 +5968,22 @@
               );
             }
             decision = next;
+            // #365 — a fresh pending decision always transitions the
+            // card out of compact mode, even if the watcher only
+            // re-emitted the same payload. Without this reset the
+            // compact layout would stay sticky for the lifetime of
+            // the window. Set the flag BEFORE apply() so the next
+            // chooseLayout() picks the decision layout (the legacy
+            // `connection` view is no longer reachable from this
+            // path — the user's idle surface lives entirely on the
+            // pet + idle pill now).
+            if (
+              next &&
+              next.id &&
+              (!next.status || next.status === "pending")
+            ) {
+              compactMode = false;
+            }
             apply();
             // If the initial AI-config fetch failed (apiConfigured is
             // still null), every decision event is a chance to retry.
@@ -5455,6 +6024,18 @@
             state =
               (typeof p === "object" && p.state) ||
               (typeof p === "string" ? p : "idle");
+            // #365 — capture the enriched `loop:state` payload
+            // (`enabled` + `last_polled_at`) so `renderCompact()`
+            // can colour the eyebrow and stamp "Last checked".
+            // Both fields are optional on the wire — older hosts
+            // omit them, in which case the cached values stay
+            // (loopEnabled defaults to `true`, lastPolledAt to
+            // `null`). We deliberately do this BEFORE `apply()` so
+            // the renderer sees the freshest values on the same
+            // tick the state advances.
+            if (typeof p.enabled === "boolean") loopEnabled = p.enabled;
+            if (typeof p.last_polled_at === "string")
+              lastPolledAt = p.last_polled_at;
             apply();
             // Re-arm the AI-config fetch when the gate is still open
             // (see loop:decision branch above for the same pattern and
@@ -5466,6 +6047,23 @@
             pendingList = Array.isArray(p.items) ? p.items : [];
             apply();
           });
+          // #365 — compact-mode toggle. The host emits this BEFORE
+          // `show_card_window` so the first paint of the card already
+          // shows the compact layout (no flash of the full decision
+          // chrome). `compact: false` is the reset signal: a fresh
+          // pending decision that re-shows the card in full mode
+          // flips the flag back so subsequent renders pick the right
+          // layout. The renderer's `chooseLayout()` short-circuits
+          // to `compact` while the flag is set.
+          tauri.event.listen("loop:card-mode", (e) => {
+            const p = (e && e.payload) || {};
+            compactMode = !!p.compact;
+            apply();
+          });
+          // #365 — capture the enriched `loop:state` payload is
+          // folded into the existing listener above (see the
+          // `enabled` / `last_polled_at` capture there) so we don't
+          // register two handlers for the same event.
           tauri.event.listen("loop:connectors", (e) => {
             const p = (e && e.payload) || {};
             connectors = Array.isArray(p.items || p.connectors)

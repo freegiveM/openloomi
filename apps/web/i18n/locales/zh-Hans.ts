@@ -241,6 +241,38 @@ const zh = {
       sourceSignal: "来源信号",
       metaLabel: "元信息",
     },
+    // #365 — 闲置状态徽章 + 紧凑状态卡文案。徽章文案刻意写得简短,
+    // 才能塞进 168×168 的宠物窗口而不挡住狐狸;详细文案放在
+    // loop.compactCard.* 下,展示在紧凑卡片中。
+    idlePill: {
+      short: "Loomi 在守候 · 当前没有需要你处理的事",
+      cta: "查看状态",
+      paused: "监控已暂停",
+      working: "正在检查已接入的来源…",
+      failure: "无法访问 {{source}} · 需要处理",
+    },
+    compactCard: {
+      title: {
+        healthy: "一切正常",
+        checking: "正在检查来源",
+        paused: "监控已暂停",
+        failure: "{{source}} 需要处理",
+      },
+      subtitle: {
+        healthy:
+          "当前没有需要你处理的事。一旦有决策需要你拍板,Loomi 会自动弹出卡片。",
+        checking: "Loomi 正在检查你的来源。",
+        paused: "Loop 已暂停 —— 恢复前不会再有新动态浮出。",
+        failure: "Loomi 最近没能更新 {{source}}。请先回到原始信号再继续。",
+      },
+      lastChecked: "上次检查:{{rel}}",
+      lastCheckedNever: "上次检查:暂无记录",
+      syncHealthy: "同步状态正常",
+      sourcesLabel: "正在监听",
+      sourcesEmpty: "尚未接入任何来源",
+      collapse: "收起",
+      openLoop: "进入 Loop",
+    },
   },
   settings: {
     ...baseZh.settings,

@@ -27,13 +27,17 @@ pub use aux_position::{
     set_card_manual_position, spawn_position_poller,
 };
 pub use bubble::{build_bubble_window, hide_bubble_window, show_bubble_window, BUBBLE_H, BUBBLE_W};
-pub use card::{build_card_window, hide_card_window, show_card_window, CARD_H, CARD_W};
+pub use card::{
+    build_card_window, hide_card_window, show_card_compact_window, show_card_window, CARD_H, CARD_W,
+};
 pub use config_watcher::spawn_config_watcher;
 pub use dev_panel::{
     build_dev_panel_window, close_dev_panel_for_exit, dev_panel_requested, hide_dev_panel_window,
     show_dev_panel_window, DEV_PANEL_H, DEV_PANEL_W,
 };
-pub use state::{handle_runtime_state_event, publish_baseline_state};
+pub use state::{
+    handle_runtime_state_event, publish_baseline_state, publish_baseline_state_with_meta,
+};
 pub use theme::{
     read_config, write_config, PetConfig, PetConfigView, BUILTIN_THEMES, DEFAULT_THEME,
 };

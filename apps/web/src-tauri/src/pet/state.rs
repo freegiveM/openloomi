@@ -9,6 +9,17 @@ use super::{PET_BUBBLE_LABEL, PET_LABEL};
 struct VisualState {
     state: String,
     monologue: Option<String>,
+    // #365 — extra metadata the widget / card read from `loop:state`
+    // without needing a separate event channel. `enabled` mirrors the
+    // user's loop on/off toggle (from `pet-config.json`) so the idle
+    // pill can switch its colour from green (live) to grey (paused).
+    // `last_polled_at` is the ISO timestamp of the most recent watcher
+    // poll and powers the compact card's "Last checked: …" line.
+    // Both default to the neutral value when a caller doesn't pass
+    // them — runtime chat overrides don't carry these fields and
+    // neither does the needs-setup bootstrap emit.
+    enabled: bool,
+    last_polled_at: Option<String>,
 }
 
 impl VisualState {
@@ -16,6 +27,22 @@ impl VisualState {
         Self {
             state: state.into(),
             monologue,
+            enabled: true,
+            last_polled_at: None,
+        }
+    }
+
+    fn new_with_meta(
+        state: impl Into<String>,
+        monologue: Option<String>,
+        enabled: bool,
+        last_polled_at: Option<String>,
+    ) -> Self {
+        Self {
+            state: state.into(),
+            monologue,
+            enabled,
+            last_polled_at,
         }
     }
 }
@@ -63,10 +90,20 @@ fn coordinator() -> &'static Mutex<StateCoordinator> {
 }
 
 fn emit_state(app: &AppHandle, state: &VisualState) {
-    let payload = serde_json::json!({
+    // #365 — the widget's idle pill and the card's compact view both
+    // need `enabled` + `last_polled_at`. They're optional on the
+    // payload (callers that don't know the values simply omit them)
+    // so older JS keeps working.
+    let mut payload = serde_json::json!({
         "state": state.state,
         "monologue": state.monologue,
+        "enabled": state.enabled,
     });
+    if let Some(obj) = payload.as_object_mut() {
+        if let Some(ts) = state.last_polled_at.as_ref() {
+            obj.insert("last_polled_at".into(), serde_json::Value::String(ts.clone()));
+        }
+    }
     let _ = app.emit_to(PET_LABEL, "loop:state", payload.clone());
     let _ = app.emit_to(PET_BUBBLE_LABEL, "loop:state", payload);
 }
@@ -86,7 +123,22 @@ pub fn publish_baseline_state(
     state: impl Into<String>,
     monologue: Option<String>,
 ) {
-    let next = VisualState::new(state, monologue);
+    publish_baseline_state_with_meta(app, state, monologue, true, None);
+}
+
+/// #365 — extended variant that also publishes the loop on/off flag
+/// and the watcher's most recent poll timestamp. Used by
+/// `watcher::publish_baseline_state` so the widget's idle pill and
+/// the card's compact view can read a single `loop:state` payload
+/// without subscribing to additional events.
+pub fn publish_baseline_state_with_meta(
+    app: &AppHandle,
+    state: impl Into<String>,
+    monologue: Option<String>,
+    enabled: bool,
+    last_polled_at: Option<String>,
+) {
+    let next = VisualState::new_with_meta(state, monologue, enabled, last_polled_at);
     let effective = coordinator()
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -146,6 +198,27 @@ mod tests {
             state.publish_runtime(None),
             VisualState::new("needsinput", Some("Review me".into()))
         );
+    }
+
+    #[test]
+    fn new_with_meta_preserves_extra_fields() {
+        let v = VisualState::new_with_meta(
+            "idle",
+            None,
+            false,
+            Some("2026-07-16T12:00:00Z".into()),
+        );
+        assert_eq!(v.state, "idle");
+        assert_eq!(v.monologue, None);
+        assert!(!v.enabled);
+        assert_eq!(v.last_polled_at.as_deref(), Some("2026-07-16T12:00:00Z"));
+    }
+
+    #[test]
+    fn new_defaults_to_enabled_and_no_timestamp() {
+        let v = VisualState::new("idle", None);
+        assert!(v.enabled);
+        assert!(v.last_polled_at.is_none());
     }
 
     #[test]

@@ -251,6 +251,40 @@ const en = {
       sourceSignal: "Source signal",
       metaLabel: "Meta",
     },
+    // #365 — idle pill and compact status card copy. The pill text
+    // (loop.idlePill.short / cta) is intentionally short so it fits
+    // inside the 168×168 pet window without overlapping the fox; the
+    // compact card carries the verbose copy under loop.compactCard.*.
+    idlePill: {
+      short: "Loomi is on watch · Nothing needs your attention",
+      cta: "View status",
+      paused: "Monitoring paused",
+      working: "Checking your connected sources…",
+      failure: "Couldn't reach {{source}} · Review needed",
+    },
+    compactCard: {
+      title: {
+        healthy: "Everything is working",
+        checking: "Checking your sources",
+        paused: "Monitoring is paused",
+        failure: "{{source}} needs attention",
+      },
+      subtitle: {
+        healthy:
+          "Nothing needs your attention. Loomi will open a card when a decision needs you.",
+        checking: "Loomi is checking your sources now.",
+        paused: "Loop is paused — nothing will surface until you resume.",
+        failure:
+          "Loomi couldn't update {{source}} recently. Review the original before continuing.",
+      },
+      lastChecked: "Last checked: {{rel}}",
+      lastCheckedNever: "Last checked: never",
+      syncHealthy: "Sync is healthy",
+      sourcesLabel: "Watching",
+      sourcesEmpty: "No sources connected",
+      collapse: "Collapse",
+      openLoop: "Open Loop",
+    },
   },
   settings: {
     ...baseEn.settings,
