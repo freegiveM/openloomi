@@ -18,6 +18,7 @@ import {
   promoteDecision,
   resurrectDecision,
   runDecision,
+  runDecisionWithRsvpResponse,
 } from "./runner";
 import { run as runTick, setActiveUser as setTickActiveUser } from "./tick";
 import { buildAndEnqueue as buildWrap, build as buildWrapOnly } from "./wrap";
@@ -128,9 +129,14 @@ export function getCard(id: string): LoopCardPayload | null {
 function defaultDialogue(dec: LoopDecision): string {
   switch (dec.type) {
     case "rsvp":
-      return "This calendar invite needs a call — want me to reply 'accepted' directly?";
+      // #363 — server-side English fallback for the i18n key the web UI
+      // also renders. Keeping the literal here (rather than reading from
+      // the i18n bundle at request time) avoids pulling the i18n init
+      // graph into the Next.js server runtime; the web-side `loop.rsvp.*`
+      // keys cover every locale the user can pick.
+      return serverI18n("loop.dialogue.rsvp");
     case "draft_reply":
-      return "This email looks like it's waiting on you — should I draft a reply?";
+      return serverI18n("loop.dialogue.draftReply");
     case "review_pr":
       return "A PR tagged you as reviewer — take a look?";
     case "slack_reply":
@@ -157,13 +163,43 @@ function defaultDialogue(dec: LoopDecision): string {
   }
 }
 
+/**
+ * Tiny server-side i18n lookup — a flat key → English-string table for the
+ * dialogue lines `defaultDialogue` produces. Mirrors the `loop.dialogue.*`
+ * keys in `apps/web/i18n/locales/en-US.ts` so the two stay in lock-step.
+ * Kept private to this module so accidental divergence surfaces as a
+ * missing key here rather than a silent language swap at request time.
+ */
+function serverI18n(key: string): string {
+  switch (key) {
+    case "loop.dialogue.rsvp":
+      return "This calendar invite needs your call.";
+    case "loop.dialogue.draftReply":
+      return "This email looks like it's waiting on you — should I draft a reply?";
+    default:
+      return key;
+  }
+}
+
 function defaultNextStep(dec: LoopDecision): string {
   return `Tap Run to let the agent handle this ${dec.type}.`;
 }
 
-/** POST /api/loop/decision/[id] with { action: 'run' | 'dry' | 'dismiss' | 'promote' | 'resurrect' } */
+/** POST /api/loop/decision/[id] with { action: 'run' | 'dry' | 'dismiss' | 'promote' | 'resurrect' | 'rsvp_attend' | 'rsvp_decline' } */
 export interface DecisionActionInput {
-  action: "run" | "dry" | "dismiss" | "promote" | "resurrect";
+  // #363 — `rsvp_attend` / `rsvp_decline` pre-set `action.params.response`
+  // on the underlying decision and route through `runDecision` so the agent
+  // emits a structured verdict (#358). Both refuse on non-RSVP / non-pending
+  // decisions; rsvp_attend additionally refuses on `not_actionable` so a
+  // self-owned event with no guests can never trigger an external write.
+  action:
+    | "run"
+    | "dry"
+    | "dismiss"
+    | "promote"
+    | "resurrect"
+    | "rsvp_attend"
+    | "rsvp_decline";
   reason?: string;
 }
 
@@ -244,6 +280,34 @@ export async function applyDecisionAction(
         status: r.status,
         decision: r.decision,
         ...(r.error ? { error: r.error } : {}),
+      };
+      break;
+    }
+    // #363 — RSVP-specific actions. The runner pre-sets
+    // `action.params.response` to the user's intent and then delegates to
+    // `runDecision`, so the agent still owns the external write and the
+    // existing #358 verdict pipeline handles status transitions.
+    case "rsvp_attend": {
+      const r = await runDecisionWithRsvpResponse(id, "accepted");
+      out = {
+        ok: r.ok,
+        status: r.status,
+        decision: r.decision,
+        ...(r.result !== undefined ? { result: r.result } : {}),
+        ...(r.error ? { error: r.error } : {}),
+        ...(r.execution ? { execution: r.execution } : {}),
+      };
+      break;
+    }
+    case "rsvp_decline": {
+      const r = await runDecisionWithRsvpResponse(id, "declined");
+      out = {
+        ok: r.ok,
+        status: r.status,
+        decision: r.decision,
+        ...(r.result !== undefined ? { result: r.result } : {}),
+        ...(r.error ? { error: r.error } : {}),
+        ...(r.execution ? { execution: r.execution } : {}),
       };
       break;
     }

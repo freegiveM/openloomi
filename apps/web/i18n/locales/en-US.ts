@@ -90,8 +90,7 @@ const en = {
       failed: "Failed",
       reason: "Reason: {{reason}}",
     },
-    lastAttemptFailed:
-      "Last attempt failed: {{reason}} — retry Run below.",
+    lastAttemptFailed: "Last attempt failed: {{reason}} — retry Run below.",
     tab: {
       pending: "Pending",
       done: "Done",
@@ -142,6 +141,28 @@ const en = {
     dialogue: {
       draftReply:
         "This email looks like it's waiting on you — should I draft a reply?",
+      // #363 — replaces the hardcoded RSVP dialogue in server.ts::defaultDialogue
+      rsvp: "This calendar invite needs your call.",
+    },
+    // #363 — RSVP-specific decision card layers (issue #363). Kept under
+    // loop.rsvp.* so the same architecture can be adopted by draft_reply /
+    // review_pr etc. without a namespace collision.
+    rsvp: {
+      invitationLabel: "Calendar invitation",
+      decidePrompt: "Will you attend this meeting?",
+      attend: "Attend",
+      decline: "Decline",
+      viewOriginal: "View original",
+      fieldTime: "Time",
+      fieldOrganizer: "Organizer",
+      fieldAttendance: "Attendance",
+      fieldLocation: "Location",
+      fieldConflict: "Conflict",
+      conflictNone: "No conflict",
+      readinessSufficient: "Information is sufficient to decide.",
+      readinessIncomplete:
+        "Information incomplete: {{fields}}. Review the original event before responding.",
+      technicalDetails: "Technical details",
     },
     nextStep: {
       tapRun: "Tap Run to let the agent handle this decision.",
@@ -219,8 +240,7 @@ const en = {
       resurrect: "Run again",
       resurrectedToast: "Back to pending",
       resurrectFailed: "Re-run failed: {{msg}}",
-      lastAttemptFailed:
-        "Last attempt failed: {{reason}} — retry Run below.",
+      lastAttemptFailed: "Last attempt failed: {{reason}} — retry Run below.",
       promote: "Promote back to pending",
       promotedToast: "Back to pending",
       promoteFailed: "Promote failed: {{msg}}",

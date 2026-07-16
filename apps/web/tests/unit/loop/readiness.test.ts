@@ -79,7 +79,9 @@ describe("deriveReadiness — rsvp", () => {
       action: { params: {} },
     });
     expect(r.status).toBe("needs_context");
-    expect(r.missing).toEqual(expect.arrayContaining(["event time", "organizer"]));
+    expect(r.missing).toEqual(
+      expect.arrayContaining(["event time", "organizer"]),
+    );
   });
 
   it("flags missing event time only when organizer is set", () => {
@@ -202,9 +204,9 @@ describe("canExecute", () => {
 
 describe("deriveRelationship", () => {
   it("honours an explicit relationship", () => {
-    expect(
-      deriveRelationship({ relationship: { level: "known" } }),
-    ).toEqual({ level: "known" });
+    expect(deriveRelationship({ relationship: { level: "known" } })).toEqual({
+      level: "known",
+    });
   });
 
   it("derives self when the organizer is the user", () => {
@@ -292,9 +294,9 @@ describe("deriveUrgency", () => {
   });
 
   it("returns low when no time-to-act signal is present (never invents urgency)", () => {
-    expect(
-      deriveUrgency({ action: { params: { subject: "hi" } } }),
-    ).toBe("low");
+    expect(deriveUrgency({ action: { params: { subject: "hi" } } })).toBe(
+      "low",
+    );
   });
 
   it("returns low for past deadlines — there is nothing left to rush", () => {

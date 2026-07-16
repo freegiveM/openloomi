@@ -314,4 +314,171 @@ describe("POST /api/loop/decision/[id] — execution outcome (#358)", () => {
     expect(body.decision.status).toBe("pending");
     expect(body.decision.execution).toBeUndefined();
   });
+
+  // ---------------------------------------------------------------------
+  // #363 — rsvp_attend / rsvp_decline actions
+  // ---------------------------------------------------------------------
+  // The runner pre-sets `action.params.response` to the user's intent
+  // (`"accepted"` / `"declined"`), then delegates to `runDecision`. The
+  // existing #358 verdict pipeline decides status transitions. These
+  // tests pin the three behaviours the issue cares about:
+  //   1. response is set on the on-disk record before the agent runs;
+  //   2. an executed verdict moves the decision to `done`;
+  //   3. a not_actionable decision refuses (no external write).
+
+  test("rsvp_attend pre-sets response=accepted and routes through the agent", async () => {
+    const dec = decisions.add({
+      type: "rsvp",
+      title: "RSVP — attend",
+      action: {
+        kind: "calendar_rsvp",
+        params: { eventId: "evt-attend-1" },
+      },
+    });
+    if (!dec) throw new Error("decision.add returned null");
+    agentResponse.current = {
+      ok: true,
+      result: {
+        outcome: "executed",
+        reason: "Calendar event accepted",
+        evidence: { eventId: "evt-attend-1" },
+      },
+    };
+    const res = await POST(
+      makeRequest(`http://localhost/api/loop/decision/${dec.id}`, {
+        method: "POST",
+        body: JSON.stringify({ action: "rsvp_attend" }),
+      }) as unknown as Parameters<typeof POST>[0],
+      { params: Promise.resolve({ id: dec.id }) },
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    expect(body.execution.outcome).toBe("executed");
+    expect(body.decision.status).toBe("done");
+    expect(body.decision.action.params.response).toBe("accepted");
+  });
+
+  test("rsvp_decline pre-sets response=declined and routes through the agent", async () => {
+    const dec = decisions.add({
+      type: "rsvp",
+      title: "RSVP — decline",
+      action: {
+        kind: "calendar_rsvp",
+        params: { eventId: "evt-decline-1" },
+      },
+    });
+    if (!dec) throw new Error("decision.add returned null");
+    agentResponse.current = {
+      ok: true,
+      result: {
+        outcome: "executed",
+        reason: "Calendar event declined",
+        evidence: { eventId: "evt-decline-1" },
+      },
+    };
+    const res = await POST(
+      makeRequest(`http://localhost/api/loop/decision/${dec.id}`, {
+        method: "POST",
+        body: JSON.stringify({ action: "rsvp_decline" }),
+      }) as unknown as Parameters<typeof POST>[0],
+      { params: Promise.resolve({ id: dec.id }) },
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    expect(body.execution.outcome).toBe("executed");
+    expect(body.decision.status).toBe("done");
+    expect(body.decision.action.params.response).toBe("declined");
+  });
+
+  test("rsvp_attend on a not_actionable decision refuses without running the agent", async () => {
+    // Self-owned event with no other guests → readiness === not_actionable.
+    // The runner's existing gate (#359) must keep the agent from being
+    // called at all (no fetch) and surface the existing 400 error.
+    const dec = decisions.add({
+      type: "rsvp",
+      title: "RSVP — self-owned, no guests",
+      action: {
+        kind: "calendar_rsvp",
+        params: {
+          eventId: "evt-self",
+          organizerIsSelf: true,
+          attendeesCount: 0,
+          start: "2026-07-17T10:00:00Z",
+          organizer: "me",
+        },
+      },
+    });
+    if (!dec) throw new Error("decision.add returned null");
+    const res = await POST(
+      makeRequest(`http://localhost/api/loop/decision/${dec.id}`, {
+        method: "POST",
+        body: JSON.stringify({ action: "rsvp_attend" }),
+      }) as unknown as Parameters<typeof POST>[0],
+      { params: Promise.resolve({ id: dec.id }) },
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.ok).toBe(false);
+    expect(body.status).toBe("pending");
+    expect(body.error).toMatch(/not_actionable/i);
+    // Crucially, the runner never invoked the agent, so the fetchSpy
+    // should not have recorded an agent call.
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  test("rsvp_attend on a non-RSVP decision refuses with a type error", async () => {
+    const dec = decisions.add({
+      type: "draft_reply",
+      title: "Draft a reply",
+      action: { kind: "email_reply", params: { to: "sam@example.com" } },
+    });
+    if (!dec) throw new Error("decision.add returned null");
+    const res = await POST(
+      makeRequest(`http://localhost/api/loop/decision/${dec.id}`, {
+        method: "POST",
+        body: JSON.stringify({ action: "rsvp_attend" }),
+      }) as unknown as Parameters<typeof POST>[0],
+      { params: Promise.resolve({ id: dec.id }) },
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.ok).toBe(false);
+    expect(body.error).toMatch(/non-rsvp/i);
+  });
+
+  test("rsvp_decline keeps the decision in pending when the agent fails (#358)", async () => {
+    const dec = decisions.add({
+      type: "rsvp",
+      title: "RSVP — decline, agent fails",
+      action: {
+        kind: "calendar_rsvp",
+        params: { eventId: "evt-decline-fail" },
+      },
+    });
+    if (!dec) throw new Error("decision.add returned null");
+    agentResponse.current = {
+      ok: true,
+      result: {
+        outcome: "failed",
+        reason: "401 unauthorized, please reconnect Google Calendar",
+      },
+    };
+    const res = await POST(
+      makeRequest(`http://localhost/api/loop/decision/${dec.id}`, {
+        method: "POST",
+        body: JSON.stringify({ action: "rsvp_decline" }),
+      }) as unknown as Parameters<typeof POST>[0],
+      { params: Promise.resolve({ id: dec.id }) },
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.ok).toBe(false);
+    expect(body.decision.status).toBe("pending");
+    expect(body.execution.outcome).toBe("failed");
+    // The user's intent is persisted even when the agent fails so a
+    // retry reuses the same response instead of asking again.
+    expect(body.decision.action.params.response).toBe("declined");
+  });
 });

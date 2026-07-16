@@ -848,7 +848,8 @@ const enUS = {
      * come from `LoopState.connectorCapability` (#361) so we never claim
      * "monitored" when only "authorized" is true.
      */
-    capabilitySummary: "{{connected}} connected · {{monitored}} monitored by Loop · {{decision}} decision-capable",
+    capabilitySummary:
+      "{{connected}} connected · {{monitored}} monitored by Loop · {{decision}} decision-capable",
     /**
      * Plain-language note rendered when the readiness surface flags that
      * an authorized integration has no Loop mapping. Anchored next to

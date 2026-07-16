@@ -3,29 +3,50 @@
 /**
  * Loop decision card — one typed card the Loop surfaces to the pet / web UI.
  *
- * Renders:
- *  - Type-specific icon + title row + confidence badge
- *  - "Dialogue" — the natural-language ask the Loop is making of the user
- *  - Source chain (signal → contact → project → memory refs)
- *  - "Why" bullets the enrich stage produced
- *  - Action buttons (Dry Run / Edit / Run / Dismiss) — the B3 wiring will
- *    move these to a dedicated route; for now they call the action API
- *    directly so the card is interactive on its own.
+ * Restructured per #363 around a 5-layer information architecture so the
+ * user sees only the facts needed to decide:
+ *
+ *   1. Header row          — type icon + RSVP-specific invitation label +
+ *                            state pill + priority pill + diagnostic
+ *                            `conf 0.NN` chip + a kebab menu for
+ *                            card-level dismissal (separated from the
+ *                            decision-action row).
+ *   2. Decision prompt     — single-line ask ("Will you attend this
+ *                            meeting?"). Title shown once below as an
+ *                            <h3>.
+ *   3. Decision context    — `<DecisionContextBlock>` renders the
+ *                            user-facing facts (time, organizer,
+ *                            attendance, location, conflict for RSVP).
+ *                            Non-RSVP types render nothing here yet.
+ *   4. Readiness callout   — plain-language information readiness plus
+ *                            missing-field prompt. Subtle text when
+ *                            `ready`, banner when `needs_context`.
+ *   5. Provenance          — `<details>` (collapsed by default) containing
+ *                            the source chain, why bullets, action params
+ *                            JSON, and the dry-run preview when present.
+ *
+ * Action row (#6 below the layers):
+ *   - RSVP ready/confirm  → Attend (primary) · Decline (outline) · View original (ghost)
+ *   - RSVP needs_context  → same three buttons; the readiness banner tells
+ *                            the user to review the original first
+ *   - RSVP not_actionable → View original only
+ *   - Other types         → existing Dry run / Edit / Run / Dismiss row
+ *
+ * Card-level dismissal (#7) lives in the header kebab so it never gets
+ * confused with the decision-action group.
  *
  * Statuses:
- *  - pending  → 4 action buttons visible
- *  - done     → "Ran at <ts>" footer, action buttons hidden
- *  - dismissed → "Dismissed" footer with optional reason, action buttons hidden
+ *   - pending   → 5-layer card + action row visible
+ *   - done      → "Ran at <ts>" footer + execution badge
+ *   - dismissed → "Dismissed" footer with optional reason
  *
  * Custom decision types: the user can register new `type` strings via
  * `PUT /api/loop/types`. Built-in `TYPE_ICON` / `TYPE_LABEL` are static
  * at module load; the per-user extensions are fetched once on mount and
- * merged at render time via the `customTypeMeta` lookup below. When the
- * fetch fails or is empty, the card falls back to the built-ins
- * (`ri-question-line` / raw type id) so unknown types still render.
+ * merged at render time via the `customTypeMeta` lookup below.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslation } from "react-i18next";
 
@@ -43,6 +64,9 @@ import {
   type DecisionState,
   type LoopPriority,
 } from "@/lib/loop/readiness";
+import { deriveDecisionContext } from "@/lib/loop/decision-context";
+import { DecisionContextBlock } from "@/components/loop/decision-context-block";
+import { DismissInput } from "@/components/loop/dismiss-input";
 import type {
   DecisionReadiness,
   DecisionRelationship,
@@ -51,7 +75,13 @@ import type {
 
 import { LoopSourceChain, type SourceChainNode } from "./source-chain";
 
-export type LoopActionKind = "run" | "dry" | "dismiss" | "promote";
+export type LoopActionKind =
+  | "run"
+  | "dry"
+  | "dismiss"
+  | "promote"
+  | "rsvp_attend"
+  | "rsvp_decline";
 
 export interface LoopDecisionCardData {
   id: string;
@@ -82,6 +112,11 @@ export interface LoopDecisionCardData {
     person?: string | null;
     project_ref?: string | null;
     last_error?: string;
+    dry_run?: string;
+    /** #363 — when set, indicates this decision is still in `pending` but
+     *  carries a previously-executed verdict (e.g. the user's first RSVP
+     *  attempt was recorded as done and they chose again). Currently
+     *  surfaced only through the technical details. */
     [key: string]: unknown;
   };
   source_signal?: {
@@ -253,6 +288,62 @@ function ActionButton({
   );
 }
 
+/**
+ * Header kebab — card-level dismissal, separated from the decision-action
+ * row (#363). Opens a DismissInput reason-prompt inline so dismissing a
+ * card without an RSVP response never gets confused with declining one.
+ */
+function CardKebab({ decision }: { decision: LoopDecisionCardData }) {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement | null>(null);
+
+  // Close on outside click / Esc so the kebab mirrors normal menu UX.
+  useEffect(() => {
+    if (!open) return;
+    function onDoc(e: MouseEvent) {
+      if (!ref.current) return;
+      if (!ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        aria-label={t("loop.card.kebab", "More actions")}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+      >
+        <RemixIcon name="ri-more-2-fill" className="size-4" />
+      </button>
+      {open && (
+        <div
+          role="menu"
+          className="absolute right-0 z-20 mt-1 w-64 rounded-md border bg-card p-3 shadow-lg"
+        >
+          <DismissInput
+            decisionId={decision.id}
+            onDismissed={() => setOpen(false)}
+            className="!w-full"
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function DecisionCard({
   decision,
   onChange,
@@ -283,6 +374,12 @@ export function DecisionCard({
   const priorityCls = priorityTone(priority);
 
   const whyBullets = decision.why ?? decision.context?.why ?? [];
+  const isRsvp = decision.type === "rsvp";
+  // #363 — RSVP gets a single-line decision prompt + the dedicated context
+  // block. Other types keep the legacy dialogue bubble verbatim.
+  const decidePrompt = isRsvp
+    ? t("loop.rsvp.decidePrompt", "Will you attend this meeting?")
+    : null;
   const dialogue =
     decision.dialogue ??
     (decision.type === "draft_reply"
@@ -290,10 +387,36 @@ export function DecisionCard({
           "loop.dialogue.draftReply",
           "This email looks like it's waiting on you — should I draft a reply?",
         )
-      : `New ${typeLabel.toLowerCase()} decision`);
+      : decision.type === "rsvp"
+        ? t(
+            "loop.dialogue.rsvp",
+            "This calendar invite needs your call.",
+          )
+        : `New ${typeLabel.toLowerCase()} decision`);
   const nextStep =
     decision.nextStep ??
     t("loop.nextStep.tapRun", "Tap Run to let the agent handle this decision.");
+
+  // #363 — pre-resolve the decision context. RSVP renders the
+  // time/organizer/attendance/location/conflict block; other types return
+  // `null` and the block renders nothing.
+  const decisionContext = useMemo(
+    () =>
+      deriveDecisionContext({
+        type: decision.type,
+        action: decision.action ?? null,
+      }),
+    [decision.type, decision.action],
+  );
+  const rsvpActionParamsHtmlLink = useMemo(() => {
+    if (!isRsvp) return null;
+    const p = decision.action?.params;
+    if (!p || typeof p !== "object") return null;
+    const link = (p as Record<string, unknown>).htmlLink;
+    return typeof link === "string" && link.trim().length > 0
+      ? link.trim()
+      : null;
+  }, [isRsvp, decision.action]);
 
   async function act(action: LoopActionKind) {
     if (decision.status !== "pending") return;
@@ -318,6 +441,8 @@ export function DecisionCard({
           run: t("loop.ran", "Decision executed"),
           dismiss: t("loop.dismissed", "Dismissed"),
           promote: t("loop.promoted", "Promoted"),
+          rsvp_attend: t("loop.rsvp.attended", "Attending"),
+          rsvp_decline: t("loop.rsvp.declined", "Declined"),
         };
         toast({ type: "success", description: labels[action] });
         onChange?.();
@@ -332,6 +457,14 @@ export function DecisionCard({
     } finally {
       setPendingAction(null);
     }
+  }
+
+  function openOriginal() {
+    if (rsvpActionParamsHtmlLink) {
+      window.open(rsvpActionParamsHtmlLink, "_blank", "noopener,noreferrer");
+      return;
+    }
+    router.push(`/loop/${decision.id}`);
   }
 
   if (compact) {
@@ -350,7 +483,7 @@ export function DecisionCard({
             {decision.title}
           </div>
           <div className="line-clamp-1 text-xs text-muted-foreground">
-            {dialogue}
+            {decidePrompt ?? dialogue}
           </div>
         </div>
         <span
@@ -367,6 +500,8 @@ export function DecisionCard({
 
   const isPending = decision.status === "pending";
   const chain = buildChain(decision);
+  const showRunControls = isPending && !isRsvp;
+  const showRsvpControls = isPending && isRsvp;
 
   return (
     <article
@@ -376,7 +511,7 @@ export function DecisionCard({
         className,
       )}
     >
-      {/* Title row */}
+      {/* ── Layer 1: Header row ─────────────────────────────────────── */}
       <header className="flex items-start gap-3">
         <div
           className={cn(
@@ -388,8 +523,11 @@ export function DecisionCard({
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
+            {/* RSVP gets a friendlier label than the raw `RSVP` type id. */}
             <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              {typeLabel}
+              {isRsvp
+                ? t("loop.rsvp.invitationLabel", "Calendar invitation")
+                : typeLabel}
             </span>
             {/* Primary decision surface — plain-language readiness state. */}
             <span
@@ -422,57 +560,178 @@ export function DecisionCard({
                 })}
               </span>
             )}
+            {/* #363 — card-level dismissal lives here so it never gets
+                confused with the decision-action row below. */}
+            {isPending && <CardKebab decision={decision} />}
           </div>
           <h3 className="mt-1 text-base font-semibold leading-snug">
             {decision.title}
           </h3>
-          {/* Missing decision-critical fields (#359). */}
-          {readiness.status === "needs_context" &&
-            readiness.missing &&
-            readiness.missing.length > 0 && (
-              <p className="mt-1 text-xs text-muted-foreground">
-                {t("loop.readiness.missing", "Missing: {{fields}}", {
-                  fields: readiness.missing.join(", "),
-                })}
-              </p>
-            )}
         </div>
       </header>
 
-      {/* Dialogue bubble */}
-      <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm text-foreground/90">
-        {dialogue}
-      </div>
-
-      {/* Source chain */}
-      {chain.length > 0 && (
-        <section>
-          <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-            {t("loop.sourceChain", "Source chain")}
-          </div>
-          <LoopSourceChain nodes={chain} />
-        </section>
+      {/* ── Layer 2: Decision prompt ────────────────────────────────── */}
+      {decidePrompt ? (
+        <p className="text-sm leading-snug text-foreground/90">
+          {decidePrompt}
+        </p>
+      ) : (
+        <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm text-foreground/90">
+          {dialogue}
+        </div>
       )}
 
-      {/* Why bullets */}
-      {whyBullets.length > 0 && (
-        <section>
-          <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-            {t("loop.why", "Why this surfaced")}
-          </div>
-          <ul className="space-y-1 text-xs text-muted-foreground">
-            {whyBullets.slice(0, 6).map((w) => (
-              <li key={w} className="flex items-start gap-1.5">
-                <span className="mt-1 inline-block size-1.5 shrink-0 rounded-full bg-primary/60" />
-                <span>{w}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
+      {/* ── Layer 3: Decision context ───────────────────────────────── */}
+      {isPending && decisionContext && (
+        <DecisionContextBlock context={decisionContext} />
       )}
 
-      {/* Footer: actions or status */}
-      {isPending ? (
+      {/* ── Layer 4: Readiness callout ───────────────────────────────── */}
+      {isPending && readiness.status === "needs_context" && (
+        <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900">
+          {t(
+            "loop.rsvp.readinessIncomplete",
+            "Information incomplete: {{fields}}. Review the original event before responding.",
+            {
+              fields: (readiness.missing ?? []).join(", "),
+            },
+          )}
+        </div>
+      )}
+      {isPending && readiness.status === "ready" && (
+        <p className="text-[11px] text-muted-foreground">
+          {t(
+            "loop.rsvp.readinessSufficient",
+            "Information is sufficient to decide.",
+          )}
+        </p>
+      )}
+
+      {/* ── Layer 5: Provenance (collapsed) ──────────────────────────── */}
+      {isPending && (chain.length > 0 || whyBullets.length > 0 || decision.action) && (
+        <details className="rounded-md border bg-muted/10 px-3 py-2 text-xs">
+          <summary className="cursor-pointer select-none font-medium text-muted-foreground">
+            {t("loop.rsvp.technicalDetails", "Technical details")}
+          </summary>
+          <div className="mt-3 flex flex-col gap-3">
+            {chain.length > 0 && (
+              <section>
+                <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  {t("loop.sourceChain", "Source chain")}
+                </div>
+                <LoopSourceChain nodes={chain} />
+              </section>
+            )}
+            {whyBullets.length > 0 && (
+              <section>
+                <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  {t("loop.why", "Why this surfaced")}
+                </div>
+                <ul className="space-y-1 text-[11px] text-muted-foreground">
+                  {whyBullets.slice(0, 6).map((w) => (
+                    <li key={w} className="flex items-start gap-1.5">
+                      <span className="mt-1 inline-block size-1.5 shrink-0 rounded-full bg-primary/60" />
+                      <span>{w}</span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+            {decision.action && (
+              <section>
+                <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  {t("loop.detail.actionLabel", "Action")}
+                </div>
+                <pre className="max-h-48 overflow-auto rounded-md border bg-background/60 p-2 text-[11px] leading-relaxed">
+                  <code>
+                    {JSON.stringify(
+                      {
+                        kind: decision.action.kind,
+                        params: decision.action.params,
+                      },
+                      null,
+                      2,
+                    )}
+                  </code>
+                </pre>
+              </section>
+            )}
+          </div>
+        </details>
+      )}
+
+      {/* ── Layer 6: Actions ────────────────────────────────────────── */}
+      {isPending && showRsvpControls && (
+        <footer className="flex flex-col gap-2 border-t pt-3">
+          {/* #358 — when a previous run was blocked/failed, surface the
+              structured reason from `execution`. The RSVP control row
+              below stays so a retry is one tap. */}
+          {(decision.execution?.outcome === "blocked" ||
+            decision.execution?.outcome === "failed" ||
+            decision.context?.last_error) && (
+            <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+              <RemixIcon
+                name="ri-error-warning-line"
+                className="mt-0.5 size-3.5 shrink-0"
+              />
+              <span className="break-words">
+                {t(
+                  "loop.lastAttemptFailed",
+                  "Last attempt failed: {{reason}} — retry Run below.",
+                  {
+                    reason:
+                      decision.execution?.reason ??
+                      (typeof decision.context?.last_error === "string"
+                        ? decision.context.last_error
+                        : decision.execution?.outcome),
+                  },
+                )}
+              </span>
+            </div>
+          )}
+          <div className="flex flex-wrap items-center gap-2">
+            {/* #363 — when readiness is not_actionable the only sensible
+                action is to look at the source event. The Attend/Decline
+                row would otherwise let the user trigger an external write
+                that the runner would refuse anyway. */}
+            {state !== "not_actionable" ? (
+              <>
+                <ActionButton
+                  icon="ri-check-line"
+                  label={t("loop.rsvp.attend", "Attend")}
+                  variant="default"
+                  onClick={() => act("rsvp_attend")}
+                  pending={pendingAction === "rsvp_attend"}
+                />
+                <ActionButton
+                  icon="ri-close-line"
+                  label={t("loop.rsvp.decline", "Decline")}
+                  variant="outline"
+                  onClick={() => act("rsvp_decline")}
+                  pending={pendingAction === "rsvp_decline"}
+                />
+              </>
+            ) : null}
+            <ActionButton
+              icon="ri-external-link-line"
+              label={t("loop.rsvp.viewOriginal", "View original")}
+              variant="ghost"
+              onClick={openOriginal}
+            />
+            {executable && !isRsvp && (
+              <ActionButton
+                icon="ri-flask-line"
+                label={t("loop.dryRun", "Dry run")}
+                variant="outline"
+                onClick={() => act("dry")}
+                pending={pendingAction === "dry"}
+              />
+            )}
+          </div>
+        </footer>
+      )}
+
+      {isPending && showRunControls && (
         <footer className="flex flex-col gap-2 border-t pt-3">
           {/* #358 — when a previous run was blocked/failed, surface the
               structured reason from `execution` (falls back to the legacy
@@ -536,8 +795,10 @@ export function DecisionCard({
                 pending={pendingAction === "run"}
               />
             )}
+            {/* Legacy Dismiss stays inline for non-RSVP types since the
+                card-level kebab is RSVP-only (#363 scope). */}
             <ActionButton
-              icon="ri-close-line"
+              icon="ri-eye-off-line"
               label={t("loop.dismiss", "Dismiss")}
               variant="ghost"
               onClick={() => act("dismiss")}
@@ -545,7 +806,10 @@ export function DecisionCard({
             />
           </div>
         </footer>
-      ) : (
+      )}
+
+      {/* Status footer (done/dismissed) — unchanged. */}
+      {!isPending && (
         <footer className="flex flex-col gap-2 border-t pt-3 text-xs text-muted-foreground">
           <div className="flex items-center gap-2">
             <RemixIcon

@@ -66,9 +66,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-function makeSnapshot(
-  partial: Partial<WrapSnapshot> = {},
-): WrapSnapshot {
+function makeSnapshot(partial: Partial<WrapSnapshot> = {}): WrapSnapshot {
   const highlights: WrapHighlight[] = partial.highlights ?? [];
   return {
     date: "2026-07-16",
@@ -135,8 +133,7 @@ describe("computeWrapDialogue — scope-aware wording (#362)", () => {
         evidence: {
           chronicleScreenshots: 3,
           chronicleInsights: 9,
-          notes:
-            "3 screen captures + 9 insights (observed, not verified)",
+          notes: "3 screen captures + 9 insights (observed, not verified)",
         },
       }),
       [],

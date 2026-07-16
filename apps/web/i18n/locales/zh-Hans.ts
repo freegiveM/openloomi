@@ -137,6 +137,26 @@ const zh = {
     },
     dialogue: {
       draftReply: "这封邮件看起来在等你——要我先起草回复吗?",
+      // #363 — replaces the hardcoded RSVP dialogue in server.ts::defaultDialogue
+      rsvp: "这封会议邀请需要你拍板。",
+    },
+    // #363 — RSVP-specific decision card layers (issue #363). 命名空间保留
+    // 在 loop.rsvp.*，方便后续 draft_reply / review_pr 等复用同套结构。
+    rsvp: {
+      invitationLabel: "会议邀请",
+      decidePrompt: "你会参加这次会议吗?",
+      attend: "参加",
+      decline: "谢绝",
+      viewOriginal: "查看原始事件",
+      fieldTime: "时间",
+      fieldOrganizer: "组织者",
+      fieldAttendance: "出席情况",
+      fieldLocation: "地点",
+      fieldConflict: "冲突",
+      conflictNone: "无冲突",
+      readinessSufficient: "信息充分可以决定。",
+      readinessIncomplete: "信息不完整:{{fields}}。请先查看原始事件再回复。",
+      technicalDetails: "技术详情",
     },
     nextStep: {
       tapRun: "点「执行」让代理处理。",

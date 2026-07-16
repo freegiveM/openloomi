@@ -795,7 +795,8 @@ const zhHans = {
       "OpenLoomi 识别此集成，但其信号类型尚未映射到具体决策。",
     capabilityReasonNotLoopMonitored:
       "已授权用于聊天与记忆；Loop 暂未从此来源拉取信号。",
-    capabilitySummary: "{{connected}} 已连接 · {{monitored}} 被 Loop 监听 · {{decision}} 可产出决策",
+    capabilitySummary:
+      "{{connected}} 已连接 · {{monitored}} 被 Loop 监听 · {{decision}} 可产出决策",
     unsupportedSignalsNote:
       "{{count}} 条信号被丢弃 —— 来源缺少 Loop 标准映射。",
     needsSetupAction: "让智能体接入 Loop",
@@ -2307,7 +2308,8 @@ const zhHans = {
         // 提供方超时中断卡片：当长任务在工具调用过程中被强制停止时
         // 渲染这些文案。注意此处与上面的通用超时说明措辞不同 —— 本场景
         // 没有自动重试，因此不能承诺会重试。
-        completedArtifacts: "上一轮已生成 {{count}} 个文件，保留在工作目录中可以继续复用。",
+        completedArtifacts:
+          "上一轮已生成 {{count}} 个文件，保留在工作目录中可以继续复用。",
         continueAction: "从断点继续",
       },
       genericError: {
