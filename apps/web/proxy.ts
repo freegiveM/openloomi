@@ -218,6 +218,20 @@ export async function proxy(request: NextRequest) {
     if (isPublicPath || isStaticAsset) {
       return NextResponse.next();
     }
+    // API routes must surface a clean 401 Unauthorized instead of a 307
+    // redirect to /guest-login. Non-browser clients (the Codex / Claude
+    // Code bridges, curl, etc.) follow 307s with the original method —
+    // HTTP 307 preserves method and body — so a redirected POST lands
+    // on /guest-login, which only accepts GET, and surfaces as a
+    // misleading 405 Method Not Allowed. The bridge then cannot tell
+    // "needs login" apart from "endpoint gone", which is why the pet
+    // state mirror was reporting `PET_FAILED` status 405.
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json(
+        { error: "unauthorized", code: "AUTH_REQUIRED" },
+        { status: 401 },
+      );
+    }
     return buildLoginRedirect();
   }
 

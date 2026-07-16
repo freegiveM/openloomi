@@ -146,6 +146,7 @@ node plugins/codex/scripts/loomi-bridge.mjs version
     "set-codex-runtime-env",
     "setup",
     "setup-status",
+    "state",
     "version",
     "workflow-guidance"
   ]
@@ -854,6 +855,14 @@ Valid states:
 ```text
 happy, idle, juggling, needsinput, presenting, sleeping, sweeping, thinking, working
 ```
+
+> **API-accepted subset:** `POST /api/pet/state` only accepts 7 of these:
+> `idle`, `thinking`, `working`, `juggling`, `happy`, `presenting`,
+> `needsinput`. `sleeping` and `sweeping` are capybara-theme vocabulary
+> managed by the Loop baseline watcher — the API returns 400
+> `invalid_state` for them, which the bridge surfaces as
+> `{ok: false, code: "PET_FAILED"}`. Avoid requesting those two from
+> Codex; let the Loop baseline watcher set them.
 
 Failure modes (all return structured JSON, never throw):
 
