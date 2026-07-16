@@ -1,6 +1,12 @@
 /**
  * Parses absolute paths of "previewable generated files" from Agent tool output or assistant messages.
  * Supports both macOS/Linux (/Users/...) and Windows (C:\Users\..., with / and \ intermixed in paths).
+ *
+ * The matcher is intentionally conservative (#354): we only treat a path as a generated
+ * artifact when it lands in a location OpenLoomi itself manages (a session dir, the local
+ * memory dir, or Desktop) AND it isn't a known read-only/internal location (plugin sources,
+ * node_modules, .git, build output, …). Anything else is treated as a path the agent merely
+ * referenced, not a file the user can preview.
  */
 
 const ARTIFACT_EXT =
@@ -38,6 +44,60 @@ export function normalizeExtractedArtifactPath(raw: string): string {
   return s;
 }
 
+/**
+ * Directories that are clearly read-only with respect to the chat session: plugin sources,
+ * dependency trees, build output, VCS metadata. A path that lives inside one of these is a
+ * reference, never a generated artifact — even if the regex would otherwise accept it
+ * (e.g. /Users/me/codes/openloomi/plugins/claude/skills/foo/SKILL.md).
+ */
+const READ_ONLY_PATH_SEGMENTS = [
+  // Plugin / skill sources — both the openloomi plugin tree and any user-installed skill.
+  "/plugins/",
+  "/skills/",
+  "/.claude/",
+  // Dependency + build output.
+  "/node_modules/",
+  "/.git/",
+  "/.next/",
+  "/dist/",
+  "/build/",
+  "/target/",
+  "/out/",
+  // Application source trees (reading source files for context shouldn't surface as artifacts).
+  "/src/",
+  "/source/",
+  "/app/",
+];
+
+/**
+ * Returns true when `path` lives inside a known read-only/internal location. Match is case
+ * insensitive and uses forward slashes so Windows paths (`C:\...\plugins\...`) work.
+ */
+export function isReadOnlyArtifactPath(path: string): boolean {
+  if (!path) return false;
+  const norm = path.replace(/\\/g, "/").toLowerCase();
+  return READ_ONLY_PATH_SEGMENTS.some((seg) => norm.includes(seg));
+}
+
+/**
+ * Returns true when `candidate` appears on a line that looks like part of a stack trace
+ * (JS `at …`, Python `File "…"`, or Ruby `…:in …`). Paths quoted inside tracebacks aren't
+ * artifacts — they're incidental mentions of where an exception was raised.
+ */
+export function isInsideStackTrace(text: string, candidate: string): boolean {
+  if (!text || !candidate) return false;
+  const lines = text.split(/\r?\n/);
+  for (const line of lines) {
+    const trimmed = line.trimStart();
+    if (!line.includes(candidate)) continue;
+    if (trimmed.startsWith("at ")) return true;
+    if (trimmed.startsWith('File "')) return true;
+    // Ruby / Perl: "<path>:<line>:in `<method>'"
+    if (/^\S+\.\w+:\d+:.+in /.test(trimmed)) return true;
+  }
+  return false;
+}
+
 function buildArtifactPathPatterns(): RegExp[] {
   const ext = ARTIFACT_EXT;
   const b = PATH_BOUNDARY;
@@ -51,7 +111,6 @@ function buildArtifactPathPatterns(): RegExp[] {
       `/Users/[^/\\\\]+/\\.openloomi/sessions/[^/\\\\]+(?:/[^/\\\\]+)?/.+?\\.(${ext})${b}`,
       "gi",
     ),
-    new RegExp(`/(?:Users|home)/[^/\\\\].+?\\.(${ext})${b}`, "gi"),
     new RegExp(
       `[A-Za-z]:(?:\\\\|/)Users(?:\\\\|/)[^/\\\\\\n\\r]+(?:\\\\|/)Desktop(?:\\\\|/).+?\\.(${ext})${b}`,
       "gi",
@@ -70,7 +129,15 @@ function buildArtifactPathPatterns(): RegExp[] {
 let cachedPatterns: RegExp[] | null = null;
 
 /**
- * Extracts all matching artifact file absolute paths from text (deduplicated, with trailing noise removed).
+ * Extracts all matching artifact file absolute paths from text (deduplicated, with trailing
+ * noise removed). The matcher only returns paths that:
+ *   1. land inside a recognized OpenLoomi-managed drop location (sessions, memory, Desktop);
+ *   2. do NOT live inside a read-only location like plugins/, node_modules/, .git/, build/;
+ *   3. do NOT appear on a line that looks like a stack trace.
+ *
+ * Cross-session artifacts remain extractable — the session-rooted regex still matches
+ * `~/.openloomi/sessions/<other-taskId>/foo.md`, and the preview resolver from PR #300
+ * re-roots them to their owning session.
  */
 export function extractArtifactPathsFromText(text: string): string[] {
   if (!text || typeof text !== "string") return [];
@@ -91,10 +158,12 @@ export function extractArtifactPathsFromText(text: string): string[] {
   const out: string[] = [];
   for (const m of raw) {
     const cleaned = normalizeExtractedArtifactPath(m);
-    if (cleaned && !seen.has(cleaned)) {
-      seen.add(cleaned);
-      out.push(cleaned);
-    }
+    if (!cleaned) continue;
+    if (seen.has(cleaned)) continue;
+    if (isReadOnlyArtifactPath(cleaned)) continue;
+    if (isInsideStackTrace(text, cleaned)) continue;
+    seen.add(cleaned);
+    out.push(cleaned);
   }
   return out;
 }
