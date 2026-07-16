@@ -1,6 +1,6 @@
 ---
 name: openloomi-api
-description: "openloomi API documentation and reference. Use when working with openloomi backend APIs, AI, authentication, characters, messages, files, integrations, billing, or any server-side functionality. Triggers: API endpoints, backend routes, authentication, cloud API, integrations"
+description: "openloomi API documentation and reference. Use when working with openloomi backend APIs, AI, authentication, characters, messages, files, integrations, billing, or any server-side functionality. Triggers: API endpoints, backend routes, authentication, local API, integrations"
 metadata:
   version: 0.7.9
 ---
@@ -15,7 +15,7 @@ metadata:
 
 | Module | Base Path | Description |
 |--------|-----------|-------------|
-| **Auth** | `/api/auth/*`, `/api/remote-auth/*` | OAuth, login, register (local-only — no cloud dependency) |
+| **Auth** | `/api/auth/*`, `/api/remote-auth/*` | Guest session, token, user probe (local-only — no cloud dependency) |
 | **User** | `/api/user/*` | User identity and entitlements |
 | **Chat** | `/api/chat/*` (app routes) | Chat/Character CRUD |
 | **Messages** | `/api/messages/*` | Message sending and sync |
@@ -39,20 +39,11 @@ All auth routes resolve against the local SQLite database. There is **no cloud d
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/api/auth/poll-[provider]` | Poll OAuth status |
 | POST | `/api/auth/set-token` | Set auth token |
 | POST | `/api/auth/clear-auth-cookie` | Clear session |
-| POST | `/api/remote-auth/login` | Login with email/password |
-| POST | `/api/remote-auth/register` | Register new user |
 | POST | `/api/remote-auth/guest` | Create anonymous guest session |
-| POST | `/api/remote-auth/refresh` | Refresh token |
 | GET | `/api/remote-auth/user` | Get current user (also used by plugin probe) |
 | PUT | `/api/remote-auth/user` | Update user info |
-| GET | `/api/remote-auth/oauth/google` | Start Google OAuth |
-| POST | `/api/remote-auth/oauth/google/exchange` | Google OAuth code exchange |
-| GET | `/api/remote-auth/oauth/github` | Start GitHub OAuth |
-| POST | `/api/remote-auth/oauth/github/exchange` | GitHub OAuth code exchange |
-| POST | `/api/remote-auth/oauth/[provider]` | Generic OAuth provider exchange |
 
 ### User Module (`/api/user/*`)
 
@@ -112,8 +103,6 @@ All auth routes resolve against the local SQLite database. There is **no cloud d
 |--------|----------|----------|
 | GET | `/api/slack/callback` | Slack |
 | GET | `/api/discord/callback` | Discord |
-| GET | `/api/auth/callback/github` | GitHub |
-| GET | `/api/auth/callback/google` | Google |
 | POST | `/api/feishu/listener/init` | Feishu |
 | POST | `/api/dingtalk/listener/init` | DingTalk |
 | POST | `/api/qqbot/listener/init` | QQ Bot |
@@ -177,11 +166,6 @@ All auth routes resolve against the local SQLite database. There is **no cloud d
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/api/chat-insights` | Get chat insights |
-| GET | `/api/insights/brief-categories` | List brief categories |
-| POST | `/api/insights/brief-categories/sync` | Sync categories |
-| POST | `/api/insights/brief-categories/overrides` | Override categories |
-| POST | `/api/insights/brief-categories/pinned` | Pin categories |
-| POST | `/api/insights/brief-categories/cleanup` | Cleanup categories |
 | GET | `/api/insight-tabs` | List insight tabs |
 | POST | `/api/insight-tabs` | Create insight tab |
 | PUT | `/api/insight-tabs/[tabId]` | Update tab |
@@ -307,6 +291,6 @@ curl -X POST http://localhost:3414/api/remote-feedback \
 - **Dual authentication**: Session cookies (web) and Bearer tokens (Tauri)
 - **RESTful JSON APIs** with Zod validation
 - **SWR utilities** for client-side data fetching
-- **OAuth support** for Google, GitHub, Slack, Discord, X
+- **OAuth support** for Slack, Discord, X
 - **RAG** for document retrieval and search
 - **AI** endpoints for chat, embeddings, images, audio

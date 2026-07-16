@@ -159,8 +159,6 @@ Exchange OAuth code for Discord access.
 
 | Platform | Endpoint |
 |----------|----------|
-| GitHub | `GET /api/auth/callback/github` |
-| Google | `GET /api/auth/callback/google` |
 | Feishu | `POST /api/feishu/listener/init` |
 | DingTalk | `POST /api/dingtalk/listener/init` |
 | QQ Bot | `POST /api/qqbot/listener/init` |

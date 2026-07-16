@@ -73,7 +73,7 @@ One person does the work of many, at scale. openloomi learns your communication 
 ### 1. Sign Up / Sign In
 
 - Sign up with email and password
-- Or sign in directly with your **Google** or **GitHub** account
+- Or jump straight in with a **guest session** — openloomi creates an anonymous local account for you in one tap
 
 ### 2. Onboarding
 
