@@ -59,6 +59,9 @@ const zhHans = {
     sources: "来源",
     noSources: "暂无引用来源",
     temporary: "临时",
+    // #357 — 文件卡片上表示"最新一次工具调用失败/超时"的徽标，用于在
+    // 对话产物列表中区分"未完成"与"最终交付物"。
+    incomplete: "未完成",
     previewImage: "预览图片",
     preview: "预览",
     pin: "置顶",

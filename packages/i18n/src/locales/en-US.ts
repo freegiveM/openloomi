@@ -61,6 +61,10 @@ const enUS = {
     sources: "Sources",
     noSources: "No citation sources",
     temporary: "Temporary",
+    // #357 — pill rendered on a file card whose latest tool-native part
+    // errored or never reported completion. Distinguishes timed-out / failed
+    // tool runs from final deliverables in the chat output file list.
+    incomplete: "Incomplete",
     previewImage: "Preview Image",
     preview: "Preview",
     pin: "Pin",

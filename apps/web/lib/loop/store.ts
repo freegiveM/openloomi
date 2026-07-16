@@ -231,6 +231,62 @@ function trimBucket(
   bucket.splice(0, bucket.length - max);
 }
 
+// ---------------------------------------------------------------------------
+// RSVP dedup helpers (#364 follow-up)
+// ---------------------------------------------------------------------------
+//
+// Pull `eventId` from a decision's `action.params`. Returns `null` when
+// the shape is wrong — callers treat null as "no dedup possible" and let
+// the decision through.
+function readRsvpEventId(
+  action: LoopDecision["action"] | undefined,
+): string | null {
+  if (!action || typeof action !== "object") return null;
+  const params = (action as { params?: unknown }).params;
+  if (!params || typeof params !== "object") return null;
+  const eid = (params as Record<string, unknown>).eventId;
+  return typeof eid === "string" && eid.length > 0 ? eid : null;
+}
+
+// Pull `start` (ISO 8601) from a decision's `action.params`. Returned
+// verbatim — the future-check is a separate helper so the two can be
+// unit-tested in isolation.
+function readRsvpStart(
+  action: LoopDecision["action"] | undefined,
+): string | null {
+  if (!action || typeof action !== "object") return null;
+  const params = (action as { params?: unknown }).params;
+  if (!params || typeof params !== "object") return null;
+  const start = (params as Record<string, unknown>).start;
+  return typeof start === "string" && start.length > 0 ? start : null;
+}
+
+// True iff the parsed `start` timestamp is strictly after now. Used by
+// the RSVP dedup gate to decide whether an existing decision still
+// blocks new pending RSVPs for the same event. Unparseable / missing
+// `start` defaults to `true` (treat as future) — under-surfacing is
+// safer than re-pestering.
+function isEventStartInFuture(start: string | null): boolean {
+  if (!start) return true;
+  const ms = Date.parse(start);
+  if (Number.isNaN(ms)) return true;
+  return ms > Date.now();
+}
+
+// Find any existing decision (pending / done / dismissed) for the same
+// calendar event. Scans all three buckets so a Yes → Done AND a
+// Yes → Dismissed chain both count. Returns the first match (FIFO
+// across the read order — pending → done → dismissed).
+function findExistingRsvpForEvent(eventId: string): LoopDecision | null {
+  const d = readDecisions();
+  const all: LoopDecision[] = [...d.pending, ...d.done, ...d.dismissed];
+  for (const dec of all) {
+    if (dec.type !== "rsvp") continue;
+    if (readRsvpEventId(dec.action) === eventId) return dec;
+  }
+  return null;
+}
+
 export const decisions = {
   list(status: DecisionStatus | null = null): LoopDecision[] {
     const d = readDecisions();
@@ -255,6 +311,29 @@ export const decisions = {
         `[decisions.add] rejected noop/tick_summary record: type=${input.type} title=${JSON.stringify(input.title)}`,
       );
       return null;
+    }
+    // RSVP dedup gate (#364 follow-up). Once a user has responded (or
+    // dismissed) a calendar invite, the same event id must not produce
+    // a new pending RSVP on every tick — otherwise the watcher polls
+    // `pending.first()` every 2s and re-shows the card (#364 user
+    // report: "user said Yes, the same RSVP card popped up again").
+    //
+    // Window: until the event's `start` time. The user can respond
+    // once per future meeting; past meetings are no longer worth
+    // nagging about. When `start` is missing or unparseable we treat
+    // it as "future" (block) — better to under-surface than to
+    // re-pester the user about a meeting whose time we can't read.
+    if (input.type === "rsvp") {
+      const incomingEventId = readRsvpEventId(input.action);
+      if (incomingEventId) {
+        const existing = findExistingRsvpForEvent(incomingEventId);
+        if (existing && isEventStartInFuture(readRsvpStart(existing.action))) {
+          log(
+            `[decisions.add] rejected RSVP duplicate: eventId=${incomingEventId} existing=${existing.id} status=${existing.status}`,
+          );
+          return null;
+        }
+      }
     }
     const d = readDecisions();
     const dec: LoopDecision = {

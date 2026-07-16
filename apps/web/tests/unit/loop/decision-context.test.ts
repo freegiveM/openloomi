@@ -111,9 +111,7 @@ describe("deriveDecisionContext — RSVP happy path", () => {
       { now: NOW, locale: "en-US" },
     );
     expect(ctx).not.toBeNull();
-    expect(ctx?.fields[0].value).toMatch(
-      /^Today,\s*\d.*\s*→\s*Tomorrow,\s*\d/,
-    );
+    expect(ctx?.fields[0].value).toMatch(/^Today,\s*\d.*\s*→\s*Tomorrow,\s*\d/);
   });
 
   it("leaves organizer as a raw email when there is no display name", () => {

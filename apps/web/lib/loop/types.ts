@@ -62,6 +62,73 @@ export interface LoopDecisionContext {
   [extra: string]: unknown;
 }
 
+/**
+ * #364 — pending-action lock. Persists a reference to the currently
+ * scheduled (cron) action for this decision so a second click on the
+ * same RSVP / Run / Dismiss can be detected and either refused or
+ * superseded atomically. Without this, two opposite responses (e.g.
+ * "No" then "Yes") could both fire — the bug reports both `last_status
+ * = "success"` rows alongside a decision record that only retains the
+ * last `sub_action`.
+ *
+ * Stored under `context.pending_action` so it lives in the existing
+ * JSON-backed decision store (no DB migration). `action_id` is the
+ * `scheduled_jobs.id` — same shape the card already fetches via
+ * `/api/loop/action/by-decision/[id]` for the polling fallback.
+ */
+export interface DecisionPendingAction {
+  action_id: string;
+  /** ISO timestamp the job was scheduled. */
+  scheduled_at: string;
+  /** Verb stored in the job payload (`run` | `dry` | `dismiss` | …). */
+  action: string;
+  /**
+   * Sub-action body the user passed when they clicked (e.g. RSVP
+   * `{ response: "no" }`). Persisted so a subsequent schedule that
+   * wants to supersede can see what was about to run.
+   */
+  sub_action?: Record<string, unknown>;
+}
+
+/**
+ * #364 — immutable execution history. Append-only list of every
+ * scheduled-action attempt that ever existed for this decision,
+ * regardless of whether it ran, was cancelled, or was superseded.
+ * Replaces the previous `context.sub_action` overwrite so the card
+ * can show all attempts and the UI never hides a contradictory
+ * earlier execution.
+ */
+export type DecisionSubActionStatus =
+  | "completed"
+  | "skipped"
+  | "blocked"
+  | "failed"
+  | "cancelled"
+  | "superseded";
+
+export interface DecisionSubActionRecord {
+  /** Scheduled-job id (== `action_id` for pending_action). */
+  action_id: string;
+  /** ISO timestamp the job was scheduled. */
+  scheduled_at: string;
+  /** ISO timestamp the action reached a terminal state (fired or was cancelled). */
+  completed_at?: string;
+  /** Verb that was scheduled. */
+  action: string;
+  /** Frozen sub-action body the user clicked (e.g. `{ response: "no" }`). */
+  sub_action?: Record<string, unknown>;
+  /** Terminal state of the attempt. */
+  status: DecisionSubActionStatus;
+  /**
+   * Runner verdict when the job actually fired. Mirrors the
+   * `LoopDecisionExecution.outcome` shape so the card can render a
+   * per-attempt reason without re-deriving from the runner.
+   */
+  verdict?: "executed" | "skipped" | "blocked" | "failed";
+  /** Human-readable reason (matches `LoopDecisionExecution.reason`). */
+  reason?: string;
+}
+
 // ---------------------------------------------------------------------------
 // Decision semantics (#359) — three separate questions, not one score
 // ---------------------------------------------------------------------------

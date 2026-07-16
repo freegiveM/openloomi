@@ -48,10 +48,7 @@ export function DecisionContextBlock({
   return (
     <section
       aria-label={t("loop.rsvp.technicalDetails", "Decision context")}
-      className={cn(
-        "rounded-md border bg-muted/20 px-3 py-2.5",
-        className,
-      )}
+      className={cn("rounded-md border bg-muted/20 px-3 py-2.5", className)}
     >
       <dl className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-3 gap-y-1.5 text-xs">
         {context.fields.map((field) => (

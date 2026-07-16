@@ -68,8 +68,10 @@ import { deriveDecisionContext } from "@/lib/loop/decision-context";
 import { DecisionContextBlock } from "@/components/loop/decision-context-block";
 import { DismissInput } from "@/components/loop/dismiss-input";
 import type {
+  DecisionPendingAction,
   DecisionReadiness,
   DecisionRelationship,
+  DecisionSubActionRecord,
   LoopDecisionExecution,
 } from "@/lib/loop/types";
 
@@ -126,6 +128,13 @@ export interface LoopDecisionCardData {
     payload?: Record<string, unknown>;
   };
   action?: { kind: string; params: Record<string, unknown> };
+  /** #364 — current scheduled-action lock, set by the schedule route. */
+  pending_action?: DecisionPendingAction | null;
+  /** #364 — immutable attempt history (every schedule, every cancel,
+   *  every completion is appended). The card renders this as a small
+   *  audit list so the user can see contradictory attempts instead of
+   *  only the latest overwrite. */
+  sub_actions?: DecisionSubActionRecord[];
 }
 
 interface DecisionCardProps {
@@ -344,6 +353,227 @@ function CardKebab({ decision }: { decision: LoopDecisionCardData }) {
   );
 }
 
+/**
+ * #364 — Cancel a pending scheduled action. Calls DELETE on the
+ * action route and surfaces the four response shapes the route
+ * can return (`cancelled` / `already_fired` / `not_found` /
+ * `pending_action`) as distinct toast messages so the user never
+ * sees a generic HTTP 500 again.
+ */
+function CancelPendingActionButton({
+  decision,
+  onChange,
+}: {
+  decision: LoopDecisionCardData;
+  onChange?: () => void;
+}) {
+  const { t } = useTranslation();
+  const [pending, setPending] = useState(false);
+  const pendingId = decision.pending_action?.action_id;
+  if (!pendingId) return null;
+  async function cancel() {
+    if (!pendingId) return;
+    setPending(true);
+    try {
+      const res = await fetch(`/api/loop/action/${pendingId}`, {
+        method: "DELETE",
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        cancelled?: boolean;
+        reason?: string;
+        last_status?: string;
+        error?: string;
+      };
+      if (res.ok && data.cancelled) {
+        toast({
+          type: "success",
+          description: t(
+            "loop.card.cancelledScheduled",
+            "Scheduled action cancelled",
+          ),
+        });
+        onChange?.();
+        return;
+      }
+      // 409 already_fired → tell the user the cancel was too late.
+      if (data.reason === "already_fired") {
+        toast({
+          type: "info",
+          description: t(
+            "loop.card.alreadyFired",
+            "Action already started — cannot cancel. Refresh to see the latest status.",
+          ),
+        });
+        onChange?.();
+        return;
+      }
+      if (data.reason === "not_found") {
+        toast({
+          type: "info",
+          description: t(
+            "loop.card.actionGone",
+            "Scheduled action is already gone. Refresh to see the latest status.",
+          ),
+        });
+        onChange?.();
+        return;
+      }
+      toast({
+        type: "error",
+        description: t("loop.actionFailed", "Action failed: {{msg}}", {
+          msg: data.error ?? res.statusText,
+        }),
+      });
+    } catch (e) {
+      toast({
+        type: "error",
+        description: t("loop.actionFailed", "Action failed: {{msg}}", {
+          msg: e instanceof Error ? e.message : "unknown",
+        }),
+      });
+    } finally {
+      setPending(false);
+    }
+  }
+  return (
+    <ActionButton
+      icon="ri-stop-circle-line"
+      label={t("loop.card.cancelScheduled", "Cancel scheduled action")}
+      variant="outline"
+      onClick={cancel}
+      pending={pending}
+    />
+  );
+}
+
+/**
+ * #364 — immutable attempt history strip. Renders each
+ * `DecisionSubActionRecord` as a single line so contradictory
+ * attempts (e.g. an earlier "No" before a later "Yes") remain
+ * visible. Sorted newest-first; `pending_action` is rendered as
+ * the head item in a separate style to distinguish a still-queued
+ * click from a terminal record.
+ */
+function SubActionsHistory({
+  records,
+  pendingAction,
+}: {
+  records: DecisionSubActionRecord[];
+  pendingAction: DecisionPendingAction | null;
+}) {
+  const { t } = useTranslation();
+  // Newest first; cap at 6 visible rows to keep the strip short.
+  const sorted = [...records].sort((a, b) =>
+    (b.scheduled_at ?? "").localeCompare(a.scheduled_at ?? ""),
+  );
+  const visible = sorted.slice(0, 6);
+  return (
+    <details className="rounded-md border bg-muted/10 px-3 py-2 text-xs">
+      <summary className="cursor-pointer select-none font-medium text-muted-foreground">
+        {t("loop.card.attemptHistory", "Attempt history ({{n}})", {
+          n: records.length + (pendingAction ? 1 : 0),
+        })}
+      </summary>
+      <ul className="mt-2 space-y-1.5 text-[11px]">
+        {pendingAction && (
+          <li className="flex items-center gap-1.5 text-amber-700">
+            <RemixIcon name="ri-time-line" className="size-3.5 shrink-0" />
+            <span className="font-medium">
+              {t("loop.card.attemptPending", "Pending · {{verb}}", {
+                verb: pendingAction.action,
+              })}
+            </span>
+            {pendingAction.sub_action?.response != null && (
+              <span className="text-amber-700/80">
+                (
+                {t("loop.card.attemptResponse", "response: {{v}}", {
+                  v: String(pendingAction.sub_action.response),
+                })}
+                )
+              </span>
+            )}
+            <span className="ml-auto text-amber-700/70">
+              {formatTime(pendingAction.scheduled_at)}
+            </span>
+          </li>
+        )}
+        {visible.map((r) => {
+          const tone = statusTone(r.status);
+          return (
+            <li
+              key={`${r.action_id}-${r.scheduled_at}`}
+              className="flex items-center gap-1.5"
+            >
+              <RemixIcon
+                name={statusIcon(r.status)}
+                className={`size-3.5 shrink-0 ${tone}`}
+              />
+              <span className={`font-medium ${tone}`}>
+                {r.action}
+                {r.sub_action?.response != null
+                  ? ` · ${String(r.sub_action.response)}`
+                  : ""}
+              </span>
+              <span className="text-muted-foreground">· {r.status}</span>
+              {r.reason ? (
+                <span className="truncate text-muted-foreground">
+                  — {r.reason}
+                </span>
+              ) : null}
+              <span className="ml-auto text-muted-foreground">
+                {formatTime(r.completed_at ?? r.scheduled_at)}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    </details>
+  );
+}
+
+function statusIcon(s: DecisionSubActionRecord["status"]): string {
+  switch (s) {
+    case "completed":
+      return "ri-check-line";
+    case "skipped":
+      return "ri-checkbox-circle-line";
+    case "blocked":
+    case "failed":
+      return "ri-error-warning-line";
+    case "cancelled":
+      return "ri-stop-circle-line";
+    case "superseded":
+      return "ri-refresh-line";
+  }
+}
+
+function statusTone(s: DecisionSubActionRecord["status"]): string {
+  switch (s) {
+    case "completed":
+      return "text-emerald-700";
+    case "skipped":
+      return "text-sky-700";
+    case "blocked":
+    case "failed":
+      return "text-destructive";
+    case "cancelled":
+    case "superseded":
+      return "text-muted-foreground";
+  }
+}
+
+function formatTime(iso?: string): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return new Intl.DateTimeFormat(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+    month: "short",
+    day: "numeric",
+  }).format(d);
+}
+
 export function DecisionCard({
   decision,
   onChange,
@@ -388,10 +618,7 @@ export function DecisionCard({
           "This email looks like it's waiting on you — should I draft a reply?",
         )
       : decision.type === "rsvp"
-        ? t(
-            "loop.dialogue.rsvp",
-            "This calendar invite needs your call.",
-          )
+        ? t("loop.dialogue.rsvp", "This calendar invite needs your call.")
         : `New ${typeLabel.toLowerCase()} decision`);
   const nextStep =
     decision.nextStep ??
@@ -608,56 +835,92 @@ export function DecisionCard({
       )}
 
       {/* ── Layer 5: Provenance (collapsed) ──────────────────────────── */}
-      {isPending && (chain.length > 0 || whyBullets.length > 0 || decision.action) && (
-        <details className="rounded-md border bg-muted/10 px-3 py-2 text-xs">
-          <summary className="cursor-pointer select-none font-medium text-muted-foreground">
-            {t("loop.rsvp.technicalDetails", "Technical details")}
-          </summary>
-          <div className="mt-3 flex flex-col gap-3">
-            {chain.length > 0 && (
-              <section>
-                <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  {t("loop.sourceChain", "Source chain")}
-                </div>
-                <LoopSourceChain nodes={chain} />
-              </section>
-            )}
-            {whyBullets.length > 0 && (
-              <section>
-                <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  {t("loop.why", "Why this surfaced")}
-                </div>
-                <ul className="space-y-1 text-[11px] text-muted-foreground">
-                  {whyBullets.slice(0, 6).map((w) => (
-                    <li key={w} className="flex items-start gap-1.5">
-                      <span className="mt-1 inline-block size-1.5 shrink-0 rounded-full bg-primary/60" />
-                      <span>{w}</span>
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            )}
-            {decision.action && (
-              <section>
-                <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  {t("loop.detail.actionLabel", "Action")}
-                </div>
-                <pre className="max-h-48 overflow-auto rounded-md border bg-background/60 p-2 text-[11px] leading-relaxed">
-                  <code>
-                    {JSON.stringify(
-                      {
-                        kind: decision.action.kind,
-                        params: decision.action.params,
-                      },
-                      null,
-                      2,
-                    )}
-                  </code>
-                </pre>
-              </section>
-            )}
+      {isPending &&
+        (chain.length > 0 || whyBullets.length > 0 || decision.action) && (
+          <details className="rounded-md border bg-muted/10 px-3 py-2 text-xs">
+            <summary className="cursor-pointer select-none font-medium text-muted-foreground">
+              {t("loop.rsvp.technicalDetails", "Technical details")}
+            </summary>
+            <div className="mt-3 flex flex-col gap-3">
+              {chain.length > 0 && (
+                <section>
+                  <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    {t("loop.sourceChain", "Source chain")}
+                  </div>
+                  <LoopSourceChain nodes={chain} />
+                </section>
+              )}
+              {whyBullets.length > 0 && (
+                <section>
+                  <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    {t("loop.why", "Why this surfaced")}
+                  </div>
+                  <ul className="space-y-1 text-[11px] text-muted-foreground">
+                    {whyBullets.slice(0, 6).map((w) => (
+                      <li key={w} className="flex items-start gap-1.5">
+                        <span className="mt-1 inline-block size-1.5 shrink-0 rounded-full bg-primary/60" />
+                        <span>{w}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
+              {decision.action && (
+                <section>
+                  <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    {t("loop.detail.actionLabel", "Action")}
+                  </div>
+                  <pre className="max-h-48 overflow-auto rounded-md border bg-background/60 p-2 text-[11px] leading-relaxed">
+                    <code>
+                      {JSON.stringify(
+                        {
+                          kind: decision.action.kind,
+                          params: decision.action.params,
+                        },
+                        null,
+                        2,
+                      )}
+                    </code>
+                  </pre>
+                </section>
+              )}
+            </div>
+          </details>
+        )}
+
+      {/* #364 — pending-action banner + immutable attempt history.
+          When the schedule route has locked the decision on a
+          scheduled job, surface that as a banner above the action
+          row so the user knows another click is queued. The history
+          strip below shows every attempt (including cancelled /
+          superseded) so a contradictory earlier execution is never
+          hidden by the latest overwrite. */}
+      {isPending && decision.pending_action && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          <div className="flex items-center gap-1.5 font-medium">
+            <RemixIcon name="ri-time-line" className="size-3.5" />
+            <span>
+              {t(
+                "loop.card.actionScheduled",
+                "Action scheduled: {{verb}} — fires in 30s. Tap Cancel to stop it.",
+                {
+                  verb:
+                    decision.pending_action.action === "run"
+                      ? t("loop.run", "Run")
+                      : decision.pending_action.action === "dismiss"
+                        ? t("loop.dismiss", "Dismiss")
+                        : decision.pending_action.action,
+                },
+              )}
+            </span>
           </div>
-        </details>
+        </div>
+      )}
+      {decision.sub_actions && decision.sub_actions.length > 0 && (
+        <SubActionsHistory
+          records={decision.sub_actions}
+          pendingAction={decision.pending_action ?? null}
+        />
       )}
 
       {/* ── Layer 6: Actions ────────────────────────────────────────── */}
@@ -717,6 +980,15 @@ export function DecisionCard({
               label={t("loop.rsvp.viewOriginal", "View original")}
               variant="ghost"
               onClick={openOriginal}
+            />
+            {/* #364 — when a scheduled action is queued, surface a
+                dedicated Cancel button so the user can stop a wrong
+                choice before the 30s grace elapses. The toast on
+                click surfaces the four server response shapes
+                (cancelled / already_fired / not_found / error). */}
+            <CancelPendingActionButton
+              decision={decision}
+              onChange={onChange}
             />
             {executable && !isRsvp && (
               <ActionButton
@@ -803,6 +1075,11 @@ export function DecisionCard({
               variant="ghost"
               onClick={() => act("dismiss")}
               pending={pendingAction === "dismiss"}
+            />
+            {/* #364 — same Cancel affordance as the RSVP row. */}
+            <CancelPendingActionButton
+              decision={decision}
+              onChange={onChange}
             />
           </div>
         </footer>

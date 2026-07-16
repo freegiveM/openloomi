@@ -162,11 +162,8 @@ function formatAttendance(
       : null;
   if (invited == null && accepted == null) return null;
   const invitedLabel =
-    invited == null
-      ? ""
-      : `${invited} invited${accepted != null ? " · " : ""}`;
-  const acceptedLabel =
-    accepted == null ? "" : `${accepted} accepted`;
+    invited == null ? "" : `${invited} invited${accepted != null ? " · " : ""}`;
+  const acceptedLabel = accepted == null ? "" : `${accepted} accepted`;
   const value = `${invitedLabel}${acceptedLabel}`.trim();
   return value ? { value } : null;
 }

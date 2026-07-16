@@ -2460,6 +2460,16 @@
             // primary Yes on the RIGHT. The two middle slots hold the
             // neutral replies so the user scans left-to-right
             // ("skip / decline / maybe / accept").
+            //
+            // RSVP buttons use dedicated verbs (rsvp_attend /
+            // rsvp_decline / rsvp_maybe) instead of the generic `run`
+            // + `body: {response}` hack. The verb alone expresses the
+            // user intent; the handler maps it to accepted / declined /
+            // tentative and the runner pre-sets `action.params.response`
+            // so the agent prompt carries the chosen verdict forward
+            // (see lib/loop/runner.ts:runDecisionWithRsvpResponse).
+            // Without this, the agent re-asks the user mid-prompt and
+            // can write the wrong response.
             {
               action: "dismiss",
               label: "Skip",
@@ -2467,25 +2477,22 @@
               tip: "Don't reply — leave the invite pending for a later pass",
             },
             {
-              action: "run",
+              action: "rsvp_decline",
               label: "✗ No",
               variant: "ghost",
               tip: "Decline the invite — Loomi sends a polite 'can't make it' reply to the host",
-              body: { response: "no" },
             },
             {
-              action: "run",
+              action: "rsvp_maybe",
               label: "◐ Maybe",
               variant: "ghost",
               tip: "Tentative reply — leaves the response as 'maybe' on the host's side, no calendar block",
-              body: { response: "maybe" },
             },
             {
-              action: "run",
+              action: "rsvp_attend",
               label: "✓ Yes",
               variant: "primary",
               tip: "Confirm attendance — Loomi adds it to your calendar and replies 'yes' to the host",
-              body: { response: "yes" },
             },
           ],
           draft_reply: [

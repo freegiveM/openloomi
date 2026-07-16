@@ -124,6 +124,15 @@ async function handleWrap(
  * decisions.jsonl state on its next poll and emits `loop:decision` to
  * the bubble + card webviews — that's how the card learns the action
  * completed. No need for a bespoke completion event.
+ *
+ * #364 — per-decision action lock + immutable history. Before we
+ * execute we re-read `context.pending_action` and refuse if it points
+ * at a *different* action_id; this catches the case where a user
+ * cancelled an old "No" job and scheduled a new "Yes" job in the
+ * gap between our schedule-route lock release and the cron firing
+ * the old row. After execution we clear the lock and append to
+ * `context.sub_actions` so every attempt (including supersedes and
+ * cancelled runs from the cancel route) is visible on the card.
  */
 async function handleAction(
   context: JobExecutionContext,
@@ -144,6 +153,21 @@ async function handleAction(
     if (!action) {
       throw new Error("missing action in jobConfig.payload");
     }
+    // #364 — pre-fire lock check. If the decision's `pending_action`
+    // points at a *different* job than the one we're about to fire,
+    // refuse. This is the last-line-of-defence against two
+    // contradictory actions reaching the agent: the schedule route
+    // writes the lock, the cancel route clears it, and supersede
+    // cancels-then-overwrites. If anything slipped past (clock
+    // skew, manual deletion), this catches it before any external
+    // write.
+    const locked = readPendingAction(decisionId);
+    if (locked && locked.action_id !== context.jobId) {
+      throw new Error(
+        `stale_action: pending_action=${locked.action_id} expected=${context.jobId}`,
+      );
+    }
+
     // Stash the per-click sub-action body (e.g. { response: "yes" }
     // for RSVP, { verdict: "approve" } for PR review) on the
     // decision's context. The runner's buildPrompt already
@@ -161,9 +185,62 @@ async function handleAction(
         });
       }
     }
+    // #364 — RSVP verbs (`rsvp_attend` / `rsvp_decline` / `rsvp_maybe`)
+    // route through the RSVP-specific runner so `action.params.response`
+    // is set on the decision BEFORE the agent sees the prompt. Without
+    // this branch the handler would call `applyDecisionAction("rsvp_attend")`
+    // → `runDecision` and the prompt would re-ask the user the
+    // accept/decline question instead of carrying the chosen verdict
+    // forward (`runner.ts:runDecisionWithRsvpResponse` is the only path
+    // that writes `params.response` and is what `buildPrompt` keys on
+    // for the "User has already chosen" block).
+    if (action.startsWith("rsvp_")) {
+      const responseMap: Record<string, "accepted" | "declined" | "tentative"> =
+        {
+          rsvp_attend: "accepted",
+          rsvp_decline: "declined",
+          rsvp_maybe: "tentative",
+        };
+      const rsvpResponse = responseMap[action];
+      // Lazy require — mirrors the decision-lock pattern below so the
+      // cron executor can wire this handler without pulling the runner
+      // graph (and its native-agent plumbing) into boot.
+      const { runDecisionWithRsvpResponse } =
+        require("./runner") as typeof import("./runner");
+      const rsvpResult = await runDecisionWithRsvpResponse(
+        decisionId,
+        rsvpResponse,
+      );
+      // Map the runner result onto the same `out` shape the rest of the
+      // handler expects so `finalizeAttempt` records the attempt and the
+      // success/error branching stays uniform.
+      const out = {
+        ok: rsvpResult.ok,
+        status: rsvpResult.status,
+        ...(rsvpResult.error ? { error: rsvpResult.error } : {}),
+        ...(rsvpResult.execution ? { execution: rsvpResult.execution } : {}),
+      };
+      finalizeAttempt(decisionId, context.jobId, action, out);
+      if (!out.ok) {
+        throw new Error(out.error ?? `${action} failed`);
+      }
+      return {
+        decision_id: decisionId,
+        action,
+        status: out.status,
+        ...(rsvpResult.result !== undefined
+          ? { result: rsvpResult.result }
+          : {}),
+      };
+    }
     const out = await applyDecisionAction(decisionId, {
       action: action as "run" | "dry" | "dismiss" | "promote",
     });
+    // #364 — record the outcome in the immutable history. The
+    // runner's verdict (#358) flows back as `out.execution`; we map
+    // it onto the record so a card reload shows the exact outcome
+    // of *this* attempt, not the latest overwrite.
+    finalizeAttempt(decisionId, context.jobId, action, out);
     if (!out.ok) {
       throw new Error(out.error ?? `${action} failed`);
     }
@@ -174,6 +251,70 @@ async function handleAction(
       ...(out.result !== undefined ? { result: out.result } : {}),
     };
   }, context);
+}
+
+// ---------------------------------------------------------------------------
+// #364 — pending-action read + history append helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Read the current `pending_action` lock from the decision context.
+ * Re-exported from `decision-lock.ts` so this file stays a thin
+ * wrapper around the lifecycle helpers (and so the lock rule lives
+ * in one place — see #364's "One active intent per decision").
+ */
+function readPendingAction(decisionId: string) {
+  // `require` keeps this handler lazy-loadable (the cron executor
+  // can wire it up without pulling the lock helpers into the boot
+  // graph); the import is cheap and the resolution is cached.
+  const { readPendingAction: read } =
+    require("./decision-lock") as typeof import("./decision-lock");
+  return read(decisionId);
+}
+
+/**
+ * Persist the outcome of a handler execution: clear the lock (when
+ * it still matches the job that fired) and append an immutable
+ * history record. Wraps the shared `decision-lock` helpers so the
+ * schedule route, the cancel route, and this handler all agree on
+ * the record shape and the lock rule.
+ */
+function finalizeAttempt(
+  decisionId: string,
+  jobId: string,
+  action: string,
+  out: {
+    ok: boolean;
+    status: string;
+    error?: string;
+    execution?: {
+      outcome?: "executed" | "skipped" | "blocked" | "failed";
+      reason?: string;
+    };
+  },
+): void {
+  const {
+    buildAttemptRecord,
+    clearPendingActionAndRecord,
+    readPendingAction: readPending,
+  } = require("./decision-lock") as typeof import("./decision-lock");
+  const pending = readPending(decisionId);
+  const scheduledAt =
+    pending && pending.action_id === jobId
+      ? pending.scheduled_at
+      : new Date().toISOString();
+  const subAction =
+    pending && pending.action_id === jobId ? pending.sub_action : undefined;
+  clearPendingActionAndRecord(
+    decisionId,
+    buildAttemptRecord(jobId, action, {
+      ok: out.ok,
+      scheduled_at: scheduledAt,
+      ...(subAction ? { sub_action: subAction } : {}),
+      ...(out.execution ? { execution: out.execution } : {}),
+      ...(out.error ? { error: out.error } : {}),
+    }),
+  );
 }
 
 let registered = false;

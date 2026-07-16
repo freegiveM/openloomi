@@ -228,9 +228,16 @@ fn watch_loop(app: &AppHandle, setup_emitted: std::sync::Arc<std::sync::Mutex<bo
             .unwrap_or(false);
         let (state, monologue) = map_state_to_pet(&snap, needs_user, reviewed_recently);
 
+        // #364 follow-up — capture the top-id transition here, BEFORE
+        // `last_top_id` is overwritten below. The B2 card auto-show
+        // branch (further down) reuses this so `show_card_window`
+        // fires only on a *new* top pending, not on every data_changed
+        // poll. Without the hoist the comparison would read the
+        // freshly-updated `last_top_id` and never trigger.
+        let top_changed = top_pending_id != last_top_id;
         let data_changed = buckets != last_buckets
             || newest_ts != last_decision_ts
-            || top_pending_id != last_top_id
+            || top_changed
             || current_pending_ids != last_pending_ids;
         if !should_emit_update(
             data_changed,
@@ -280,16 +287,36 @@ fn watch_loop(app: &AppHandle, setup_emitted: std::sync::Arc<std::sync::Mutex<bo
             let decision_payload = build_decision_payload(top);
             let _ = app.emit_to(PET_BUBBLE_LABEL, "loop:decision", decision_payload.clone());
             let _ = app.emit_to(PET_CARD_LABEL, "loop:decision", decision_payload);
-            // Auto-show the card so the connector strip is visible
-            // without an extra click. `show_card_window` is idempotent
-            // and re-focuses the existing window. We do this BEFORE
-            // showing the bubble so the bubble's `set_focus` call ends
-            // up as the last focus event — which is what determines the
-            // z-order in the OS float layer (both windows are
-            // `always_on_top(true)`). If we did it in the opposite
-            // order, the card would end up on top of the bubble and
-            // obscure the speech text.
-            super::show_card_window(app);
+            // #364 follow-up — gate the card auto-show on a *change* in
+            // the top pending id, not on every data_changed poll. The
+            // previous code unconditionally called `show_card_window`
+            // here, which meant the watcher re-showed the same card
+            // every 2 s as long as anything in decisions.json moved
+            // (bucket counts, completed_at, lower-priority pending
+            // inserts, etc.). That fights the user's × click and
+            // produces the visual loop reported in #364: dismiss → card
+            // pops back up before the watcher sees the dismiss.
+            //
+            // We emit the payload (so the bubble text tracks the top
+            // pending) and we still auto-show on the *transition*
+            // (last_top_id was None / a different id). After that, the
+            // × / click handlers own visibility — exactly what the
+            // comment above says we wanted all along. `top_changed`
+            // was captured above (before `last_top_id` was overwritten)
+            // so the comparison sees the previous poll's value, not
+            // the freshly-cloned current one.
+            if top_changed {
+                // Auto-show the card so the connector strip is visible
+                // without an extra click. `show_card_window` is idempotent
+                // and re-focuses the existing window. We do this BEFORE
+                // showing the bubble so the bubble's `set_focus` call ends
+                // up as the last focus event — which is what determines the
+                // z-order in the OS float layer (both windows are
+                // `always_on_top(true)`). If we did it in the opposite
+                // order, the card would end up on top of the bubble and
+                // obscure the speech text.
+                super::show_card_window(app);
+            }
             // Show the bubble as a transient notification on top of
             // the card. The bubble's JS owns the auto-dismiss
             // lifecycle — see `loomi-bubble.html::scheduleAutoHide`.

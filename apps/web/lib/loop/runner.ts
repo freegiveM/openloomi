@@ -260,11 +260,11 @@ function buildPrompt(decision: LoopDecision, mode: "dry" | "run"): string {
     const r = (decision.action.params as Record<string, unknown>).response;
     parts.push(
       "",
-      'User has already chosen the RSVP response.',
+      "User has already chosen the RSVP response.",
       `- params.response is set by the user via Attend / Decline to "${r}". Do not change it.`,
       "- Execute the calendar_rsvp action with this response and emit a single SSE `result` event whose `content` is JSON",
       '  {"outcome":"executed","reason":"...","evidence":{"eventId":"..."}}',
-      "- If you cannot execute (auth, network), emit `{\"outcome\":\"blocked\"|\"failed\",\"reason\":\"...\"}` instead so the card can retry.",
+      '- If you cannot execute (auth, network), emit `{"outcome":"blocked"|"failed","reason":"..."}` instead so the card can retry.',
     );
   }
   // If the user edited the draft inline (via the pet card's #dec-editor
@@ -532,16 +532,25 @@ export async function promoteDecision(id: string): Promise<RunResult> {
 }
 
 /**
- * #363 — RSVP-specific run path. Pre-sets `action.params.response` to the
- * user's intent (`"accepted"` / `"declined"`), persists the mutation so the
- * on-disk record carries the user's choice, then delegates to `runDecision`
- * for the agent + verdict pipeline (#358). The runner refuses on non-RSVP
- * decisions and on non-pending decisions so a card in `done` / `dismissed`
- * never silently re-executes.
+ * #363 / #364 — RSVP-specific run path. Pre-sets `action.params.response`
+ * to the user's intent (`"accepted"` / `"declined"` / `"tentative"`),
+ * persists the mutation so the on-disk record carries the user's
+ * choice, then delegates to `runDecision` for the agent + verdict
+ * pipeline (#358). The runner refuses on non-RSVP decisions and on
+ * non-pending decisions so a card in `done` / `dismissed` never silently
+ * re-executes.
+ *
+ * `tentative` was added in the #364 follow-up so the floating pet
+ * card's `rsvp_maybe` verb can route through the same RSVP-specific
+ * runner. Without it the Maybe button would have to fall back to the
+ * generic `runDecision` path, which leaves `action.params.response`
+ * unset and lets the prompt re-ask the user mid-flow. `buildPrompt`
+ * only reads `params.response` as a string (line ~254), so the new
+ * variant works end-to-end without touching the prompt template.
  */
 export async function runDecisionWithRsvpResponse(
   id: string,
-  response: "accepted" | "declined",
+  response: "accepted" | "declined" | "tentative",
 ): Promise<RunResult> {
   const dec = decisions.get(id);
   if (!dec)
@@ -564,7 +573,7 @@ export async function runDecisionWithRsvpResponse(
   }
   // #363 — overwrite the response param via the same immutable update
   // helper the inline editor uses, so the audit trail reflects the user's
-  // exact intent at the moment they tapped Attend / Decline.
+  // exact intent at the moment they tapped Attend / Decline / Maybe.
   const existingParams =
     dec.action && typeof dec.action.params === "object" && dec.action.params
       ? dec.action.params
