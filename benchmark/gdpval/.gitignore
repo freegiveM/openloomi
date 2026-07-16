@@ -1,0 +1,6 @@
+﻿.env
+results/*.json
+results/*.jsonl
+dataset/raw/
+dataset/*.jsonl
+!dataset/README.md

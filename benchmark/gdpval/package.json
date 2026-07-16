@@ -1,0 +1,21 @@
+{
+  "name": "@openloomi/benchmark-gdpval",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "convert": "python dataset/convert.py",
+    "benchmark": "tsx src/index.ts",
+    "dev": "tsx src/index.ts",
+    "lint": "node ../../node_modules/@biomejs/biome/bin/biome lint",
+    "lint:fix": "node ../../node_modules/@biomejs/biome/bin/biome lint --write --unsafe"
+  },
+  "dependencies": {
+    "dotenv": "^16.6.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.6.3"
+  }
+}

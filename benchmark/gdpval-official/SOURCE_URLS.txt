@@ -1,0 +1,3 @@
+﻿GDPval paper: https://arxiv.org/abs/2510.04374
+GDPval dataset: https://huggingface.co/datasets/openai/gdpval
+GDPval official grader service mentioned in paper: https://evals.openai.com
