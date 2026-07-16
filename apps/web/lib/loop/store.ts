@@ -576,6 +576,13 @@ export interface LoopStatusSnapshot {
   lastSignalCount?: number;
   lastDecisionCount?: number;
   lastError?: string;
+  /**
+   * #361 — number of signals received at the last tick whose `source`
+   * / `type` had no canonical Loop mapping and were intentionally
+   * dropped. Surfaced by the readiness API so users aren't left
+   * wondering why an authorized integration produced zero decisions.
+   */
+  unsupportedSignals?: number;
 }
 
 export function readStatus(): LoopStatusSnapshot {

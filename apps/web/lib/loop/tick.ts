@@ -211,6 +211,18 @@ async function runAgentic(opts: TickOptions): Promise<LoopTickResult> {
     newDecisions = pendingAddedSince(before);
   }
 
+  // #361 — derive `unsupportedSignals` (#361) so the readiness surface can
+  // tell the user "N signals arrived but no decisions were produced
+  // because their source/type had no canonical mapping". Prefer the
+  // agent's report when present, otherwise infer from the scanned/surfaced
+  // delta.
+  const agentUnsupported = (payload as Record<string, unknown>)
+    .unsupportedSignals;
+  const unsupportedSignals =
+    typeof agentUnsupported === "number" && agentUnsupported >= 0
+      ? Math.floor(agentUnsupported)
+      : Math.max(0, scanned - surfaced - muted);
+
   // Deterministic classifier-rules post-processor (see
   // `classifier-rules.ts`). For each freshly-added decision, check whether
   // any registered rule matches its `source_signal`. If a rule matches,
@@ -228,6 +240,7 @@ async function runAgentic(opts: TickOptions): Promise<LoopTickResult> {
     muted,
     newDecisions,
     errors: errors > 0 ? [`agent reported ${errors} per-signal errors`] : [],
+    unsupportedSignals,
   };
 
   // If the agent's result event carried a `connectors` snapshot, persist it
@@ -276,6 +289,10 @@ async function runAgentic(opts: TickOptions): Promise<LoopTickResult> {
     lastTickAt: new Date().toISOString(),
     lastSignalCount: result.scanned,
     lastDecisionCount: result.surfaced,
+    // #361 — persist the unsupported-signal count so the readiness API
+    // can surface it without re-deriving from raw signals.jsonl on every
+    // poll.
+    unsupportedSignals: result.unsupportedSignals ?? 0,
     ...(result.errors[0] ? { lastError: result.errors[0] } : {}),
   });
 

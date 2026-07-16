@@ -40,13 +40,127 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { ensureDirs, LOOP_PATHS } from "./paths";
 import { customChannels } from "./custom-channels";
-import type { ConnectorEntry } from "./types";
+import type {
+  ConnectorCapability,
+  ConnectorCapabilitySummary,
+  ConnectorEntry,
+} from "./types";
 
 const CACHE_TTL_MS = 1 * 60 * 60 * 1000;
 
 interface ConnectorCache {
   fetchedAt: string;
   connectors: ConnectorEntry[];
+}
+
+// ---------------------------------------------------------------------------
+// Connector capability (#361)
+// ---------------------------------------------------------------------------
+//
+// Canonical Loop toolkits — these are the sources the tick prompt actually
+// pulls. Any connector NOT in this set is treated as "connected for chat /
+// memory but not contributing to Loop decisions". Native chat integrations
+// (Feishu, Lark, iMessage, …) and the composio skill's long tail of
+// integrations live outside this set.
+//
+// Keep in sync with `tick-prompt.ts` §0 and `classify.ts` `signal_type →
+// decision_type` mapping — this is the source of truth for "is this
+// connector a Loop signal source?".
+const LOOP_MONITORED_TOOLKITS = new Set([
+  "gmail",
+  "google_calendar",
+  "github",
+  "slack",
+  "linear",
+  "obsidian",
+]);
+
+// Decision-capable subsets of the loop-monitored toolkits. Obsidian is
+// monitored (file-system scan) but its note-changed events are surfaced as
+// generic "memory surfaces" — they don't currently map onto a typed
+// decision, so it's loop_monitored but NOT decision_capable. The same goes
+// for any toolkit we add in future until its classifier mapping lands.
+const DECISION_CAPABLE_TOOLKITS = new Set([
+  "gmail",
+  "google_calendar",
+  "github",
+  "slack",
+  "linear",
+]);
+
+/**
+ * Decide whether a connector is one Loop actively pulls from. Pure function
+ * over the connector id so it can be reused by tests, the readiness API,
+ * and the connector list view without round-tripping through the agent.
+ */
+export function isLoopMonitored(connectorId: string): boolean {
+  return LOOP_MONITORED_TOOLKITS.has(connectorId);
+}
+
+/**
+ * Decide whether a connector's payload can produce typed decisions via the
+ * reference classifier. Pure function over the connector id. Returns
+ * `false` for toolkits that are monitored but whose signal type has no
+ * decision mapping yet (e.g. obsidian) and for any non-canonical toolkit.
+ */
+export function isDecisionCapable(connectorId: string): boolean {
+  return DECISION_CAPABLE_TOOLKITS.has(connectorId);
+}
+
+/**
+ * Reduce a (possibly partial) connector entry into a single semantic
+ * capability state (#361). The state machine:
+ *
+ *   connected=false              → "needs_setup" (or absent probe → keep undefined)
+ *   connected=true  + non-loop   → "needs_setup"  (chat/memory-only integration)
+ *   connected=true  + loop+dc    → "decision_capable"
+ *   connected=true  + loop-no-dc → "loop_monitored"
+ *   connected=true  + non-class  → "unsupported"
+ *
+ * Returns `null` when there isn't enough signal yet (unprobed FALLBACK
+ * rows) so callers can distinguish "we don't know" from "we know this is
+ * offline".
+ */
+export function deriveConnectorCapability(
+  entry: Pick<ConnectorEntry, "id" | "connected" | "probed">,
+): ConnectorCapability | null {
+  if (!entry.connected) {
+    // Unprobed FALLBACK sentinel — don't claim "needs_setup" yet; we
+    // haven't asked the agent. Distinguishing the two is the whole point
+    // of #361.
+    if (!entry.probed) return null;
+    return "needs_setup";
+  }
+  if (!isLoopMonitored(entry.id)) {
+    // Connected for chat / memory but no canonical Loop mapping — the
+    // exact case the issue calls out (Feishu native integration).
+    return "needs_setup";
+  }
+  if (isDecisionCapable(entry.id)) return "decision_capable";
+  // Loop monitors it (canonical toolkit) but no classifier mapping yet
+  // (e.g. obsidian) → surfaced, not silently dropped.
+  return "loop_monitored";
+}
+
+/**
+ * Stamp the capability fields onto a connector entry. Pure helper that
+ * never throws and never includes credentials — the output is safe to
+ * round-trip through `/api/loop/connectors` and the readiness surface.
+ */
+export function withConnectorCapability(
+  entry: ConnectorEntry,
+): ConnectorEntry {
+  const capability = deriveConnectorCapability(entry);
+  const loopMonitored = entry.connected ? isLoopMonitored(entry.id) : false;
+  const decisionCapable =
+    entry.connected && loopMonitored ? isDecisionCapable(entry.id) : false;
+  const next: ConnectorEntry = {
+    ...entry,
+    loopMonitored,
+    decisionCapable,
+  };
+  if (capability) next.capability = capability;
+  return next;
 }
 
 const FALLBACK_CONNECTORS: ConnectorEntry[] = [
@@ -144,11 +258,17 @@ function readCache(): ConnectorCache | null {
     // written the snapshot before the field existed; if it's in the
     // cache, an agent did the work — just normalize the shape so the
     // UI doesn't render it as "Pending first probe".
-    const connectors = (raw.connectors as ConnectorEntry[]).map((c) =>
-      typeof (c as { probed?: unknown }).probed === "boolean"
-        ? c
-        : { ...c, probed: true },
-    );
+    //
+    // #361 — also stamp capability fields when missing so older cache
+    // entries (written before the field existed) still render with the
+    // semantic state on the next read.
+    const connectors = (raw.connectors as ConnectorEntry[]).map((c) => {
+      const probed =
+        typeof (c as { probed?: unknown }).probed === "boolean"
+          ? c
+          : { ...c, probed: true };
+      return withConnectorCapability(probed as ConnectorEntry);
+    });
     return {
       fetchedAt: stamp,
       connectors,
@@ -162,16 +282,21 @@ function readCache(): ConnectorCache | null {
  * Public API — write the agent-reported connector snapshot. Called by the
  * tick handler when the agent's `result` event carries a `connectors`
  * block (see `tick-prompt.ts` §0 hook).
+ *
+ * Stamps #361 capability fields on each entry before persisting so the
+ * readiness API can return a semantic state without re-deriving it on
+ * every request.
  */
 export function writeConnectorSnapshot(connectors: ConnectorEntry[]): void {
   ensureDirs();
   try {
+    const stamped = connectors.map(withConnectorCapability);
     writeFileSync(
       LOOP_PATHS.connectors,
       JSON.stringify(
         {
           fetchedAt: new Date().toISOString(),
-          connectors,
+          connectors: stamped,
         } satisfies ConnectorCache,
         null,
         2,
@@ -272,6 +397,11 @@ function readProbeCooldown(): number {
  * never tries to confirm them: their connection state lives in the
  * user's Composio account, and the watcher's pass will surface a real
  * error if the toolkit isn't reachable.
+ *
+ * #361 — stamps capability fields so a custom channel with a known
+ * `kind` (e.g. one that maps to a canonical toolkit via `kind`) gets a
+ * real capability state, not just `connected: false`. A user-defined
+ * custom channel is `needs_setup` until the watcher confirms it.
  */
 function appendCustomChannels(seed: ConnectorEntry[]): ConnectorEntry[] {
   const extras = customChannels.list();
@@ -279,7 +409,7 @@ function appendCustomChannels(seed: ConnectorEntry[]): ConnectorEntry[] {
   const now = new Date().toISOString();
   const out = seed.slice();
   for (const c of extras) {
-    out.push({
+    const entry: ConnectorEntry = {
       id: c.id,
       label: c.label,
       // Conservatively report as not-yet-probed; the watcher's pass
@@ -288,7 +418,8 @@ function appendCustomChannels(seed: ConnectorEntry[]): ConnectorEntry[] {
       accountCount: 0,
       probed: false,
       fetchedAt: now,
-    });
+    };
+    out.push(withConnectorCapability(entry));
   }
   return out;
 }
@@ -327,6 +458,36 @@ function writeProbeCooldownMarker(): void {
   } catch {
     /* swallow — cooldown is an optimization, not a correctness lever */
   }
+}
+
+/**
+ * Reduce a list of connector entries into the capability summary surfaced
+ * by the readiness API (#361). Pure function over a snapshot — the caller
+ * supplies the list and gets back the strict-superset counts. Never throws
+ * on missing fields: missing `capability` falls back to a derived value
+ * via `withConnectorCapability`'s logic so callers don't need to stamp
+ * upstream.
+ */
+export function summarizeConnectorCapability(
+  entries: ConnectorEntry[],
+): ConnectorCapabilitySummary {
+  const out: ConnectorCapabilitySummary = {
+    total: entries.length,
+    connected: 0,
+    loopMonitored: 0,
+    decisionCapable: 0,
+    unsupported: 0,
+    needsSetup: 0,
+  };
+  for (const raw of entries) {
+    const e = raw.capability ? raw : withConnectorCapability(raw);
+    if (e.connected) out.connected += 1;
+    if (e.loopMonitored) out.loopMonitored += 1;
+    if (e.decisionCapable) out.decisionCapable += 1;
+    if (e.capability === "unsupported") out.unsupported += 1;
+    if (e.capability === "needs_setup") out.needsSetup += 1;
+  }
+  return out;
 }
 
 /**

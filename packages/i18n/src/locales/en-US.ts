@@ -830,6 +830,39 @@ const enUS = {
   connectors: {
     pageDescription:
       "Link your platforms or subscribe to content you care about — openloomi keeps watch so you don't have to.",
+    // #361 — capability state labels surfaced on the connectors page so
+    // users can tell authorization from Loop monitoring. The wording is
+    // deliberately different from `connected: true` to make the gap
+    // obvious — "Authorized" ≠ "Loop monitored".
+    capabilityConnected: "Connected",
+    capabilityLoopMonitored: "Loop monitored",
+    capabilityDecisionCapable: "Decision capable",
+    capabilityNeedsSetup: "Needs setup",
+    capabilityUnsupported: "Unsupported mapping",
+    capabilityReasonNoMapping:
+      "OpenLoomi recognizes this integration, but its signal type isn't mapped to a decision yet.",
+    capabilityReasonNotLoopMonitored:
+      "Authorized for chat & memory. Loop doesn't pull signals from this source yet.",
+    /**
+     * Capability summary strip rendered above the connector list. Counts
+     * come from `LoopState.connectorCapability` (#361) so we never claim
+     * "monitored" when only "authorized" is true.
+     */
+    capabilitySummary: "{{connected}} connected · {{monitored}} monitored by Loop · {{decision}} decision-capable",
+    /**
+     * Plain-language note rendered when the readiness surface flags that
+     * an authorized integration has no Loop mapping. Anchored next to
+     * the unsupported counter, not on the integration's own row.
+     */
+    unsupportedSignalsNote:
+      "{{count}} signal dropped — no canonical Loop mapping for its source.",
+    /**
+     * Setup-action copy surfaced when a connected integration requires a
+     * custom channel or classifier before it can affect decisions. The
+     * action itself is `open the connectors page in chat` so the user
+     * can ask the agent to wire up a custom mapping.
+     */
+    needsSetupAction: "Ask the agent to wire up Loop",
   },
   integrations: {
     description:

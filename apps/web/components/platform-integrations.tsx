@@ -24,6 +24,8 @@ import {
 import { resolvePlatformLogo } from "./integration-platform-card";
 import { deleteIntegrationAccountRemote } from "@/lib/integrations/client";
 import { getAuthToken } from "@/lib/auth/token-manager";
+import { ConnectorCapabilityBadge } from "@/components/loop/connector-capability-badge";
+import { deriveConnectorCapability, isLoopMonitored, isDecisionCapable } from "@/lib/loop";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -476,6 +478,22 @@ export function PlatformIntegrations({
                               {t("common.telegramReauth", { userName: "" })}
                             </Badge>
                           ) : null}
+                          {/*
+                           * #361 — render the capability badge next to the
+                           * platform label so the user can see whether an
+                           * authorized integration participates in Loop
+                           * or is chat/memory only. The badge only renders
+                           * once the Loop side has a known capability.
+                           */}
+                          <ConnectorCapabilityBadge
+                            capability={
+                              deriveConnectorCapability({
+                                id: account.platform,
+                                connected: true,
+                                probed: isLoopMonitored(account.platform),
+                              }) ?? undefined
+                            }
+                          />
                         </div>
                         <div className="flex items-center gap-1 shrink-0">
                           <span className="text-[11px] uppercase tracking-wide text-[#a09f9a] whitespace-nowrap">

@@ -47,11 +47,23 @@ interface WrapNarrative {
   model?: string;
 }
 
+interface WrapEvidence {
+  chronicleScreenshots: number;
+  chronicleInsights: number;
+  notes: string;
+}
+
 interface WrapSnapshot {
   date: string;
   generatedAt: string;
-  stats: { done: number; dismissed: number; stillPending: number };
+  stats: {
+    done: number;
+    dismissed: number;
+    stillPending: number;
+    scope: "loop_decisions";
+  };
   highlights: WrapHighlight[];
+  evidence?: WrapEvidence;
   narrative?: WrapNarrative | null;
 }
 
@@ -150,8 +162,15 @@ export default function WrapPage() {
         title="Evening wrap"
         description={
           wrap
-            ? `${wrap.date} · ${wrap.stats.done} done · ${wrap.stats.dismissed} dismissed · ${wrap.stats.stillPending} carried`
-            : "Today's resolution + tomorrow's stage"
+            ? `${wrap.date} · ${wrap.stats.done} decisions resolved · ${wrap.stats.dismissed} dismissed · ${wrap.stats.stillPending} carried${
+                wrap.evidence &&
+                wrap.evidence.chronicleScreenshots +
+                  wrap.evidence.chronicleInsights >
+                  0
+                  ? ` · ${wrap.evidence.chronicleScreenshots + wrap.evidence.chronicleInsights} captured (observed, not verified)`
+                  : ""
+              }`
+            : "Today's Loop resolution + tomorrow's stage"
         }
       >
         <Button
@@ -208,8 +227,9 @@ function EmptyWrap({
       <div className="mb-2 text-2xl">☾</div>
       <h2 className="text-lg font-semibold">No wrap yet</h2>
       <p className="mt-2 text-sm text-muted-foreground">
-        Generate one to close out the day: what's done, what was dismissed, and
-        what's still pending.
+        Generate one to close out the day: Loop decisions resolved, dismissed,
+        and still pending. The wrap only summarises Loop decision cards — work
+        you did elsewhere isn't counted here.
       </p>
       <Button
         type="button"
@@ -255,20 +275,46 @@ function WrapContent({ wrap }: { wrap: WrapSnapshot }) {
         <div className="flex items-baseline justify-between">
           <div>
             <div className="text-sm font-medium text-muted-foreground">
-              {wrap.date}
+              {wrap.date} · Loop decisions
             </div>
             <div className="text-2xl font-semibold">
               {wrap.highlights.length === 0
-                ? "Quiet day"
+                ? "Nothing surfaced"
                 : `${wrap.highlights.length} highlight${wrap.highlights.length === 1 ? "" : "s"}`}
             </div>
           </div>
           <div className="flex gap-4 text-right text-xs text-muted-foreground">
-            <Stat label="done" value={wrap.stats.done} />
+            <Stat label="resolved" value={wrap.stats.done} />
             <Stat label="dismissed" value={wrap.stats.dismissed} />
             <Stat label="pending" value={wrap.stats.stillPending} />
           </div>
         </div>
+        {/*
+         * #362 — observed-vs-completed footer. Chronicle captures are
+         * observed activity, never silently treated as completed work.
+         * Only renders when the evidence block is non-empty.
+         */}
+        {wrap.evidence &&
+          (wrap.evidence.chronicleScreenshots > 0 ||
+            wrap.evidence.chronicleInsights > 0) && (
+            <div className="mt-3 border-t border-border/60 pt-3 text-xs text-muted-foreground">
+              <span className="font-medium">Observed (not verified):</span>{" "}
+              {wrap.evidence.chronicleScreenshots > 0 && (
+                <span>
+                  {wrap.evidence.chronicleScreenshots} screen capture
+                  {wrap.evidence.chronicleScreenshots === 1 ? "" : "s"}
+                </span>
+              )}
+              {wrap.evidence.chronicleScreenshots > 0 &&
+                wrap.evidence.chronicleInsights > 0 && <span> · </span>}
+              {wrap.evidence.chronicleInsights > 0 && (
+                <span>
+                  {wrap.evidence.chronicleInsights} insight
+                  {wrap.evidence.chronicleInsights === 1 ? "" : "s"}
+                </span>
+              )}
+            </div>
+          )}
       </div>
 
       {wrap.highlights.length === 0 ? (

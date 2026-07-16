@@ -12,7 +12,16 @@ export {
   gateSignal,
   rules,
 } from "./classify";
-export { listConnectors, refreshConnectors } from "./connectors";
+export {
+  listConnectors,
+  refreshConnectors,
+  isLoopMonitored,
+  isDecisionCapable,
+  deriveConnectorCapability,
+  withConnectorCapability,
+  summarizeConnectorCapability,
+} from "./connectors";
+export type { ConnectorCapability } from "./types";
 export {
   deriveReadiness,
   deriveRelationship,

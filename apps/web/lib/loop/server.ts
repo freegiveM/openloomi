@@ -9,7 +9,11 @@ import {
   buildAndEnqueue as buildBrief,
   build as buildBriefOnly,
 } from "./brief";
-import { listConnectors, refreshConnectors } from "./connectors";
+import {
+  listConnectors,
+  refreshConnectors,
+  summarizeConnectorCapability,
+} from "./connectors";
 import { decisions, log, readStatus, signals } from "./store";
 import { readPreferences, writePreferences } from "./preferences";
 import {
@@ -39,6 +43,7 @@ export async function state(): Promise<LoopState> {
   const status = readStatus();
   const prefs = readPreferences();
   const connectors = await listConnectors();
+  const unsupportedSignals = readUnsupportedSignalCount();
   return {
     enabled: prefs.enabled,
     preferences: prefs,
@@ -47,10 +52,34 @@ export async function state(): Promise<LoopState> {
       done: counts.done,
       dismissed: counts.dismissed,
       signals: signals.count(),
+      unsupportedSignals,
     },
     connectors,
+    connectorCapability: summarizeConnectorCapability(connectors),
     ...(status.lastTickAt ? { lastTickAt: status.lastTickAt } : {}),
   };
+}
+
+// ---------------------------------------------------------------------------
+// #361 — unsupported-signal counter
+// ---------------------------------------------------------------------------
+//
+// We surface the count of signals whose `source` / `type` had no canonical
+// Loop mapping at the last tick. The counter is persisted into the loop
+// status file (`status.json`) by the tick handler so a slow or stale UI
+// poll doesn't re-derive from raw signals.jsonl every request. Falls back
+// to a zero when no tick has run yet — surfacing "0 unsupported" is the
+// honest answer for a fresh install.
+function readUnsupportedSignalCount(): number {
+  try {
+    const s = readStatus() as Record<string, unknown>;
+    const raw = s.unsupportedSignals;
+    return typeof raw === "number" && Number.isFinite(raw) && raw >= 0
+      ? Math.floor(raw)
+      : 0;
+  } catch {
+    return 0;
+  }
 }
 
 /** GET /api/loop/decisions?status=pending|done|dismissed */
@@ -318,7 +347,10 @@ export async function triggerWrap(
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     log(`wrap action failed: ${msg}`);
-    const snapshot = buildWrapOnly({ force: opts.force ?? true });
+    // `build` is now async (#362) — best-effort fallback is a degraded
+    // snapshot without evidence. Wrapping in an async IIFE preserves
+    // the existing return shape.
+    const snapshot = await buildWrapOnly({ force: opts.force ?? true });
     return {
       ok: false,
       stats: {

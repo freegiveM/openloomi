@@ -784,6 +784,21 @@ const zhHans = {
   },
   connectors: {
     pageDescription: "关联您的平台或订阅您关心的内容 — openloomi 为您守望。",
+    // #361 — capability state labels. 与单纯的 "connected" 措辞分开，让
+    // 用户清楚"已授权"与"被 Loop 监听"是两件事。
+    capabilityConnected: "已连接",
+    capabilityLoopMonitored: "Loop 监听中",
+    capabilityDecisionCapable: "可产出决策",
+    capabilityNeedsSetup: "需要配置",
+    capabilityUnsupported: "暂未支持映射",
+    capabilityReasonNoMapping:
+      "OpenLoomi 识别此集成，但其信号类型尚未映射到具体决策。",
+    capabilityReasonNotLoopMonitored:
+      "已授权用于聊天与记忆；Loop 暂未从此来源拉取信号。",
+    capabilitySummary: "{{connected}} 已连接 · {{monitored}} 被 Loop 监听 · {{decision}} 可产出决策",
+    unsupportedSignalsNote:
+      "{{count}} 条信号被丢弃 —— 来源缺少 Loop 标准映射。",
+    needsSetupAction: "让智能体接入 Loop",
   },
   integrations: {
     description: "在一个地方管理您的连接平台、RSS 订阅和已保存文件。",

@@ -6,11 +6,21 @@
  *   {
  *     date: "2026-07-06",
  *     generatedAt: "<ISO>",
- *     stats: { done: number, dismissed: number, stillPending: number },
+ *     stats: {
+ *       done: number, dismissed: number, stillPending: number,
+ *       // #362 — explicit scope labels so the UI can render "0 decisions
+ *       // resolved today" without claiming "nothing got done".
+ *       scope: "loop_decisions",
+ *     },
  *     highlights: [
  *       { id, title, type, completedAt, resultKind },
  *       ...
  *     ],
+ *     evidence?: {  // #362 — optional Chronicle/observed-activity counter.
+ *       chronicleScreenshots: number,
+ *       chronicleInsights: number,
+ *       notes: string,
+ *     },
  *     narrative?: WrapNarrative  // optional agentic overlay (see types.ts)
  *   }
  *
@@ -18,6 +28,12 @@
  * "generating" placeholder synchronously, enqueues the card, and kicks
  * off a fire-and-forget agent call that patches both the snapshot and
  * the decision card on completion.
+ *
+ * #362 — Wrap's `done`/`dismissed`/`stillPending` are derived from Loop
+ * decision cards. They do NOT represent "the user's total daily output".
+ * The UI must therefore scope the wording — the empty state never says
+ * "nothing got done today" and the headline never says "you finished N
+ * tasks". See `computeWrapDialogue()` for the scope-aware copy.
  */
 
 import { createHash } from "node:crypto";
@@ -43,11 +59,53 @@ export interface WrapHighlight {
   resultKind: string;
 }
 
+export interface WrapEvidence {
+  /**
+   * Number of Chronicle screen captures that landed today. Read from the
+   * openloomi-memory insights feed so the wrap can acknowledge observed
+   * activity without conflating it with verified completion.
+   */
+  chronicleScreenshots: number;
+  /**
+   * Number of memory insights recorded today (chats, screen-memory, etc.).
+   * Like screenshots, these are *observed*, not *completed*. Surfaced so
+   * the wrap can say "X things captured" without claiming they were done.
+   */
+  chronicleInsights: number;
+  /**
+   * Source description for diagnostics — never includes message content
+   * or account identifiers. Mirrors #361's "no credentials, no message
+   * content" rule for the readiness surface.
+   */
+  notes: string;
+}
+
 export interface WrapSnapshot {
   date: string;
   generatedAt: string;
-  stats: { done: number; dismissed: number; stillPending: number };
+  stats: {
+    done: number;
+    dismissed: number;
+    stillPending: number;
+    /**
+     * #362 — explicit scope tag. Always `"loop_decisions"` for the stats
+     * derived from `decisions.json`. Lets the UI render the counts with
+     * accurate scope labels ("Loop decisions resolved today", never
+     * "you finished N things today"). Forward-compat: future sources
+     * (Chronicle, custom types) may add their own scope tags without
+     * breaking existing readers.
+     */
+    scope: "loop_decisions";
+  };
   highlights: WrapHighlight[];
+  /**
+   * #362 — optional evidence summary. Captures observed-but-not-verified
+   * activity (Chronicle screen captures, memory insights). Surfaced
+   * alongside the decision stats so a user with zero Loop decisions but
+   * a busy day sees "0 decisions resolved · 12 things captured". Never
+   * silently treated as completed work.
+   */
+  evidence?: WrapEvidence;
   /**
    * Optional agentic narrative. `undefined` when prefs.narrative is false;
    * `null` when generation was attempted and failed; `{status: "generating"|
@@ -58,6 +116,78 @@ export interface WrapSnapshot {
 
 function today(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+// ---------------------------------------------------------------------------
+// #362 — Chronicle evidence lookup
+// ---------------------------------------------------------------------------
+//
+// Reads the openloomi-memory insights feed for today so the wrap can
+// acknowledge observed-but-not-verified activity alongside the Loop
+// decision stats. The wrapper script is the only thing that knows where
+// the feed lives on disk; we shell out to it because the insights store
+// is owned by the memory subsystem, not the loop. Never includes
+// message content or account identifiers — only counts.
+//
+// Errors are swallowed: a missing / broken memory subsystem must not
+// block the wrap. The wrap falls back to "no observed activity" instead
+// of failing the snapshot.
+async function readChronicleEvidence(date: string): Promise<WrapEvidence> {
+  try {
+    const { spawnSync } = await import("node:child_process");
+    const memoryDir = process.env.OPENLOOMI_MEMORY_DIR;
+    if (!memoryDir) return emptyEvidence("memory dir not configured");
+    const script = `${memoryDir.replace(/\/+$/, "")}/scripts/openloomi-memory.cjs`;
+    const res = spawnSync(
+      "node",
+      [script, "list-insights", "--days=1", "--limit=200", "--json"],
+      { encoding: "utf8", timeout: 5_000 },
+    );
+    if (res.status !== 0 || !res.stdout) {
+      return emptyEvidence(`memory script exited ${res.status ?? "?"}`);
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(res.stdout);
+    } catch {
+      return emptyEvidence("memory script returned non-JSON");
+    }
+    if (!parsed || typeof parsed !== "object") {
+      return emptyEvidence("memory script returned no data");
+    }
+    const items = (parsed as { insights?: unknown[] }).insights;
+    if (!Array.isArray(items)) return emptyEvidence("no insights array");
+    let chronicleScreenshots = 0;
+    let chronicleInsights = 0;
+    for (const raw of items) {
+      if (!raw || typeof raw !== "object") continue;
+      const it = raw as Record<string, unknown>;
+      const ts = typeof it.ts === "string" ? it.ts : "";
+      if (!ts.startsWith(date)) continue;
+      const origin = typeof it.origin === "string" ? it.origin : "";
+      if (origin === "chronicle" || origin === "screen") {
+        chronicleScreenshots += 1;
+      } else {
+        chronicleInsights += 1;
+      }
+    }
+    return {
+      chronicleScreenshots,
+      chronicleInsights,
+      notes:
+        chronicleScreenshots + chronicleInsights === 0
+          ? "no observed activity recorded"
+          : `${chronicleScreenshots} screen captures + ${chronicleInsights} insights (observed, not verified)`,
+    };
+  } catch (e) {
+    return emptyEvidence(
+      e instanceof Error ? e.message : "memory script unavailable",
+    );
+  }
+}
+
+function emptyEvidence(notes: string): WrapEvidence {
+  return { chronicleScreenshots: 0, chronicleInsights: 0, notes };
 }
 
 export function readWrap(): WrapSnapshot | null {
@@ -109,8 +239,12 @@ export interface BuildWrapResult {
  *
  * Like `brief.build`, this is the deterministic aggregator — narrative is
  * handled by `buildAndEnqueue` + `enrichWithNarrative`.
+ *
+ * #362 — async signature because we now shell out to openloomi-memory
+ * to count today's Chronicle observations. The narrative-only `force`
+ * path still re-reads the on-disk evidence, which is cheap.
  */
-export function build(opts: { force?: boolean } = {}): WrapSnapshot {
+export async function build(opts: { force?: boolean } = {}): Promise<WrapSnapshot> {
   const date = today();
   const existing = readWrap();
   if (
@@ -149,6 +283,8 @@ export function build(opts: { force?: boolean } = {}): WrapSnapshot {
       resultKind: resultKind(d),
     }));
 
+  const evidence = await readChronicleEvidence(date);
+
   const snapshot: WrapSnapshot = {
     date,
     generatedAt: new Date().toISOString(),
@@ -156,12 +292,14 @@ export function build(opts: { force?: boolean } = {}): WrapSnapshot {
       done: todayDone.length,
       dismissed: todayDismissed.length,
       stillPending,
+      scope: "loop_decisions",
     },
     highlights,
+    evidence,
   };
   writeWrap(snapshot);
   log(
-    `wrap ${date}: done=${snapshot.stats.done} dismissed=${snapshot.stats.dismissed} pending=${snapshot.stats.stillPending}`,
+    `wrap ${date}: done=${snapshot.stats.done} dismissed=${snapshot.stats.dismissed} pending=${snapshot.stats.stillPending} evidence=${evidence.chronicleScreenshots + evidence.chronicleInsights}`,
   );
   return snapshot;
 }
@@ -371,6 +509,13 @@ export async function enrichWithNarrative(
  * Compute the card dialogue for a wrap snapshot. Mirrors
  * `computeBriefDialogue` — shared logic so the pet card's top-line
  * text reflects the headline immediately after the bg enrich lands.
+ *
+ * #362 — the dialogue is now scope-aware. `done` counts Loop-resolved
+ * decision cards, not "the user's total daily output". The wording:
+ *   - says "Loop decisions resolved", never "you finished N things"
+ *   - distinguishes "0 decisions resolved" from "nothing got done"
+ *   - acknowledges Chronicle observations ("X things captured") as
+ *     *observed* activity, never as completed work
  */
 export function computeWrapDialogue(
   snapshot: WrapSnapshot,
@@ -383,10 +528,29 @@ export function computeWrapDialogue(
   if (n?.status === "ready") {
     return `${n.headline} — ${n.body.split("\n")[0] ?? ""}`.slice(0, 280);
   }
-  const headline = highlights[0]?.title ?? "(nothing moved today)";
-  return snapshot.stats.done > 0
-    ? `Night: wrapped ${snapshot.stats.done} today — latest was "${headline}".`
-    : "Night: nothing got done today. Tomorrow's a fresh shot.";
+  const evidence = snapshot.evidence;
+  const observed =
+    evidence && evidence.chronicleScreenshots + evidence.chronicleInsights > 0
+      ? ` ${evidence.chronicleScreenshots + evidence.chronicleInsights} things captured.`
+      : "";
+  const headline = highlights[0]?.title ?? "(none resolved)";
+  if (snapshot.stats.done > 0) {
+    return `Night: ${snapshot.stats.done} Loop decisions resolved today — latest was "${headline}".${observed}`.slice(
+      0,
+      280,
+    );
+  }
+  if (observed) {
+    // Zero decisions but Chronicle captured something. Don't claim
+    // completion; surface observed activity as observed.
+    return `Night: 0 Loop decisions resolved — ${observed.trim()}`.slice(
+      0,
+      280,
+    );
+  }
+  // Zero decisions and no observed activity. Honest scope — we
+  // measured nothing, not "you did nothing".
+  return "Night: nothing surfaced from Loop today. Tomorrow is a fresh shot.";
 }
 
 export function kickOffBackgroundEnrichment(
@@ -446,7 +610,7 @@ export interface EnqueueWrapResult {
 export async function buildAndEnqueue(
   opts: { force?: boolean } = {},
 ): Promise<EnqueueWrapResult> {
-  const built = build(opts);
+  const built = await build(opts);
   const highlights = built.highlights;
   const hash = computeWrapNarrativeInputHash(highlights);
 

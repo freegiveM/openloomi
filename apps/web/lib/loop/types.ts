@@ -343,6 +343,31 @@ export const DEFAULT_LOOP_PREFERENCES: LoopPreferences = {
   quietDayFiller: "none", // NEW (#316) — opt into a module
 };
 
+/**
+ * Capability states for a connector (#361). The Loop is fully agentic and
+ * pulls signals from a small set of canonical toolkits (gmail, google_calendar,
+ * github, slack, linear, obsidian) — but a user can authorize many more
+ * integrations for chat/memory use that do NOT participate in Loop's signal
+ * pull. These states let the UI tell those two situations apart without
+ * conflating "authorized" with "monitored by Loop".
+ *
+ *   - "needs_setup"      → connected for chat/memory but not yet wired into Loop.
+ *   - "connected"        → credentials healthy; canonical toolkit with a known mapping.
+ *   - "loop_monitored"   → Loop actively pulls signals from this source.
+ *   - "decision_capable" → payload has a supported classifier mapping; can produce decisions.
+ *   - "unsupported"      → connected but no classifier mapping; signals are intentionally dropped.
+ *
+ * `decision_capable` implies `loop_monitored` (you can't decide from a source
+ * Loop isn't pulling), and `loop_monitored` implies `connected`. The reverse
+ * is not true — that's the whole point of having separate states.
+ */
+export type ConnectorCapability =
+  | "needs_setup"
+  | "connected"
+  | "loop_monitored"
+  | "decision_capable"
+  | "unsupported";
+
 export interface ConnectorEntry {
   id: string;
   label: string;
@@ -359,6 +384,53 @@ export interface ConnectorEntry {
    */
   probed?: boolean;
   fetchedAt: string;
+  /**
+   * #361 — Loop participation flag. `true` means scheduled ticks actively
+   * pull this connector for signals. `false` (or absent for compat) means
+   * the connector is authorized for chat/memory but does not contribute to
+   * Loop's signal pull — its presence in the connector list does NOT mean
+   * Loop is monitoring it.
+   */
+  loopMonitored?: boolean;
+  /**
+   * #361 — decision-capable flag. `true` means this connector's payload
+   * has a supported classifier mapping (e.g. gmail → rsvp/draft_reply,
+   * google_calendar → rsvp, github → review_pr). `false` means signals
+   * from this source are intentionally dropped with an explicit
+   * "unsupported" reason — see `unsupportedSignals` on the tick result.
+   */
+  decisionCapable?: boolean;
+  /**
+   * #361 — semantic capability state. Lets the UI render one of:
+   * "needs setup" / "connected" / "loop monitored" / "decision capable"
+   * without conflating authorization with Loop participation.
+   */
+  capability?: ConnectorCapability;
+  /**
+   * #361 — human-readable reason for `capability === "unsupported"`. Never
+   * contains credentials, account identifiers, or message content.
+   */
+  capabilityReason?: string;
+}
+
+/**
+ * Aggregate capability counts surfaced by the readiness API (#361). Lets a
+ * UI label "5 connected, 3 monitored by Loop, 2 decision-capable" without
+ * needing to enumerate every connector on the dashboard.
+ */
+export interface ConnectorCapabilitySummary {
+  /** Total connectors visible to the user (built-ins + custom). */
+  total: number;
+  /** Number with `connected: true`. */
+  connected: number;
+  /** Number with `loopMonitored: true`. Strict subset of `connected`. */
+  loopMonitored: number;
+  /** Number with `decisionCapable: true`. Strict subset of `loopMonitored`. */
+  decisionCapable: number;
+  /** Number of `unsupported` connectors — authorized but no classifier mapping. */
+  unsupported: number;
+  /** Number of `needs_setup` connectors — connected but not yet wired into Loop. */
+  needsSetup: number;
 }
 
 export interface LoopState {
@@ -369,9 +441,22 @@ export interface LoopState {
     done: number;
     dismissed: number;
     signals: number;
+    /**
+     * #361 — signals received this tick whose `source` / `type` did not
+     * match any canonical Loop mapping. Surfaced so the UI can tell the
+     * user "X signals arrived but no decisions were produced" instead of
+     * silently dropping them.
+     */
+    unsupportedSignals: number;
   };
   lastTickAt?: string;
   connectors: ConnectorEntry[];
+  /**
+   * #361 — aggregate capability counts. Lets the readiness surface label
+   * "5 connected, 3 monitored by Loop, 2 decision-capable" without
+   * enumerating every connector on the dashboard.
+   */
+  connectorCapability: ConnectorCapabilitySummary;
 }
 
 export interface LoopTickResult {
@@ -380,6 +465,14 @@ export interface LoopTickResult {
   muted: number;
   newDecisions: LoopDecision[];
   errors: string[];
+  /**
+   * #361 — signals received this tick whose `source` / `type` had no
+   * canonical Loop mapping and were intentionally dropped. Surfaced in
+   * `LoopState.counts.unsupportedSignals` and the readiness surface so
+   * users aren't left wondering why an authorized integration produced
+   * zero decisions.
+   */
+  unsupportedSignals?: number;
 }
 
 // ---------------------------------------------------------------------------
