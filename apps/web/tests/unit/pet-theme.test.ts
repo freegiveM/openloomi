@@ -305,3 +305,166 @@ describe("custom theme discovery", () => {
     expect(isRecognized("")).toBe(false);
   });
 });
+
+describe("pet menu interaction (#369)", () => {
+  // Issue #369 — the body-level pointer handlers used to intercept
+  // clicks that originated inside `#pet-menu`, so `startDragging()`
+  // lurched the window mid-click and the matching `pointerup` re-emitted
+  // `pet:open-dashboard`. Only "Open Loomi" survived because its menu
+  // emit happens to be the same event the body emitted. Theme buttons
+  // had a second bug: their ✓ tick is a nested `<span class="menu-tick">`,
+  // so clicking the tick made `e.target.dataset.op` undefined and the
+  // operation was silently dropped.
+  //
+  // The widget is plain HTML/JS so we assert against the shipped source
+  // directly (the suite runs in `node`, no jsdom). A real DOM
+  // simulation is the same follow-up #314 already calls out.
+  const widgetPath = path.resolve(__dirname, "../../public/loomi-widget.html");
+  const widgetHtml = readFileSync(widgetPath, "utf8");
+  const stripped = widgetHtml.replace(/<!--[\s\S]*?-->/g, "");
+
+  // Slice `onPointerDown` body — used to assert the menu guard sits
+  // BEFORE any bookkeeping or side-effect calls. We anchor on the
+  // function declaration and take up to `setPointerCapture` (the last
+  // side-effecting call) so we capture the whole handler.
+  function onPointerDownBody(): string {
+    const start = stripped.indexOf("function onPointerDown(");
+    expect(start, "onPointerDown not found").toBeGreaterThan(-1);
+    // The function ends at the matching `function onPointerMove(`
+    // declaration. There is only one such declaration in the file, so
+    // `indexOf` from the start is safe.
+    const end = stripped.indexOf("function onPointerMove(", start);
+    expect(end, "onPointerMove terminator not found").toBeGreaterThan(start);
+    return stripped.slice(start, end);
+  }
+
+  function onPointerUpBody(): string {
+    const start = stripped.indexOf("function onPointerUp(");
+    expect(start, "onPointerUp not found").toBeGreaterThan(-1);
+    // The pointerup handler is followed by the listener wiring block
+    // (`document.body.addEventListener("pointerdown", ...)`). Use that
+    // as the terminator so we don't accidentally slurp unrelated code.
+    const end = stripped.indexOf('addEventListener("pointerdown"', start);
+    expect(end, "pointerdown listener terminator not found").toBeGreaterThan(
+      start,
+    );
+    return stripped.slice(start, end);
+  }
+
+  function petMenuClickHandler(): string {
+    const start = stripped.indexOf('petMenu.addEventListener("click"');
+    expect(start, "petMenu click listener not found").toBeGreaterThan(-1);
+    // The handler contains nested `.then().catch()` chains whose own
+    // `});` terminators would truncate the slice too early. Take a
+    // generous 4KB window and let the assertions do the rest.
+    return stripped.slice(start, start + 4000);
+  }
+
+  it("onPointerDown bails when the target is inside #pet-menu", () => {
+    const body = onPointerDownBody();
+    // The guard must reference `petMenu.contains(e.target)` so that any
+    // pointerdown bubbling up from a menu button exits before
+    // bookkeeping, `startDragging()`, or `setPointerCapture` run.
+    expect(body).toMatch(/petMenu\.contains\(e\.target\)/);
+  });
+
+  it("onPointerDown menu guard is positioned before side-effecting calls", () => {
+    const body = onPointerDownBody();
+    // The function body opens with a comment that *mentions*
+    // `startDragging()` while explaining the rationale. Anchor every
+    // search AFTER the comment block so we measure the real code
+    // ordering, not the prose.
+    const guardMatch = body.match(
+      /if \(petMenu && petMenu\.contains\(e\.target\)\) return;/,
+    );
+    expect(guardMatch, "menu guard not found").not.toBeNull();
+    if (!guardMatch || guardMatch.index === undefined) {
+      // The `.not.toBeNull()` above already throws on null; this branch
+      // exists so TypeScript narrows `guardMatch` and we can drop the
+      // non-null assertion that biome flags.
+      return;
+    }
+    // Search the slice AFTER the guard for the side-effecting calls so
+    // the comment can't satisfy the assertion.
+    const afterGuard = body.slice(guardMatch.index);
+    expect(afterGuard).toMatch(/startDragging\(\)/);
+    expect(afterGuard).toMatch(/setPointerCapture\(/);
+  });
+
+  it("onPointerUp bails when the target is inside the open menu", () => {
+    const body = onPointerUpBody();
+    expect(body).toMatch(/petMenu\.contains\(e\.target\)/);
+    // The guard must also check the `petMenuOpen` flag so a stale
+    // pointerup delivered after the menu closed doesn't accidentally
+    // re-emit a dashboard event.
+    expect(body).toMatch(/petMenuOpen\s*&&\s*petMenu\s*&&\s*petMenu\.contains/);
+  });
+
+  it("menu click handler resolves operations via closest()", () => {
+    const handler = petMenuClickHandler();
+    // `e.target.dataset.op` would miss clicks on the nested ✓ span;
+    // `closest()` walks up to the owning button regardless of which
+    // descendant was hit. (The negative check is intentionally
+    // omitted — the comment block above the resolver still references
+    // `e.target.dataset.op` for context, and asserting against the
+    // comment is the wrong contract. The presence of the
+    // `closest("button[data-op]")` selector is the regression guard.)
+    expect(handler).toMatch(/e\.target\.closest\(\s*["']button\[data-op\]/);
+    // After walking up, the resolver must read `op` from the matched
+    // button — pinning `button.dataset.op` (not `e.target.dataset.op`)
+    // catches a future copy-paste regression that drops the
+    // `closest()` walk.
+    expect(handler).toMatch(/button\.dataset\.op/);
+  });
+
+  it("menu wires every operation (open / settings / theme-* / quit)", () => {
+    const handler = petMenuClickHandler();
+    // Event-emit operations are dispatched on the host bridge; theme
+    // switches go through `invoke("set_active_theme", ...)`.
+    expect(handler).toMatch(/emit\(\s*["']pet:open-dashboard["']/);
+    expect(handler).toMatch(/emit\(\s*["']pet:open-settings["']/);
+    expect(handler).toMatch(/emit\(\s*["']pet:quit["']/);
+    expect(handler).toMatch(/invoke\(\s*["']set_active_theme["']/);
+    expect(handler).toMatch(
+      /theme-\$\{|op\.slice\(\s*["']theme-["']\.length\s*\)/,
+    );
+  });
+
+  it("theme buttons expose data-op so closest() can find them", () => {
+    // Source-level regression guard: if someone removes `data-op` from
+    // a built-in theme button, the `closest("button[data-op]")`
+    // resolver stops matching and the menu silently no-ops for that
+    // theme again.
+    expect(stripped).toMatch(/data-op="theme-fox"/);
+    expect(stripped).toMatch(/data-op="theme-capybara"/);
+  });
+
+  it("theme tick span is nested inside the theme button (not the target)", () => {
+    // The whole reason `closest()` is needed: the ✓ lives as a child
+    // `<span class="menu-tick">` of each theme button, so the original
+    // `e.target.dataset.op` read returned undefined for tick clicks.
+    // Pin the markup shape so a future refactor that flattens the
+    // structure (and could remove the bug at the cost of layout) is a
+    // conscious decision. The `class="menu-tick` substring (no closing
+    // quote) handles the `class="menu-tick active"` variant on the
+    // currently-active theme's button.
+    const themeFoxMatch = stripped.match(
+      /<button[^>]*data-op="theme-fox"[^>]*>[\s\S]*?<\/button>/,
+    );
+    expect(themeFoxMatch, "theme-fox button markup not found").not.toBeNull();
+    if (themeFoxMatch) {
+      expect(themeFoxMatch[0]).toMatch(/<span[^>]*class="menu-tick/);
+    }
+    // Same for capybara — the second built-in theme.
+    const themeCapyMatch = stripped.match(
+      /<button[^>]*data-op="theme-capybara"[^>]*>[\s\S]*?<\/button>/,
+    );
+    expect(
+      themeCapyMatch,
+      "theme-capybara button markup not found",
+    ).not.toBeNull();
+    if (themeCapyMatch) {
+      expect(themeCapyMatch[0]).toMatch(/<span[^>]*class="menu-tick/);
+    }
+  });
+});

@@ -836,7 +836,19 @@
         window.addEventListener("blur", closePetMenu);
 
         petMenu.addEventListener("click", function (e) {
-          const op = e.target && e.target.dataset && e.target.dataset.op;
+          // #369 — resolve the operation from the nearest
+          // `button[data-op]` rather than `e.target.dataset.op`
+          // directly. Theme buttons render their ✓ tick as a nested
+          // `<span class="menu-tick">`, so clicking the tick (or any
+          // whitespace between it and the label) lands `e.target` on
+          // an element without `data-op` and the operation was being
+          // silently dropped. `closest()` walks up to the owning
+          // button so any descendant still routes to the right action.
+          const button =
+            e.target && e.target.closest
+              ? e.target.closest("button[data-op]")
+              : null;
+          const op = button && button.dataset ? button.dataset.op : null;
           if (!op) return;
           closePetMenu();
           const t = window.__TAURI__;
@@ -914,6 +926,15 @@
         }
 
         function onPointerDown(e) {
+          // #369 — pointer events that originate inside `#pet-menu`
+          // must not reach the global drag/click handlers. Otherwise
+          // `startDragging()` would lurch the window while the user
+          // is mid-click on a menu item, and the matching `pointerup`
+          // would re-emit `pet:open-dashboard`, masking whatever
+          // operation the menu actually requested. The menu owns its
+          // own click semantics (Open Loomi / Settings / theme picker
+          // / Quit) so we bail before any bookkeeping happens.
+          if (petMenu && petMenu.contains(e.target)) return;
           if (e.button !== 0) return; // primary button only
           downX = e.clientX;
           downY = e.clientY;
@@ -978,6 +999,16 @@
         }
 
         function onPointerUp(e) {
+          // #369 — symmetric to `onPointerDown`. A release inside the
+          // open menu is a menu operation, not a pet click. Without
+          // this guard the click-vs-drag branch below would emit
+          // `pet:open-dashboard` immediately after the menu fires its
+          // own event (e.g. `pet:open-settings`), opening the
+          // dashboard on top of the settings page the user just
+          // requested. Housekeeping is safe to skip here because
+          // `onPointerDown` returned early too — no capture was taken,
+          // no body classes were added, no longpress timer was armed.
+          if (petMenuOpen && petMenu && petMenu.contains(e.target)) return;
           document.body.classList.remove("dragging");
           document.body.classList.remove("longpress");
           try {
