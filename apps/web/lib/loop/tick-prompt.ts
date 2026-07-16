@@ -489,6 +489,11 @@ lib-level classifier exactly):
 
   Hard skip:
     - sender matches /^(no-?reply|noreply|donotreply|notifications?@|mailer-daemon@|postmaster@)/i
+      (extract the bare address from a "Display Name <addr@host>" From header first — GitHub
+       notifications arrive as "org/repo <notifications@github.com>". This sender/origin evidence
+       ALWAYS wins over subject words: an automated sender NEVER produces draft_reply, even when the
+       subject contains RSVP / invite / review / request, and such senders are NOT known contacts —
+       do not let memory/known-contact signals raise their actionability. #367)
     - gmail label in [Promotions, Social, Forums, Updates, Spam]
     - calendar event already accepted/declined/tentative
     - email already replied
@@ -506,8 +511,10 @@ lib-level classifier exactly):
         - else: rsvp (calendar_rsvp) with params: { eventId, response: null, start, end, organizer, organizerIsSelf, attendeesCount, status, my_response }
           — response: null is intentional: the user picks Yes/No/Maybe at run time.
     The current user's email is available via \`openloomi-memory list-entities --type=person\` filtered to the \`self\` flag, or the email used by the connected Google Calendar account — look it up once at the start of §5 and reuse.
-    - email with /rsvp|invit|meeting|join.*call|calendar/i in subj   -> draft_reply (email_reply)
-    - email with /please|could you|can you|need|asap|urgent/i        -> draft_reply (email_reply)
+    - email (apply the Hard skip sender check FIRST — an automated/notification sender drops the
+      signal before either rule below can match):
+        - with /rsvp|invit|meeting|join.*call|calendar/i in subj      -> draft_reply (email_reply)
+        - with /please|could you|can you|need|asap|urgent/i           -> draft_reply (email_reply)
     - github_pr where state == "open" AND (user_is_reviewer OR requested_reviewers is empty)
                                                                       -> review_pr   (github_review)
     - github_issue open with assignee_login                           -> todo        (todo)

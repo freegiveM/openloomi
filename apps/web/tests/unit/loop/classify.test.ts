@@ -68,7 +68,7 @@ vi.mock("@/lib/loop/paths", async () => {
   };
 });
 
-const { classify, isHardSkipped, gateSignal } =
+const { classify, isHardSkipped, gateSignal, rules } =
   await import("@/lib/loop/classify");
 
 let tmp: string;
@@ -359,5 +359,109 @@ describe("classify — calendar_event gates", () => {
     });
     expect(gated).not.toBeNull();
     expect(gated?.reason).toBe("self-owned event, no attendees");
+  });
+});
+
+/**
+ * Regression coverage for issue #367: GitHub (and other automated)
+ * notification emails whose subject happens to contain RSVP-related
+ * words were misclassified as sendable `draft_reply` decisions.
+ *
+ * The invariant: sender/origin evidence wins over subject-word matches.
+ * `classify()` must drop automated/notification senders BEFORE the two
+ * email draft_reply branches — unconditionally, regardless of the
+ * noReplySkip preference or gateSignal() wiring — while still surfacing
+ * genuine human correspondence.
+ */
+function makeEmailSignal(payload: Record<string, unknown>) {
+  return {
+    id: "sig_email_test",
+    ts: "2026-07-16T12:00:00.000Z",
+    source: "gmail",
+    type: "email" as const,
+    payload,
+  };
+}
+
+describe("classify — email automated-sender gate (#367)", () => {
+  it("does NOT create a draft_reply for a GitHub notification titled 'restructure RSVP cards'", () => {
+    const sig = makeEmailSignal({
+      from: "notifications@github.com",
+      subject: "Re: [melandlabs/openloomi] ux(loop): restructure RSVP cards (#363)",
+      snippet: "xingxingluolei commented on this issue.",
+      threadId: "t1",
+    });
+    expect(classify(sig)).toBeNull();
+  });
+
+  it("catches a notification sender wrapped in a display name", () => {
+    const sig = makeEmailSignal({
+      from: "melandlabs/openloomi <notifications@github.com>",
+      subject: "Please review pull request #400",
+      snippet: "A new pull request needs your review.",
+      threadId: "t2",
+    });
+    expect(rules.isAutomatedSender(sig.payload.from)).toBe(true);
+    expect(classify(sig)).toBeNull();
+  });
+
+  it("does NOT create a card for closed/reopened/commented issue notifications", () => {
+    for (const subject of [
+      "Re: [melandlabs/openloomi] Issue closed (#363)",
+      "Re: [melandlabs/openloomi] Issue reopened (#363)",
+      "Re: [melandlabs/openloomi] New comment on invite flow (#358)",
+    ]) {
+      const sig = makeEmailSignal({
+        from: "notifications@github.com",
+        subject,
+        snippet: "View it on GitHub.",
+        threadId: "t3",
+      });
+      expect(classify(sig)).toBeNull();
+    }
+  });
+
+  it("still surfaces a real human email asking for an RSVP", () => {
+    const sig = makeEmailSignal({
+      from: "mira@acme.dev",
+      subject: "Can you RSVP for the launch dinner?",
+      snippet: "Let me know if you can make it Thursday.",
+      threadId: "t4",
+    });
+    const decision = classify(sig);
+    expect(decision).not.toBeNull();
+    expect(decision?.type).toBe("draft_reply");
+    expect(decision?.action.kind).toBe("email_reply");
+    expect(
+      (decision?.action.params as Record<string, unknown>).to,
+    ).toBe("mira@acme.dev");
+  });
+
+  it("still surfaces a human email wrapped in a display name", () => {
+    const sig = makeEmailSignal({
+      from: "Mira Chen <mira@acme.dev>",
+      subject: "Could you review the deck before Friday?",
+      snippet: "Need your eyes on slides 3-5.",
+      threadId: "t5",
+    });
+    const decision = classify(sig);
+    expect(decision?.type).toBe("draft_reply");
+  });
+
+  it("drops other automated senders (noreply@, mailer-daemon@) regardless of subject", () => {
+    for (const from of [
+      "noreply@stripe.com",
+      "no-reply@calendar.google.com",
+      "mailer-daemon@googlemail.com",
+    ]) {
+      const sig = makeEmailSignal({
+        from,
+        subject: "Meeting invite — please review",
+        snippet: "urgent: action needed",
+        threadId: "t6",
+      });
+      expect(rules.isAutomatedSender(from)).toBe(true);
+      expect(classify(sig)).toBeNull();
+    }
   });
 });

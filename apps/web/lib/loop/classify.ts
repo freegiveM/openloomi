@@ -25,6 +25,36 @@ const NORELY_RE =
   /^(no-?reply|noreply|donotreply|notifications?@|mailer-daemon@|postmaster@)/i;
 const PROMO_LABELS = ["promotions", "social", "forums", "updates", "spam"];
 
+/**
+ * Extract the bare email address from a From-header value. Handles both
+ * `Display Name <addr@host>` and raw `addr@host` forms and lowercases the
+ * result. GitHub notifications arrive as e.g.
+ * `melandlabs/openloomi <notifications@github.com>`, so matching the
+ * anchored `NORELY_RE` requires pulling the angle-bracket address out
+ * first. Returns "" when no address is present.
+ */
+function extractEmailAddress(raw: unknown): string {
+  const s = String(raw ?? "").trim();
+  const m = s.match(/<([^>]+)>/);
+  return (m ? m[1] : s).toLowerCase().trim();
+}
+
+/**
+ * True when the sender is an automated / no-reply / notification address
+ * (e.g. `notifications@github.com`, `noreply@…`, `mailer-daemon@…`).
+ *
+ * Such senders must NEVER produce a sendable `email_reply` decision, no
+ * matter what the subject contains: a lexical match on RSVP / invite /
+ * review in a notification subject is not evidence the user needs to
+ * reply, and replying to a reply-by-email address can have external
+ * consequences (a GitHub reply-by-email posts a public issue comment).
+ * See issue #367.
+ */
+export function isAutomatedSender(from: unknown): boolean {
+  const email = extractEmailAddress(from);
+  return email !== "" && NORELY_RE.test(email);
+}
+
 export interface SkipReason {
   reason: string;
 }
@@ -91,8 +121,10 @@ export function isHardSkipped(
 ): SkipReason | null {
   const p = signal.payload as Record<string, unknown>;
   if (prefs.noReplySkip) {
-    const from = String(p.from ?? p.sender ?? p.organizer ?? "");
-    if (NORELY_RE.test(from)) return { reason: `no-reply sender: ${from}` };
+    const from = extractEmailAddress(p.from ?? p.sender ?? p.organizer);
+    if (from && NORELY_RE.test(from)) {
+      return { reason: `no-reply sender: ${from}` };
+    }
   }
   if (prefs.promotionSkip) {
     const labels = Array.isArray(p.labels)
@@ -392,6 +424,16 @@ export function classify(
   }
 
   if (signal.type === "email") {
+    // Sender/origin evidence wins over subject-word matches. An automated
+    // or notification sender (e.g. notifications@github.com) must never
+    // yield a sendable email_reply, even when the subject happens to
+    // contain "RSVP", "invite", "review", etc. This runs unconditionally
+    // inside classify() — independent of the noReplySkip preference and
+    // the gateSignal() wiring — so the invariant holds on every path,
+    // including the agentic tick that reconstructs these rules. #367.
+    if (isAutomatedSender(p.from)) {
+      return null;
+    }
     if (/(rsvp|invit|meeting|join.*call|calendar)/.test(text)) {
       return {
         type: "draft_reply",
@@ -554,6 +596,7 @@ export const rules = {
   isMuted,
   gateSignal,
   classify,
+  isAutomatedSender,
   NORELY_RE,
   PROMO_LABELS,
 };
