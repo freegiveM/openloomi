@@ -738,9 +738,9 @@ It is **not** designed for:
 
 Two surfaces, two auth styles:
 
-| Surface                  | Auth                                                 | Use it from                                   |
-| ------------------------ | ---------------------------------------------------- | --------------------------------------------- |
-| **Local desktop server** | `Authorization: Bearer $TOKEN`                       | Claude Code / Tauri / scripts on your machine |
+| Surface                  | Auth                           | Use it from                                   |
+| ------------------------ | ------------------------------ | --------------------------------------------- |
+| **Local desktop server** | `Authorization: Bearer $TOKEN` | Claude Code / Tauri / scripts on your machine |
 
 The token is stored at `~/.openloomi/token` as a **base64-encoded** JWT. You must decode it before sending it as a Bearer token.
 
