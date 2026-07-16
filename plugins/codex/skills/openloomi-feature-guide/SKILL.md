@@ -325,8 +325,6 @@ All data in the desktop app — including messages, conversations, scheduled tas
 
 When you first launch openloomi, the system may ask for a few permissions. Each one has a specific purpose — and **you can decline any of them**. openloomi will continue to work; you'll just lose the feature that requires that permission.
 
-> **Privacy note:** openloomi processes data locally on your machine. Message content is never sent to third-party servers without your consent. [See our Privacy Policy →](https://app.alloomi.ai/privacy)
-
 ### macOS
 
 | Permission | What it lets openloomi do | Can I decline? |
@@ -1031,5 +1029,3 @@ Step 4/4: What You'll Receive
 
 - openloomi website: https://openloomi.ai
 - openloomi documents: https://openloomi.ai/docs
-- Terms of Service: https://app.alloomi.ai/terms
-- Privacy Policy: https://app.alloomi.ai/privacy

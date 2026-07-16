@@ -509,15 +509,6 @@ const MarketingPage = () => {
               <p className="text-center text-foreground-muted text-lg">
                 {t("sovereignty.subtitle")}
               </p>
-              <Link
-                href="https://app.alloomi.ai/privacy"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex w-fit items-center bg-transparent border border-border-primary text-foreground px-8 py-4 rounded-lg font-medium transition-all transform relative z-20 hover:bg-background-secondary"
-                aria-label={t("sovereignty.readPrivacyPolicy")}
-              >
-                {t("sovereignty.readPrivacyPolicy")}
-              </Link>
             </div>
             <div className="w-full flex flex-col lg:flex-row lg:items-start gap-8 lg:gap-8">
               <div className="w-full flex-1 min-w-0">

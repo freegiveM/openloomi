@@ -741,7 +741,6 @@ Two surfaces, two auth styles:
 | Surface                  | Auth                                                 | Use it from                                   |
 | ------------------------ | ---------------------------------------------------- | --------------------------------------------- |
 | **Local desktop server** | `Authorization: Bearer $TOKEN`                       | Claude Code / Tauri / scripts on your machine |
-| **Cloud**                | Same Bearer token, base URL `https://app.alloomi.ai` | Production integrations, multi-user apps      |
 
 The token is stored at `~/.openloomi/token` as a **base64-encoded** JWT. You must decode it before sending it as a Bearer token.
 
@@ -834,14 +833,6 @@ curl -X POST http://localhost:3414/api/rag/search \
   ],
   "total": 1
 }
-```
-
-**Step 5 — Use the cloud API (production)**
-
-```bash
-export TOKEN="your_production_jwt"
-curl https://app.alloomi.ai/api/remote-auth/user \
-  -H "Authorization: Bearer $TOKEN"
 ```
 
 The same endpoints, the same schemas — only the base URL changes.
@@ -1008,7 +999,6 @@ The API is the **foundation layer** — every other open-source skill calls into
 ### Reference
 
 - **Full endpoint reference (all 129+ routes, schemas):** [openloomi-api SKILL.md on GitHub](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi-api/SKILL.md)
-- **Production API base URL:** `https://app.alloomi.ai`
 - **Local API base URL:** `http://localhost:3414` (fallback `3515`)
 - **Token location:** `~/.openloomi/token` (base64-encoded JWT)
 - **Source code:** [`skills/openloomi-api/`](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi-api)

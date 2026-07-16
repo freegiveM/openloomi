@@ -64,7 +64,6 @@ export function Footer({
   const finalShowBackgroundImage =
     variant !== undefined ? false : (showBackgroundImage ?? false);
   const useUnifiedStyle = true;
-  const appDomain = "https://app.alloomi.ai";
 
   const [showWechatQR, setShowWechatQR] = useState(false);
 
@@ -110,14 +109,6 @@ export function Footer({
         { name: t("footer.docs"), href: "/docs" },
         { name: t("footer.blogs"), href: "/blogs" },
         { name: t("footer.changelog"), href: "/docs/changelog" },
-        { name: t("footer.support"), href: `${appDomain}/support` },
-      ],
-    },
-    {
-      title: t("footer.legal"),
-      items: [
-        { name: t("footer.privacyPolicy"), href: `${appDomain}/privacy` },
-        { name: t("footer.termsOfService"), href: `${appDomain}/terms` },
       ],
     },
     {
