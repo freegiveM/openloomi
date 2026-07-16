@@ -19,11 +19,13 @@ async function getJSZip() {
 
 /**
  * Get the appropriate base URL for vision API
- * - Web (cloud + local dev): Use external AI provider directly
- * - Tauri desktop app: Use local proxy which will forward to cloud
+ * - Web: Use external AI provider directly (OpenRouter by default)
+ * - Tauri desktop app: Use the local AI proxy path; `LLM_LOCAL_PROXY_URL`
+ *   is optional — if unset, the local webview origin is used (so the
+ *   `/api/ai/v1/...` route resolves to the in-app Tauri server).
  */
 function getVisionBaseUrl(): string {
-  // In Web mode (cloud or local dev), use external AI provider directly
+  // In Web mode, use external AI provider directly
   if (!isTauriMode()) {
     const externalUrl = "https://openrouter.ai/api/v1";
     console.log(
@@ -33,12 +35,10 @@ function getVisionBaseUrl(): string {
     return externalUrl;
   }
 
-  // In Tauri mode, use local proxy
-  // The local proxy will handle forwarding to cloud or using local AI provider
-  const localProxyUrl =
-    process.env.LLM_LOCAL_PROXY_URL ||
-    process.env.NEXT_PUBLIC_CLOUD_API_URL ||
-    "https://app.alloomi.ai";
+  // In Tauri mode, prefer an explicit LLM proxy URL when set; otherwise
+  // fall back to a relative path so the Tauri webview's own /api/ai/v1
+  // route handles the request.
+  const localProxyUrl = process.env.LLM_LOCAL_PROXY_URL || "";
   const proxyPath = "/api/ai/v1";
   const fullLocalUrl = `${localProxyUrl}${proxyPath}`;
 

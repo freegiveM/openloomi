@@ -343,22 +343,15 @@ export async function exchangeSlackAuthorizationCode(
   state: string,
 ): Promise<SlackExchangeResponse> {
   if (isTauri()) {
-    // Tauri local version: call cloud public exchange API (no auth required)
-    const cloudUrl =
-      (typeof process !== "undefined" &&
-        process.env?.NEXT_PUBLIC_CLOUD_API_URL) ||
-      "https://app.alloomi.ai";
-
-    const response = await fetch(
-      `${cloudUrl}/api/integrations/slack/oauth/exchange`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ code, state }),
+    // Tauri local version: call the local backend (relative path resolves
+    // to the Tauri-served webview origin). No cloud hop required.
+    const response = await fetch("/api/integrations/slack/oauth/exchange", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
       },
-    );
+      body: JSON.stringify({ code, state }),
+    });
 
     if (!response.ok) {
       const error = (await response
@@ -386,22 +379,15 @@ export async function exchangeDiscordAuthorizationCode(
   state: string,
 ): Promise<DiscordExchangeResponse> {
   if (isTauri()) {
-    // Tauri local version: call cloud public exchange API (no auth required)
-    const cloudUrl =
-      (typeof process !== "undefined" &&
-        process.env?.NEXT_PUBLIC_CLOUD_API_URL) ||
-      "https://app.alloomi.ai";
-
-    const response = await fetch(
-      `${cloudUrl}/api/integrations/discord/oauth/exchange`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ code, state }),
+    // Tauri local version: call the local backend (relative path resolves
+    // to the Tauri-served webview origin). No cloud hop required.
+    const response = await fetch(`/api/integrations/discord/oauth/exchange`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
       },
-    );
+      body: JSON.stringify({ code, state }),
+    });
 
     if (!response.ok) {
       const error = (await response
@@ -441,22 +427,15 @@ export async function exchangeHubspotAuthorizationCode(
   state: string,
 ): Promise<HubspotExchangeResponse> {
   if (isTauri()) {
-    // Tauri local version: call cloud public exchange API (no auth required)
-    const cloudUrl =
-      (typeof process !== "undefined" &&
-        process.env?.NEXT_PUBLIC_CLOUD_API_URL) ||
-      "https://app.alloomi.ai";
-
-    const response = await fetch(
-      `${cloudUrl}/api/integrations/hubspot/oauth/exchange`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ code, state }),
+    // Tauri local version: call the local backend (relative path resolves
+    // to the Tauri-served webview origin). No cloud hop required.
+    const response = await fetch("/api/integrations/hubspot/oauth/exchange", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
       },
-    );
+      body: JSON.stringify({ code, state }),
+    });
 
     if (!response.ok) {
       const error = (await response
@@ -484,14 +463,10 @@ export async function exchangeGoogleDocsAuthorizationCode(
   state: string,
 ): Promise<GoogleDocsExchangeResponse> {
   if (isTauri()) {
-    // Tauri local version: call cloud public exchange API (no auth required)
-    const cloudUrl =
-      (typeof process !== "undefined" &&
-        process.env?.NEXT_PUBLIC_CLOUD_API_URL) ||
-      "https://app.alloomi.ai";
-
+    // Tauri local version: call the local backend (relative path resolves
+    // to the Tauri-served webview origin). No cloud hop required.
     const response = await fetch(
-      `${cloudUrl}/api/integrations/google-docs/oauth/exchange`,
+      `/api/integrations/google-docs/oauth/exchange`,
       {
         method: "POST",
         headers: {

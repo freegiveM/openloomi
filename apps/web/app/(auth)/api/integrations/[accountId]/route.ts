@@ -5,27 +5,23 @@
  * PATCH /api/integrations/[accountId] - Update account
  * DELETE /api/integrations/[accountId] - Delete account
  *
- * Local environment: Forward to cloud API, also sync to local
+ * Local environment: Directly operate local database
  * Cloud environment: Directly operate local database
  */
 
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { eq } from "drizzle-orm";
 import {
-  db,
   deleteIntegrationAccount,
   getIntegrationAccountById,
   loadIntegrationCredentials,
   updateIntegrationAccount,
 } from "@/lib/db/queries";
-import { integrationAccounts } from "@/lib/db/schema";
 import { AppError } from "@openloomi/shared/errors";
 import { WhatsAppAdapter } from "@/lib/integrations/whatsapp";
 import { WhatsAppBaileysAuthState } from "@/lib/integrations/whatsapp/whatsapp-auth-state";
 import { isTauriMode } from "@/lib/env/constants";
-import { getCloudUrl } from "@/lib/auth/cloud-proxy";
 import { authenticateCloudRequest } from "@/lib/auth/cloud-auth";
 import { withRateLimit, RateLimitPresets } from "@/lib/rate-limit/middleware";
 
@@ -45,9 +41,29 @@ export async function GET(
 ) {
   const { accountId } = await params;
 
-  // Tauri mode: forward directly to cloud for authentication
+  // Tauri mode: query local database directly (no cloud call needed)
   if (isTauriMode()) {
-    return await handleGetFromCloud(request, accountId);
+    const user = await authenticateCloudRequest(request);
+
+    if (!user) {
+      return NextResponse.json(
+        { error: "Unauthorized", message: "You must be logged in" },
+        { status: 401 },
+      );
+    }
+
+    try {
+      return await handleGetLocal(accountId, user.id);
+    } catch (error) {
+      if (error instanceof AppError) {
+        return error.toResponse();
+      }
+      console.error("[Integrations] Failed to get account", error);
+      return NextResponse.json(
+        { error: "Failed to get integration account" },
+        { status: 500 },
+      );
+    }
   }
 
   // Cloud mode: local authentication check required
@@ -95,12 +111,21 @@ export async function PATCH(
 ) {
   const { accountId } = await params;
 
-  // Tauri mode: forward directly to cloud for authentication
+  // Tauri mode: update local database directly (no cloud call needed)
   if (isTauriMode()) {
+    const user = await authenticateCloudRequest(request);
+
+    if (!user) {
+      return NextResponse.json(
+        { error: "Unauthorized", message: "You must be logged in" },
+        { status: 401 },
+      );
+    }
+
     try {
       const body = await request.json();
       const payload = UpdateIntegrationSchema.parse(body);
-      return await handlePatchToCloud(request, accountId, payload);
+      return await handlePatchLocal(accountId, user.id, payload);
     } catch (error) {
       if (error instanceof z.ZodError) {
         return NextResponse.json(
@@ -238,235 +263,6 @@ export async function DELETE(
       { status: 500 },
     );
   }
-}
-
-// ============ Local mode handler functions (forward to cloud) ============
-
-async function handleGetFromCloud(request: NextRequest, accountId: string) {
-  const cloudUrl = getCloudUrl();
-  const response = await fetch(`${cloudUrl}/api/integrations/${accountId}`, {
-    headers: {
-      "Content-Type": "application/json",
-      // Forward Authorization header and Cookie
-      Authorization: request.headers.get("Authorization") || "",
-      Cookie: request.headers.get("Cookie") || "",
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response
-      .json()
-      .catch(() => ({ error: "Failed to fetch account" }));
-    return NextResponse.json(error, { status: response.status });
-  }
-
-  const data = await response.json();
-  return NextResponse.json(data, { status: 200 });
-}
-
-async function handlePatchToCloud(
-  request: NextRequest,
-  accountId: string,
-  payload: z.infer<typeof UpdateIntegrationSchema>,
-) {
-  const cloudUrl = getCloudUrl();
-  const response = await fetch(`${cloudUrl}/api/integrations/${accountId}`, {
-    method: "PATCH",
-    headers: {
-      "Content-Type": "application/json",
-      // Forward Authorization header and Cookie
-      Authorization: request.headers.get("Authorization") || "",
-      Cookie: request.headers.get("Cookie") || "",
-    },
-    body: JSON.stringify(payload),
-  });
-
-  if (!response.ok) {
-    const error = await response
-      .json()
-      .catch(() => ({ error: "Failed to update account" }));
-    return NextResponse.json(error, { status: response.status });
-  }
-
-  const data = await response.json();
-
-  // Sync update local database
-  const token = request.headers.get("Authorization")?.replace("Bearer ", "");
-  if (token) {
-    try {
-      const { verifyToken } = await import("@/lib/auth/remote-auth-utils");
-      const tokenResult = verifyToken(token);
-      if (tokenResult) {
-        // Determine userId: ID in token may already have cloud_ prefix
-        const userId = tokenResult.id.startsWith("cloud_")
-          ? tokenResult.id
-          : `cloud_${tokenResult.id}`;
-
-        const existing = await getIntegrationAccountById({
-          userId,
-          platformAccountId: accountId,
-        });
-
-        if (existing) {
-          await updateIntegrationAccount({
-            userId,
-            platformAccountId: accountId,
-            metadata: payload.metadata ?? existing.metadata,
-            status: payload.status ?? existing.status,
-            credentials: payload.credentials,
-          });
-        }
-      }
-    } catch (localError) {
-      console.warn(
-        "[Integrations] Failed to sync update to local:",
-        localError,
-      );
-    }
-  }
-
-  return NextResponse.json(data, { status: 200 });
-}
-
-async function handleDeleteCloud(request: NextRequest, accountId: string) {
-  console.log(
-    `[Integrations] Local mode: deleting account ${accountId} from cloud and local`,
-  );
-
-  const cloudUrl = getCloudUrl();
-  const authHeader = request.headers.get("Authorization") || "";
-
-  // Try to delete from cloud
-  let cloudDeleteSuccess = false;
-  let cloudNotFound = false;
-
-  try {
-    const deleteResponse = await fetch(
-      `${cloudUrl}/api/integrations/${accountId}`,
-      {
-        method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: authHeader,
-          Cookie: request.headers.get("Cookie") || "",
-        },
-      },
-    );
-
-    if (deleteResponse.ok) {
-      console.log(`[Integrations] ✓ Deleted account ${accountId} from cloud`);
-      cloudDeleteSuccess = true;
-    } else if (deleteResponse.status === 404) {
-      console.log(
-        `[Integrations] Cloud account ${accountId} not found (404), treating as already deleted`,
-      );
-      cloudNotFound = true;
-      cloudDeleteSuccess = true;
-    } else {
-      const errorData = await deleteResponse
-        .json()
-        .catch(() => ({ error: "Failed to delete from cloud" }));
-      console.error(
-        `[Integrations] Failed to delete account ${accountId} from cloud:`,
-        deleteResponse.status,
-        errorData,
-      );
-      return NextResponse.json(
-        {
-          error: "Failed to delete account from cloud",
-          details: errorData.error || "Unknown error",
-        },
-        { status: deleteResponse.status },
-      );
-    }
-  } catch (cloudError) {
-    console.error(
-      `[Integrations] Cloud delete failed for ${accountId}:`,
-      cloudError,
-    );
-    return NextResponse.json(
-      {
-        error: "Failed to delete account from cloud",
-        details:
-          cloudError instanceof Error ? cloudError.message : "Network error",
-      },
-      { status: 503 },
-    );
-  }
-
-  // Only delete the account from local database if cloud deletion succeeded (or 404)
-  if (cloudDeleteSuccess) {
-    try {
-      // Query this account in local database
-      const accounts = await db
-        .select()
-        .from(integrationAccounts)
-        .where(eq(integrationAccounts.id, accountId))
-        .limit(1);
-
-      if (accounts.length > 0) {
-        const account = accounts[0];
-        console.log(
-          `[Integrations] Found local account with userId: ${account.userId}`,
-        );
-
-        // Integration-specific cleanup (same as handleDeleteLocal)
-        if (account.platform === "whatsapp") {
-          const credentials = loadIntegrationCredentials<{
-            sessionKey?: string;
-          }>(account);
-          const sessionKey =
-            credentials?.sessionKey ??
-            (credentials as Record<string, string> | undefined)?.WA_CLIENT_ID ??
-            null;
-          if (sessionKey) {
-            // Delete Baileys session from Redis
-            const authState = new WhatsAppBaileysAuthState(sessionKey);
-            try {
-              await authState.clear();
-              console.log(
-                `[Integrations] Deleted WhatsApp session from Redis: ${sessionKey}`,
-              );
-            } catch (storeError) {
-              console.warn(
-                "[Integrations] Failed to delete WhatsApp session from Redis:",
-                storeError,
-              );
-            }
-          }
-        }
-
-        // Delete local account
-        const result = await deleteIntegrationAccount({
-          userId: account.userId,
-          platformAccountId: accountId,
-        });
-
-        console.log(
-          `[Integrations] ✓ Deleted local account ${accountId}, result:`,
-          result,
-        );
-      } else {
-        console.warn(`[Integrations] Local account not found: ${accountId}`);
-      }
-    } catch (localError) {
-      console.warn(
-        "[Integrations] Failed to delete local account:",
-        localError,
-      );
-      // Local deletion failure does not affect the overall result
-    }
-  }
-
-  // Return success response
-  return NextResponse.json(
-    {
-      success: true,
-      deletedAccountId: accountId,
-      deletedBotIds: [],
-    },
-    { status: 200 },
-  );
 }
 
 // ============ Cloud mode handler functions (directly operate local database) ============

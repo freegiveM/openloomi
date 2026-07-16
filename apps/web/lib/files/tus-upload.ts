@@ -1,9 +1,11 @@
 /**
  * TUS-style chunked upload for images
  * Used for large images that exceed Vercel's 4.5MB request body limit
+ *
+ * The upload lands in the local `/api/ai/v1/upload` route, which stores
+ * the bytes in the local backend's storage. No cloud hop.
  */
 import { getAuthToken } from "@/lib/auth/token-manager";
-import { getCloudUrl } from "@/lib/auth/cloud-proxy";
 
 const CHUNK_SIZE = 4 * 1024 * 1024; // 4MB - stays under Vercel's 4.5MB body limit
 
@@ -137,9 +139,10 @@ export async function uploadImageTUS(
 
       console.log(`[TUS] All chunks uploaded successfully: ${uploadId}`);
 
-      // 3. Return cloud blob URL so OpenRouter can fetch it
-      const cloudUrl = getCloudUrl();
-      return `${cloudUrl}/api/ai/v1/upload?uploadId=${uploadId}`;
+      // 3. Return a relative URL pointing at the local upload route so
+      // upstream providers (e.g. OpenRouter) can fetch the uploaded
+      // bytes via the same Tauri webview origin.
+      return `/api/ai/v1/upload?uploadId=${uploadId}`;
     } catch (err) {
       console.error(
         `[TUS] Upload error (attempt ${attempt}/${maxRetries}):`,

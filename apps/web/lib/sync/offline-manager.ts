@@ -1,12 +1,4 @@
 /**
- * Offline manager
- * Detects network status, supports offline mode and data synchronization
- */
-
-import { shouldUseCloudAuth } from "@/lib/auth/remote-client";
-import { getAuthToken } from "@/lib/auth/token-manager";
-
-/**
  * Network status
  */
 export type NetworkStatus = "online" | "offline" | "unknown";
@@ -212,35 +204,12 @@ export class OfflineManager {
 
   /**
    * Sync single item
+   *
+   * No-op stub: with no remote sync target, items cannot be replayed.
+   * The legacy cloud sync queue has been removed.
    */
-  private async syncItem(item: SyncItem): Promise<void> {
-    const token = getAuthToken();
-
-    if (!token) {
-      throw new Error("No auth token");
-    }
-
-    const cloudUrl =
-      process.env.CLOUD_API_URL || process.env.NEXT_PUBLIC_CLOUD_API_URL;
-
-    if (!cloudUrl) {
-      throw new Error("Cloud API URL not configured");
-    }
-
-    // Sync to different API endpoints based on type
-    const endpoint = this.getEndpointForType(item.type);
-
-    await fetch(`${cloudUrl}/api/sync/${endpoint}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        action: item.action,
-        data: item.data,
-      }),
-    });
+  private async syncItem(_item: SyncItem): Promise<void> {
+    return;
   }
 
   /**
@@ -267,32 +236,15 @@ export class OfflineManager {
 
   /**
    * Add pending sync item
+   *
+   * No-op stub: with no remote sync target, the queue is just dropped.
+   * Local writes are persisted directly through the API routes in
+   * normal online mode, so there's nothing to defer.
    */
   public addSyncItem(
-    item: Omit<SyncItem, "id" | "timestamp" | "retryCount">,
+    _item: Omit<SyncItem, "id" | "timestamp" | "retryCount">,
   ): void {
-    // Only sync when using cloud authentication
-    if (!shouldUseCloudAuth()) {
-      return;
-    }
-
-    const syncItem: SyncItem = {
-      ...item,
-      id: `${Date.now()}_${Math.random().toString(36).substring(2)}`,
-      timestamp: Date.now(),
-      retryCount: 0,
-    };
-
-    this.syncQueue.push(syncItem);
-
-    // Enforce max queue size to prevent localStorage overflow
-    this.pruneQueue();
-    this.saveSyncQueue();
-
-    // If online, start syncing immediately
-    if (this.isOnline && this.syncStatus !== "syncing") {
-      this.startSync();
-    }
+    return;
   }
 
   /**
