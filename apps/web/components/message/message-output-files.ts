@@ -114,8 +114,7 @@ export function collectToolOutputFilesFromParts(
       // authoritative artifact, codeFile signals "render an inline code
       // preview"). In that case the deliverable classification wins so the
       // latest-wins overwrite for same-path candidates is a no-op.
-      const isIntermediateScript =
-        f.cameFromCodeFile && !p.generatedFile;
+      const isIntermediateScript = f.cameFromCodeFile && !p.generatedFile;
       const role: ToolOutputFileRole =
         isTemp || isIntermediateScript ? "work" : "deliverable";
       // Latest-wins overwrite: chronological ordering of parts means the most

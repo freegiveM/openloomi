@@ -21,7 +21,7 @@
 import { useTranslation } from "react-i18next";
 import { Badge } from "@openloomi/ui";
 
-import type { ConnectorCapability } from "@/lib/loop";
+import type { ConnectorCapability } from "@/lib/loop/client";
 
 export interface ConnectorCapabilityBadgeProps {
   capability?: ConnectorCapability;

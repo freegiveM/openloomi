@@ -29,7 +29,7 @@ import {
   isLoopMonitored,
   summarizeConnectorCapability,
   withConnectorCapability,
-} from "@/lib/loop/connectors";
+} from "@/lib/loop/connectors-pure";
 import type { ConnectorEntry } from "@/lib/loop/types";
 
 // ---------------------------------------------------------------------------
@@ -38,7 +38,13 @@ import type { ConnectorEntry } from "@/lib/loop/types";
 
 describe("isLoopMonitored / isDecisionCapable", () => {
   it("flags the five canonical decision-capable toolkits", () => {
-    for (const id of ["gmail", "google_calendar", "github", "slack", "linear"]) {
+    for (const id of [
+      "gmail",
+      "google_calendar",
+      "github",
+      "slack",
+      "linear",
+    ]) {
       expect(isLoopMonitored(id)).toBe(true);
       expect(isDecisionCapable(id)).toBe(true);
     }

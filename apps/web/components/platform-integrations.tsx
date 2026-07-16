@@ -25,7 +25,7 @@ import { resolvePlatformLogo } from "./integration-platform-card";
 import { deleteIntegrationAccountRemote } from "@/lib/integrations/client";
 import { getAuthToken } from "@/lib/auth/token-manager";
 import { ConnectorCapabilityBadge } from "@/components/loop/connector-capability-badge";
-import { deriveConnectorCapability, isLoopMonitored, isDecisionCapable } from "@/lib/loop";
+import { deriveConnectorCapability, isLoopMonitored } from "@/lib/loop/client";
 import {
   DropdownMenu,
   DropdownMenuTrigger,

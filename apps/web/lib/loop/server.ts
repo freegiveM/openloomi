@@ -9,11 +9,8 @@ import {
   buildAndEnqueue as buildBrief,
   build as buildBriefOnly,
 } from "./brief";
-import {
-  listConnectors,
-  refreshConnectors,
-  summarizeConnectorCapability,
-} from "./connectors";
+import { listConnectors, refreshConnectors } from "./connectors";
+import { summarizeConnectorCapability } from "./connectors-pure";
 import { decisions, log, readStatus, signals } from "./store";
 import { readPreferences, writePreferences } from "./preferences";
 import {

@@ -13,14 +13,13 @@ export {
   rules,
 } from "./classify";
 export {
-  listConnectors,
-  refreshConnectors,
   isLoopMonitored,
   isDecisionCapable,
   deriveConnectorCapability,
   withConnectorCapability,
   summarizeConnectorCapability,
-} from "./connectors";
+} from "./connectors-pure";
+export { listConnectors, refreshConnectors } from "./connectors";
 export type { ConnectorCapability } from "./types";
 export {
   deriveReadiness,
@@ -31,11 +30,7 @@ export {
   stateLabel,
   canExecute,
 } from "./readiness";
-export type {
-  LoopPriority,
-  Urgency,
-  DecisionState,
-} from "./readiness";
+export type { LoopPriority, Urgency, DecisionState } from "./readiness";
 export { LOOP_HOME, LOOP_PATHS, ensureDirs, migrate } from "./paths";
 export {
   decisions,
