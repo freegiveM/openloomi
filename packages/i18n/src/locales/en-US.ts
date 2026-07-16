@@ -2435,6 +2435,13 @@ const enUS = {
           "Try simplifying the task or breaking it into smaller tasks",
           "Check network connection",
         ],
+        // The provider-timeout interruption card renders these strings when
+        // a long-running run is killed mid-tool-call. The wording here is
+        // intentionally different from the legacy timeout description above:
+        // there is no auto-retry in this case, so we do not promise one.
+        completedArtifacts:
+          "{{count}} file(s) from the previous run are preserved and can be reused.",
+        continueAction: "Continue this task",
       },
       genericError: {
         title: "An Error Occurred",

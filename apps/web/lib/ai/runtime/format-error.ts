@@ -48,6 +48,17 @@ export function formatAgentStreamErrorForUser(
       ? "当前 API 配置可能不兼容，请检查 baseUrl 与模型。"
       : "API configuration may be incompatible. Check base URL and model.";
   }
+  // Provider-timeout interruption: the agent reached its wall-clock deadline
+  // while still making progress. The marker carries a JSON payload so the
+  // error card can offer a real Continue action instead of the misleading
+  // "system will automatically retry" wording. We surface a clean message
+  // here and let `ErrorMessageDisplay` decode the structured payload via
+  // `parseCodexInterruptedError`.
+  if (raw.startsWith("__CODEX_INTERRUPTED__")) {
+    return zh
+      ? "任务执行超过时长限制已自动停止。已完成的工作会保留在工作目录中，可以从断点继续。"
+      : "The task was stopped because it reached the provider's time limit. Completed work is preserved in the workspace — continue from where it left off.";
+  }
 
   const authHint =
     raw.includes("无效的令牌") ||

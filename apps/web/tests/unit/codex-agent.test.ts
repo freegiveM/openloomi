@@ -4,7 +4,12 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 import type { AgentMessage, TaskPlan } from "@openloomi/ai/agent/types";
-import { CodexAgent } from "@/lib/ai/extensions/agent/codex";
+import {
+  CodexAgent,
+  CODEX_INTERRUPTED_MARKER,
+  formatCodexInterruptedError,
+  parseCodexInterruptedError,
+} from "@/lib/ai/extensions/agent/codex";
 import {
   buildCodexRunCommand,
   CodexCommandNotFoundError,
@@ -128,6 +133,37 @@ describe("Codex command builder", () => {
       normalizeCodexProviderConfig({ timeoutMs: "nope" }).timeoutMs,
     ).toBeUndefined();
   });
+});
+
+describe("Codex interrupted marker", () => {
+  it("round-trips workspace + completed artifacts through format/parse", () => {
+    const raw = formatCodexInterruptedError({
+      timeoutMs: 900_000,
+      workspacePath: "/workspace/project",
+      completedArtifacts: ["data.csv", "report.md"],
+    });
+
+    expect(raw.startsWith(CODEX_INTERRUPTED_MARKER)).toBe(true);
+
+    const parsed = parseCodexInterruptedError(raw);
+    expect(parsed).toEqual({
+      timeoutMs: 900_000,
+      workspacePath: "/workspace/project",
+      completedArtifacts: ["data.csv", "report.md"],
+      canResume: true,
+    });
+  });
+
+  it("returns null for unrelated errors so callers can chain safely", () => {
+    expect(parseCodexInterruptedError("Codex CLI exited with code 7")).toBeNull();
+    expect(parseCodexInterruptedError("")).toBeNull();
+    expect(
+      parseCodexInterruptedError(`${CODEX_INTERRUPTED_MARKER} not-json`),
+    ).toBeNull();
+  });
+});
+
+describe("CodexAgent", () => {
 
   it("defaults skipGitRepoCheck to true and honours an explicit false", () => {
     expect(normalizeCodexProviderConfig({}).skipGitRepoCheck).toBe(true);
@@ -552,6 +588,135 @@ setTimeout(() => process.stdout.write(payload.subarray(split)), 10);
         expect.objectContaining({ type: "text", content: "你好" }),
       ]),
     );
+  });
+
+  // Issue #356 — provider-timeout interruption must not leave in-flight tool
+  // parts stuck in `executing` and must emit a structured error so the chat
+  // UI can offer an explicit Continue action.
+  it("emits interrupted tool_results + a structured error when the provider timeout fires", async () => {
+    // Hang forever — the agent's timeout is what should kill us.
+    const workDir = await createFakeCodexWorkDir(`
+require("node:fs").writeFileSync("args.json", JSON.stringify(process.argv.slice(2)));
+console.log(JSON.stringify({ type: "thread.started", thread_id: "thread-1" }));
+// A file_change that does land before the deadline so we can verify the
+// preservation list reaches the chat UI.
+console.log(JSON.stringify({
+  type: "item.completed",
+  item: { type: "file_change", id: "fc-1", changes: [{ path: "report.md", kind: "create" }] }
+}));
+// A long-running tool_use that NEVER completes — the timeout must convert
+// it into a synthetic interrupted tool_result.
+console.log(JSON.stringify({
+  type: "item.started",
+  item: { type: "command_execution", id: "cmd-hang", command: "sleep 60" }
+}));
+// Block forever; the agent should kill us via timeoutMs.
+setInterval(() => {}, 1000);
+`);
+
+    const agent = new CodexAgent({
+      provider: "codex",
+      workDir,
+      providerConfig: { codexPath: process.execPath, timeoutMs: 250 },
+    });
+
+    const messages = await collectMessages(agent.run("long task"));
+
+    // The in-flight tool_use must be transitioned to a terminal state so the
+    // chat UI does not leave it stuck as "executing" forever.
+    const interruptedResult = messages.find(
+      (message) =>
+        message.type === "tool_result" &&
+        message.toolUseId === "cmd-hang",
+    );
+    expect(interruptedResult).toMatchObject({
+      type: "tool_result",
+      toolUseId: "cmd-hang",
+      isError: true,
+    });
+
+    // The error message must carry the interruption marker and a structured
+    // payload (workspace + completed artifacts) that the chat UI parses to
+    // render the Continue action.
+    const error = messages.find(
+      (message) =>
+        message.type === "error" &&
+        typeof message.message === "string" &&
+        message.message.startsWith("__CODEX_INTERRUPTED__"),
+    );
+    expect(error).toBeDefined();
+    expect(error?.message).toContain("__CODEX_INTERRUPTED__");
+    expect(error?.message).toContain(workDir);
+    expect(error?.message).toContain("report.md");
+    expect(error?.message).toMatch(/"canResume":\s*true/);
+
+    // The agent still closes with `done` so the SSE stream terminates cleanly
+    // and the chat UI does not loop waiting for a result.
+    expect(messages.at(-1)?.type).toBe("done");
+  });
+
+  // The continuation case from the acceptance criteria: once a previous run
+  // has been interrupted, a follow-up run that starts from the same workspace
+  // must reuse the artifacts that landed before the timeout rather than
+  // restarting collection from scratch.
+  it("lets a follow-up run reuse artifacts from an interrupted predecessor", async () => {
+    // First run is interrupted mid-tool by the provider timeout.
+    const workDir = await createFakeCodexWorkDir(`
+require("node:fs").writeFileSync("args.json", JSON.stringify(process.argv.slice(2)));
+console.log(JSON.stringify({ type: "thread.started", thread_id: "thread-1" }));
+console.log(JSON.stringify({
+  type: "item.completed",
+  item: { type: "file_change", id: "fc-1", changes: [{ path: "data.csv", kind: "create" }] }
+}));
+console.log(JSON.stringify({
+  type: "item.started",
+  item: { type: "command_execution", id: "cmd-hang", command: "sleep 60" }
+}));
+setInterval(() => {}, 1000);
+`);
+
+    const firstAgent = new CodexAgent({
+      provider: "codex",
+      workDir,
+      providerConfig: { codexPath: process.execPath, timeoutMs: 250 },
+    });
+    const firstRun = await collectMessages(firstAgent.run("start work"));
+    const interruptedError = firstRun.find(
+      (message) =>
+        message.type === "error" &&
+        typeof message.message === "string" &&
+        message.message.startsWith("__CODEX_INTERRUPTED__"),
+    );
+    expect(interruptedError).toBeDefined();
+
+    // Second run uses a fast-finishing fake so we can assert the workspace
+    // (and therefore the preserved artifact) is still the same place a
+    // continuation would pick up from.
+    await writeFakeCodexScript(
+      workDir,
+      defaultFakeCodexScript(),
+    );
+
+    const secondAgent = new CodexAgent({
+      provider: "codex",
+      workDir,
+      providerConfig: { codexPath: process.execPath },
+    });
+    const secondRun = await collectMessages(secondAgent.run("continue"));
+
+    expect(secondRun).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "session" }),
+        expect.objectContaining({ type: "text", content: "hello" }),
+        expect.objectContaining({
+          type: "result",
+          content: "success",
+        }),
+      ]),
+    );
+    // The continuation never restarted the run from scratch — the workspace
+    // path is unchanged and the previously-written artifact remains in place.
+    expect(secondRun.at(-1)?.type).toBe("done");
   });
 });
 

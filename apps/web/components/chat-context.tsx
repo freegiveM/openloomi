@@ -39,6 +39,7 @@ import {
   pickPreferredArtifactPath,
 } from "@/lib/files/extract-artifact-paths";
 import { formatAgentStreamErrorForUser } from "@/lib/ai/runtime/format-error";
+import { parseCodexInterruptedError } from "@/lib/ai/extensions/agent/codex";
 import { detectLifestyleImageTrigger } from "@/lib/ai/image-generation/lifestyle-trigger";
 
 // Max retry attempts for stream errors
@@ -1709,6 +1710,25 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
                 content: userFriendlyMessage,
               };
               parts.push(errorPart);
+
+              // Provider-timeout interruption: surface a structured data part
+              // so the chat UI can render an explicit Continue action that
+              // reuses the preserved workspace. We deliberately skip the
+              // stream-level auto-retry path (handled in onError) by tagging
+              // the part with an interruption payload — see issue #356.
+              const interruption = parseCodexInterruptedError(errorMessage);
+              if (interruption && interruption.canResume) {
+                parts.push({
+                  type: "data-interruption",
+                  data: {
+                    reason: "timeout",
+                    timeoutMs: interruption.timeoutMs,
+                    workspacePath: interruption.workspacePath,
+                    completedArtifacts: interruption.completedArtifacts,
+                    canResume: true,
+                  },
+                } as ChatMessage["parts"][number]);
+              }
 
               setMessages((prev) => {
                 const updated = [...prev];

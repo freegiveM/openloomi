@@ -258,6 +258,13 @@ export class CodexAgent extends BaseAgent {
     let inputTokens = 0;
     let outputTokens = 0;
     let sawUsage = false;
+    // Tracks tool_use ids that have started but not yet produced a tool_result,
+    // plus workspace artifacts produced by completed file_change items. Both
+    // are surfaced on provider timeout so the chat UI can transition in-flight
+    // tool parts to a terminal state and offer an explicit Continue action
+    // that reuses the same workspace instead of restarting from scratch.
+    const inFlightToolIds = new Set<string>();
+    const completedArtifacts = new Set<string>();
 
     for await (const event of runCodexCli(command.command, command.args, {
       cwd,
@@ -278,6 +285,34 @@ export class CodexAgent extends BaseAgent {
           if (message.type === "error") {
             sawRuntimeError = true;
           }
+          if (message.type === "tool_use") {
+            const useId = message.id ?? message.toolUseId;
+            if (useId) {
+              inFlightToolIds.add(useId);
+            }
+            yield this.withMessageId(message);
+            continue;
+          }
+          if (message.type === "tool_result") {
+            const useId = message.toolUseId ?? message.id;
+            if (useId) {
+              inFlightToolIds.delete(useId);
+            }
+            // file_change tool results summarise the changed paths. Codex
+            // emits them as part of the same item lifecycle as the tool_use,
+            // so we capture them at completion time, not at start time, to
+            // avoid reporting a path the CLI later reported as failed.
+            if (message.output && typeof message.output === "string") {
+              for (const line of message.output.split(/\r?\n/)) {
+                const match = line.match(/^(?:create|update)\s+(.+)$/);
+                if (match) {
+                  completedArtifacts.add(match[1].trim());
+                }
+              }
+            }
+            yield this.withMessageId(message);
+            continue;
+          }
           yield this.withMessageId(message);
         }
         continue;
@@ -287,6 +322,37 @@ export class CodexAgent extends BaseAgent {
     }
 
     if (!closeEvent) {
+      return;
+    }
+
+    // Provider timeout: surface an interrupted state so the UI can mark
+    // in-flight tool parts as terminal and offer a Continue action that
+    // reuses the same workspace. We deliberately yield synthetic tool_result
+    // events for every tool_use that never received a result, then a single
+    // structured error message carrying the workspace path and any
+    // artifacts that did manage to land before the deadline.
+    if (closeEvent.timedOut) {
+      for (const toolUseId of inFlightToolIds) {
+        yield {
+          type: "tool_result",
+          toolUseId,
+          output:
+            "Tool execution was interrupted because the run reached the provider timeout.",
+          isError: true,
+          messageId: this.generateMessageId(),
+        };
+      }
+
+      const interruptedMessage = formatCodexInterruptedError({
+        timeoutMs: closeEvent.timeoutMs ?? providerConfig.timeoutMs ?? 0,
+        workspacePath: cwd,
+        completedArtifacts: Array.from(completedArtifacts),
+      });
+      yield {
+        type: "error",
+        message: interruptedMessage,
+        messageId: this.generateMessageId(),
+      };
       return;
     }
 
@@ -352,6 +418,83 @@ function formatCodexExitError(
   return output
     ? `Codex CLI exited with code ${closeEvent.exitCode}: ${output}`
     : `Codex CLI exited with code ${closeEvent.exitCode}`;
+}
+
+/**
+ * Sentinel marker embedded in Codex error messages so the chat UI can
+ * distinguish a *timeout interruption* (where the provider killed an active
+ * run that still had in-flight work) from a plain CLI failure. The marker
+ * carries the workspace path and any artifacts that did manage to land so
+ * the UI can render a Continue action that reuses the existing workspace
+ * instead of restarting the task from scratch.
+ *
+ * Keep the prefix stable — it is parsed by both the chat context and the
+ * error message display component.
+ */
+export const CODEX_INTERRUPTED_MARKER = "__CODEX_INTERRUPTED__";
+
+export interface CodexInterruptedContext {
+  timeoutMs: number;
+  workspacePath: string;
+  completedArtifacts: string[];
+}
+
+export function formatCodexInterruptedError(context: CodexInterruptedContext) {
+  const payload = JSON.stringify({
+    marker: CODEX_INTERRUPTED_MARKER,
+    reason: "timeout",
+    timeoutMs: context.timeoutMs,
+    workspacePath: context.workspacePath,
+    completedArtifacts: context.completedArtifacts,
+    canResume: true,
+  });
+  return `${CODEX_INTERRUPTED_MARKER} ${payload}`;
+}
+
+/**
+ * Parse a Codex interrupted marker message back into its structured payload.
+ * Returns `null` for any other error string so callers can safely chain
+ * `if (parse(...))` checks before handling the interruption.
+ */
+export function parseCodexInterruptedError(
+  raw: string,
+): (CodexInterruptedContext & { canResume: boolean }) | null {
+  if (!raw || !raw.startsWith(CODEX_INTERRUPTED_MARKER)) {
+    return null;
+  }
+
+  const tail = raw.slice(CODEX_INTERRUPTED_MARKER.length).trim();
+  try {
+    const parsed = JSON.parse(tail) as {
+      marker?: string;
+      reason?: string;
+      timeoutMs?: number;
+      workspacePath?: string;
+      completedArtifacts?: string[];
+      canResume?: boolean;
+    };
+
+    if (parsed.marker !== CODEX_INTERRUPTED_MARKER) {
+      return null;
+    }
+
+    return {
+      timeoutMs:
+        typeof parsed.timeoutMs === "number" ? parsed.timeoutMs : 0,
+      workspacePath:
+        typeof parsed.workspacePath === "string"
+          ? parsed.workspacePath
+          : "",
+      completedArtifacts: Array.isArray(parsed.completedArtifacts)
+        ? parsed.completedArtifacts.filter(
+            (entry): entry is string => typeof entry === "string",
+          )
+        : [],
+      canResume: parsed.canResume !== false,
+    };
+  } catch {
+    return null;
+  }
 }
 
 function resolveHome(filePath: string) {
