@@ -30,12 +30,64 @@ export interface SkipReason {
 }
 
 /**
+ * Optional context for the reference classifier. Tests pass a frozen
+ * `now`; callers with an authenticated session also pass the active
+ * user's email so we can apply the self-owned-event gate without
+ * leaking personal all-day events as urgent RSVPs.
+ *
+ * Mirrored in `tick-prompt.ts` §5 so the agentic prompt applies the
+ * same gates at decision time.
+ */
+export interface ClassifyOptions {
+  /** Override "now" for deterministic tests; defaults to `new Date()`. */
+  now?: Date;
+  /**
+   * Current user's email (lowercase, trimmed). When supplied, the
+   * classifier drops self-owned events with no attendees — a Google
+   * Calendar API quirk that surfaces all-day private events as urgent
+   * RSVP candidates otherwise. Optional so the function still works
+   * without an auth context (CLI dry runs, tests).
+   */
+  activeUserEmail?: string | null;
+}
+
+/**
+ * Resolve "now" for time-based gates. Centralised so callers can
+ * override it via `ClassifyOptions.now` (tests, deterministic replays).
+ */
+function resolveNow(opts?: ClassifyOptions): Date {
+  return opts?.now ?? new Date();
+}
+
+/**
+ * Parse a Google Calendar-style timestamp (ISO 8601 string OR epoch ms)
+ * into a `Date`, returning null when the input is missing or unparseable.
+ */
+function parseCalendarTimestamp(raw: unknown): Date | null {
+  if (raw == null) return null;
+  if (raw instanceof Date) return Number.isNaN(raw.getTime()) ? null : raw;
+  if (typeof raw === "number") {
+    const d = new Date(raw);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  if (typeof raw === "string") {
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+    const ms = Date.parse(trimmed);
+    if (Number.isNaN(ms)) return null;
+    return new Date(ms);
+  }
+  return null;
+}
+
+/**
  * Returns a SkipReason if the signal should be dropped before classification,
  * or null if it should proceed.
  */
 export function isHardSkipped(
   signal: LoopSignal,
   prefs: Pick<LoopPreferences, "noReplySkip" | "promotionSkip">,
+  opts?: ClassifyOptions,
 ): SkipReason | null {
   const p = signal.payload as Record<string, unknown>;
   if (prefs.noReplySkip) {
@@ -51,9 +103,61 @@ export function isHardSkipped(
     }
   }
   if (signal.type === "calendar_event") {
-    const r = String(p.my_response ?? "").toLowerCase();
+    // 1) Cancelled events — the meeting is dead; no RSVP needed.
+    if (String(p.status ?? "").toLowerCase() === "cancelled") {
+      return { reason: "event cancelled" };
+    }
+    // 2) Missing my_response — do NOT infer "needsAction". Historical
+    //    self-owned events arrive with no my_response at all; falling
+    //    through to the classifier branch that treated absent as
+    //    needsAction caused the 2014-event regression (issue #355).
+    const rRaw = p.my_response;
+    const r =
+      rRaw == null || (typeof rRaw === "string" && rRaw.trim() === "")
+        ? ""
+        : String(rRaw).toLowerCase();
+    if (r === "") {
+      return { reason: "missing my_response" };
+    }
+    // 3) Already responded.
     if (["accepted", "declined", "tentative"].includes(r)) {
       return { reason: `already ${r}` };
+    }
+    // 4) Event already ended — historical entries (e.g. 2014 all-day
+    //    events from the user's own calendar) leak through when the
+    //    upstream query window is narrower than the persisted window.
+    const end = parseCalendarTimestamp(p.end);
+    if (end) {
+      const now = resolveNow(opts);
+      if (end.getTime() <= now.getTime()) {
+        return { reason: "event ended" };
+      }
+    }
+    // 5) Event outside the forward window — Google Calendar events.list
+    //    was called with `timeMax: now + 7d`, but a robust classifier
+    //    enforces the same bound again so a stray future event doesn't
+    //    surface as a current-work RSVP card.
+    const start = parseCalendarTimestamp(p.start);
+    if (start) {
+      const horizon = resolveNow(opts).getTime() + 7 * 24 * 60 * 60 * 1000;
+      if (start.getTime() > horizon) {
+        return { reason: "event beyond 7-day window" };
+      }
+    }
+    // 6) Self-owned event with no attendees — personal all-day entries
+    //    (reminders, out-of-office, focus blocks) that the user owns
+    //    and isn't sharing with anyone. Surfacing these as actionable
+    //    RSVPs with a default "accepted" was the trust-and-external-
+    //    action bug the issue names.
+    if (opts?.activeUserEmail) {
+      const selfEmail = opts.activeUserEmail.toLowerCase().trim();
+      const organizer = String(p.organizer ?? "")
+        .toLowerCase()
+        .trim();
+      const attendees = Array.isArray(p.attendees) ? p.attendees : [];
+      if (organizer === selfEmail && attendees.length === 0) {
+        return { reason: "self-owned event, no attendees" };
+      }
     }
   }
   if (signal.type === "email" && p.replied) {
@@ -83,8 +187,9 @@ export function isMuted(signal: LoopSignal): SkipReason | null {
 export function gateSignal(
   signal: LoopSignal,
   prefs: Pick<LoopPreferences, "noReplySkip" | "promotionSkip">,
+  opts?: ClassifyOptions,
 ): SkipReason | null {
-  return isMuted(signal) ?? isHardSkipped(signal, prefs);
+  return isMuted(signal) ?? isHardSkipped(signal, prefs, opts);
 }
 
 export interface DecisionCandidate {
@@ -98,24 +203,87 @@ export interface DecisionCandidate {
  * Lightweight classifier: produces a decision candidate from a signal.
  * Returns null when no typed action is warranted — the signal is then
  * silently dropped from the queue but stays in signals.jsonl for debugging.
+ *
+ * The optional `opts` carries context the classifier needs to make
+ * better routing decisions — most importantly `activeUserEmail` for the
+ * self-owned-event gate. Without it the classifier is conservatively
+ * permissive (legacy behaviour); with it, ambiguous personal events
+ * are dropped rather than emitted as default-accepted RSVPs.
  */
-export function classify(signal: LoopSignal): DecisionCandidate | null {
+export function classify(
+  signal: LoopSignal,
+  opts?: ClassifyOptions,
+): DecisionCandidate | null {
   const p = signal.payload as Record<string, unknown>;
   const text =
     `${String(p.subject ?? "")} ${String(p.snippet ?? p.body ?? "")}`.toLowerCase();
 
   if (signal.type === "calendar_event") {
-    const r = String(p.my_response ?? "needsAction");
-    if (r === "needsAction" || !p.my_response) {
-      return {
-        type: "rsvp",
-        title: `RSVP — ${String(p.title ?? p.summary ?? "Meeting")}`,
-        action: {
-          kind: "calendar_rsvp",
-          params: { eventId: p.eventId ?? p.id, response: "accepted" },
-        },
-      };
+    // Defence-in-depth — `isHardSkipped` already drops missing / non-
+    // needsAction responses, but a direct caller of `classify()` could
+    // reach here with any value. Re-check before emitting. We replay the
+    // full hard-skip set so the reference impl mirrors both the prompt's
+    // §5 rules and `isHardSkipped` — anything that would be skipped
+    // upstream is also skipped here. `classify()` doesn't take prefs
+    // today (callers go through `gateSignal` first); pass an empty
+    // object so the no-reply / promo gates stay dormant (the gates we
+    // actually need here are the calendar ones, which ignore prefs).
+    const upstream = isHardSkipped(
+      signal,
+      { noReplySkip: false, promotionSkip: false },
+      opts,
+    );
+    if (upstream) return null;
+    // Self-owned personal events shouldn't surface as RSVPs even if the
+    // my_response shape looks actionable. The hard-skip path drops
+    // self-owned + no-attendees; here we additionally require the user
+    // to appear in the attendees list when their email is known.
+    if (opts?.activeUserEmail) {
+      const selfEmail = opts.activeUserEmail.toLowerCase().trim();
+      const attendees = Array.isArray(p.attendees) ? p.attendees : [];
+      const userInAttendees = attendees.some((a) => {
+        if (!a || typeof a !== "object") return false;
+        const rec = a as Record<string, unknown>;
+        if (rec.self === true) return true;
+        const email = String(rec.email ?? "")
+          .toLowerCase()
+          .trim();
+        return email !== "" && email === selfEmail;
+      });
+      if (!userInAttendees) return null;
     }
+    if (p.my_response !== "needsAction") return null;
+    const organizer = p.organizer == null ? null : String(p.organizer);
+    const organizerIsSelf =
+      !!opts?.activeUserEmail &&
+      organizer != null &&
+      organizer.toLowerCase().trim() ===
+        opts.activeUserEmail.toLowerCase().trim();
+    const attendeesCount = Array.isArray(p.attendees) ? p.attendees.length : 0;
+    return {
+      type: "rsvp",
+      title: `RSVP — ${String(p.title ?? p.summary ?? "Meeting")}`,
+      action: {
+        kind: "calendar_rsvp",
+        // `response: null` is intentional — the user picks Yes / No /
+        // Maybe at run time. Defaulting to "accepted" silently performs
+        // an external write on the user's behalf, which is the exact
+        // failure mode issue #355 names. The surrounding metadata lets
+        // the UI render the card with full context (organizer, time,
+        // status, attendee count) instead of guessing.
+        params: {
+          eventId: p.eventId ?? p.id,
+          response: null,
+          start: p.start,
+          end: p.end,
+          organizer,
+          organizerIsSelf,
+          attendeesCount,
+          status: p.status,
+          my_response: p.my_response,
+        },
+      },
+    };
   }
 
   if (signal.type === "github_pr" && p.state === "open") {

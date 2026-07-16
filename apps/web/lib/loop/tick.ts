@@ -15,6 +15,7 @@ import { LOOP_PATHS, ensureDirs, migrate } from "./paths";
 import { decisions, log, writeStatus } from "./store";
 import { buildTickPrompt } from "./tick-prompt";
 import { classifierRules, findMatchingRule } from "./classifier-rules";
+import { recordEvent as recordActivationEvent } from "./activation";
 import type { LoopDecision, LoopTickResult } from "./types";
 
 const TICK_LOOKBACK_MS = 2 * 60 * 60 * 1000; // 2h
@@ -28,6 +29,17 @@ const TICK_BATCH = 200;
  */
 let activeUserId: string | null = null;
 
+/**
+ * Active user's email — fed into the reference classifier (via
+ * `ClassifyOptions.activeUserEmail`) so the self-owned-event gate in
+ * `classify.ts` can drop personal all-day entries the user owns but
+ * isn't sharing. Today the runtime tick is fully agentic and `classify()`
+ * is not invoked from this path, so this setter is GREENFIELD — a
+ * follow-up can plumb it from `server.ts::triggerTick` when the runtime
+ * starts calling `classify()` directly.
+ */
+let activeUserEmail: string | null = null;
+
 /** Set the user the next `run()` invocation will enrich against. */
 export function setActiveUser(userId: string | null): void {
   activeUserId = userId;
@@ -36,6 +48,21 @@ export function setActiveUser(userId: string | null): void {
 /** Read the currently-active user. Useful for diagnostics / logging. */
 export function getActiveUser(): string | null {
   return activeUserId;
+}
+
+/**
+ * Set the active user's email so `classify()` (when invoked) can apply
+ * the self-owned-event gate. See `activeUserEmail` note above — this is
+ * unconsumed today, plumbed in advance of the runtime wiring the
+ * reference classifier.
+ */
+export function setActiveUserEmail(email: string | null): void {
+  activeUserEmail = email;
+}
+
+/** Read the currently-active user's email. */
+export function getActiveUserEmail(): string | null {
+  return activeUserEmail;
 }
 
 export interface TickOptions {
@@ -251,6 +278,25 @@ async function runAgentic(opts: TickOptions): Promise<LoopTickResult> {
     lastDecisionCount: result.surfaced,
     ...(result.errors[0] ? { lastError: result.errors[0] } : {}),
   });
+
+  // #351 — flip `firstTickCompleted` so the activation state machine
+  // can move from `runtime_ready` / `source_pending` into
+  // `check_pending` / `decision_pending`. Best-effort: a failure
+  // here must NOT poison the tick result. `coreReady` is forced true
+  // because the tick itself only runs when the agent runtime is up;
+  // the route layer is the authoritative source for that signal.
+  try {
+    recordActivationEvent("tick", { coreReady: true });
+  } catch (activationErr) {
+    log(
+      `tick (agentic): failed to record activation event: ${
+        activationErr instanceof Error
+          ? activationErr.message
+          : String(activationErr)
+      }`,
+    );
+  }
+
   return result;
 }
 

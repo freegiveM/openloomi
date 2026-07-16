@@ -338,6 +338,8 @@ the last ~500 lines and matching on the canonical id field).
 Also skip signals whose \`_insightId\` matches an existing signal — protects against
 duplicates when toggling composio on/off between ticks.
 
+For \`calendar_event\` signals, validate the returned event's \`start\`/\`end\` timestamps fall inside \`[now, now + 7 days]\` before appending. Drop any event whose \`start\` is before \`now\` or whose \`start\` is after \`now + 7 days\` — do NOT persist them. Drop any event whose \`status\` is \`"cancelled"\`. Drop any event whose \`organizer\` matches the current user's email **AND** whose \`attendees\` array is empty — these are personal self-owned all-day events, not invitations (issue #355).
+
 ${
   includeObsidian
     ? `## 3.5 Obsidian vault scan (optional)
@@ -423,7 +425,17 @@ lib-level classifier exactly):
     - user-muted key in ${mutesPath} (compute via the same rules as classify.ts:isMuted; signals whose normalised key appears here are dropped before ingestion — typically because the user dismissed a similar signal in a prior tick; read the file fresh each tick, not from memory)
 
   Classifier (returns a typed action):
-    - calendar_event with my_response in [needsAction, undefined]  -> rsvp        (calendar_rsvp)
+    - calendar_event:
+        - hard skip if status == "cancelled"                       → drop
+        - hard skip if my_response is missing/null/empty          → drop (do NOT infer needsAction)
+        - hard skip if my_response in [accepted, declined, tentative] → drop
+        - hard skip if event end is in the past                   → drop
+        - hard skip if event start is more than 7 days in the future → drop
+        - hard skip if organizer matches current user AND attendees is empty → drop (self-owned)
+        - require user to appear in attendees                     → otherwise drop
+        - else: rsvp (calendar_rsvp) with params: { eventId, response: null, start, end, organizer, organizerIsSelf, attendeesCount, status, my_response }
+          — response: null is intentional: the user picks Yes/No/Maybe at run time.
+    The current user's email is available via \`openloomi-memory list-entities --type=person\` filtered to the \`self\` flag, or the email used by the connected Google Calendar account — look it up once at the start of §5 and reuse.
     - email with /rsvp|invit|meeting|join.*call|calendar/i in subj   -> draft_reply (email_reply)
     - email with /please|could you|can you|need|asap|urgent/i        -> draft_reply (email_reply)
     - github_pr where state == "open" AND (user_is_reviewer OR requested_reviewers is empty)
