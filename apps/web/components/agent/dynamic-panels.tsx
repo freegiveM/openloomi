@@ -1,21 +1,5 @@
 import dynamic from "next/dynamic";
 
-export const AgentEventsPanel = dynamic(
-  () =>
-    import("@/components/agent/events-panel").then((m) => ({
-      default: m.AgentEventsPanel,
-    })),
-  { ssr: false },
-);
-
-export const AgentBriefPanel = dynamic(
-  () =>
-    import("@/components/agent/brief-panel").then((m) => ({
-      default: m.AgentBriefPanel,
-    })),
-  { ssr: false },
-);
-
 // File preview component (for mask and drawer)
 export const FilePreviewPanel = dynamic(
   () =>

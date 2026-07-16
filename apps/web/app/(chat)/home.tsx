@@ -18,11 +18,6 @@ import { ResponsiveToolbar } from "@/components/agent/responsive-toolbar";
 import { AgentChatPanel } from "@/components/agent/chat-panel";
 import { ChatHeaderPanel } from "@/components/agent/chat-header-panel";
 import { Button, PageSectionHeader } from "@openloomi/ui";
-import {
-  AgentEventsPanel,
-  AgentBriefPanel,
-  InsightDetailDrawer,
-} from "@/components/agent/dynamic-panels";
 import { useTranslation } from "react-i18next";
 import "../../i18n";
 import type { ChatMessage } from "@openloomi/shared";
@@ -736,20 +731,6 @@ export function Home() {
       const mobilePanelTitle = getMobilePanelTitle();
 
       switch (mobileActivePanel) {
-        case "insight":
-          mobilePanelContent = (
-            <AgentEventsPanel
-              key="events-panel"
-              hideHeader={false}
-              category={memoizedCategory}
-            />
-          );
-          break;
-        case "brief":
-          mobilePanelContent = (
-            <AgentBriefPanel key="brief-panel" hideHeader={true} />
-          );
-          break;
         case "chat":
           mobilePanelContent = (
             <div className="flex h-full flex-col">
@@ -768,7 +749,18 @@ export function Home() {
           break;
         default:
           mobilePanelContent = (
-            <AgentBriefPanel key="brief-panel" hideHeader={true} />
+            <div className="flex h-full flex-col">
+              <ChatHeaderPanel onChatIdChange={handleChatIdChange} />
+              <div
+                className={cn(
+                  "flex-1 min-h-0 overflow-auto",
+                  // Mobile: add bottom spacing (chat panel needs less spacing)
+                  isMobile && "pb-[80px]",
+                )}
+              >
+                <AgentChatPanel initialMessageToSend={initialMessageToSend} />
+              </div>
+            </div>
           );
       }
 
@@ -794,15 +786,6 @@ export function Home() {
           </AgentLayout>
           {/* Mobile bottom menu bar - render independently outside AgentLayout */}
           {responsiveToolbar}
-          {/* Global InsightDetailDrawer - Mobile */}
-          <InsightDetailDrawer
-            insight={selectedInsight}
-            isOpen={isInsightDrawerOpen}
-            onClose={() => {
-              setSelectedInsight(null);
-              setIsInsightDrawerOpen(false);
-            }}
-          />
         </InsightsPaginationProvider>
       );
     }
@@ -881,14 +864,6 @@ export function Home() {
               )}
             </div>
           </AgentLayout>
-          <InsightDetailDrawer
-            insight={selectedInsight}
-            isOpen={isInsightDrawerOpen}
-            onClose={() => {
-              setSelectedInsight(null);
-              setIsInsightDrawerOpen(false);
-            }}
-          />
         </InsightsPaginationProvider>
       );
     }
@@ -906,19 +881,12 @@ export function Home() {
       router.replace(newPath);
     };
 
-    const leftPanel = isInboxPage ? (
-      <AgentEventsPanel
-        key="events-panel"
-        category={memoizedCategory}
-        embedInCard={true}
-        externalSelectedInsight={selectedInsight}
-        onExternalInsightClose={closeExternalInsight}
-      />
-    ) : page === null ? (
-      <ChatSkeleton key="chat-skeleton" />
-    ) : (
-      <PanelSkeleton key="panel-skeleton" />
-    );
+    const leftPanel =
+      page === null ? (
+        <ChatSkeleton key="chat-skeleton" />
+      ) : (
+        <PanelSkeleton key="panel-skeleton" />
+      );
 
     return (
       <InsightsPaginationProvider>
@@ -929,17 +897,6 @@ export function Home() {
         >
           {leftPanel}
         </AgentLayout>
-        {/* Desktop doesn't render global drawer (Events/Brief both embedded in middle card); only mobile uses global drawer */}
-        {isMobile && (
-          <InsightDetailDrawer
-            insight={selectedInsight}
-            isOpen={isInsightDrawerOpen}
-            onClose={() => {
-              setSelectedInsight(null);
-              setIsInsightDrawerOpen(false);
-            }}
-          />
-        )}
       </InsightsPaginationProvider>
     );
   }
