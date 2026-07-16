@@ -210,6 +210,15 @@ export interface LoopSignal {
    *  are kept once. */
   _origin?: "composio" | "insights" | "obsidian" | "manual";
   _insightId?: string;
+  /**
+   * #360 — non-secret provenance for the connected account this signal was
+   * pulled from. Multi-account toolkits (e.g. two Google Calendar accounts)
+   * pull once per account and tag each signal here so decisions, briefs, and
+   * dedupe stay traceable to their source account. NEVER contains OAuth
+   * tokens or other credentials — only a stable connected-account id and an
+   * optional human-facing label (usually the account email / handle).
+   */
+  sourceAccount?: ConnectorAccount;
 }
 
 // ---------------------------------------------------------------------------
@@ -368,12 +377,45 @@ export type ConnectorCapability =
   | "decision_capable"
   | "unsupported";
 
+/**
+ * #360 — a single connected account within a toolkit. Multi-account
+ * toolkits (Gmail, Google Calendar, Slack, …) can have several of these.
+ * The shape is deliberately minimal and non-secret: a stable connected-
+ * account id (Composio `connected_account_id` / `word_id`) plus an optional
+ * human-facing label (usually the account's email or handle). It NEVER
+ * carries OAuth tokens, refresh tokens, or other credentials, so it is safe
+ * to round-trip through `/api/loop/connectors` and persist on disk.
+ */
+export interface ConnectorAccount {
+  /** Stable, non-secret connected-account identifier. */
+  id: string;
+  /** Optional human-facing label — usually the account email / handle. */
+  label?: string;
+  /**
+   * Per-account health from the last probe/tick. Absent means "assumed
+   * healthy" for back-compat. `false` lets the UI flag an account whose
+   * pull failed while its siblings succeeded (partial-failure isolation).
+   */
+  healthy?: boolean;
+  /** Optional short, non-secret reason when `healthy === false`. */
+  lastError?: string;
+}
+
 export interface ConnectorEntry {
   id: string;
   label: string;
   /** True when at least one account is connected and the toolkit reports healthy. */
   connected: boolean;
   accountCount: number;
+  /**
+   * #360 — the active connected accounts Loop monitors for this toolkit.
+   * One entry per healthy account, so a multi-account toolkit (e.g. two
+   * Google Calendar accounts) is transparent to the UI instead of implying
+   * a single default account. Length SHOULD agree with `accountCount`; the
+   * field is optional for back-compat with snapshots written before #360.
+   * Entries carry only non-secret identifiers/labels — never credentials.
+   */
+  accounts?: ConnectorAccount[];
   lastError?: string;
   /**
    * Provenance flag. `true` means an agent probe actually emitted this

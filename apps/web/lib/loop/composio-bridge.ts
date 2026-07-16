@@ -26,7 +26,7 @@
 import { invokeAgentPrompt } from "./runner";
 import { writeConnectorSnapshot } from "./connectors";
 import { log } from "./store";
-import type { ConnectorEntry } from "./types";
+import type { ConnectorAccount, ConnectorEntry } from "./types";
 
 interface ProbeConnectorPromptOptions {
   /**
@@ -84,9 +84,9 @@ function buildProbePrompt(
   const catalog = toolkits
     .map((t) => {
       if (t.localOnly) {
-        return `  - ${t.id} (${t.label}): local-only — do NOT probe. Report \`{ id: "${t.id}", label: "${t.label}", connected: false, accountCount: 0, lastError: "${t.localOnlyMessage ?? "local-only"}" }\`.`;
+        return `  - ${t.id} (${t.label}): local-only — do NOT probe. Report \`{ id: "${t.id}", label: "${t.label}", connected: false, accountCount: 0, accounts: [], lastError: "${t.localOnlyMessage ?? "local-only"}" }\`.`;
       }
-      return `  - ${t.id} (${t.label}): use the active Composio surface. If active, report \`{ id: "${t.id}", label: "${t.label}", connected: true, accountCount: <int> }\`. If not, report \`{ id: "${t.id}", label: "${t.label}", connected: false, accountCount: 0, lastError: "not connected" }\`.`;
+      return `  - ${t.id} (${t.label}): use the active Composio surface. Enumerate EVERY active connected account for this toolkit (issue #360 — a toolkit can have more than one). If at least one is active, report \`{ id: "${t.id}", label: "${t.label}", connected: true, accountCount: <int>, accounts: [{ id: "<connected_account_id>", label: "<email-or-handle-or-null>", healthy: true }, …] }\` with one \`accounts\` entry per active account and \`accountCount === accounts.length\`. If none, report \`{ id: "${t.id}", label: "${t.label}", connected: false, accountCount: 0, accounts: [], lastError: "not connected" }\`.`;
     })
     .join("\n");
 
@@ -98,13 +98,13 @@ You MUST attempt every surface below, **in order**, even if an earlier surface e
 
   1. **CLI reachable?** — Run \`Bash(composio whoami)\`. This is the cheapest sanity check; if it succeeds, the CLI is on \`$PATH\` and the user's API key is valid. Record this surface as \`"cli"\` in \`surfaces_used\`.
 
-  2. **CLI connections snapshot** — Run \`Bash(composio connections list)\`. It returns JSON of the form \`{ "<toolkit>": [{ "status": "ACTIVE", "word_id": "...", ... }, ...] }\`. Treat entries with \`status === "ACTIVE"\` as healthy connections; everything else as disconnected. Combine this result into the per-toolkit \`connected\` / \`accountCount\` / \`lastError\` fields.
+  2. **CLI connections snapshot** — Run \`Bash(composio connections list)\` (and, for a per-account breakdown, \`Bash(composio manage connected-accounts list --status ACTIVE)\`). It returns JSON of the form \`{ "<toolkit>": [{ "status": "ACTIVE", "word_id": "...", ... }, ...] }\`. Treat entries with \`status === "ACTIVE"\` as healthy connections; everything else as disconnected. Combine this result into the per-toolkit \`connected\` / \`accountCount\` / \`accounts\` / \`lastError\` fields. Each ACTIVE account becomes one \`accounts\` entry with its non-secret \`{ id, label }\` (id = \`connected_account_id\` / \`word_id\`; label = the account email / handle when present). NEVER include tokens or secrets.
 
   3. **\`composio\` skill** — Run \`Skill composio connections list\`. Independent of the CLI; in sandboxed shells (or when \`composio\` is not on \`$PATH\`) this may be the only surface that returns data. If step 1 or 2 already succeeded, still run this step — its result can confirm or contradict the CLI.
 
   4. **No surface reachable** — ONLY reach this step when steps 1, 2, and 3 ALL failed. Report \`surfaces_used: []\` and set every non-local-only entry to \`connected: false\` with \`lastError: "no composio surface reachable"\`.
 
-If multiple surfaces return data, merge them: a toolkit with at least one ACTIVE / healthy report from ANY surface counts as \`connected: true\` with that surface's \`accountCount\`. A later surface's failure does not invalidate an earlier surface's success.
+If multiple surfaces return data, merge them: a toolkit with at least one ACTIVE / healthy report from ANY surface counts as \`connected: true\` with that surface's \`accountCount\` and merged \`accounts\` (dedupe accounts by \`id\`). A later surface's failure does not invalidate an earlier surface's success.
 
 # Toolkits to probe
 
@@ -123,12 +123,12 @@ Emit exactly one SSE \`result\` event with this content:
   "duration_ms": <int>,
   "surfaces_used": ["cli", "skill", "insights", "local-only"],
   "connectors": [
-    { "id": "<toolkit-id>", "label": "<label>", "connected": <bool>, "accountCount": <int>, "lastError": "<optional: short string>" }
+    { "id": "<toolkit-id>", "label": "<label>", "connected": <bool>, "accountCount": <int>, "accounts": [{ "id": "<connected_account_id>", "label": "<email-or-handle-or-null>", "healthy": true }], "lastError": "<optional: short string>" }
   ]
 }
 \`\`\`
 
-The \`connectors\` array MUST contain one entry per toolkit in the catalog above, in the same order, with the \`id\` and \`label\` matching exactly. Do not omit any toolkit.
+The \`connectors\` array MUST contain one entry per toolkit in the catalog above, in the same order, with the \`id\` and \`label\` matching exactly. Do not omit any toolkit. \`accountCount\` MUST equal \`accounts.length\`, and every \`accounts\` entry carries only the non-secret \`{ id, label, healthy }\` — never tokens or credentials.
 
 Do not pull signals, do not classify, do not write to \`~/.openloomi/loop/\` — the bridge persists the snapshot for you. Just emit the \`result\` event and stop.`;
 }
@@ -139,6 +139,7 @@ interface ConnectorBlockShape {
     label?: unknown;
     connected?: unknown;
     accountCount?: unknown;
+    accounts?: unknown;
     lastError?: unknown;
   }>;
 }
@@ -286,6 +287,39 @@ function findMatchingBrace(text: string, start: number): number {
 }
 
 /**
+ * Parse the agent-reported `accounts` array (issue #360) into a clean,
+ * non-secret `ConnectorAccount[]`. Tolerant of missing / malformed shapes:
+ * anything without a usable `id` is skipped, and only the whitelisted
+ * `{ id, label, healthy, lastError }` fields survive — no token or credential
+ * field the agent may have accidentally included is copied through.
+ * Returns `undefined` when there is nothing usable so the entry stays sparse.
+ */
+function parseAccounts(raw: unknown): ConnectorAccount[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: ConnectorAccount[] = [];
+  const seen = new Set<string>();
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const rec = item as Record<string, unknown>;
+    const id = rec.id ?? rec.connected_account_id ?? rec.word_id;
+    if (typeof id !== "string" || !id.trim() || seen.has(id)) continue;
+    seen.add(id);
+    const account: ConnectorAccount = { id };
+    if (typeof rec.label === "string" && rec.label.trim()) {
+      account.label = rec.label;
+    } else if (typeof rec.email === "string" && rec.email.trim()) {
+      account.label = rec.email;
+    }
+    if (typeof rec.healthy === "boolean") account.healthy = rec.healthy;
+    if (typeof rec.lastError === "string" && rec.lastError) {
+      account.lastError = rec.lastError;
+    }
+    out.push(account);
+  }
+  return out.length > 0 ? out : undefined;
+}
+
+/**
  * Probe the configured toolkits by asking the agent to inspect the
  * active Composio surface, then persist + return the result. On any
  * failure (transport error, malformed result, timeout) return
@@ -379,11 +413,20 @@ export async function probeConnectorState(
   const stamp = new Date().toISOString();
   const entries: ConnectorEntry[] = raw.connectors.map((c) => {
     const id = String(c.id ?? "unknown");
+    const accounts = parseAccounts(c.accounts);
+    // Prefer the enumerated account list as the source of truth for the
+    // count (#360) — an agent that reports `accountCount: 1` but lists two
+    // accounts was wrong about the count, not the accounts. Fall back to the
+    // reported scalar when no account list came back.
+    const accountCount = accounts
+      ? accounts.length
+      : Number(c.accountCount ?? 0);
     return {
       id,
       label: typeof c.label === "string" ? c.label : id,
       connected: Boolean(c.connected),
-      accountCount: Number(c.accountCount ?? 0),
+      accountCount,
+      ...(accounts ? { accounts } : {}),
       ...(typeof c.lastError === "string" && c.lastError
         ? { lastError: c.lastError }
         : {}),

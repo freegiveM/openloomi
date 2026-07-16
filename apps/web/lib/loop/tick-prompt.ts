@@ -130,6 +130,13 @@ results into one signal stream; dedupe by signal key:
   • cross-source dedupe:       an insight whose (projectName, topKeywords,
                                people[0]) matches a live signal is dropped
                                in favor of the live signal — live data wins.
+  • cross-account dedupe (#360): the SAME dedupe key seen on two connected
+                               accounts of one toolkit (e.g. a shared calendar
+                               invite both accounts can read) collapses to a
+                               single signal — keep the first account's
+                               \`sourceAccount\`. This dedupes duplicates
+                               WITHOUT dropping account-unique signals: an
+                               event only on account B still surfaces.
 
 Append to signals.jsonl with the appropriate _origin marker:
   - "composio"   for skill or CLI results
@@ -157,6 +164,31 @@ other surfaces cover it. If no surface is reachable at all, continue with
 an empty stream — §2 will produce 0 signals and the rest of the tick is
 unaffected.
 
+### 1.1 Enumerate every active connected account per toolkit (issue #360)
+
+A toolkit can have **more than one** connected account (e.g. two Google
+Calendar accounts, a personal + work Gmail). Loop MUST monitor **all** of
+them — pulling from a single implicit/default account silently drops signals
+from the others. Before pulling, enumerate the active accounts for each
+reachable toolkit:
+
+  • **composio CLI** — \`Bash(composio manage connected-accounts list --status ACTIVE)\`
+    returns one record per connected account with a stable non-secret id
+    (\`connected_account_id\` / \`id\` / \`word_id\`) and, when available, an
+    account label (email / handle / \`user.email\`). Group by toolkit slug.
+  • **composio skill** — \`Skill composio connections list\` reports the same
+    per-account breakdown when the CLI is unavailable.
+
+Build, per toolkit, the list of ACTIVE accounts as
+\`[{ id: "<connected_account_id>", label: "<email-or-handle-or-null>" }, …]\`.
+The account \`id\` and \`label\` are **non-secret** — never capture or persist
+OAuth tokens, refresh tokens, or auth-config secrets. Carry this list into §2
+(one pull per account) and into §7 (the \`accounts\` array of each connector).
+If a toolkit reports exactly one active account, this degrades to the previous
+single-pull behaviour. If account enumeration itself fails for a toolkit, fall
+back to a single default-account pull and record the enumeration error in that
+connector's \`lastError\`.
+
 ## 2. Pull signals (concurrent surfaces per toolkit)
 
 For each toolkit below, run every reachable surface in **parallel** (concurrent
@@ -164,6 +196,35 @@ tool calls, not sequential). Stop a surface for a toolkit if it errors — the
 other surfaces continue. Both Composio surfaces and the insights surface
 produce the same downstream payload shape so the classifier handles them
 uniformly.
+
+### 2.0 Fan out over every connected account (issue #360)
+
+For each Composio-backed toolkit, run the read action **once per active
+connected account** enumerated in §1.1 — do NOT rely on the implicit default
+account. Select the account explicitly:
+
+  • **composio CLI** — pass the account selector to \`execute\`, e.g.
+    \`composio execute GOOGLECALENDAR_EVENTS_LIST --connected-account-id <id> -d '<args>'\`
+    (confirm the exact flag with \`composio execute --help\`; \`--user-id\` /
+    \`--connected-account-id\` are the account selectors).
+  • **composio skill** — pass the connected-account id in the tool arguments
+    the skill reports for account selection.
+
+Rules for the fan-out:
+
+  1. **Every account is pulled.** Two accounts ⇒ two calls; results are merged
+     into one stream before dedupe and classification.
+  2. **Tag provenance.** Attach \`_sourceAccount: { id, label }\` (non-secret)
+     to every synthesized payload so the signal it becomes carries the account
+     it came from (§3 persists this as the signal's \`sourceAccount\`).
+  3. **Isolate failures.** If one account's call errors, keep the successful
+     results from the other accounts — never discard the whole toolkit. Record
+     the failed account in that connector's \`accounts[].healthy=false\` +
+     \`lastError\` (§7) and count it in \`errors\`.
+  4. **Merge, then dedupe.** After collecting every account's results, dedupe
+     across accounts (§3). The same event visible on two accounts (e.g. a
+     shared invite) collapses to one signal; keep the \`_sourceAccount\` of the
+     first-seen account and note the second in the payload if useful.
 
 ### 2.1 Per-toolkit surfaces (run all three in parallel)
 
@@ -323,9 +384,18 @@ For every fetched item, append a line to \`${signalsPath}\` using the Bash tool:
 
 \`\`\`bash
 cat >> ${signalsPath} <<'EOF'
-{"id":"sig_<random>","ts":"<ISO>","source":"<toolkit>","type":"<email|calendar_event|github_pr|...>","payload":{<normalized>,"_origin":"composio|insights"}}
+{"id":"sig_<random>","ts":"<ISO>","source":"<toolkit>","type":"<email|calendar_event|github_pr|...>","sourceAccount":{"id":"<connected_account_id>","label":"<email-or-handle-or-null>"},"payload":{<normalized>,"_origin":"composio|insights"}}
 EOF
 \`\`\`
+
+The top-level \`sourceAccount\` (issue #360) is REQUIRED for every
+Composio-sourced signal on a multi-account toolkit and RECOMMENDED for all
+Composio signals: it is the non-secret \`{ id, label }\` of the connected
+account the signal came from (carried down from the §2.0 \`_sourceAccount\`
+hint). It contains NO tokens or secrets. Insight- and obsidian-sourced
+signals may omit it. Downstream, decisions inherit it via \`source_signal\` so
+briefs and decision history can show "from work calendar" vs "from personal
+calendar" for full traceability.
 
 Where <normalized> is the same shape the JSON CLI uses:
   gmail email         -> { messageId, threadId, from, subject, snippet, labels, timestamp }
@@ -543,24 +613,33 @@ The tick caller parses a \`result\` event from your SSE stream. Emit exactly one
   "duration_ms": <int — wall clock from start to now>,
   "surfaces_used": ["<skill|cli|insights|obsidian>", ...],
   "connectors": [
-    { "id": "gmail",           "label": "Gmail",           "connected": <bool>, "accountCount": <int>, "lastError": "<optional>" },
-    { "id": "google_calendar", "label": "Google Calendar", "connected": <bool>, "accountCount": <int>, "lastError": "<optional>" },
-    { "id": "github",          "label": "GitHub",          "connected": <bool>, "accountCount": <int>, "lastError": "<optional>" },
-    { "id": "slack",           "label": "Slack",           "connected": <bool>, "accountCount": <int>, "lastError": "<optional>" },
-    { "id": "linear",          "label": "Linear",          "connected": <bool>, "accountCount": <int>, "lastError": "<optional>" },
-    { "id": "obsidian",        "label": "Obsidian",        "connected": false,  "accountCount": 0,     "lastError": "local-only" }${
+    { "id": "gmail",           "label": "Gmail",           "connected": <bool>, "accountCount": <int>, "accounts": [{ "id": "<connected_account_id>", "label": "<email-or-handle-or-null>", "healthy": <bool> }], "lastError": "<optional>" },
+    { "id": "google_calendar", "label": "Google Calendar", "connected": <bool>, "accountCount": <int>, "accounts": [{ "id": "<connected_account_id>", "label": "<email-or-handle-or-null>", "healthy": <bool> }], "lastError": "<optional>" },
+    { "id": "github",          "label": "GitHub",          "connected": <bool>, "accountCount": <int>, "accounts": [{ "id": "<connected_account_id>", "label": "<email-or-handle-or-null>", "healthy": <bool> }], "lastError": "<optional>" },
+    { "id": "slack",           "label": "Slack",           "connected": <bool>, "accountCount": <int>, "accounts": [{ "id": "<connected_account_id>", "label": "<email-or-handle-or-null>", "healthy": <bool> }], "lastError": "<optional>" },
+    { "id": "linear",          "label": "Linear",          "connected": <bool>, "accountCount": <int>, "accounts": [{ "id": "<connected_account_id>", "label": "<email-or-handle-or-null>", "healthy": <bool> }], "lastError": "<optional>" },
+    { "id": "obsidian",        "label": "Obsidian",        "connected": false,  "accountCount": 0,     "accounts": [], "lastError": "local-only" }${
       userChannelIds.length === 0
         ? ""
         : `,\n${userChannels
             .map(
               (c) =>
-                `    { "id": "${c.id}", "label": ${JSON.stringify(c.label)}, "connected": <bool>, "accountCount": <int>, "lastError": "<optional>" }`,
+                `    { "id": "${c.id}", "label": ${JSON.stringify(c.label)}, "connected": <bool>, "accountCount": <int>, "accounts": [{ "id": "<connected_account_id>", "label": "<email-or-handle-or-null>", "healthy": <bool> }], "lastError": "<optional>" }`,
             )
             .join(",\n")}`
     }
   ]
 }
 \`\`\`
+
+The \`accounts\` array (issue #360) MUST list one entry per active connected
+account for the toolkit, each with the non-secret \`{ id, label, healthy }\`
+enumerated in §1.1 — this is what lets the UI show WHICH accounts Loop
+monitors instead of implying a single default. \`accountCount\` MUST equal
+\`accounts.length\`. Set \`healthy: false\` (with a short \`lastError\`) on any
+account whose pull failed this tick while its siblings succeeded, so adding or
+losing an account never silently changes coverage. Omit \`accounts\` only for
+local-only toolkits (obsidian → \`[]\`).
 
 Wrap the whole object as the SSE \`result\` event with \`content = {...}\`. The
 runner will pick it up, surface it as the tick's return value, and persist the

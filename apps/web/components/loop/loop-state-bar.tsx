@@ -32,6 +32,14 @@ export interface LoopStateBarConnector {
   connected: boolean;
   accountCount: number;
   /**
+   * #360 — the active connected accounts Loop monitors for this toolkit.
+   * Non-secret `{ id, label, healthy }`. Rendered in the pill tooltip so
+   * users can see WHICH accounts are covered (e.g. two Google Calendars)
+   * instead of an opaque `×2`. Optional for back-compat with older
+   * snapshots that predate per-account enumeration.
+   */
+  accounts?: Array<{ id: string; label?: string; healthy?: boolean }>;
+  /**
    * Provenance flag. `true` = row came from a real agent probe; `false`
    * (or absent for compat) = row is the FALLBACK sentinel from a fresh
    * install. The pill row uses this to render a neutral "Pending
@@ -224,6 +232,28 @@ export function LoopStateBar({
             // historically hid — cold-cache opens rendered the
             // disconnected branch, which lied about reality.
             const isUnknown = c.probed !== true;
+            // #360 — surface WHICH accounts Loop monitors, not just a
+            // count. The tooltip lists each account's label (or id) and
+            // flags any account whose last pull failed so a silently
+            // unhealthy account is visible, not hidden behind the pill.
+            const accountLabels = (c.accounts ?? []).map(
+              (a) =>
+                `${a.label || a.id}${a.healthy === false ? " (error)" : ""}`,
+            );
+            const hasUnhealthyAccount = (c.accounts ?? []).some(
+              (a) => a.healthy === false,
+            );
+            const title = isUnknown
+              ? "No probe yet — first tick / refresh will resolve this"
+              : accountLabels.length > 0
+                ? `Monitored accounts: ${accountLabels.join(", ")}`
+                : undefined;
+            // Prefer the enumerated account list length; fall back to the
+            // scalar count for older snapshots without an `accounts` array.
+            const accountCount =
+              c.accounts && c.accounts.length > 0
+                ? c.accounts.length
+                : c.accountCount;
             return (
               <span
                 key={c.id}
@@ -235,11 +265,7 @@ export function LoopStateBar({
                       ? "border-emerald-300 bg-emerald-50 text-emerald-700"
                       : "border-border bg-muted text-muted-foreground",
                 )}
-                title={
-                  isUnknown
-                    ? "No probe yet — first tick / refresh will resolve this"
-                    : undefined
-                }
+                title={title}
               >
                 <span
                   className={cn(
@@ -256,8 +282,15 @@ export function LoopStateBar({
                   <span className="ml-0.5 text-[10px] italic">
                     Pending probe
                   </span>
-                ) : c.connected && c.accountCount > 1 ? (
-                  <span className="ml-0.5 text-[10px]">×{c.accountCount}</span>
+                ) : c.connected && accountCount > 1 ? (
+                  <span
+                    className={cn(
+                      "ml-0.5 text-[10px]",
+                      hasUnhealthyAccount && "text-amber-600",
+                    )}
+                  >
+                    ×{accountCount}
+                  </span>
                 ) : null}
               </span>
             );
