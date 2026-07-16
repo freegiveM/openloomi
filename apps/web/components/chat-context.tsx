@@ -39,7 +39,7 @@ import {
   pickPreferredArtifactPath,
 } from "@/lib/files/extract-artifact-paths";
 import { formatAgentStreamErrorForUser } from "@/lib/ai/runtime/format-error";
-import { parseCodexInterruptedError } from "@/lib/ai/extensions/agent/codex";
+import { parseCodexInterruptedError } from "@/lib/ai/extensions/agent/codex/interrupt-marker";
 import { detectLifestyleImageTrigger } from "@/lib/ai/image-generation/lifestyle-trigger";
 
 // Max retry attempts for stream errors

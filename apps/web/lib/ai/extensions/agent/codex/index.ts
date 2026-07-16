@@ -30,6 +30,24 @@ import {
 import { CODEX_METADATA } from "./metadata";
 import { parseCodexJsonLine } from "./parser";
 import { addConversationContext } from "../prompt-context";
+import {
+  CODEX_INTERRUPTED_MARKER,
+  formatCodexInterruptedError,
+  parseCodexInterruptedError,
+  type CodexInterruptedContext,
+} from "./interrupt-marker";
+
+// Re-exported from `./interrupt-marker` so legacy import paths
+// (`@/lib/ai/extensions/agent/codex`) keep working without pulling
+// `./command.ts` (which depends on `cross-spawn` / `node:child_process`)
+// into client bundles. Client code should import directly from
+// `./interrupt-marker` to stay server-safe.
+export {
+  CODEX_INTERRUPTED_MARKER,
+  formatCodexInterruptedError,
+  parseCodexInterruptedError,
+  type CodexInterruptedContext,
+};
 
 /**
  * Codex CLI runtime adapter. Wraps `codex exec --json` (NDJSON event stream)
@@ -421,81 +439,12 @@ function formatCodexExitError(
 }
 
 /**
- * Sentinel marker embedded in Codex error messages so the chat UI can
- * distinguish a *timeout interruption* (where the provider killed an active
- * run that still had in-flight work) from a plain CLI failure. The marker
- * carries the workspace path and any artifacts that did manage to land so
- * the UI can render a Continue action that reuses the existing workspace
- * instead of restarting the task from scratch.
- *
- * Keep the prefix stable — it is parsed by both the chat context and the
- * error message display component.
+ * The marker, formatter, and parser now live in `./interrupt-marker` so
+ * client bundles (e.g. `components/chat-context.tsx`) can import the
+ * parser without pulling in the Codex CLI subprocess layer. They are
+ * re-exported above for backward compatibility with existing
+ * `@/lib/ai/extensions/agent/codex` consumers.
  */
-export const CODEX_INTERRUPTED_MARKER = "__CODEX_INTERRUPTED__";
-
-export interface CodexInterruptedContext {
-  timeoutMs: number;
-  workspacePath: string;
-  completedArtifacts: string[];
-}
-
-export function formatCodexInterruptedError(context: CodexInterruptedContext) {
-  const payload = JSON.stringify({
-    marker: CODEX_INTERRUPTED_MARKER,
-    reason: "timeout",
-    timeoutMs: context.timeoutMs,
-    workspacePath: context.workspacePath,
-    completedArtifacts: context.completedArtifacts,
-    canResume: true,
-  });
-  return `${CODEX_INTERRUPTED_MARKER} ${payload}`;
-}
-
-/**
- * Parse a Codex interrupted marker message back into its structured payload.
- * Returns `null` for any other error string so callers can safely chain
- * `if (parse(...))` checks before handling the interruption.
- */
-export function parseCodexInterruptedError(
-  raw: string,
-): (CodexInterruptedContext & { canResume: boolean }) | null {
-  if (!raw || !raw.startsWith(CODEX_INTERRUPTED_MARKER)) {
-    return null;
-  }
-
-  const tail = raw.slice(CODEX_INTERRUPTED_MARKER.length).trim();
-  try {
-    const parsed = JSON.parse(tail) as {
-      marker?: string;
-      reason?: string;
-      timeoutMs?: number;
-      workspacePath?: string;
-      completedArtifacts?: string[];
-      canResume?: boolean;
-    };
-
-    if (parsed.marker !== CODEX_INTERRUPTED_MARKER) {
-      return null;
-    }
-
-    return {
-      timeoutMs:
-        typeof parsed.timeoutMs === "number" ? parsed.timeoutMs : 0,
-      workspacePath:
-        typeof parsed.workspacePath === "string"
-          ? parsed.workspacePath
-          : "",
-      completedArtifacts: Array.isArray(parsed.completedArtifacts)
-        ? parsed.completedArtifacts.filter(
-            (entry): entry is string => typeof entry === "string",
-          )
-        : [],
-      canResume: parsed.canResume !== false,
-    };
-  } catch {
-    return null;
-  }
-}
 
 function resolveHome(filePath: string) {
   if (filePath === "~") {
