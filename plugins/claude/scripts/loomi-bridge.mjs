@@ -2134,6 +2134,69 @@ async function cmdInstall({ yes = false } = {}) {
   return { install: r, status, installInfo: getInstallInfo() };
 }
 
+// Checks whether the desktop GUI binary is actually running. Used by the
+// setup state machine to decide whether the user is already looking at
+// an OpenLoomi window (in which case setup can declare success) or
+// whether we need to call `open -a <bundle>` to surface the window.
+//
+// We deliberately don't reuse `buildStatus`'s `apiReachable` flag here —
+// the HTTP API can be up (Next.js server child process) while the Tauri
+// GUI window is closed or never started (e.g. after a headless dev run,
+// or if the user dismissed the window). The bridge relies on `binPath`
+// (the Tauri binary path under the .app bundle) as the discriminator.
+//
+// Per-platform: macOS/Linux use `pgrep -if <pattern>` — the Tauri main
+// process argv[0] carries the bundle path, so matching the distinctive
+// `Contents/MacOS/<binName>` suffix won't false-positive on the inner
+// `node server.js` (whose argv[0] is the node binary, not the Tauri one).
+// Windows uses `tasklist /FI "IMAGENAME eq <binName>"`.
+async function probeDesktopProcessRunning(binPath) {
+  if (!binPath) return false;
+  const platformName = detectPlatform();
+  if (platformName === "windows") {
+    const binName = binPath.split(/[\\/]/).pop() || "";
+    return await new Promise((resolve) => {
+      const proc = spawn(
+        "tasklist",
+        ["/FI", `IMAGENAME eq ${binName}`],
+        { stdio: ["ignore", "pipe", "ignore"] },
+      );
+      let out = "";
+      proc.stdout?.on("data", (b) => (out += b.toString("utf8")));
+      proc.on("exit", () => resolve(out.includes(binName)));
+      proc.on("error", () => resolve(false));
+    });
+  }
+  // Match the distinctive `Contents/MacOS/<binName>` suffix (Linux has no
+  // such prefix, so we fall back to the binary basename there) rather than
+  // the full absolute path: the installed bundle can differ in case from
+  // our discovered `binPath` (e.g. `/Applications/openloomi.app/...` on
+  // disk vs. `/Applications/OpenLoomi.app/...` as resolved), and macOS
+  // `pgrep -f` is case-sensitive. `-i` makes the match case-insensitive so
+  // the discriminator still avoids false-positiving on the inner
+  // `node server.js` while surviving the case mismatch.
+  const binName = binPath.split(/[\\/]/).pop() || "";
+  const pattern =
+    platformName === "macos" ? `Contents/MacOS/${binName}` : binName;
+  return await new Promise((resolve) => {
+    const proc = spawn("pgrep", ["-if", pattern], {
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    let out = "";
+    proc.stdout?.on("data", (b) => (out += b.toString("utf8")));
+    proc.on("exit", (code) => {
+      // pgrep exits 1 when no match, 2+ on error. Treat both as "not running".
+      if (code !== 0) {
+        resolve(false);
+        return;
+      }
+      const pids = out.split("\n").filter(Boolean);
+      resolve(pids.length > 0);
+    });
+    proc.on("error", () => resolve(false));
+  });
+}
+
 // Programmatically launches the OpenLoomi desktop app so the helper binary
 // gets laid down and the local HTTP API comes up. This is what unblocks
 // `canGuestLogin: true` and the auto-login step in the setup state
@@ -2286,8 +2349,52 @@ async function main() {
 
       for (let i = 0; i < maxSteps; i++) {
         const status = await buildStatus({ json: true, explicit });
+        // Augment with a per-call desktop-process probe. `buildStatus`
+        // only knows about the .app bundle and the local API — not
+        // whether the Tauri GUI window is actually up. Without this,
+        // a setup call after a server-only prior run would land on
+        // READY immediately while the user is staring at nothing.
+        status.desktopProcessRunning = status.binPath
+          ? await probeDesktopProcessRunning(status.binPath)
+          : false;
 
-        if (status.reason === "READY") {
+        // Surface the desktop window if it's not already up. We do
+        // this BEFORE the READY check so a "ready in everything but
+        // the GUI" state falls into this branch instead of returning
+        // success. `open -a <bundle>` is idempotent — a running app
+        // just gets its window forwarded, so a redundant launch
+        // alongside the existing 2a/2b branches is harmless.
+        if (
+          status.installed &&
+          status.desktopMarker &&
+          !status.desktopProcessRunning
+        ) {
+          const launch = await launchDesktopApp({
+            desktopMarker: status.desktopMarker,
+            binPath: status.binPath,
+          });
+          record("launch_gui", launch.ok, {
+            code: launch.code,
+            via: launch.via,
+          });
+          if (!launch.ok) {
+            out({
+              ok: false,
+              setup: "gui_launch_failed",
+              steps,
+              launch,
+              status,
+            });
+            return;
+          }
+          continue;
+        }
+
+        // Truly ready requires both the local API and the desktop GUI
+        // process to be running. If the GUI isn't up, the branch above
+        // has already launched it — the next iteration will land here
+        // with both signals green.
+        if (status.reason === "READY" && status.desktopProcessRunning) {
           out({ ok: true, setup: "ready", steps, status });
           return;
         }
