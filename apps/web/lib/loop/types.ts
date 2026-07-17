@@ -262,6 +262,7 @@ export type SignalType =
   | "calendar_event"
   | "github_pr"
   | "github_issue"
+  | "github_notification" // #378 — passive GitHub notification; aggregated, never a Run card
   | "slack_message"
   | "linear_issue"
   | "obsidian_note_changed"

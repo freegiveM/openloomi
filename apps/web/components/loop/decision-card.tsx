@@ -605,6 +605,14 @@ export function DecisionCard({
 
   const whyBullets = decision.why ?? decision.context?.why ?? [];
   const isRsvp = decision.type === "rsvp";
+  // #378 — quiet_digest decisions (e.g. the GitHub-notification summary) are
+  // read-only: they carry no executable action. Suppressing the Run row keeps
+  // the pet / web card from offering a "Run" button for a digest that has
+  // nothing to run. The decision still supports local dismissal (re-labelled
+  // "Mark as read" for the github-notifications module below).
+  const isQuietDigest =
+    decision.type === "quiet_digest" ||
+    decision.action?.kind === "quiet_digest";
   // #363 — RSVP gets a single-line decision prompt + the dedicated context
   // block. Other types keep the legacy dialogue bubble verbatim.
   const decidePrompt = isRsvp
@@ -727,7 +735,10 @@ export function DecisionCard({
 
   const isPending = decision.status === "pending";
   const chain = buildChain(decision);
-  const showRunControls = isPending && !isRsvp;
+  // #378 — quiet_digest has no executable action, so the Run / Dry / Edit
+  // row never renders for it. The card still gets a single local dismiss
+  // button (relabelled "Mark as read" for github-notifications below).
+  const showRunControls = isPending && !isRsvp && !isQuietDigest;
   const showRsvpControls = isPending && isRsvp;
 
   return (
@@ -1081,6 +1092,103 @@ export function DecisionCard({
               decision={decision}
               onChange={onChange}
             />
+          </div>
+        </footer>
+      )}
+
+      {/* #378 — quiet_digest cards are read-only summaries. The footer
+          offers a single local "Mark as read" button (relabelled from the
+          generic "Dismiss" for the github-notifications module) so the
+          user can clear the digest without ever exposing a Run control. */}
+      {isPending && isQuietDigest && (
+        <footer className="flex flex-col gap-2 border-t pt-3">
+          {/* Render the bounded item list when present so the web card
+              mirrors the pet bubble's grouped GitHub summary. Each item
+              shows repo, title, and (when derivable) a validated HTTPS
+              link to the thread. */}
+          {Array.isArray(decision.context?.items) &&
+            (decision.context?.items as Array<Record<string, unknown>>).length >
+              0 && (
+              <ul className="flex flex-col gap-1.5 text-xs">
+                {(decision.context?.items as Array<Record<string, unknown>>)
+                  .slice(0, 20)
+                  .map((it, idx) => {
+                    const title =
+                      typeof it.title === "string" ? it.title : "GitHub update";
+                    const repo =
+                      typeof it.repo === "string" ? it.repo : "unknown";
+                    const summary =
+                      typeof it.summary === "string" ? it.summary : "";
+                    const url =
+                      typeof it.url === "string" &&
+                      it.url.startsWith("https://")
+                        ? it.url
+                        : null;
+                    const kindLabel = url
+                      ? /\/(issues|pull)\/\d+$/.test(url)
+                        ? t("loop.quietDigest.openIssue", "Open on GitHub")
+                        : t("loop.quietDigest.openIssue", "Open on GitHub")
+                      : null;
+                    return (
+                      <li
+                        key={`${repo}-${idx}-${title}`}
+                        className="flex flex-col gap-0.5 rounded-md border bg-muted/30 px-2 py-1.5"
+                      >
+                        <div className="flex flex-wrap items-baseline gap-2">
+                          <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                            {repo}
+                          </span>
+                          <span className="text-sm font-medium leading-snug">
+                            {title}
+                          </span>
+                          {url && (
+                            <a
+                              href={url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="ml-auto text-[10px] font-medium text-primary hover:underline"
+                            >
+                              {kindLabel} ↗
+                            </a>
+                          )}
+                        </div>
+                        {summary && (
+                          <span className="text-xs text-muted-foreground">
+                            {summary}
+                          </span>
+                        )}
+                      </li>
+                    );
+                  })}
+              </ul>
+            )}
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {/* #378 — github-notifications digest relabels Dismiss → "Mark
+                as read". Other quiet_digest modules keep the legacy
+                "Dismiss" label since the existing copy still fits. */}
+            {(() => {
+              const module =
+                (decision.action?.params as Record<string, unknown> | undefined)
+                  ?.module ??
+                (decision.context as Record<string, unknown> | undefined)
+                  ?.module;
+              const isGithub =
+                module === "github-notifications" ||
+                String(module ?? "") === "github-notifications";
+              return (
+                <ActionButton
+                  icon="ri-check-line"
+                  label={
+                    isGithub
+                      ? t("loop.quietDigest.markAsRead", "Mark as read")
+                      : t("loop.dismiss", "Dismiss")
+                  }
+                  variant="default"
+                  onClick={() => act("dismiss")}
+                  pending={pendingAction === "dismiss"}
+                />
+              );
+            })()}
           </div>
         </footer>
       )}

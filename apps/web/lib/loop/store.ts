@@ -179,6 +179,9 @@ export const signals = {
 // A record is rejected if ANY of the following is true:
 //   - type === "noop"
 //   - type === "tick_summary"
+//   - type === "unknown"                        (#378 — passive/unmapped
+//     signals must NOT fan out into one Run card each; they are aggregated
+//     into a read-only digest instead — see github-notifications.ts)
 //   - title matches /^\s*0\s+new\s+decision/i   (defence in depth — the
 //     agent occasionally drifts on the literal "type")
 //   - context.source === "loop_tick"            (explicit per-tick marker)
@@ -197,7 +200,12 @@ export function isNoopDecision(input: {
   context?: Record<string, unknown>;
 }): boolean {
   if (!input) return false;
-  if (input.type === "noop" || input.type === "tick_summary") return true;
+  if (
+    input.type === "noop" ||
+    input.type === "tick_summary" ||
+    input.type === "unknown"
+  )
+    return true;
   if (typeof input.title === "string" && NOOP_TITLE_RE.test(input.title))
     return true;
   const ctx = input.context;
@@ -212,9 +220,42 @@ function readDecisions(): LoopDecisionBuckets {
   ensureDirs();
   const d = readJson<LoopDecisionBuckets>(LOOP_PATHS.decisions, emptyBuckets());
   for (const bucket of ["pending", "done", "dismissed"] as const) {
-    if (Array.isArray(d[bucket])) {
-      for (const dec of d[bucket]) normalizeDecision(dec);
+    if (!Array.isArray(d[bucket])) d[bucket] = [];
+    for (const dec of d[bucket]) normalizeDecision(dec);
+  }
+  // #378 — migrate stale non-actionable pending cards into `dismissed` on
+  // read. Before the notification aggregator existed, each passive
+  // `github_notification` became its own `unknown` decision, leaving a
+  // burst of Run-carrying cards in `pending`. `isNoopDecision` now rejects
+  // those at ingest, but records already on disk must also be cleaned up so
+  // an upgrade doesn't leave the burst alive. We keep them (audit trail) and
+  // stamp a filtering reason instead of deleting.
+  const survivors: LoopDecision[] = [];
+  const migrated: LoopDecision[] = [];
+  for (const dec of d.pending) {
+    if (isNoopDecision(dec)) {
+      migrated.push({
+        ...dec,
+        status: "dismissed",
+        result: dec.result ?? { filtered: "non_actionable" },
+        context: {
+          ...(dec.context ?? {}),
+          filtered_reason: "non_actionable_migrated",
+        },
+        completed_at: dec.completed_at ?? nowIso(),
+      });
+    } else {
+      survivors.push(dec);
     }
+  }
+  if (migrated.length > 0) {
+    d.pending = survivors;
+    d.dismissed = [...migrated, ...d.dismissed];
+    trimBucket(d.dismissed);
+    writeDecisions(d);
+    log(
+      `[decisions.read] migrated ${migrated.length} non-actionable pending card(s) → dismissed`,
+    );
   }
   return d;
 }
@@ -303,12 +344,12 @@ export const decisions = {
       action: LoopDecision["action"];
     },
   ): LoopDecision | null {
-    // #288 — drop non-actionable tick / noop records at the store layer so
-    // they never reach `pending` (and therefore never reach the pet bubble
-    // or any external watch loop's notification fan-out).
+    // #288 / #378 — drop non-actionable tick / noop / unknown records at the
+    // store layer so they never reach `pending` (and therefore never reach
+    // the pet bubble or any external watch loop's notification fan-out).
     if (isNoopDecision(input)) {
       log(
-        `[decisions.add] rejected noop/tick_summary record: type=${input.type} title=${JSON.stringify(input.title)}`,
+        `[decisions.add] rejected non-actionable record: type=${input.type} title=${JSON.stringify(input.title)}`,
       );
       return null;
     }

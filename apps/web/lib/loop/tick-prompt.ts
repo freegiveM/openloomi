@@ -309,6 +309,19 @@ accounted for in \`loop.log\`.
     { repo, number, title, state, user_is_reviewer, requested_reviewers }
     Insights rarely contain github semantics; same treatment as calendar_event.
 
+  github_notification (PASSIVE — from GITHUB_LIST_NOTIFICATIONS)
+    { id, reason, repository: { full_name }, subject: { title, url, type }, updated_at }
+      - id          the GitHub notification / thread id (stable across surfaces)
+      - reason      "review_requested" | "mention" | "assign" | "subscribed" | ...
+      - repository  the repo the thread belongs to (\`full_name\` = "org/repo")
+      - subject     { title, url (GitHub API URL), type: "PullRequest" | "Issue" }
+      - updated_at  ISO timestamp of the latest activity
+    Write these to \`signals.jsonl\` with \`type: "github_notification"\` and
+    \`source: "github"\` (a custom \`github_notifications\` channel uses the same
+    \`type\`). These are PASSIVE — they carry no executable action. Do NOT emit
+    one decision per notification. §5 aggregates ALL of them into a single
+    read-only summary; the Node store builds that summary deterministically.
+
   slack_message
     { channel, ts, user, text, mentions_me: false }
     From insight:  channel=insight.channel || insight.source || insight.groups?.[0];
@@ -333,8 +346,9 @@ ${
   The watcher (lib/loop/watcher.ts) polls each on its own \`pollIntervalSec\` cadence and
   appends one \`LoopSignal\` per record to \`${signalsPath}\`. You do NOT pull these yourself —
   the records are already on disk by the time you read \`signals.jsonl\`. The agent's job is
-  to recognise their \`type\` and map them onto a typed decision (preferably a user-defined
-  type from the block below; otherwise an \`unknown\` action is acceptable for novel sources).
+  to recognise their \`type\` and map them onto a typed decision (a user-defined type from
+  the block below, or a built-in). A typed decision MUST carry \`source_signal\` (the original
+  signal object) so the Node store can dedupe it against passive digests.
 
 ${userChannels
   .map(
@@ -345,8 +359,11 @@ ${userChannels
 
   When a custom-sourced signal in \`signals.jsonl\` matches the \`type\` of one of these
   channels, use its payload description to construct a decision — choose the user-defined
-  \`type\` whose label / description best fits the payload's semantics. If no user-defined
-  type fits, emit an \`unknown\` action so the user can promote it manually.
+  \`type\` whose label / description best fits the payload's semantics. If NO user-defined
+  type fits and there is no supported built-in mapping, DROP the signal: do NOT emit an
+  \`unknown\` action. A \`type: "unknown"\` decision is rejected by the Node store
+  (\`decisions.add()\`), so emitting one only wastes a tool call. Passive
+  \`github_notification\` signals are handled by the aggregator in §5, never here.
 `
 }
   Co-equal pass — deadline extraction. While you build each payload above, also scan its
@@ -518,6 +535,21 @@ lib-level classifier exactly):
     - github_pr where state == "open" AND (user_is_reviewer OR requested_reviewers is empty)
                                                                       -> review_pr   (github_review)
     - github_issue open with assignee_login                           -> todo        (todo)
+    - github_notification (PASSIVE): do NOT emit one decision per notification.
+        These are aggregated by the Node store into ONE read-only \`quiet_digest\`
+        summary — you do not build that card. Two cases:
+          a) CLEAR actionable request with enough concrete context — a
+             \`reason\` of "review_requested" on a PullRequest you can resolve to
+             an OPEN PR, or "assign" on an open issue, or a direct "mention"
+             that names you and points at a specific thread. Only then, map it
+             onto the matching built-in above (\`review_pr\` for a PR review,
+             \`todo\` for an issue assignment) and INCLUDE \`source_signal\` (the
+             original \`github_notification\` object) so the aggregator can dedupe
+             it out of the passive digest.
+          b) Everything else (subscribed / ci_activity / author / generic
+             comment / anything lacking a concrete actionable subject): DROP the
+             signal. Do NOT emit an \`unknown\` action — the aggregator turns all
+             remaining passive notifications into the single digest.
     - slack_message with mentions_me                                  -> draft_reply (slack_reply)
     - signal with _deadlineHint.confidence ≥ 0.7                     -> deadline_reminder (deadline_notify)
       (skip when the same signal also matches the email /rsvp|invit|.../ or

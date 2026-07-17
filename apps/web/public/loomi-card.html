@@ -1698,6 +1698,47 @@
       }
 
       /* ============================================================
+         #378 — GitHub-notification digest row layout
+         Used by renderQuietDigest() when `decision.action.params.module`
+         === "github-notifications". Mirrors the web DecisionCard's
+         grouped summary (repo pill + title + summary + link) so the
+         pet bubble and the web card render the same content.
+         ============================================================ */
+      .brief-item .gh-row {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        min-width: 0;
+        flex: 1 1 auto;
+      }
+      .brief-item .gh-repo {
+        font-family: var(--font-mono);
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--muted);
+        line-height: 1.2;
+      }
+      .brief-item .bi-link {
+        font-size: 10px;
+        font-weight: 600;
+        color: var(--accent, #4f46e5);
+        text-decoration: none;
+        white-space: nowrap;
+      }
+      .brief-item .bi-link:hover {
+        text-decoration: underline;
+      }
+      .brief-item .bi-link-cell {
+        display: inline-flex;
+        align-items: center;
+        justify-content: flex-end;
+        flex: 0 0 auto;
+        margin-left: 6px;
+      }
+
+      /* ============================================================
          Layout: WRAP  (Form 7 · night-wrap, dark theme)
          Demo: .review-board + .review-card × 3 (1 column in pet) +
                .memory-ledger + .ledger-rows × 3
@@ -2494,7 +2535,12 @@
         </div>
         <div class="brief-list" id="quiet-digest-list"></div>
         <div class="footer single-col">
-          <button class="primary" data-action="dismiss" type="button">
+          <button
+            class="primary"
+            data-action="dismiss"
+            data-quiet-digest
+            type="button"
+          >
             Got it
           </button>
         </div>
@@ -4854,11 +4900,18 @@
         // renders an empty list (not a crash) so the user can still
         // dismiss the card. Module id is read from
         // `decision.action.params.module` and shown in the tag chip so
-        // the user can tell ai-news from weather from memory at a glance.
+        // the user can tell ai-news from weather from memory from a
+        // GitHub notification digest at a glance. #378 — github-notifications
+        // renders a bounded, repository-grouped list with validated HTTPS
+        // links ("Open on GitHub") and relabels the dismiss control as
+        // "Mark as read" since the digest carries no executable action.
         function renderQuietDigest() {
           const titleEl = document.getElementById("quiet-digest-title");
           const tagEl = document.getElementById("quiet-digest-tag");
           const listEl = document.getElementById("quiet-digest-list");
+          const dismissBtn = document.querySelector(
+            "[data-action='dismiss'][data-quiet-digest]",
+          );
           if (!titleEl || !tagEl || !listEl) return;
 
           if (!decision || !decision.id || decision.type !== "quiet_digest") {
@@ -4867,6 +4920,7 @@
             titleEl.textContent = "Worth a re-read.";
             tagEl.textContent = "Quiet day filler";
             listEl.innerHTML = "";
+            if (dismissBtn) dismissBtn.textContent = "Got it";
             return;
           }
 
@@ -4889,8 +4943,19 @@
                 ? "Weather + meetings"
                 : moduleId === "memory-resurface"
                   ? "From your memory"
-                  : "Quiet day filler";
+                  : moduleId === "github-notifications"
+                    ? "GitHub updates"
+                    : "Quiet day filler";
           tagEl.textContent = moduleLabel;
+
+          // Relabel the dismiss control. GitHub-notification digests
+          // become "Mark as read" since they acknowledge a passive feed,
+          // not an actionable ask. Other quiet_digest modules keep the
+          // existing "Got it" copy that fits them.
+          if (dismissBtn) {
+            dismissBtn.textContent =
+              moduleId === "github-notifications" ? "Mark as read" : "Got it";
+          }
 
           // Bullets. The contract is `context.items: { title, summary, ref?, url? }[]`.
           // We render title + summary as the visible line; ref/url go
@@ -4908,6 +4973,53 @@
             listEl.appendChild(empty);
             return;
           }
+
+          // #378 — github-notifications digest gets a richer row layout
+          // (repo + title + summary + a validated HTTPS link as
+          // "Open on GitHub"). The link is built only when the URL
+          // already starts with `https://` so the renderer never
+          // produces an executable `<a href="…">` for an unverified
+          // origin. Other quiet_digest modules fall through to the
+          // legacy generic rendering.
+          if (moduleId === "github-notifications") {
+            for (const it of items) {
+              const row = document.createElement("div");
+              row.className = "brief-item";
+              const repo = (it && it.repo) || "unknown";
+              const title = (it && it.title) || "GitHub notification";
+              const summary = (it && it.summary) || "";
+              const urlRaw = (it && it.url) || "";
+              const url =
+                typeof urlRaw === "string" &&
+                urlRaw.startsWith("https://github.com/")
+                  ? urlRaw
+                  : null;
+              const linkHtml = url
+                ? '<a class="bi-link" href="' +
+                  esc(url) +
+                  '" target="_blank" rel="noopener noreferrer">Open on GitHub ↗</a>'
+                : "";
+              row.innerHTML =
+                '<span class="brief-priority p2">·</span>' +
+                '<div class="gh-row">' +
+                '<div class="gh-repo">' +
+                esc(repo) +
+                "</div>" +
+                '<div class="bi-title">' +
+                esc(title) +
+                "</div>" +
+                (summary
+                  ? '<div class="bi-sub">' + esc(summary) + "</div>"
+                  : "") +
+                "</div>" +
+                '<span class="bi-link-cell">' +
+                linkHtml +
+                "</span>";
+              listEl.appendChild(row);
+            }
+            return;
+          }
+
           for (const it of items) {
             const row = document.createElement("div");
             row.className = "brief-item";

@@ -134,6 +134,13 @@ async function runAgentic(opts: TickOptions): Promise<LoopTickResult> {
 
   const t0 = Date.now();
 
+  // #378 — snapshot pending BEFORE dispatching the agent so
+  // `pendingAddedSince(before)` reflects everything the agent (and the
+  // post-processors below) actually persisted this tick. Reading the store
+  // here also triggers the store's stale-`unknown` migration so a burst of
+  // pre-aggregator cards is cleaned up before we count.
+  const before = snapshotCounts();
+
   const prompt = buildTickPrompt({
     sinceDays: Math.max(
       1,
@@ -186,10 +193,9 @@ async function runAgentic(opts: TickOptions): Promise<LoopTickResult> {
 
   // The agent emits a structured `result` event at the end of the prompt;
   // pull counts from there when present. Fall back to re-reading the
-  // decision store (decisions.json diff vs. before-tick snapshot) so the
-  // caller still gets honest numbers even if the agent's result event
-  // was missing or malformed.
-  const before = snapshotCounts();
+  // decision store (decisions.json diff vs. the before-tick snapshot taken
+  // at the top of this function) so the caller still gets honest numbers
+  // even if the agent's result event was missing or malformed.
   const payload = (res.result ?? {}) as AgentTickResultPayload;
   const scanned = payload.scanned ?? 0;
   const agentSurfaced = payload.surfaced;
@@ -197,19 +203,75 @@ async function runAgentic(opts: TickOptions): Promise<LoopTickResult> {
   const errors = payload.errors ?? 0;
   const surfaces = payload.surfaces_used ?? [];
 
-  let surfaced: number;
-  let newDecisions: LoopDecision[] = [];
-  if (typeof agentSurfaced !== "number") {
-    // Re-derive from disk.
-    const after = snapshotCounts();
-    surfaced = Math.max(0, after.pending - before.pending);
-    newDecisions = pendingAddedSince(before);
-  } else {
-    surfaced = agentSurfaced;
-    // Even when the agent reports the count, surface the freshly-added
-    // decisions so the caller can return them.
-    newDecisions = pendingAddedSince(before);
+  // Freshly-added decisions the agent persisted this tick (rejected
+  // `unknown`/noop records never landed, so they aren't counted here).
+  let newDecisions: LoopDecision[] = pendingAddedSince(before);
+
+  // Deterministic classifier-rules post-processor (see
+  // `classifier-rules.ts`). For each freshly-added decision, check whether
+  // any registered rule matches its `source_signal`. If a rule matches,
+  // the rule's `then` overrides the agent's choice for `type`,
+  // `action.kind`, and `confidence` (as a floor). This is the
+  // belt-and-suspenders layer that backs the prompt-level hint — even if
+  // the LLM drifts on a rule, the server enforces the deterministic
+  // routing. A `type: "noop"` rule suppresses the decision entirely
+  // (drops it from `pending`), which is `#288`-equivalent behaviour.
+  applyClassifierRules(newDecisions);
+
+  // #378 — aggregate passive GitHub notifications into ONE read-only
+  // digest. Runs over the recent signal window the tick pulled and the
+  // current decision buckets so it can dedupe cross-source, skip keys
+  // already covered by a typed decision or a prior digest, and merge new
+  // items into an existing pending digest instead of spawning a second
+  // summary card. Best-effort: a failure here must not poison the tick.
+  try {
+    const { signals } = await import("./store");
+    const { aggregateGithubNotifications } =
+      await import("./github-notifications");
+    const sinceIso = new Date(
+      Date.now() - (opts.sinceMs ?? TICK_LOOKBACK_MS),
+    ).toISOString();
+    const recentSignals = signals.list({ since: sinceIso, limit: 500 });
+    const allDecisions = decisions.list();
+    const agg = aggregateGithubNotifications({
+      signals: recentSignals,
+      decisions: allDecisions,
+    });
+    if (agg.kind === "create" && agg.decision) {
+      const added = decisions.add(agg.decision);
+      if (added) {
+        log(
+          `tick (agentic): created GitHub notification digest ${added.id} (${agg.newKeys.length} item(s))`,
+        );
+      }
+    } else if (agg.kind === "merge" && agg.decision) {
+      decisions.update(agg.decision.id, {
+        title: agg.decision.title,
+        dialogue: agg.decision.dialogue,
+        nextStep: agg.decision.nextStep,
+        context: agg.decision.context,
+        ts: agg.decision.ts,
+      });
+      log(
+        `tick (agentic): merged ${agg.newKeys.length} item(s) into GitHub notification digest ${agg.decision.id}`,
+      );
+    }
+  } catch (e) {
+    log(
+      `tick (agentic): GitHub notification aggregation failed: ${
+        e instanceof Error ? e.message : String(e)
+      }`,
+    );
   }
+
+  // Derive the surfaced count + returned decisions from ACTUAL persisted
+  // pending state (post-aggregation) so rejected `unknown` records are not
+  // reported as surfaced and the freshly-created digest is included.
+  newDecisions = pendingAddedSince(before);
+  const surfaced =
+    typeof agentSurfaced === "number"
+      ? Math.max(agentSurfaced, newDecisions.length)
+      : newDecisions.length;
 
   // #361 — derive `unsupportedSignals` (#361) so the readiness surface can
   // tell the user "N signals arrived but no decisions were produced
@@ -222,17 +284,6 @@ async function runAgentic(opts: TickOptions): Promise<LoopTickResult> {
     typeof agentUnsupported === "number" && agentUnsupported >= 0
       ? Math.floor(agentUnsupported)
       : Math.max(0, scanned - surfaced - muted);
-
-  // Deterministic classifier-rules post-processor (see
-  // `classifier-rules.ts`). For each freshly-added decision, check whether
-  // any registered rule matches its `source_signal`. If a rule matches,
-  // the rule's `then` overrides the agent's choice for `type`,
-  // `action.kind`, and `confidence` (as a floor). This is the
-  // belt-and-suspenders layer that backs the prompt-level hint — even if
-  // the LLM drifts on a rule, the server enforces the deterministic
-  // routing. A `type: "noop"` rule suppresses the decision entirely
-  // (drops it from `pending`), which is `#288`-equivalent behaviour.
-  const overridesApplied = applyClassifierRules(newDecisions);
 
   const result: LoopTickResult = {
     scanned,

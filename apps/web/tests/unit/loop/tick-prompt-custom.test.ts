@@ -135,4 +135,33 @@ describe("buildTickPrompt with custom extensions", () => {
     // The connectors block in the result should include the custom channel.
     expect(prompt).toContain('"id": "stripe_charges"');
   });
+
+  // #378 — the prompt must instruct the agent to drop signals instead of
+  // emitting `type: "unknown"` decisions (the store rejects those), and
+  // it must document the passive `github_notification` payload shape so
+  // the aggregator can dedupe cross-source.
+  it("instructs the agent to drop unsupported signals, never emit 'unknown'", () => {
+    customChannels.upsert({
+      id: "stripe_charges",
+      label: "Stripe charges",
+      toolkit: "stripe",
+      toolSlug: "STRIPE_LIST_CHARGES",
+      pollIntervalSec: 900,
+      signalType: "stripe_charge",
+      createdAt: new Date().toISOString(),
+    });
+    const prompt = buildTickPrompt();
+    expect(prompt).toContain("DROP the signal");
+    expect(prompt).toContain("do NOT emit an");
+    expect(prompt).toContain("`unknown` action");
+    expect(prompt).toContain('`type: "unknown"` decision is rejected');
+  });
+
+  it("documents the github_notification payload and aggregator boundary", () => {
+    const prompt = buildTickPrompt();
+    expect(prompt).toContain("github_notification (PASSIVE");
+    expect(prompt).toContain("aggregates ALL of them into a single");
+    expect(prompt).toContain("github_notification (PASSIVE): do NOT emit");
+    expect(prompt).toContain("INCLUDE `source_signal`");
+  });
 });

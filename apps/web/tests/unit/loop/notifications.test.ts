@@ -92,9 +92,24 @@ const noopDec = {
   title: "Tick clean. 0 new decisions.",
 };
 
+// #378 — `unknown` is the placeholder type for non-actionable notifications
+// the agent used to emit before the aggregator existed. It must never produce
+// a desktop notification — `isNoopDecision` now filters it out at the same
+// boundary that drops noop / tick_summary / context.noop records.
+const unknownDec = {
+  ...realDec,
+  id: "d3",
+  type: "unknown" as const,
+  title: "GitHub notification",
+};
+
 describe("filterActionable", () => {
   it("drops noop and tick_summary records", () => {
     const out = filterActionable([realDec, noopDec]);
+    expect(out.map((d) => d.id)).toEqual(["d1"]);
+  });
+  it("drops type=unknown records (#378)", () => {
+    const out = filterActionable([realDec, unknownDec]);
     expect(out.map((d) => d.id)).toEqual(["d1"]);
   });
 });
@@ -114,5 +129,19 @@ describe("notifyForDecisions", () => {
     expect(r.filtered).toBe(1);
     expect(r.sent).toBe(1);
     expect(sendNotification).toHaveBeenCalledTimes(1);
+  });
+
+  // #378 — `unknown` records must never fan out to desktop notifications.
+  it("filters out type=unknown records even when opt-in", async () => {
+    writePreferences({ desktopNotifications: true });
+    const r = await notifyForDecisions([realDec, unknownDec]);
+    expect(r.considered).toBe(2);
+    expect(r.filtered).toBe(1);
+    expect(r.sent).toBe(1);
+    expect(sendNotification).toHaveBeenCalledTimes(1);
+    expect(sendNotification).toHaveBeenCalledWith(
+      expect.stringContaining("Reply to Alice"),
+      expect.anything(),
+    );
   });
 });
