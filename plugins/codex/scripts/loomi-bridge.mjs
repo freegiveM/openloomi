@@ -97,6 +97,15 @@ const COMMANDS = new Set([
   "workflow-guidance",
 ]);
 
+// Hidden test-only commands. Gated by an env var so they don't show up in
+// `help` or `version` for production users. Used by bridge.test.mjs to
+// exercise launchDesktopApp / ensureCodexRuntimeEnvForLaunch without
+// driving the full setup state machine.
+if (process.env.OPENLOOMI_TEST_HOOKS === "1") {
+  COMMANDS.add("__test-ensure-runtime-env");
+  COMMANDS.add("__test-launch-desktop");
+}
+
 // Shared 9-state sprite vocabulary used by both the Claude plugin
 // (`cmdPet` in plugins/claude/scripts/loomi-bridge.mjs) and the Codex
 // plugin. The desktop runtime's /api/pet/state endpoint accepts any of
@@ -2433,7 +2442,17 @@ async function ensureOpenLoomiSession() {
   }
 
   const discovery = await discoverOpenLoomi();
+
+  // Pre-launch env wiring: same policy as `launchDesktopApp`. We only
+  // write OPENLOOMI_AGENT_PROVIDER=codex when the variable is unset;
+  // an existing user-set value is respected. The result is attached
+  // to the launch metadata so callers can see why we did or did not
+  // write.
+  const envWiring = await ensureCodexRuntimeEnvForLaunch();
   const launch = launchOpenLoomiForSession(discovery.appPath);
+  if (launch.launched) {
+    launch.env = envWiring;
+  }
 
   if (launch.launched) {
     const deadline = Date.now() + SESSION_BOOTSTRAP_TIMEOUT_MS;
@@ -2913,7 +2932,22 @@ function launchOpenLoomiForSession(appPath) {
 //   macOS   -> `open -a <bundle>`
 //   Linux   -> `gtk-launch <desktopId>` (best-effort), then direct spawn fallback
 //   Windows -> `cmd /c start "" <exe>`
+//
+// Before spawning, we also auto-wire OPENLOOMI_AGENT_PROVIDER=codex so the
+// freshly-launched web server picks up the Codex runtime instead of
+// defaulting back to Claude. We only write when the variable is unset:
+// an existing user-set value (codex, claude, anything else) is left
+// untouched. macOS gets launchctl setenv + LaunchAgent; Linux gets the
+// per-user env file; Windows is a no-op (manual configuration).
 async function launchDesktopApp({ appPath } = {}) {
+  // Pre-launch env wiring. `applyRuntimeEnvChange` is async, so we await
+  // it here — the launchctl setenv must land before `open -a` hands the
+  // bundle to launchd, otherwise the new web server inherits whatever
+  // launchd already had and the auto-detect does nothing. We do this
+  // unconditionally (even when there is no launch target) so the env is
+  // consistent regardless of whether the app path resolved.
+  const envResult = await ensureCodexRuntimeEnvForLaunch();
+
   // The bridge hands the discovery result straight through; the desktop
   // app path is the launch target on every platform.
   const target = appPath ? normalizePath(appPath) : null;
@@ -2923,6 +2957,7 @@ async function launchDesktopApp({ appPath } = {}) {
       ok: false,
       code: "NO_LAUNCH_TARGET",
       message: "No OpenLoomi app path to launch.",
+      env: envResult,
     };
   }
 
@@ -2965,6 +3000,7 @@ async function launchDesktopApp({ appPath } = {}) {
         via,
         message: e instanceof Error ? e.message : String(e),
         ...debugPath("appPath", resolvedAppPath),
+        env: envResult,
       });
       return;
     }
@@ -2982,8 +3018,83 @@ async function launchDesktopApp({ appPath } = {}) {
       via,
       ...debugPath("appPath", resolvedAppPath),
       stderr: stderr.trim() || null,
+      env: envResult,
     });
   });
+}
+
+// Pre-launch policy wrapper around `applyRuntimeEnvChange`. Only writes
+// OPENLOOMI_AGENT_PROVIDER when the variable is unset; respects any
+// existing user-set value. The returned shape mirrors
+// `applyRuntimeEnvChange` plus a `reason` describing why we did or did
+// not write:
+//
+//   reason: "applied"        - was unset, we wrote codex + persisted
+//   reason: "already_codex"  - already set to codex, no-op
+//   reason: "user_override"  - set to a non-codex value, we left it alone
+//   reason: "unsupported"    - platform has no auto-write path (Windows)
+async function ensureCodexRuntimeEnvForLaunch() {
+  if (process.platform === "win32") {
+    // Windows has no safe auto-write path; surface manual steps instead.
+    return {
+      ok: true,
+      skipped: true,
+      dryRun: false,
+      platform: "win32",
+      key: RUNTIME_ENV_KEY,
+      value: "codex",
+      before: null,
+      after: null,
+      reason: "unsupported",
+      error: null,
+      plan: null,
+      executed: [],
+    };
+  }
+
+  const beforeProbe = await probeRuntimeEnvValue(RUNTIME_ENV_KEY);
+  const beforeValue = beforeProbe.value;
+
+  if (beforeValue !== null && beforeValue !== "") {
+    if (beforeValue === "codex") {
+      return {
+        ok: true,
+        skipped: true,
+        dryRun: false,
+        platform: process.platform,
+        key: RUNTIME_ENV_KEY,
+        value: "codex",
+        before: beforeValue,
+        after: beforeValue,
+        reason: "already_codex",
+        error: null,
+        plan: null,
+        executed: [],
+      };
+    }
+    return {
+      ok: true,
+      skipped: true,
+      dryRun: false,
+      platform: process.platform,
+      key: RUNTIME_ENV_KEY,
+      value: "codex",
+      before: beforeValue,
+      after: beforeValue,
+      reason: "user_override",
+      error: null,
+      plan: null,
+      executed: [],
+    };
+  }
+
+  const result = await applyRuntimeEnvChange({
+    key: RUNTIME_ENV_KEY,
+    value: "codex",
+    persist: true,
+  });
+
+  return { ...result, reason: result.ok ? "applied" : "failed" };
 }
 
 // Polls the local OpenLoomi HTTP API until it answers 2xx/3xx/4xx (any
@@ -3562,6 +3673,81 @@ async function setCodexRuntimeEnv(args) {
   const key = RUNTIME_ENV_KEY;
   const value = flags.unset ? null : flags.value;
 
+  const result = await applyRuntimeEnvChange({
+    key,
+    value,
+    unset: flags.unset,
+    persist: flags.persist,
+    dryRun: flags.dryRun,
+  });
+
+  if (result.error) {
+    return writeJson(
+      {
+        ok: false,
+        platform: result.platform,
+        key: result.key,
+        value: result.value,
+        before: result.before,
+        error: result.error,
+        actions: result.executed,
+        notes: result.plan.notes,
+        commands: result.plan.commands,
+      },
+      1,
+    );
+  }
+
+  if (result.dryRun) {
+    return writeJson({
+      ok: true,
+      dryRun: true,
+      platform: result.platform,
+      key: result.key,
+      value: result.value,
+      before: result.before,
+      actions: result.plan.actions,
+      notes: result.plan.notes,
+      requiresRestart: result.plan.requiresRestart,
+      commands: result.plan.commands,
+    });
+  }
+
+  return writeJson({
+    ok: true,
+    platform: result.platform,
+    key: result.key,
+    value: result.value,
+    before: result.before,
+    after: result.after,
+    actions: result.executed,
+    notes: result.plan.notes,
+    requiresRestart: result.plan.requiresRestart,
+    commands: result.plan.commands,
+    manualSteps: result.plan.manualSteps || [],
+  });
+}
+
+// Reusable apply-runtime-env-change core. Plans + executes the platform-
+// specific write/persist sequence for a single host env variable and
+// returns a structured result instead of writing JSON. Used by
+// `setCodexRuntimeEnv` (CLI surface) and by `launchDesktopApp` /
+// `launchOpenLoomiForSession` (pre-launch auto-wiring). Callers decide
+// whether to surface the result, ignore it, or short-circuit before
+// invocation based on policy.
+//
+// Result shape:
+//   {
+//     ok, skipped, dryRun, platform, key, value,
+//     before, after, plan, executed, error
+//   }
+async function applyRuntimeEnvChange({
+  key,
+  value = null,
+  unset = false,
+  persist = false,
+  dryRun = false,
+}) {
   // Read current GUI/host value to report before/after. We deliberately
   // use shell helpers rather than `import fs` because the bridge keeps
   // its dependency surface tight and a one-shot read is good enough.
@@ -3572,71 +3758,70 @@ async function setCodexRuntimeEnv(args) {
     platform: process.platform,
     key,
     value,
-    flags,
+    flags: { unset, persist, dryRun },
   });
 
-  if (flags.dryRun) {
-    return writeJson({
+  if (dryRun) {
+    return {
       ok: true,
+      skipped: false,
       dryRun: true,
       platform: process.platform,
       key,
       value,
       before: beforeValue,
-      actions: plan.actions,
-      notes: plan.notes,
-      requiresRestart: plan.requiresRestart,
-      commands: plan.commands,
-    });
+      after: beforeValue,
+      plan,
+      executed: [],
+      error: null,
+    };
   }
 
   const executed = [];
   for (const action of plan.actions) {
     const r = await runCapture(action.command, action.args);
     executed.push({
+      label: action.label,
       command: [action.command, ...action.args].join(" "),
       exitCode: r.exitCode,
       stderr: (r.stderr || "").trim() || null,
     });
     if (r.exitCode !== 0) {
-      return writeJson(
-        {
-          ok: false,
-          platform: process.platform,
-          key,
-          value,
-          before: beforeValue,
-          error: {
-            stage: action.label,
-            exitCode: r.exitCode,
-            stderr: (r.stderr || "").trim() || null,
-          },
-          actions: executed,
-          notes: plan.notes,
-          commands: plan.commands,
+      return {
+        ok: false,
+        skipped: false,
+        dryRun: false,
+        platform: process.platform,
+        key,
+        value,
+        before: beforeValue,
+        after: beforeValue,
+        plan,
+        executed,
+        error: {
+          stage: action.label,
+          exitCode: r.exitCode,
+          stderr: (r.stderr || "").trim() || null,
         },
-        1,
-      );
+      };
     }
   }
 
   // Re-read after the change so the caller can confirm it landed.
   const afterProbe = await probeRuntimeEnvValue(key);
-  const afterValue = afterProbe.value;
-
-  return writeJson({
+  return {
     ok: true,
+    skipped: false,
+    dryRun: false,
     platform: process.platform,
     key,
     value,
     before: beforeValue,
-    after: afterValue,
-    actions: executed,
-    notes: plan.notes,
-    requiresRestart: plan.requiresRestart,
-    commands: plan.commands,
-    manualSteps: plan.manualSteps || [],
-  });
+    after: afterProbe.value,
+    plan,
+    executed,
+    error: null,
+  };
 }
 
 // Lightweight probe of the persistence mechanism for the current platform.
@@ -5321,6 +5506,21 @@ async function main() {
       break;
     case "workflow-guidance":
       workflowGuidance(process.argv.slice(3));
+      break;
+    case "__test-ensure-runtime-env":
+      if (process.env.OPENLOOMI_TEST_HOOKS === "1") {
+        writeJson(await ensureCodexRuntimeEnvForLaunch());
+      } else {
+        writeJson({ error: "TEST_HOOKS_DISABLED" }, 1);
+      }
+      break;
+    case "__test-launch-desktop":
+      if (process.env.OPENLOOMI_TEST_HOOKS === "1") {
+        const testAppPath = process.argv[3] || null;
+        writeJson(await launchDesktopApp({ appPath: testAppPath }));
+      } else {
+        writeJson({ error: "TEST_HOOKS_DISABLED" }, 1);
+      }
       break;
   }
 }

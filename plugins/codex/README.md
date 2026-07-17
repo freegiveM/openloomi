@@ -251,6 +251,14 @@ inherits.
 
 This is the recommended path for first-time Codex-plugin users.
 
+> **You usually don't need to do this by hand.** Whenever the bridge
+> launches the OpenLoomi Desktop app (during `setup`, `initialize-session`,
+> or a handoff), it already wires `OPENLOOMI_AGENT_PROVIDER=codex` into the
+> launchd environment _before_ the app starts, so a clean install picks up
+> the Codex runtime on first open. The manual tiers below are for when you
+> want to change or persist the value independently of a launch, or on
+> Windows where auto-wiring isn't supported.
+
 ### How to make the env switch stick
 
 The desktop app's web server runs inside the GUI launchd session on macOS (a
@@ -439,6 +447,26 @@ automatically without user confirmation.
 used from Codex, this is the recommended first-use path: it lets OpenLoomi
 reuse the user's existing Codex runtime and avoids requiring a separate
 OpenLoomi AI provider key just to complete the first Codex plugin workflow.
+
+Whenever the bridge launches the OpenLoomi Desktop app (during `setup`,
+`initialize-session`, or any handoff that has to start OpenLoomi), it first
+wires `OPENLOOMI_AGENT_PROVIDER=codex` into the environment the GUI launchd
+session will hand to the new process — `launchctl setenv` plus a persisted
+LaunchAgent on macOS, `~/.config/environment.d/openloomi-codex.conf` on
+Linux. Because the value lands _before_ the app is handed to launchd, the
+freshly spawned OpenLoomi web server inherits it and auto-selects Codex on
+first open, with no manual `export` or app restart. The wiring is
+non-destructive:
+
+- If the user has already set `OPENLOOMI_AGENT_PROVIDER` to a non-`codex`
+  value, the bridge leaves it alone (`reason: "user_override"`) — an
+  explicit choice always wins.
+- If it is already `codex`, the launch is a no-op (`reason: "already_codex"`).
+- Windows has no safe auto-write surface, so the bridge reports
+  `reason: "unsupported"` and leaves configuration to the user.
+
+The env-wiring result is surfaced on the launch payload under `env` so
+callers can see exactly what happened.
 
 **Missing install.** If OpenLoomi is not installed, the plugin supports a
 user-approved install flow. The install flow uses official OpenLoomi

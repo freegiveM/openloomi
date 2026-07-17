@@ -32,6 +32,14 @@ const PLUGIN_DIR = dirname(dirname(fileURLToPath(import.meta.url)));
 const BRIDGE = join(PLUGIN_DIR, "scripts", "loomi-bridge.mjs");
 const execFileAsync = promisify(execFile);
 
+// The hidden `__test-*` bridge commands are only registered when
+// OPENLOOMI_TEST_HOOKS=1 is present in the child's environment. Set it on
+// the test runner's own env so every `run*`/`runJson`/`runOutcome` helper
+// that inherits `process.env` (i.e. the ones that don't go through
+// withFakeHome) can drive those commands. Individual gating tests override
+// it back to "" to confirm the commands are refused when the flag is off.
+process.env.OPENLOOMI_TEST_HOOKS = "1";
+
 // Accept env directly (positional) so callers can write `run(args, env)`
 // without wrapping it in `{ env }`. This matches the convention used
 // throughout the file (see `withFakeHome` → `runOutcome(... , env)` and
@@ -154,6 +162,7 @@ function withFakeHome(fn) {
     OPENLOOMI_AI_BASE_URL: "",
     OPENLOOMI_AI_MODEL: "",
     OPENLOOMI_DEBUG_DISCOVERY: "1",
+    OPENLOOMI_TEST_HOOKS: "1",
   };
   try {
     return fn(env);
@@ -196,6 +205,7 @@ async function withFakeHomeAsync(fn) {
     OPENLOOMI_AI_BASE_URL: "",
     OPENLOOMI_AI_MODEL: "",
     OPENLOOMI_DEBUG_DISCOVERY: "1",
+    OPENLOOMI_TEST_HOOKS: "1",
   };
   try {
     return await fn(env);
@@ -1439,4 +1449,198 @@ test("codex-runtime-info persistence.darwin.launchAgentInstalled flips true when
     assert.equal(j.persistence.darwin.launchAgentInstalled, true);
     assert.equal(j.persistence.darwin.launchAgentPath, plistPath);
   });
+});
+
+// -----------------------------------------------------------------------------
+// Pre-launch env wiring
+//
+// `launchDesktopApp` (used by the setup state machine) and
+// `launchOpenLoomiForSession` (used by initialize-session as a fallback)
+// both auto-wire OPENLOOMI_AGENT_PROVIDER=codex before spawning the
+// desktop app so a freshly-launched web server picks up the Codex
+// runtime instead of defaulting back to Claude. The wiring respects any
+// existing user-set value (no override) and is a no-op on Windows.
+//
+// These tests exercise the wiring through the hidden __test-* commands
+// (gated by OPENLOOMI_TEST_HOOKS=1, set by withFakeHome). The launchctl
+// GUI domain is shared with the host, so darwin tests check shape rather
+// than asserting on specific before/after values; Linux tests write the
+// per-user env file directly so we get deterministic before/after.
+// -----------------------------------------------------------------------------
+
+test("__test-ensure-runtime-env returns well-shaped result with a reason field", () => {
+  const j = runJson(["__test-ensure-runtime-env"]);
+  assert.equal(typeof j, "object");
+  assert.equal(j.ok, true);
+  assert.equal(j.key, "OPENLOOMI_AGENT_PROVIDER");
+  assert.equal(j.value, "codex");
+  assert.ok(
+    ["applied", "already_codex", "user_override", "unsupported", "failed"].includes(
+      j.reason,
+    ),
+    `unexpected reason: ${j.reason}`,
+  );
+});
+
+test("__test-ensure-runtime-env reports unsupported on Windows", () => {
+  if (process.platform !== "win32") return;
+  const j = runJson(["__test-ensure-runtime-env"]);
+  assert.equal(j.reason, "unsupported");
+  assert.equal(j.skipped, true);
+});
+
+test("__test-ensure-runtime-env is gated by OPENLOOMI_TEST_HOOKS", () => {
+  // Run the bridge without OPENLOOMI_TEST_HOOKS to confirm the command
+  // is refused. When the flag is off the command is never registered in
+  // the COMMANDS set, so the bridge answers UNKNOWN_COMMAND (the
+  // in-switch TEST_HOOKS_DISABLED branch is a defensive fallback). Either
+  // stable error code proves the hidden command can't run in production.
+  const tmp = mkdtempSync(join(tmpdir(), "openloomi-codex-gated-"));
+  try {
+    const r = runOutcome(["__test-ensure-runtime-env"], {
+      HOME: tmp,
+      OPENLOOMI_TEST_HOOKS: "",
+    });
+    const j = JSON.parse(r.stdout);
+    assert.ok(
+      ["UNKNOWN_COMMAND", "TEST_HOOKS_DISABLED"].includes(j.error),
+      `expected a gating error, got: ${j.error}`,
+    );
+    assert.notEqual(r.code, 0);
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("__test-ensure-runtime-env on Linux reads from per-user env file", () => {
+  if (process.platform !== "linux") return;
+  // Seed the env file before running, so the helper sees "already_codex"
+  // and does NOT overwrite. This exercises the "user has already set
+  // codex" branch end-to-end on the only platform where the helper can
+  // see its own writes deterministically.
+  withFakeHome((env) => {
+    const envDir = join(env.HOME, ".config", "environment.d");
+    mkdirSync(envDir, { recursive: true });
+    writeFileSync(
+      join(envDir, "openloomi-codex.conf"),
+      "OPENLOOMI_AGENT_PROVIDER=codex\n",
+    );
+    const j = runJson(["__test-ensure-runtime-env"], env);
+    assert.equal(j.ok, true);
+    assert.equal(j.skipped, true);
+    assert.equal(j.reason, "already_codex");
+    assert.equal(j.before, "codex");
+    assert.equal(j.after, "codex");
+  });
+});
+
+test("__test-ensure-runtime-env on Linux respects non-codex user value", () => {
+  if (process.platform !== "linux") return;
+  withFakeHome((env) => {
+    const envDir = join(env.HOME, ".config", "environment.d");
+    mkdirSync(envDir, { recursive: true });
+    writeFileSync(
+      join(envDir, "openloomi-codex.conf"),
+      "OPENLOOMI_AGENT_PROVIDER=claude\n",
+    );
+    const j = runJson(["__test-ensure-runtime-env"], env);
+    assert.equal(j.ok, true);
+    assert.equal(j.skipped, true);
+    assert.equal(j.reason, "user_override");
+    assert.equal(j.before, "claude");
+    assert.equal(j.after, "claude");
+    // Crucially, the env file must NOT have been rewritten to codex.
+    const onDisk = readFileSync(join(envDir, "openloomi-codex.conf"), "utf8");
+    assert.match(onDisk, /OPENLOOMI_AGENT_PROVIDER=claude/);
+  });
+});
+
+test("__test-ensure-runtime-env on Linux writes codex + persists when unset", () => {
+  if (process.platform !== "linux") return;
+  withFakeHome((env) => {
+    // No env file -> helper sees value === null and writes codex.
+    const j = runJson(["__test-ensure-runtime-env"], env);
+    assert.equal(j.ok, true);
+    assert.equal(j.skipped, false);
+    assert.equal(j.reason, "applied");
+    assert.equal(j.value, "codex");
+    assert.equal(j.before, null);
+    assert.equal(j.after, "codex");
+    // After-value reaches codex only if the env.d file write succeeded.
+    assert.match(j.platform, /^linux$/);
+    const envFile = join(
+      env.HOME,
+      ".config",
+      "environment.d",
+      "openloomi-codex.conf",
+    );
+    assert.ok(existsSync(envFile), `expected env file at ${envFile}`);
+  });
+});
+
+test("__test-launch-desktop rejects no appPath with NO_LAUNCH_TARGET", () => {
+  // No appPath argument -> the helper must bail with NO_LAUNCH_TARGET
+  // BEFORE calling ensureCodexRuntimeEnvForLaunch. We can't easily
+  // observe "no env write happened", but we can confirm the return
+  // shape carries the env result with skipped=true on supported
+  // platforms (no env file present, so the wiring is a no-op for the
+  // host's actual state).
+  const j = runJson(["__test-launch-desktop"]);
+  assert.equal(j.ok, false);
+  assert.equal(j.code, "NO_LAUNCH_TARGET");
+  assert.ok(j.env, "expected env wiring metadata even on the no-target path");
+  assert.equal(typeof j.env, "object");
+  assert.ok(
+    ["applied", "already_codex", "user_override", "unsupported", "failed"].includes(
+      j.env.reason,
+    ),
+    `unexpected env.reason: ${j.env.reason}`,
+  );
+});
+
+test("__test-launch-desktop is gated by OPENLOOMI_TEST_HOOKS", () => {
+  const tmp = mkdtempSync(join(tmpdir(), "openloomi-codex-gated-"));
+  try {
+    const r = runOutcome(["__test-launch-desktop", "/tmp"], {
+      HOME: tmp,
+      OPENLOOMI_TEST_HOOKS: "",
+    });
+    const j = JSON.parse(r.stdout);
+    assert.ok(
+      ["UNKNOWN_COMMAND", "TEST_HOOKS_DISABLED"].includes(j.error),
+      `expected a gating error, got: ${j.error}`,
+    );
+    assert.notEqual(r.code, 0);
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("__test-launch-desktop with a real-looking path carries env wiring result", () => {
+  // We don't actually want to launch OpenLoomi during tests, so we
+  // supply a temp directory as a fake appPath. The launch itself will
+  // fail (open -a / gtk-launch / cmd start refuse to spawn a directory),
+  // but the helper always runs first and the env result is included in
+  // BOTH the success and failure paths.
+  const fakeAppDir = mkdtempSync(join(tmpdir(), "openloomi-fakeapp-"));
+  try {
+    const r = runOutcome(["__test-launch-desktop", fakeAppDir], {});
+    const j = JSON.parse(r.stdout);
+    // The launch will likely fail with SPAWN_FAILED or NO_LAUNCH_TARGET;
+    // either way the env wiring metadata must be present.
+    assert.ok(
+      j.env,
+      "expected env wiring metadata on launch result, got: " + r.stdout,
+    );
+    assert.equal(j.env.key, "OPENLOOMI_AGENT_PROVIDER");
+    assert.equal(j.env.value, "codex");
+    assert.ok(
+      ["applied", "already_codex", "user_override", "unsupported", "failed"].includes(
+        j.env.reason,
+      ),
+      `unexpected env.reason: ${j.env.reason}`,
+    );
+  } finally {
+    rmSync(fakeAppDir, { recursive: true, force: true });
+  }
 });
