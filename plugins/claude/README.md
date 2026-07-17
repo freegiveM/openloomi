@@ -1,48 +1,103 @@
-# OpenLoomi Claude Code Plugin
+# Claude Code OpenLoomi Plugin
 
-Wires Claude Code into a local OpenLoomi runtime. Once installed you get the
-`/openloomi:*` slash namespace:
+Talk to a local OpenLoomi runtime from inside Claude Code.
 
-- `/openloomi:setup` / `:status` — discover, install, sync your Claude env.
-- `/openloomi:pet <state>` — flip the Loomi Pet sprite.
-- `/openloomi:usage` — today's LLM cost.
-- `/openloomi:hooks install` — _(opt-in)_ mirror Claude's lifecycle onto the Pet + auto-archive every Stop into OpenLoomi memory.
+[OpenLoomi](https://github.com/melandlabs/openloomi) is a local-first desktop
+app that holds your memory, runs background tasks, and talks to your connected
+apps (Gmail, Slack, GitHub, Calendar, Linear, …). This plugin turns Claude
+Code into a front-end for that local runtime — Claude Code stays your coding
+surface, OpenLoomi does the long-running and cross-app work in the background.
 
-The plugin never duplicates OpenLoomi business logic — every side effect hits
-your local OpenLoomi runtime (the desktop app's HTTP API on `127.0.0.1:3414`,
-fallback `127.0.0.1:3515`, or its bundled helper CLI under the hood).
+You keep using Claude Code the way you already do. OpenLoomi runs next to it,
+on your machine.
+
+The plugin installs as an `/openloomi:*` slash-command namespace. It never
+duplicates OpenLoomi's business logic — every side effect hits your local
+OpenLoomi runtime (the desktop app's HTTP API on `127.0.0.1:3414`, fallback
+`127.0.0.1:3515`, or its bundled helper CLI).
 
 ---
 
-## 1. Install
+## What you can do with it
 
-Pick the channel that matches your situation:
+- **Run first-use setup in one command.** `/openloomi:setup` discovers your
+  OpenLoomi install, downloads it if missing, launches the desktop app, waits
+  for the local API, and mints a guest session token. Nothing GUI is required
+  from you.
+- **Drive the Loomi Pet.** `/openloomi:pet happy` flips the pet sprite from
+  your terminal — useful as a heartbeat signal while Claude Code is grinding
+  on a long task.
+- **See today's LLM cost.** `/openloomi:usage` summarizes token usage and
+  spend without leaving the session.
+- **Mirror Claude Code's lifecycle onto OpenLoomi (opt-in).** With hooks
+  installed, every Claude Code turn gets archived into OpenLoomi's memory,
+  and every lifecycle event flips the pet sprite accordingly. You keep full
+  control — install/uninstall with one command, no `~/.claude/settings.json`
+  is ever modified unless you ask.
+
+OpenLoomi still owns the heavy lifting: local memory storage, connector
+credentials, scheduled tasks, the desktop UI, secrets. Claude Code just
+gets a doorway into all of it.
+
+---
+
+## Install
+
+Pick the channel that matches your situation.
+
+### Install from GitHub
 
 ```text
-# From GitHub
 /plugin marketplace add melandlabs/openloomi
 /plugin install openloomi
+```
 
-# Hacking on the plugin itself (local source after clone opneloomi GitHub repo)
-git clone https://github.com/melandlabs/openloomi.git && cd openloomi
+Claude Code fetches the repo, reads the marketplace manifest at the root,
+and installs the plugin. Restart Claude Code and start a new session so the
+plugin cache is refreshed.
+
+### Install from a local checkout (plugin contributors)
+
+```text
+git clone https://github.com/melandlabs/openloomi.git
+cd openloomi
 claude --plugin-dir plugins/claude
 ```
 
-Inside the running session `/openloomi:help` lists all 8 commands.
+The `--plugin-dir` flag points Claude Code at the source checkout so your
+edits are picked up live — useful when hacking on the plugin itself.
 
-## 2. First-run
+### Requirements
+
+- Claude Code with slash-command and plugin marketplace support.
+- For the GitHub install: network access to `github.com`.
+- For the local install: a writable clone of the OpenLoomi repo.
+- **OpenLoomi Desktop installed** — the wizard will install it for you if
+  it's missing, but you'll need a working browser session to download the
+  official release if it can't be reached automatically.
+- Claude Code's host `claude` CLI authenticated (`claude auth login`) — the
+  OpenLoomi runtime auto-detects this and uses it as its default provider,
+  with no API key sharing between Claude Code and OpenLoomi.
+
+Inside any session, `/openloomi:help` lists all 8 commands.
+
+---
+
+## First-run setup
 
 ```text
 /openloomi:setup
 ```
 
-A fully automated wizard: **install → launch → wait API → guest login → ready**.
-Nothing GUI is required from you. The bridge:
+A fully automated wizard: **install → launch → wait API → guest login →
+ready**. Nothing GUI is required. The bridge:
 
-- downloads & installs OpenLoomi.app if missing,
+- downloads & installs OpenLoomi Desktop if missing,
 - launches the desktop app via `open -a`,
 - polls the local HTTP API until it answers,
-- calls `POST /api/remote-auth/guest` to register a guest user in the runtime's local DB and mint a bearer token (saved to `~/.openloomi/token`).
+- calls `POST /api/remote-auth/guest` to register a guest user in the
+  runtime's local DB and mint a bearer token (saved to
+  `~/.openloomi/token`).
 
 The only thing it ever prompts for is the install y/N — and only if the
 shell has a TTY. From Claude Code's Bash tool you pass `--yes`.
@@ -54,7 +109,9 @@ Claude Code and OpenLoomi.
 
 A successful run prints `{setup: "ready", steps: [...]}` — you're done.
 
-## 3. Daily use
+---
+
+## Daily use
 
 | Command                | What it does                                                                                  |
 | ---------------------- | --------------------------------------------------------------------------------------------- |
@@ -63,10 +120,12 @@ A successful run prints `{setup: "ready", steps: [...]}` — you're done.
 | `/openloomi:connect`   | Guided install of composio skill + screen memory (3 independent y/N)                          |
 | `/openloomi:status`    | Stable JSON: `mode / installed / ready / nextAction / reason`                                 |
 
-Failure modes surface as structured JSON — never stack traces. See
-[§5.1](#51-decoding-reason-codes) for the full table.
+Failure modes surface as structured JSON — never stack traces. See the
+[Troubleshooting](#troubleshooting) section for the full `reason` table.
 
-## 4. Optional: Pet mirror + Stop archive
+---
+
+## Optional: Pet mirror + Stop archive
 
 The plugin **never** modifies `~/.claude/settings.json` unless you opt in:
 
@@ -100,9 +159,11 @@ The Stop hook reads your session transcript, takes the last 6 turns, caps at
 Avoid manually setting `idle`, `sleeping`, `sweeping`, or `presenting`; the
 loop watcher owns those.
 
-## 5. Troubleshooting
+---
 
-### 5.1 Decoding `reason` codes
+## Troubleshooting
+
+### Decoding `reason` codes
 
 When `/openloomi:status` says `ready: false`, look at `reason`:
 
@@ -115,20 +176,20 @@ When `/openloomi:status` says `ready: false`, look at `reason`:
 | `AI_PROVIDER_REQUIRED`       | Signed in, but no provider set.                                                                                           | Run `claude auth login` on the host (or configure a custom Anthropic-compatible endpoint in OpenLoomi Desktop → API Settings).                                       |
 | `READY`                      | All good.                                                                                                                 | Use any other command                                                                                                                                                |
 
-### 5.3 Pet not switching?
+### Pet not switching?
 
 1. `/openloomi:hooks status` — must say `installed: true`.
 2. If false, run `/openloomi:hooks install`.
 3. If true but no sprite change, make sure the desktop pet is visible
    (clicking the tray icon unhides it).
 
-### 5.4 Status says `unconfigured`
+### Status says `unconfigured`
 
-The plugin needs the OpenLoomi helper CLI only for `:ask`. Pet / usage / hooks
-still work without it. If discovery is failing, point `OPENLOOMI_BIN`
+The plugin needs the OpenLoomi helper CLI only for `:ask`. Pet / usage /
+hooks still work without it. If discovery is failing, point `OPENLOOMI_BIN`
 at the helper binary directly (advanced override).
 
-### 5.5 Stop-hook archives
+### Stop-hook archives
 
 In OpenLoomi Desktop → **Memory → Insights**, in the `claude-code` group.
 One note per session, ~6 KB tail-of-conversation summary, deduplicated by
@@ -136,9 +197,9 @@ One note per session, ~6 KB tail-of-conversation summary, deduplicated by
 
 ---
 
-## 6. Quick reference
+## Quick reference
 
-```
+```text
 /openloomi:setup                 discover → install → ready
 /openloomi:status                stable JSON status
 /openloomi:pet <state>           set Loomi Pet sprite (9 universal states)
@@ -150,14 +211,17 @@ One note per session, ~6 KB tail-of-conversation summary, deduplicated by
 /openloomi:help                  list these commands
 ```
 
-If a command misbehaves, open an issue referencing `/openloomi:status` JSON —
-the `reason` field makes bugs easy to triage.
+If a command misbehaves, open an issue referencing `/openloomi:status`
+JSON — the `reason` field makes bugs easy to triage.
 
 ---
 
-# Part 7 — For contributors
+## For contributors
 
-## Architecture
+The rest of this document is for plugin contributors — the architecture,
+file layout, and conventions for adding new commands or hooks.
+
+### Architecture
 
 ```text
 Claude Code
@@ -173,43 +237,46 @@ Claude Code
             OpenLoomi Desktop runtime (helper CLI + 127.0.0.1:3414 / fallback 3515)
 ```
 
-## Plugin layout
+### Plugin layout
 
-```
+```text
 plugins/claude/
   .claude-plugin/plugin.json      manifest, slash namespace "openloomi:*"
-  skills/openloomi*/SKILL.md      auto-loaded entry + 3 sub-skills
-  commands/*.md                  the 8 slash commands
-  hooks/hooks.json               8 lifecycle events → Pet states
+  skills/openloomi*/SKILL.md      auto-loaded entry + sub-skills
+  commands/*.md                   the slash commands
+  hooks/hooks.json                lifecycle events → Pet states
   scripts/loomi-bridge.mjs        single zero-dep Node 18+ ESM entrypoint
-  scripts/hooks-merge.cjs        CJS companion for install/uninstall hooks
+  scripts/hooks-merge.cjs         CJS companion for install/uninstall hooks
   scripts/install-assets/setup.{macos,linux,windows}.*
-  tests/bridge.test.mjs          15 node:test cases
-  tests/e2e/setup.md             human-run checklist (A–K)
-  assets/logo.png                plugin icon
+  tests/bridge.test.mjs           node:test cases
+  tests/e2e/setup.md              human-run checklist (A–K)
+  assets/logo.png                 plugin icon
 ```
 
-## Discovery chain (loomi-bridge.mjs → `discovery()`)
+### Discovery chain (`loomi-bridge.mjs` → `discovery()`)
 
 1. `OPENLOOMI_BIN` env var
 2. `OPENLOOMI_HOME` / `OPENLOOMI_INSTALL_DIR`
 3. `OPENLOOMI_REPO_DIR` (with hint if CLI not built)
 4. `PATH` lookup
-5. Platform defaults (macOS bundle, Linux `/opt/openloomi`, Windows `%LOCALAPPDATA%`)
+5. Platform defaults (macOS bundle, Linux `/opt/openloomi`, Windows
+   `%LOCALAPPDATA%`)
 6. Saved `~/.claude/plugins/openloomi/config.json`
 7. `--bin-path` flag
 8. → `nextAction: install_openloomi`
 
-## Readiness JSON
+### Readiness JSON
 
-`setup-status` returns stable JSON: `mode`, `installed`, `version`, `tokenPresent`,
-`aiProviderConfigured`, `defaultAgent`, `nativeRuntime`, `apiReachable`,
-`hooksInstalled`, `ready`, `nextAction`, `reason`, `source`. See
-`loomi-bridge.mjs → buildStatus()` for the exact shape. AI provider
-readiness comes entirely from the runtime's `/api/preferences/ai`
-response — the plugin never inspects AI provider env vars.
+`setup-status` returns stable JSON: `mode`, `installed`, `version`,
+`tokenPresent`, `aiProviderConfigured`, `defaultAgent`, `nativeRuntime`,
+`apiReachable`, `hooksInstalled`, `ready`, `nextAction`, `reason`, `source`.
+See `loomi-bridge.mjs → buildStatus()` for the exact shape.
 
-## Change-map (edit X, also touch Y)
+AI provider readiness comes entirely from the runtime's
+`/api/preferences/ai` response — the plugin never inspects AI provider env
+vars.
+
+### Change-map (edit X, also touch Y)
 
 | You changed…                     | …also update                                                                                                                              |
 | -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
@@ -220,7 +287,7 @@ response — the plugin never inspects AI provider env vars.
 | Default base URL / model / port  | Top-of-file constants in `loomi-bridge.mjs` only                                                                                          |
 | Slash command auto-discover text | `description:` frontmatter line (matched char-by-char)                                                                                    |
 
-## Where each concern lives in code
+### Where each concern lives in code
 
 - **AI provider readiness**: `loomi-bridge.mjs → probeAiProvider()` calls
   `/api/preferences/ai` and reads its `nativeRuntime` + per-user
@@ -228,15 +295,20 @@ response — the plugin never inspects AI provider env vars.
   runtime is the sole owner of that signal.
 - **Pet state validation**: `loomi-bridge.mjs → CAPYBARA_STATES`; both
   `cmdPet()` and `cmdState()` gate on it before any HTTP call.
-- **Hooks settings.json merge**: `loomi-bridge.mjs → installHooks() / uninstallHooks()`
-  (atomic write, marker `_openloomi_plugin`, block key `__openloomi_claude_plugin_hooks__`).
-- **Stop archive**: `loomi-bridge.mjs → cmdArchive()` — caps at 5 MB transcript / 6 turns / 6 KB content, always `process.exit(0)`.
-- **Install scripts**: `scripts/install-assets/setup.{macos,linux,windows}.*` (executable); y/N prompt before run unless `--yes`.
+- **Hooks settings.json merge**: `loomi-bridge.mjs → installHooks() /
+uninstallHooks()` (atomic write, marker `_openloomi_plugin`, block key
+  `__openloomi_claude_plugin_hooks__`).
+- **Stop archive**: `loomi-bridge.mjs → cmdArchive()` — caps at 5 MB
+  transcript / 6 turns / 6 KB content, always `process.exit(0)`.
+- **Install scripts**: `scripts/install-assets/setup.{macos,linux,windows}.*`
+  (executable); y/N prompt before run unless `--yes`.
 
-## PR checklist
+### PR checklist
 
-1. `node --test plugins/claude/tests/bridge.test.mjs` — 15/15 pass.
-2. `claude --plugin-dir plugins/claude` launches clean; `/openloomi:help` lists 8.
-3. If you touched any HTTP path, grep `loomi-bridge.mjs` (`apiGET`/`apiPOST` callsites) and update this doc.
+1. `node --test plugins/claude/tests/bridge.test.mjs` — all tests pass.
+2. `claude --plugin-dir plugins/claude` launches clean; `/openloomi:help`
+   lists all commands.
+3. If you touched any HTTP path, grep `loomi-bridge.mjs` (`apiGET` /
+   `apiPOST` callsites) and update this doc.
 4. If you touched the secrets contract, run the leak-test grep (above).
 5. If you added a hook, run `tests/e2e/setup.md` §E + §F.

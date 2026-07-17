@@ -1,76 +1,53 @@
-# OpenLoomi Codex Plugin
+# Codex OpenLoomi Plugin
 
-## Overview
+Run OpenLoomi from inside OpenAI Codex CLI.
 
-The OpenLoomi Codex plugin makes Codex an agent shell for a local OpenLoomi
-runtime. Codex provides the interactive coding surface, while OpenLoomi owns the
-personal memory layer, connector graph, runtime/provider setup, task loop, and
-local privacy boundary.
+[OpenLoomi](https://github.com/melandlabs/openloomi) is a local-first desktop app that holds your memory, runs tasks in the
+background, and talks to your connected apps (Gmail, Slack, GitHub, Calendar,
+Linear, …). This plugin turns Codex into a front-end for that local runtime —
+you chat with Codex, and Codex hands work off to OpenLoomi instead of doing
+everything itself.
 
-The plugin is designed to:
+You keep using Codex the way you already do. OpenLoomi runs next to it, on
+your machine.
 
-- discover or install OpenLoomi for the user;
-- discover the local OpenLoomi Desktop GUI app;
-- set up the Codex runtime path and guide AI provider fallback when needed;
-- help users access OpenLoomi workflows (loop, memory, connectors, handoff) through Codex once OpenLoomi is ready;
-- help users access OpenLoomi-related workflows such as `openloomi-loop` and
-  `openloomi-memory` from Codex;
-- optionally connect Codex task lifecycle events to the OpenLoomi Pet.
+---
 
-This directory contains the Codex plugin design. The Claude Code plugin
-lives next to it under `plugins/claude/` and ships its own README, hooks, and
-slash-command layout; that surface is intentionally not mirrored here.
+## What you can do with it
 
-```text
-plugins/
-  codex/
-    README.md
-```
+- **Ask Codex about your work.** "What did I work on last Tuesday?" — Codex
+  pulls the answer from OpenLoomi's local memory instead of guessing.
+- **Hand tasks off for follow-up.** "Send this to Loomi so it reminds me about
+  it tomorrow" — the task goes into OpenLoomi's loop and pings you when it's
+  ready.
+- **Route Codex through OpenLoomi.** When OpenLoomi answers, it can use your
+  Codex CLI runtime under the hood, so you only configure one AI provider.
+- **Trigger OpenLoomi workflows from chat.** Memory, loop, connectors, and
+  handoff are all exposed as Codex skills — type `@OpenLoomi …` and go.
 
-## Product Positioning
+OpenLoomi still owns the heavy lifting: local memory storage, connector
+credentials, scheduled tasks, the desktop UI, secrets. Codex just gets a
+doorway into all of it.
 
-The Codex plugin is a companion integration, not a replacement for OpenLoomi
-Desktop. It lets Codex hand tasks to OpenLoomi and receive readiness or task
-results. OpenLoomi remains responsible for local execution, memory, connectors,
-settings, and secret storage.
+---
 
-The first complete user flow should be:
+## Install the plugin
 
-```text
-User installs the Codex plugin
-  -> plugin checks whether OpenLoomi is installed
-  -> plugin installs or guides installation if OpenLoomi is missing
-  -> plugin verifies the OpenLoomi Desktop GUI app
-  -> plugin sets or verifies the Codex runtime path
-  -> plugin guides AI provider fallback only when needed
-  -> plugin initializes or reuses a guest/session token
-  -> plugin runs a one-shot OpenLoomi task
-  -> plugin shows related OpenLoomi skills and workflows
-```
+You need a Codex build that supports `codex plugin marketplace` (Codex CLI
+0.144 or newer). Pick the install path that matches your workflow.
 
-## User Tour: Install the Plugin
-
-The OpenLoomi Codex plugin lives at `plugins/codex/` inside the OpenLoomi
-repository. The repository root doubles as a Codex marketplace root: it ships
-`.agents/plugins/marketplace.json` that points at this plugin directory, so
-any Codex build that supports `codex plugin marketplace` can install the
-plugin directly from the repository.
-
-Pick the install path that matches your workflow.
-
-### Install from GitHub (no clone required)
+### Install from GitHub
 
 ```bash
 codex plugin marketplace add melandlabs/openloomi
 codex plugin add openloomi@openloomi
 ```
 
-Codex will fetch the OpenLoomi repository, discover the marketplace manifest
-at the root, and install the `openloomi` plugin into
-`~/.codex/plugins/cache/openloomi/openloomi/<version>`. Restart Codex and
-start a new thread so the plugin cache is refreshed.
+Codex fetches the repo, reads the marketplace manifest at the root, and
+installs the `openloomi` plugin into
+`~/.codex/plugins/cache/openloomi/openloomi/<version>`.
 
-### Install from a local checkout (developers)
+### Install from a local checkout (contributors)
 
 ```bash
 git clone https://github.com/melandlabs/openloomi.git
@@ -79,12 +56,11 @@ codex plugin marketplace add .
 codex plugin add openloomi@openloomi
 ```
 
-The `.` argument tells Codex to use the repository root as a local
-marketplace. The same `marketplace.json` resolution rules apply, so the
-plugin path resolves to `./plugins/codex`.
+The `.` argument tells Codex to use the repo root as a local marketplace;
+plugin resolution lands on `./plugins/codex`.
 
-To pick up local edits to `plugins/codex/` after the initial install, force
-Codex to re-snapshot the marketplace:
+When you change files under `plugins/codex/` and want to pick up your edits,
+force a re-snapshot:
 
 ```bash
 codex plugin marketplace remove openloomi
@@ -92,110 +68,72 @@ codex plugin marketplace add .
 codex plugin add openloomi@openloomi
 ```
 
+Either way, **restart Codex and start a new thread** after installing — Codex
+only picks up the new plugin when a fresh process loads the cache.
+
 ### Requirements
 
-- A Codex build that supports `codex plugin marketplace` (Codex CLI 0.144+).
-- For GitHub install: network access to `github.com`.
-- For local install: the OpenLoomi repository checked out somewhere writable.
-- OpenLoomi Desktop installed, or a source build that produces the
-  OpenLoomi Desktop GUI app, for any handoff, loop, memory, or connector task.
-- Codex CLI available and configured as the recommended OpenLoomi desktop
-  runtime, or an AI provider configured in OpenLoomi Desktop as a fallback.
+- Codex CLI 0.144+ with `codex plugin marketplace` support.
+- Network access to `github.com` (for the GitHub install path), or a writable
+  checkout of the OpenLoomi repo (for the local path).
+- **OpenLoomi Desktop installed** — or a source build that produces the
+  OpenLoomi Desktop app — for anything beyond setup guidance and workflow
+  discovery. Without it, the plugin can still report readiness and walk you
+  through installation, but handoff, loop, memory, and connector tasks can't
+  actually run.
+- Codex CLI on your `PATH` (e.g. `brew install --cask codex` or
+  `npm i -g @openai/codex`) if you want OpenLoomi to route through your
+  Codex runtime instead of through a separate AI provider.
 
-The plugin alone is enough for setup guidance and workflow discovery. If
-OpenLoomi Desktop is missing, the plugin can still report readiness, install
-instructions, and workflow guidance, but handoff calls cannot execute.
+---
 
-### Verify the Bridge Before Using Codex
+## Set up OpenLoomi Desktop
 
-From the OpenLoomi source checkout, verify the plugin bridge directly:
+If you already have OpenLoomi Desktop running, you can skip to the next
+section. Otherwise the plugin can do the whole first-use setup for you.
 
-```bash
-node plugins/codex/scripts/loomi-bridge.mjs version
-node plugins/codex/scripts/loomi-bridge.mjs setup-status
-node plugins/codex/scripts/loomi-bridge.mjs workflow-guidance
-node plugins/codex/scripts/loomi-bridge.mjs install-instructions
-node plugins/codex/scripts/loomi-bridge.mjs install-openloomi --confirm
-node plugins/codex/scripts/loomi-bridge.mjs initialize-session
-node plugins/codex/scripts/loomi-bridge.mjs configure-ai-provider
-node plugins/codex/scripts/loomi-bridge.mjs help
-```
-
-`version` prints the bridge identity, the current plugin phase, and the full
-list of bridge commands:
-
-```bash
-node plugins/codex/scripts/loomi-bridge.mjs version
-```
-
-```json
-{
-  "name": "openloomi-codex-bridge",
-  "version": "0.7.10",
-  "pluginPhase": "runtime-provider-readiness",
-  "commands": [
-    "codex-runtime-info",
-    "configure-ai-provider",
-    "help",
-    "initialize-session",
-    "install-instructions",
-    "install-openloomi",
-    "pet",
-    "run",
-    "set-codex-runtime-env",
-    "setup",
-    "setup-status",
-    "state",
-    "version",
-    "workflow-guidance"
-  ]
-}
-```
-
-Expected readiness milestones for a fully prepared environment:
+From any new Codex thread, ask:
 
 ```text
-installed: true
-appPath: <path to OpenLoomi Desktop GUI app>
-tokenPresent: true
-aiProviderConfigured: true
-ready: true
-nextAction: run
+@OpenLoomi Run first-use setup.
 ```
 
-If `setup-status` reports `SOURCE_FOUND_APP_NOT_BUILT`, the checkout was
-detected but the OpenLoomi Desktop app has not been built yet. Build the
-desktop app per the OpenLoomi repo's `apps/web/src-tauri/README.md`, or install
-the packaged Desktop release.
+The setup wizard walks a small state machine in one call:
 
-If `tokenPresent` is `false`, open OpenLoomi Desktop and let it initialize a
-guest/session token. The plugin and the OpenLoomi runtime read the token from:
+1. **Check readiness** — is OpenLoomi installed? Is the desktop app reachable?
+2. **Install** (if needed) — downloads the official GitHub release. _Requires
+   `--yes` or `--confirm`; it never installs silently._
+3. **Wire the Codex runtime** — sets `OPENLOOMI_AGENT_PROVIDER=codex` so
+   OpenLoomi reuses your Codex CLI instead of needing a separate AI key.
+4. **Launch OpenLoomi Desktop** — opens the app and waits for the local API.
+5. **Mint a guest/session token** — writes `~/.openloomi/token`.
+6. **Re-check readiness** — confirms every step stuck.
+
+If the install step needs permission, type:
 
 ```text
-~/.openloomi/token
+@OpenLoomi Run first-use setup with --yes so the install step can proceed.
 ```
 
-If `aiProviderConfigured` is `false`, configure a model provider in
-OpenLoomi-owned settings. Do not paste API keys into Codex chat.
+The wizard never auto-installs from unofficial artifacts, never builds from
+source on your behalf, and never asks for API keys in chat — secrets are
+always entered inside OpenLoomi-owned UI.
 
-You can also drive the same end-to-end flow from a single command:
+You can run the same wizard from a terminal:
 
 ```bash
-node plugins/codex/scripts/loomi-bridge.mjs setup
+node plugins/codex/scripts/loomi-bridge.mjs setup --yes
 ```
 
-The `setup` command walks the readiness state machine: install (with
-explicit `--yes`) -> set the Codex runtime environment -> launch OpenLoomi ->
-initialize a local guest/session token -> re-check status. It returns a
-structured `steps` array and a final `status` block so Codex can render the path
-it took. If the user chooses the AI provider fallback instead of the Codex
-runtime, secret entry must happen in OpenLoomi-owned UI or interactive CLI
-surfaces.
+`setup` is **idempotent** — run it again any time to recover from a dropped
+session, re-apply the runtime env after a Codex upgrade, or confirm everything
+still resolves to `READY`.
 
-### Try the Plugin in Codex
+---
 
-After the marketplace is installed and Codex has been restarted, try these
-prompts in a new Codex thread:
+## Verify it's working
+
+Open a fresh Codex thread and try one of these prompts:
 
 ```text
 @OpenLoomi Check whether OpenLoomi is ready.
@@ -209,7 +147,26 @@ prompts in a new Codex thread:
 @OpenLoomi Use Loomi to summarize the current task in one sentence.
 ```
 
-Useful workflow prompts:
+A fully prepared environment answers with something like:
+
+```text
+installed: true
+appPath: /Applications/OpenLoomi.app
+tokenPresent: true
+aiProviderConfigured: true
+ready: true
+nextAction: run
+```
+
+If anything in that block is `false`, jump to the troubleshooting section
+below.
+
+---
+
+## What you can ask Codex
+
+Once the plugin is enabled and OpenLoomi is ready, treat `@OpenLoomi` as a
+front door into the local runtime. A few patterns that usually work:
 
 ```text
 @OpenLoomi Use the memory workflow to recall relevant context.
@@ -218,169 +175,188 @@ Useful workflow prompts:
 @OpenLoomi Hand this task to Loomi for follow-up.
 ```
 
-The workflow skills are intentionally thin. They expose guidance and route
-requests to OpenLoomi runtime surfaces. If the local runtime does not yet
-support a requested handoff, reminder, connector, or scheduling action, the
-plugin should report the runtime response instead of duplicating that logic in
-Codex.
+The workflow skills are intentionally thin — they route your request into the
+right OpenLoomi surface. Anything OpenLoomi's local runtime doesn't support
+yet comes back as a polite "not yet supported here" rather than a silent
+fallback inside Codex.
 
-### Troubleshooting
+---
 
-`OpenLoomi is not installed`
+## If something goes wrong
 
-: Install the packaged OpenLoomi Desktop release or provide an explicit
-`OPENLOOMI_INSTALL_DIR` / `OPENLOOMI_APP` path for development.
+### "OpenLoomi is not installed"
 
-`SOURCE_FOUND_APP_NOT_BUILT`
+Install the packaged OpenLoomi Desktop release, or point the plugin at an
+existing install:
 
-: The source checkout was detected, but the OpenLoomi Desktop GUI app has not
-been built yet. The current plugin does not execute the source tree directly.
+```bash
+export OPENLOOMI_INSTALL_DIR=/path/to/openloomi
+export OPENLOOMI_APP=/path/to/openloomi/desktop/binary
+```
 
-`SESSION_INITIALIZATION_REQUIRED`
+### "SOURCE_FOUND_APP_NOT_BUILT"
 
-: OpenLoomi is installed but the local guest/session token could not be
-created. Open OpenLoomi Desktop once so the local API can mint a guest
-session, then re-run `setup-status` or `setup`.
+You have a source checkout but the desktop app hasn't been built yet. The
+plugin does not build from source automatically. Either build the desktop
+binary per `apps/web/src-tauri/README.md` or install the packaged release.
 
-`AI_PROVIDER_REQUIRED` / `AI_PROVIDER_STATUS_UNAVAILABLE`
+### "SESSION_INITIALIZATION_REQUIRED"
 
-: Prefer setting the OpenLoomi desktop runtime to Codex so OpenLoomi can reuse
-the user's existing Codex CLI runtime. If the user chooses a separate AI
-provider fallback, configure it in OpenLoomi Desktop. Secrets must stay in
-OpenLoomi-owned UI or secure storage. If the local API is unreachable, the
-plugin reports status as unavailable rather than falsely reporting missing
-configuration.
-
-`Codex still shows an old plugin version`
-
-: Remove and re-add the marketplace, restart Codex, and start a new thread.
-The cached plugin lives at
-`~/.codex/plugins/cache/openloomi/openloomi/<version>`.
-
-## Auto-Enable & First-Use Setup
-
-Once the plugin is installed via the marketplace, it is **enabled
-automatically**. The plugin's primary skill (`openloomi`) and its companion
-sub-skills (`openloomi-install`, `openloomi-loop`, `openloomi-memory`,
-`openloomi-connectors`, `openloomi-handoff`, `openloomi-api`,
-`openloomi-feature-guide`) are picked up from
-`plugins/codex/.codex-plugin/plugin.json` -> `skills` on the next Codex
-start. No additional registration step is required - opening any new Codex
-thread and mentioning `@OpenLoomi` (or any of the trigger phrases listed in
-the skill front-matter) is enough to route into the bridge.
-
-After enablement, the plugin can also drive itself through first-use setup
-end-to-end. From a fresh shell, run:
+OpenLoomi is installed but the local guest/session token is missing. Open
+OpenLoomi Desktop once so it can mint a guest session, then re-run:
 
 ```bash
 node plugins/codex/scripts/loomi-bridge.mjs setup
 ```
 
-From a Codex thread, ask:
+The token lives at `~/.openloomi/token`. Delete it to force a re-mint.
 
-```text
-@OpenLoomi Run first-use setup.
+### "AI_PROVIDER_REQUIRED" / "AI_PROVIDER_STATUS_UNAVAILABLE"
+
+Two ways forward, in order of preference:
+
+1. **Route OpenLoomi through your Codex runtime.** The `setup` wizard does
+   this by default; once `OPENLOOMI_AGENT_PROVIDER=codex` is set and you've
+   restarted OpenLoomi Desktop, no separate AI key is needed for Codex-driven
+   workflows.
+2. **Configure a separate AI provider fallback inside OpenLoomi Desktop.**
+   Do not paste API keys into Codex chat — enter them in OpenLoomi's own
+   settings.
+
+### Codex still shows an old plugin version
+
+Remove and re-add the marketplace, restart Codex, and start a new thread. The
+cached copy lives at
+`~/.codex/plugins/cache/openloomi/openloomi/<version>`.
+
+### Default agent still says `claude`
+
+After switching to the Codex runtime you may need to **quit and reopen
+OpenLoomi Desktop** so the new env reaches the freshly forked web process. To
+confirm the env actually landed:
+
+```bash
+launchctl getenv OPENLOOMI_AGENT_PROVIDER
 ```
 
-The `setup` command is an auto-enable wizard that walks a small state
-machine in one invocation:
+---
 
-```text
-1. status_check      -> read setup-status
-2. install           -> download + install OpenLoomi from the official
-                        GitHub release (only when --yes/--confirm is set)
-3. runtime_env       -> write OPENLOOMI_AGENT_PROVIDER=codex to the host
-                        GUI launchd / environment.d, or return Windows
-                        user-environment guidance
-4. launch_desktop    -> open OpenLoomi Desktop and wait for the local API
-                        to come up (configurable via --max-wait)
-5. initialize-session -> mint a guest/session token via the local API
-                        and write ~/.openloomi/token
-6. status_check      -> final readiness check
+## (Optional) Route OpenLoomi through your Codex CLI
+
+By default the packaged OpenLoomi desktop app routes chat and agent requests
+through Claude. If you'd rather have it use your existing Codex CLI runtime —
+so you don't need a second AI key for Codex-driven workflows — set
+`OPENLOOMI_AGENT_PROVIDER=codex` in the environment the desktop app actually
+inherits.
+
+This is the recommended path for first-time Codex-plugin users.
+
+### How to make the env switch stick
+
+The desktop app's web server runs inside the GUI launchd session on macOS (a
+separate systemd user session on Linux), **not** in your terminal — so a
+shell `export` won't reach it. Three tiers, each more durable than the last:
+
+1. **In-process only** — `export OPENLOOMI_AGENT_PROVIDER=codex` in a
+   terminal. Reaches that shell and its children only; the OpenLoomi web
+   server does **not** see it.
+2. **This session only (transient)** —
+
+   ```bash
+   node plugins/codex/scripts/loomi-bridge.mjs set-codex-runtime-env codex
+   ```
+
+   Writes `launchctl setenv OPENLOOMI_AGENT_PROVIDER codex` in the GUI
+   launchd domain on macOS, or `~/.config/environment.d/openloomi-codex.conf`
+   on Linux. The currently running OpenLoomi app does **not** see the change
+   until you quit and reopen it; the value is lost on next logout/reboot.
+
+3. **Persistent (recommended)** —
+
+   ```bash
+   node plugins/codex/scripts/loomi-bridge.mjs set-codex-runtime-env codex --persist
+   ```
+
+   Does everything tier 2 does, **plus** installs
+   `~/Library/LaunchAgents/com.openloomi.codex-runtime-env.plist` on macOS
+   (a `RunAtLoad` LaunchAgent that re-applies the value on every login), so
+   the switch survives logout/reboot. The `setup` wizard installs this tier
+   by default. On Linux the environment.d file already persists, so no extra
+   flag is needed. On Windows the bridge prints manual steps instead of
+   touching the registry.
+
+> **macOS caveat:** the GUI launchd session is separate from your terminal.
+> After tier 2 or 3, **quit and reopen `OpenLoomi.app`** so the new env is
+> inherited by the freshly forked web process. On Linux a per-user env file
+> applies on next login; on Windows you edit the user environment via
+> System Settings.
+
+Flags accepted by `set-codex-runtime-env`:
+
+- `<value>` — defaults to `codex`. Other supported values: `claude`,
+  `opencode`, `hermes`, `openclaw`.
+- `--unset` — clear `OPENLOOMI_AGENT_PROVIDER` from the host environment.
+- `--dry-run` — describe what would happen without writing anything.
+- `--persist` — install a `RunAtLoad` LaunchAgent on macOS so the value
+  survives logout/reboot. Combine with `--unset` to also remove the plist.
+
+For a permanent shell-side switch on macOS or Linux, additionally append the
+export to your shell rc so future shells remember it:
+
+```bash
+echo 'export OPENLOOMI_AGENT_PROVIDER=codex' >> ~/.zshrc
 ```
 
-The wizard stops early at any step that requires explicit user action:
+The shell export helps the bridge itself; the `set-codex-runtime-env` step
+is what makes the GUI launchd domain and the desktop session pick the
+variable up.
 
-- **Install** requires `--yes` (or `--confirm`). Without it, the wizard
-  returns `setup: "awaiting_user_action"` with
-  `reason: "INSTALL_CONFIRMATION_REQUIRED"` and a clear message - it will
-  never download OpenLoomi silently. Per the non-goals, the wizard never
-  installs from unofficial artifacts or non-default paths.
-- **AI provider configuration is never auto-run.** Secret entry must
-  happen in OpenLoomi-owned UI or interactive CLI surfaces. After the
-  wizard finishes, `status.aiProviderConfigured` may still be `false`; in
-  that case follow the `configure-ai-provider` guidance from the
-  `openloomi-install` sub-skill.
-- **Source checkout (`SOURCE_FOUND_APP_NOT_BUILT`)** stops the wizard
-  with `nextAction: "build_or_install_openloomi"`. The plugin never
-  builds OpenLoomi from source automatically.
+### Fine-tuning the Codex runtime
 
-The wizard returns structured JSON so Codex (or any other caller) can
-render each step:
+Optional companion variables (all read by `apps/web`'s native-agent env
+resolver at startup). Defaults are shown:
 
-```json
-{
-  "ok": true,
-  "setup": "ready",
-  "steps": [
-    { "step": "status_check", "ok": true, "reason": "INSTALL_REQUIRED" },
-    { "step": "install", "ok": true },
-    { "step": "runtime_env", "ok": true, "after": "codex" },
-    { "step": "launch_desktop", "ok": true },
-    { "step": "initialize-session", "ok": true, "tokenWritten": true },
-    { "step": "status_check", "ok": true, "reason": "READY" }
-  ],
-  "status": {
-    "installed": true,
-    "appPath": "/Applications/OpenLoomi.app",
-    "tokenPresent": true,
-    "aiProviderConfigured": false,
-    "ready": true,
-    "nextAction": "configure_ai_provider"
-  },
-  "message": "OpenLoomi is ready and the desktop app is wired to Codex."
-}
+```bash
+export OPENLOOMI_AGENT_CODEX_COMMAND=codex            # `codex` on PATH
+export OPENLOOMI_AGENT_CODEX_MODEL=gpt-5.4            # optional override
+export OPENLOOMI_AGENT_CODEX_PROFILE=work             # optional `-p <name>`
+export OPENLOOMI_AGENT_CODEX_SANDBOX=workspace-write  # read-only | workspace-write | danger-full-access
+export OPENLOOMI_AGENT_CODEX_ASK_FOR_APPROVAL=on-request  # untrusted | on-failure | on-request | never
+export OPENLOOMI_AGENT_CODEX_SKIP_GIT_REPO_CHECK=true
+export OPENLOOMI_AGENT_CODEX_FULL_AUTO=false          # true allows --full-auto under bypassPermissions
+export OPENLOOMI_AGENT_CODEX_TIMEOUT_MS=120000        # CLI runtime budget in ms
 ```
 
-Flags accepted by `setup`:
+Before this will actually work, make sure:
 
-- `--yes` / `--confirm` - authorize the install step when OpenLoomi is
-  missing. Without this flag the wizard is read-only.
-- `--max-wait <ms>` - how long to wait for the local API after launching
-  the desktop app (default `30000`).
-- `--non-interactive` - fail fast instead of waiting for the local API;
-  useful in CI.
+- `which codex` resolves to a working Codex CLI binary.
+- `~/.codex/config.toml` is configured, and `OPENAI_API_KEY` (or the Codex
+  CLI's other auth) is available to the spawned process.
 
-Typical first-use run from a Codex prompt:
+### Confirming the switch
 
-```text
-@OpenLoomi Run first-use setup with --yes so the install step can proceed.
+After restarting OpenLoomi Desktop, hit `GET /api/native/providers`. It
+should report `codex` inside `agents` and `defaultAgent: "codex"`. If you
+still see `defaultAgent: "claude"`, the env change didn't stick — re-run
+`launchctl getenv OPENLOOMI_AGENT_PROVIDER` to confirm the GUI session
+actually has it.
+
+To pull the same switch plan as structured JSON (handy for surfacing inside
+Codex without retyping the shell snippets):
+
+```bash
+node "$SKILL_DIR/../../scripts/loomi-bridge.mjs" codex-runtime-info
 ```
 
-That single call enables the plugin, walks the full state machine, writes
-`~/.openloomi/token`, and leaves the plugin ready for `run`, `handoff`,
-`memory`, `loop`, and `connector` workflows in the same thread.
+---
 
-### Re-running setup
+## For developers / reference
 
-`setup` is idempotent. Re-run it any time to:
+The rest of this document is for plugin contributors and people integrating
+the bridge from elsewhere. End users can stop at "Confirming the switch"
+above.
 
-- recover from `SESSION_INITIALIZATION_REQUIRED`;
-- re-apply `OPENLOOMI_AGENT_PROVIDER=codex` after a Codex upgrade wiped
-  the launchd env;
-- re-mint a guest/session token after deleting `~/.openloomi/token`;
-- confirm that all steps still resolve to `READY` after an OpenLoomi
-  Desktop upgrade.
-
-The wizard has a hard ceiling of 8 chained transitions per invocation, so
-looping is bounded. If it cannot reach `READY`, the final JSON reports
-the blocking `reason` and `nextAction` and the user can drive the
-remaining step manually (typically `configure-ai-provider` or
-`open_openloomi`).
-
-## Plugin Package Layout
-
-The plugin implementation lives under this module:
+### Plugin package layout
 
 ```text
 plugins/codex/
@@ -388,6 +364,7 @@ plugins/codex/
   .codex-plugin/plugin.json
   scripts/loomi-bridge.mjs
   assets/logo.png
+  hooks/hooks.json
   skills/
     openloomi/SKILL.md
     openloomi-install/SKILL.md
@@ -404,16 +381,22 @@ plugins/codex/
 
 Responsibilities:
 
-- `.codex-plugin/plugin.json`: Codex plugin metadata, display information, and
+- `.codex-plugin/plugin.json`: Codex plugin metadata, display info, and
   skill discovery.
-- `skills/openloomi/SKILL.md`: thin Codex entrypoint that decides when to call
-  the bridge.
-- `scripts/loomi-bridge.mjs`: local adapter for discovery, install guidance,
-  readiness checks, AI provider setup handoff, one-shot execution, and future
-  hook integration.
+- `skills/openloomi/SKILL.md`: thin Codex entrypoint that decides when to
+  call the bridge.
+- `scripts/loomi-bridge.mjs`: local adapter for discovery, install
+  guidance, readiness checks, AI provider setup handoff, one-shot execution,
+  and hook integration.
 - `assets/`: plugin icons and visual assets.
+- `hooks/hooks.json`: Codex lifecycle hooks (mirrored onto the OpenLoomi
+  Pet).
 
-## Architecture
+The Claude Code plugin lives next to it under `plugins/claude/` and ships
+its own README, hooks, and slash-command layout; that surface is
+intentionally not mirrored here.
+
+### Architecture
 
 ```text
 Codex
@@ -434,181 +417,38 @@ Codex
                       -> OpenLoomi Pet
 ```
 
-The plugin should stay thin. It should call OpenLoomi-owned runtime surfaces
-instead of copying connector, memory, or loop implementations into Codex.
+The plugin stays thin. Connector, memory, and loop implementations live
+inside OpenLoomi-owned runtime surfaces; the bridge only routes to them.
 
-## Supported Environments
+### Supported environments
 
-### Packaged Desktop Install
+**Packaged Desktop install.** The user installed OpenLoomi through an
+official desktop installer or release artifact. The plugin discovers the
+bundled OpenLoomi Desktop GUI app (`OpenLoomi.app` on macOS,
+`openloomi.exe` on Windows, `openloomi.AppImage` on Linux) and uses it to
+launch the local runtime.
 
-The user installed OpenLoomi through an official desktop installer or release
-artifact. The plugin should discover the bundled OpenLoomi Desktop GUI app
-(e.g. `OpenLoomi.app` on macOS, `openloomi.exe` on Windows, `openloomi.AppImage`
-on Linux) and use it to launch the local runtime.
+**Source checkout.** The user cloned the OpenLoomi repository locally and
+wants Codex to work against that checkout. The plugin detects source
+checkouts when explicitly configured or when known project markers are
+present. If the source checkout exists but the desktop app has not been
+built yet, the plugin returns actionable instructions rather than building
+automatically without user confirmation.
 
-### Source Checkout
+**Launching the desktop app with the Codex runtime.** When OpenLoomi is
+used from Codex, this is the recommended first-use path: it lets OpenLoomi
+reuse the user's existing Codex runtime and avoids requiring a separate
+OpenLoomi AI provider key just to complete the first Codex plugin workflow.
 
-The user cloned the OpenLoomi repository locally and wants Codex to work against
-that checkout. The plugin should detect source checkouts when explicitly
-configured or when known project markers are present.
+**Missing install.** If OpenLoomi is not installed, the plugin supports a
+user-approved install flow. The install flow uses official OpenLoomi
+artifacts, resolves the current platform's release asset automatically, and
+installs with the default installer path where automatic installation is
+supported.
 
-If a source checkout exists but the desktop app has not been built yet, the
-plugin should return actionable instructions rather than building automatically
-without user confirmation.
+### Discovery strategy
 
-### Launching the desktop app with the Codex runtime
-
-When OpenLoomi is used from Codex, this is the recommended first-use path: it
-lets OpenLoomi reuse the user's existing Codex runtime and avoids requiring a
-separate OpenLoomi AI provider key just to complete the first Codex plugin
-workflow.
-
-By default the packaged desktop app routes chat and agent requests through the
-Claude provider. To run the same desktop binary against the local Codex CLI
-instead, set `OPENLOOMI_AGENT_PROVIDER=codex` in the environment the desktop app
-actually inherits.
-
-#### How `OPENLOOMI_AGENT_PROVIDER` reaches OpenLoomi
-
-Three tiers, each more durable than the last:
-
-1. **In-process only** — `export OPENLOOMI_AGENT_PROVIDER=codex` in a terminal.
-   Reaches the shell and any process the shell forks, but **not** the OpenLoomi
-   web server (it runs in the GUI launchd session on macOS / a separate systemd
-   user session on Linux).
-2. **This session only (transient)** —
-   `node plugins/codex/scripts/loomi-bridge.mjs set-codex-runtime-env codex`.
-   Writes `launchctl setenv OPENLOOMI_AGENT_PROVIDER codex` in the GUI launchd
-   domain on macOS, or `~/.config/environment.d/openloomi-codex.conf` on Linux.
-   The running OpenLoomi Desktop app does **not** see the change until you Quit
-   and reopen it, and the value is lost on the next logout/reboot.
-3. **Persistent (recommended)** —
-   `node plugins/codex/scripts/loomi-bridge.mjs set-codex-runtime-env codex --persist`.
-   Does everything tier 2 does **plus** installs
-   `~/Library/LaunchAgents/com.openloomi.codex-runtime-env.plist` (a
-   `RunAtLoad` LaunchAgent that re-applies `launchctl setenv` on every login),
-   so the value survives logout/reboot. The `setup` wizard installs this tier
-   by default. On Linux the environment.d file already persists, so no extra
-   flag is needed. On Windows the bridge intentionally does not write to the
-   registry — follow the printed manual steps.
-
-> **macOS caveat:** the desktop app's web server runs inside the GUI launchd
-> session, not your terminal. After tier 2 or tier 3 you must Quit and reopen
-> `OpenLoomi.app` so the new env is inherited by the freshly forked web process.
-> On Linux a per-user env file works after the next login, and on Windows you
-> edit the user environment via System Settings.
-
-```bash
-# Tier 3 — persistent across logouts/reboots (recommended):
-node plugins/codex/scripts/loomi-bridge.mjs set-codex-runtime-env codex --persist
-# macOS: writes via launchctl setenv AND installs ~/Library/LaunchAgents/com.openloomi.codex-runtime-env.plist.
-# Linux: writes ~/.config/environment.d/openloomi-codex.conf (already persistent).
-# Windows: prints manual steps (System Settings -> Environment Variables).
-
-# Then quit and reopen OpenLoomi so the new env reaches the web server.
-```
-
-Flags accepted by `set-codex-runtime-env`:
-
-- `<value>` - defaults to `codex` (other supported values: `claude`,
-  `opencode`, `hermes`, `openclaw`).
-- `--unset` - clear `OPENLOOMI_AGENT_PROVIDER` from the host environment.
-- `--dry-run` - describe what would happen without performing the write.
-- `--persist` - on macOS, install a `RunAtLoad` LaunchAgent plist that
-  re-applies the value on every login so the switch survives logout/reboot.
-  Combine with `--unset` to also remove the plist.
-
-For a permanent shell-side switch on macOS or Linux, you can additionally append
-the export to your shell rc so future shells remember it:
-
-```bash
-echo 'export OPENLOOMI_AGENT_PROVIDER=codex' >> ~/.zshrc
-```
-
-The shell export helps the bridge itself and the OpenLoomi runtime; the
-`set-codex-runtime-env` step is what makes the GUI launchd domain and the
-desktop session pick the variable up.
-
-Optional companion variables (all read by `apps/web`'s native-agent env resolver
-at startup):
-
-```bash
-export OPENLOOMI_AGENT_CODEX_COMMAND=codex           # defaults to `codex` on PATH
-export OPENLOOMI_AGENT_CODEX_MODEL=gpt-5.4            # optional model override
-export OPENLOOMI_AGENT_CODEX_PROFILE=work             # optional `-p <name>`
-export OPENLOOMI_AGENT_CODEX_SANDBOX=workspace-write # read-only | workspace-write | danger-full-access
-export OPENLOOMI_AGENT_CODEX_ASK_FOR_APPROVAL=on-request # untrusted | on-failure | on-request | never
-export OPENLOOMI_AGENT_CODEX_SKIP_GIT_REPO_CHECK=true # default true
-export OPENLOOMI_AGENT_CODEX_FULL_AUTO=false         # set true to allow --full-auto under bypassPermissions
-export OPENLOOMI_AGENT_CODEX_TIMEOUT_MS=120000       # CLI runtime budget in ms
-```
-
-Prerequisites that must hold before the desktop app will actually drive Codex:
-
-- `which codex` resolves to a working Codex CLI binary (install via
-  `brew install --cask codex` or `npm i -g @openai/codex`).
-- `~/.codex/config.toml` is configured and `OPENAI_API_KEY` (or the Codex CLI's
-  other auth) is available to the spawned process.
-
-Verification after launch: the desktop app's `GET /api/native/providers` should
-return `codex` inside `agents` and `defaultAgent: "codex"`. If you still see
-`defaultAgent: "claude"` after running `set-codex-runtime-env` and reopening the
-app, the env change did not stick - re-run
-`launchctl getenv OPENLOOMI_AGENT_PROVIDER` in a terminal to confirm the GUI
-session actually has it.
-
-### Surface the switch from inside Codex
-
-The Codex plugin bridge exposes the same switch plan as structured JSON so it
-can be referenced from skills and shown verbatim in chat without retyping the
-shell snippets. From any Codex session, run:
-
-```bash
-node "$SKILL_DIR/../../scripts/loomi-bridge.mjs" codex-runtime-info
-```
-
-The bridge returns:
-
-- `envProviderKey` (`OPENLOOMI_AGENT_PROVIDER`)
-- `switch.oneOff` and `switch.permanent` platform guidance
-- `persistence` - `darwin.launchAgentInstalled` / `launchAgentPath`,
-  `linux.envFileInstalled` / `envFilePath`, `win32.manualStepsRequired`.
-  Use this to audit whether the persistence tier is actually in place without
-  re-running `set-codex-runtime-env`.
-- `prerequisites` - Codex CLI binary, `~/.codex/config.toml`, `OPENAI_API_KEY`
-- `companionEnvVars[]` - `OPENLOOMI_AGENT_CODEX_*` variables with their
-  defaults
-- `verify.endpoint` / `verify.expectDefaultAgent` - the
-  `GET /api/native/providers` contract
-- `defaults.currentDefaultProvider` - echoes the active
-  `OPENLOOMI_AGENT_PROVIDER`
-- `defaults.codexCliOnPath` - best-effort PATH probe for the `codex` binary
-
-The companion command that performs the GUI-session env write is
-`set-codex-runtime-env`:
-
-```bash
-node "$SKILL_DIR/../../scripts/loomi-bridge.mjs" set-codex-runtime-env codex --persist
-# Clear it later (also tears down the LaunchAgent plist on macOS):
-node "$SKILL_DIR/../../scripts/loomi-bridge.mjs" set-codex-runtime-env --unset --persist
-# Plan only, do not write:
-node "$SKILL_DIR/../../scripts/loomi-bridge.mjs" set-codex-runtime-env --dry-run --persist
-```
-
-After running `set-codex-runtime-env`, Quit and reopen `OpenLoomi.app` so the
-new env actually reaches the freshly forked web process. The env only applies
-to GUI processes launched after the env write.
-
-### Missing Install
-
-If OpenLoomi is not installed, the plugin should support a user-approved install
-flow. The install flow must use official OpenLoomi artifacts, resolve the
-current platform's release asset automatically, and install with the default
-installer path where automatic installation is supported.
-
-## Discovery Strategy
-
-The bridge should detect the OpenLoomi Desktop GUI app in this order:
+The bridge detects the OpenLoomi Desktop GUI app in this order:
 
 ```text
 1. OPENLOOMI_APP
@@ -621,7 +461,7 @@ The bridge should detect the OpenLoomi Desktop GUI app in this order:
 8. User-approved install flow
 ```
 
-For packaged installs, check common layouts:
+For packaged installs, common layouts:
 
 ```text
 # macOS
@@ -638,16 +478,16 @@ For packaged installs, check common layouts:
 ~/.local/share/openloomi/openloomi
 ```
 
-For source checkouts, check project markers:
+For source checkouts, project markers:
 
 ```text
 <repo-root>/package.json
 <repo-root>/apps/web/src-tauri/Cargo.toml
 ```
 
-## Readiness Contract
+### Readiness contract
 
-`setup-status` should return stable JSON:
+`setup-status` returns stable JSON:
 
 ```json
 {
@@ -729,29 +569,30 @@ For source checkouts, check project markers:
 ```
 
 `aiProviderConfigured` only describes OpenLoomi-owned direct
-OpenAI-compatible or Anthropic-compatible provider settings. Native Codex CLI
-execution is tracked separately through `nativeRuntime*` and
+OpenAI-compatible or Anthropic-compatible provider settings. Native Codex
+CLI execution is tracked separately through `nativeRuntime*` and
 `executionProvider*` fields. When `/api/native/providers` reports
 `defaultAgent: "codex"` and the Codex agent metadata is present,
 `setup-status` may return `ready: true` with
 `executionProviderSource: "native_codex_runtime"` even while
 `aiProviderConfigured` remains `false`.
 
-Connector readiness is a status-only advisory. Missing Gmail, Slack, GitHub,
-Calendar, or Linear connections should not block memory-only or local runtime
-workflows, so `ready` can remain `true` while `connectorSetupRecommended`
-points the user to the OpenLoomi-owned `/connectors` setup surface. Connector
-tokens, account identifiers, OAuth secrets, passwords, and Composio secrets
-must never be printed by the Codex bridge.
+Connector readiness is a status-only advisory. Missing Gmail, Slack,
+GitHub, Calendar, or Linear connections should not block memory-only or
+local runtime workflows, so `ready` can remain `true` while
+`connectorSetupRecommended` points the user to the OpenLoomi-owned
+`/connectors` setup surface. Connector tokens, account identifiers, OAuth
+secrets, passwords, and Composio secrets must never be printed by the
+Codex bridge.
 
-The bridge first reads the Loop connector status endpoint and then, when a local
-session token is available, merges OpenLoomi-owned native integration accounts
-from `/api/integrations` as status-only rows. This lets Codex show native
-connections such as Gmail or QQbot as connected even when the Loop/Composio
-probe is unavailable or slow, while still keeping all credentials inside
-OpenLoomi-owned surfaces.
+The bridge first reads the Loop connector status endpoint and then, when a
+local session token is available, merges OpenLoomi-owned native integration
+accounts from `/api/integrations` as status-only rows. This lets Codex
+show native connections such as Gmail or QQbot as connected even when the
+Loop/Composio probe is unavailable or slow, while still keeping all
+credentials inside OpenLoomi-owned surfaces.
 
-Common `nextAction` values:
+**Common `nextAction` values:**
 
 ```text
 install_openloomi
@@ -766,7 +607,7 @@ return_without_bridge
 run
 ```
 
-Common `reason` values:
+**Common `reason` values:**
 
 ```text
 OPENLOOMI_APP_NOT_FOUND
@@ -781,82 +622,85 @@ CONNECTOR_SETUP_REQUIRED
 READY
 ```
 
-OpenLoomi guest mode is supported. A missing token should not be treated as a
-requirement for account registration or manual login. When OpenLoomi is
-installed, the bridge may initialize a guest/session token through the local
-OpenLoomi API and write the standard `~/.openloomi/token` file. If the local API
-is not reachable, the bridge may launch OpenLoomi and ask the user to let
-OpenLoomi initialize its guest session.
+OpenLoomi guest mode is supported. A missing token should not be treated as
+a requirement for account registration or manual login. When OpenLoomi is
+installed, the bridge may initialize a guest/session token through the
+local OpenLoomi API and write the standard `~/.openloomi/token` file. If
+the local API is not reachable, the bridge may launch OpenLoomi and ask
+the user to let OpenLoomi initialize its guest session.
 
 The bridge attempts two guest endpoints, in order:
 
-1. `POST /api/remote-auth/guest` - the JSON bearer flow. This is the same
-   endpoint the Claude plugin calls and the one that registers a fresh guest
-   account in the OpenLoomi runtime's local database before returning a
-   bearer. Prefer this when the running OpenLoomi build exposes it.
+1. `POST /api/remote-auth/guest` — the JSON bearer flow. This is the same
+   endpoint the Claude plugin calls and the one that registers a fresh
+   guest account in the OpenLoomi runtime's local database before returning
+   a bearer. Prefer this when the running OpenLoomi build exposes it.
 2. `POST /api/auth/guest?redirectUrl=/` followed by `GET /api/auth/token`
-   using the `Set-Cookie` header - the legacy cookie-based flow kept for
+   using the `Set-Cookie` header — the legacy cookie-based flow kept for
    older OpenLoomi builds that don't ship the JSON endpoint. The bridge
    falls back to this path only when the JSON endpoint returns 404 or is
    unreachable before any response, so a transient 5xx or empty payload on
    the JSON path still tries the cookie path before giving up.
 
-Both paths produce the same outcome from the bridge's perspective: a token
-written to `~/.openloomi/token`, masked out of logs and stderr, and
+Both paths produce the same outcome from the bridge's perspective: a
+token written to `~/.openloomi/token`, masked out of logs and stderr, and
 reportable via `setup-status` as `session.tokenPresent: true`.
 
 AI provider readiness should respect both environment variables and
-OpenLoomi-owned UI/runtime settings. When a token is available, the bridge may
-convert that token to a local session cookie through OpenLoomi's existing auth
-surface, call the local AI preferences API, and report only masked status
-fields such as `hasApiKey`, `baseUrlPresent`, and `modelPresent`. If OpenLoomi
-is not running, the bridge should report `AI_PROVIDER_STATUS_UNAVAILABLE`
-instead of claiming the provider is missing.
+OpenLoomi-owned UI/runtime settings. When a token is available, the bridge
+may convert that token to a local session cookie through OpenLoomi's
+existing auth surface, call the local AI preferences API, and report only
+masked status fields such as `hasApiKey`, `baseUrlPresent`, and
+`modelPresent`. If OpenLoomi is not running, the bridge reports
+`AI_PROVIDER_STATUS_UNAVAILABLE` instead of claiming the provider is
+missing.
 
-## First-Use Runtime and Provider Setup
+### First-use runtime and provider setup
 
-The plugin should guide users toward the Codex runtime path when OpenLoomi is
-first used from Codex. This lets OpenLoomi reuse the user's existing Codex CLI
-runtime and avoids requiring a separate OpenLoomi AI provider key for the first
-plugin workflow.
+The plugin guides users toward the Codex runtime path when OpenLoomi is
+first used from Codex. This lets OpenLoomi reuse the user's existing Codex
+CLI runtime and avoids requiring a separate OpenLoomi AI provider key for
+the first plugin workflow.
 
 Preferred paths:
 
-1. Set or verify `OPENLOOMI_AGENT_PROVIDER=codex` for the OpenLoomi desktop
-   runtime, then restart OpenLoomi and verify `/api/native/providers`.
+1. Set or verify `OPENLOOMI_AGENT_PROVIDER=codex` for the OpenLoomi
+   desktop runtime, then restart OpenLoomi and verify
+   `/api/native/providers`.
 2. If the user chooses a separate AI provider fallback, launch or guide an
    OpenLoomi-owned setup flow for:
    - base URL;
    - API key;
    - model name.
 
-Raw API keys must not be pasted into Codex chat. If a setup flow collects an API
-key, that input must happen in an OpenLoomi-owned UI or CLI surface that avoids
-printing secrets and writes directly to OpenLoomi's local configuration or
-secure storage.
+Raw API keys must not be pasted into Codex chat. If a setup flow collects
+an API key, that input must happen in an OpenLoomi-owned UI or CLI
+surface that avoids printing secrets and writes directly to OpenLoomi's
+local configuration or secure storage.
 
-## OpenLoomi Skill Guidance
+### OpenLoomi skill guidance
 
-After OpenLoomi starts, the plugin should guide users toward OpenLoomi-related
-skills and workflows that are useful from Codex. The Codex plugin ships the
-following skills under `plugins/codex/skills/`:
+After OpenLoomi starts, the plugin guides users toward OpenLoomi-related
+skills and workflows that are useful from Codex. The Codex plugin ships
+the following skills under `plugins/codex/skills/`:
 
 - `openloomi`: the main entry point. Triggers on any `OpenLoomi` / `Loomi`
   mention and dispatches to the right sub-skill.
 - `openloomi-install`: walks install, first-use setup, AI provider setup,
   and `SESSION_INITIALIZATION_REQUIRED` recovery flows.
 - `openloomi-loop`: run attention-loop and follow-up workflows.
-- `openloomi-memory`: search or write memory through OpenLoomi-owned runtime
-  surfaces. Thin wrapper - does not implement memory storage.
-- `openloomi-connectors`: check whether Slack, GitHub, Gmail, Calendar, and
-  other sources are configured before acting. Reports status only.
+- `openloomi-memory`: search or write memory through OpenLoomi-owned
+  runtime surfaces. Thin wrapper — does not implement memory storage.
+- `openloomi-connectors`: check whether Slack, GitHub, Gmail, Calendar,
+  and other sources are configured before acting. Reports status only.
 - `openloomi-handoff`: send the current Codex task to Loomi for follow-up.
-  Exposed as a Codex skill; the Claude Code plugin exposes the same capability
-  through its own `/openloomi:*` slash-command surface instead.
-- `openloomi-api`: openloomi HTTP API reference (auth, chat, RAG, workspace,
-  integrations, feedback). Triggered by API / backend questions.
-- `openloomi-feature-guide`: product overview, capabilities, and how-tos for
-  non-developer questions like "what can openloomi do".
+  Exposed as a Codex skill; the Claude Code plugin exposes the same
+  capability through its own `/openloomi:*` slash-command surface instead.
+- `openloomi-api`: openloomi HTTP API reference (auth, chat, RAG,
+  workspace, integrations, feedback). Triggered by API / backend
+  questions.
+- `openloomi-feature-guide`: product overview, capabilities, and how-tos
+  for non-developer questions like "what can openloomi do".
 - `composio`: third-party 1000+ app integration router (Gmail, Slack,
   GitHub, etc.) via the Composio CLI. Platform-agnostic; not OpenLoomi
   business logic.
@@ -866,17 +710,17 @@ four workflow skills (`openloomi-loop`, `openloomi-memory`,
 `openloomi-connectors`, `openloomi-handoff`). All other skills are
 documentation or routing helpers. The plugin must not copy OpenLoomi
 connector, memory, loop, scheduling, or handoff persistence logic into
-Codex - runtime implementations stay inside the OpenLoomi desktop runtime.
+Codex — runtime implementations stay inside the OpenLoomi desktop runtime.
 
-## Pet State Control
+### Pet state control
 
 The bridge ships a `pet <state>` command that mirrors
-`plugins/claude/scripts/loomi-bridge.mjs::cmdPet`. It validates against the
-same 9-state sprite vocabulary and POSTs `{state, source: "codex-plugin"}`
-to `/api/pet/state` on the local OpenLoomi runtime with the bearer token
-from `~/.openloomi/token`. The command tries every local OpenLoomi API URL
-in priority order, so a closed 3414 port can still fall back to a source
-runtime on 3515.
+`plugins/claude/scripts/loomi-bridge.mjs::cmdPet`. It validates against
+the same 9-state sprite vocabulary and POSTs `{state, source:
+"codex-plugin"}` to `/api/pet/state` on the local OpenLoomi runtime with
+the bearer token from `~/.openloomi/token`. The command tries every
+local OpenLoomi API URL in priority order, so a closed 3414 port can
+still fall back to a source runtime on 3515.
 
 ```bash
 node plugins/codex/scripts/loomi-bridge.mjs pet happy
@@ -893,55 +737,57 @@ happy, idle, juggling, needsinput, presenting, sleeping, sweeping, thinking, wor
 > `idle`, `thinking`, `working`, `juggling`, `happy`, `presenting`,
 > `needsinput`. `sleeping` and `sweeping` are capybara-theme vocabulary
 > managed by the Loop baseline watcher — the API returns 400
-> `invalid_state` for them, which the bridge surfaces as
-> `{ok: false, code: "PET_FAILED"}`. Avoid requesting those two from
-> Codex; let the Loop baseline watcher set them.
+> `invalid_state` for them, which the bridge surfaces as `{ok: false,
+code: "PET_FAILED"}`. Avoid requesting those two from Codex; let the
+> Loop baseline watcher set them.
 
 Failure modes (all return structured JSON, never throw):
 
-- `MISSING_STATE` - no positional state argument.
-- `INVALID_STATE` - state not in the vocabulary; response includes
+- `MISSING_STATE` — no positional state argument.
+- `INVALID_STATE` — state not in the vocabulary; response includes
   `validStates` and `received`.
-- `TOKEN_MISSING` - `~/.openloomi/token` does not exist or is unreadable.
+- `TOKEN_MISSING` — `~/.openloomi/token` does not exist or is unreadable.
   Run `setup` or open OpenLoomi Desktop once before driving Pet state.
-- `ENDPOINT_MISSING` - runtime answered with HTTP 404. Treat as
+- `ENDPOINT_MISSING` — runtime answered with HTTP 404. Treat as
   non-blocking: the bridge returns the polite notice that the endpoint is
-  pending. Pet control resumes automatically once OpenLoomi ships the route.
-- `API_UNREACHABLE` - no local API responded on 3414/3515. `attempts` lists
-  every URL the bridge tried.
-- `PET_FAILED` - runtime answered but with a non-success status code.
+  pending. Pet control resumes automatically once OpenLoomi ships the
+  route.
+- `API_UNREACHABLE` — no local API responded on 3414/3515. `attempts`
+  lists every URL the bridge tried.
+- `PET_FAILED` — runtime answered but with a non-success status code.
 
-The bridge also exposes an internal `state <state> --event <event>` command
-for Codex lifecycle hooks. This path is hook-safe: it never fails the Codex
-turn, never prompts, and returns `hook: "skipped"` when OpenLoomi is not
-ready, the token is missing, or the Pet endpoint is unavailable.
+The bridge also exposes an internal `state <state> --event <event>`
+command for Codex lifecycle hooks. This path is hook-safe: it never
+fails the Codex turn, never prompts, and returns `hook: "skipped"` when
+OpenLoomi is not ready, the token is missing, or the Pet endpoint is
+unavailable.
 
-## Codex Pet Lifecycle Hooks
+### Codex Pet lifecycle hooks
 
 Status: implemented as a non-blocking Pet mirror.
 
-The Codex plugin ships `plugins/codex/hooks/hooks.json` and declares it in
-`.codex-plugin/plugin.json`. The hook bundle mirrors Codex lifecycle events
-onto the OpenLoomi Pet without making authorization or control-flow
-decisions.
+The Codex plugin ships `plugins/codex/hooks/hooks.json` and declares it
+in `.codex-plugin/plugin.json`. The hook bundle mirrors Codex lifecycle
+events onto the OpenLoomi Pet without making authorization or
+control-flow decisions.
 
 Current mapping:
 
-- `SessionStart` - Pet `presenting`;
-- `UserPromptSubmit` - Pet `thinking`;
-- `PreToolUse` - Pet `working`;
-- `PermissionRequest` - Pet `needsinput`;
-- `PostToolUse` - Pet `thinking`;
-- `SubagentStart` - Pet `juggling`;
-- `SubagentStop` - Pet `thinking`;
-- `Stop` - Pet `happy`.
+- `SessionStart` → Pet `presenting`;
+- `UserPromptSubmit` → Pet `thinking`;
+- `PreToolUse` → Pet `working`;
+- `PermissionRequest` → Pet `needsinput`;
+- `PostToolUse` → Pet `thinking`;
+- `SubagentStart` → Pet `juggling`;
+- `SubagentStop` → Pet `thinking`;
+- `Stop` → Pet `happy`.
 
 Hooks use the same runtime-accepted `source: "codex-plugin"` value when
-posting to `/api/pet/state`. They are best-effort UI feedback only. Memory
-archive, follow-up scheduling, permission decisions, and connector behavior
-stay inside OpenLoomi-owned runtime surfaces.
+posting to `/api/pet/state`. They are best-effort UI feedback only.
+Memory archive, follow-up scheduling, permission decisions, and
+connector behavior stay inside OpenLoomi-owned runtime surfaces.
 
-## Secret Handling
+### Secret handling
 
 Codex chat, argv, stdout, and stderr must never receive or print:
 
@@ -995,26 +841,29 @@ Example safe output:
 }
 ```
 
-The bridge may report key presence and provider configuration. It must not print values.
+The bridge may report key presence and provider configuration. It must
+not print values.
 
-The bridge may receive a guest/session token from the local OpenLoomi API only
-to write the standard `~/.openloomi/token` file. It must keep the token out of
-argv, stdout, stderr, logs, and the Codex transcript.
+The bridge may receive a guest/session token from the local OpenLoomi
+API only to write the standard `~/.openloomi/token` file. It must keep
+the token out of argv, stdout, stderr, logs, and the Codex transcript.
 
-Which token-bearing endpoint the bridge ends up calling is implementation
-detail - both `POST /api/remote-auth/guest` and the cookie-based
-`POST /api/auth/guest` + `GET /api/auth/token` flow end up writing the same
-`~/.openloomi/token` file. From outside, the bridge exposes only that a
-guest/session token was obtained, not which path produced it.
+Which token-bearing endpoint the bridge ends up calling is
+implementation detail — both `POST /api/remote-auth/guest` and the
+cookie-based `POST /api/auth/guest` + `GET /api/auth/token` flow end up
+writing the same `~/.openloomi/token` file. From outside, the bridge
+exposes only that a guest/session token was obtained, not which path
+produced it.
 
-## Non-Goals
+### Non-goals
 
-- Do not download or install OpenLoomi without an explicit user installation
-  intent or confirmation.
-- Do not install from unofficial artifacts or default to custom install paths.
+- Do not download or install OpenLoomi without an explicit user
+  installation intent or confirmation.
+- Do not install from unofficial artifacts or default to custom install
+  paths.
 - Do not build OpenLoomi from source automatically.
-- Do not ask users to paste API keys, OAuth tokens, or auth tokens into Codex
-  chat.
+- Do not ask users to paste API keys, OAuth tokens, or auth tokens into
+  Codex chat.
 - Do not pass secrets as command-line arguments.
 - Do not implement connector protocols inside the Codex plugin.
 - Do not duplicate the full OpenLoomi runtime inside the Codex plugin.
