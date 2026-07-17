@@ -895,33 +895,20 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
                 }
                 // Method 2: Prefer checking if part has original file object (fallback upload)
                 else if (part.file && part.file instanceof File) {
-                  // Use TUS chunked upload for large files (> 400K) to avoid 413 errors (Vercel function payload limit is 4.5MB, but we want to stay well under that to account for base64 expansion and other message data)
+                  // All images are processed locally via FileReader → base64.
+                  // We previously routed large files through uploadImageTUS(),
+                  // but /api/ai/v1/upload does not exist and we no longer need
+                  // a separate server hop just to read the bytes back.
                   const file = part.file as File;
-                  if (file.size > TUS_SIZE_THRESHOLD) {
-                    // Large file: use TUS chunked upload
-                    const blobUrl = await uploadImageTUS(file);
-                    if (blobUrl) {
-                      images.push({ url: blobUrl, mimeType: part.mediaType });
-                    } else {
-                      toast({
-                        type: "error",
-                        description: `Failed to upload image "${part.name}"`,
-                      });
-                      return;
-                    }
-                  } else {
-                    // Small file: read directly as base64
-                    const base64 = await new Promise<string>(
-                      (resolve, reject) => {
-                        const reader = new FileReader();
-                        reader.onloadend = () =>
-                          resolve(reader.result as string);
-                        reader.onerror = reject;
-                        reader.readAsDataURL(file);
-                      },
-                    );
-                    base64Data = base64.split(",")[1];
-                  }
+                  const base64 = await new Promise<string>(
+                    (resolve, reject) => {
+                      const reader = new FileReader();
+                      reader.onloadend = () => resolve(reader.result as string);
+                      reader.onerror = reject;
+                      reader.readAsDataURL(file);
+                    },
+                  );
+                  base64Data = base64.split(",")[1];
                 }
                 // Method 2: Check message.files array
                 else if (
@@ -932,30 +919,17 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
                     (f: any) => f.name === part.name,
                   );
                   if (file && file instanceof File) {
-                    // Use TUS chunked upload for large files
-                    if (file.size > TUS_SIZE_THRESHOLD) {
-                      const blobUrl = await uploadImageTUS(file);
-                      if (blobUrl) {
-                        images.push({ url: blobUrl, mimeType: part.mediaType });
-                      } else {
-                        toast({
-                          type: "error",
-                          description: `Image "${part.name}" upload failed`,
-                        });
-                        return;
-                      }
-                    } else {
-                      const base64 = await new Promise<string>(
-                        (resolve, reject) => {
-                          const reader = new FileReader();
-                          reader.onloadend = () =>
-                            resolve(reader.result as string);
-                          reader.onerror = reject;
-                          reader.readAsDataURL(file);
-                        },
-                      );
-                      base64Data = base64.split(",")[1];
-                    }
+                    // Read directly as base64 — see sibling block above for rationale.
+                    const base64 = await new Promise<string>(
+                      (resolve, reject) => {
+                        const reader = new FileReader();
+                        reader.onloadend = () =>
+                          resolve(reader.result as string);
+                        reader.onerror = reject;
+                        reader.readAsDataURL(file);
+                      },
+                    );
+                    base64Data = base64.split(",")[1];
                   }
                 }
                 // Method 3: Get via downloadUrl (with validation)

@@ -50,7 +50,6 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 import { getAuthToken } from "@/lib/auth/token-manager";
-import { uploadImageTUS } from "@/lib/files/tus-upload";
 import {
   MODELS,
   type ModelType,
@@ -1613,8 +1612,16 @@ function PureMultimodalInput({
           )?.id;
 
           const result = await uploadFile(file, { createRecord: false });
-          // Immediately TUS-upload the image so the native agent route can fetch it
-          const blobUrl = await uploadImageTUS(file);
+          // Reuse the local URL returned by uploadFile — no TUS hop needed.
+          const blobUrl = result.url || result.downloadUrl;
+          if (!blobUrl) {
+            throw new Error(
+              t(
+                "chat.imageUploadFailed",
+                "Image upload failed (no URL returned)",
+              ),
+            );
+          }
 
           const newAttachment: Attachment & {
             file?: File;

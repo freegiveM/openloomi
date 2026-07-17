@@ -19,7 +19,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { useAudioRecording } from "@/hooks/use-audio-recording";
 import { SUPPORTED_FILE_EXTENSIONS } from "@/lib/files/config";
 import { uploadFile } from "@/lib/files/upload";
-import { uploadImageTUS } from "@/lib/files/tus-upload";
 import { useAttachmentUpload } from "./use-attachment-upload";
 import type { TaskComposerProps, TaskComposerSubmitPayload } from "./types";
 import { VoiceRecordingBar } from "./voice-recording-bar";
@@ -359,9 +358,12 @@ function PureTaskComposer({
       const fileName = `screenshot-${Date.now()}.png`;
       const file = new File([blob], fileName, { type: "image/png" });
       const result = await uploadFile(file, { createRecord: false });
-      const serverImageTUSUrl = await uploadImageTUS(file);
+      // Reuse the local URL from uploadFile — no TUS hop needed.
+      const serverImageTUSUrl = result.url || result.downloadUrl;
       if (!serverImageTUSUrl) {
-        throw new Error(t("chat.imageUploadFailed", "Image upload failed"));
+        throw new Error(
+          t("chat.imageUploadFailed", "Image upload failed (no URL returned)"),
+        );
       }
 
       const attachment: Attachment & {

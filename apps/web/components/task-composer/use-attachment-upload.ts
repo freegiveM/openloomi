@@ -11,7 +11,6 @@ import {
 } from "@/lib/files/config";
 import { isLikelyZipFile } from "@/lib/files/apple-preview";
 import { uploadFile } from "@/lib/files/upload";
-import { uploadImageTUS } from "@/lib/files/tus-upload";
 
 const isTauriEnv = typeof window !== "undefined" && "__TAURI__" in window;
 
@@ -194,13 +193,19 @@ export function useAttachmentUpload({
         try {
           const result = await uploadFile(file, { createRecord: false });
 
-          // For images, also upload to cloud via TUS so AI can access them
+          // For images, reuse the local URL returned by uploadFile so the
+          // selected AI model can fetch the attachment via the same origin.
+          // We do NOT call uploadImageTUS here — that route (/api/ai/v1/upload)
+          // does not exist in this app and any fallback would be redundant.
           let serverImageTUSUrl: string | undefined;
           if (file.type.startsWith("image/")) {
-            serverImageTUSUrl = (await uploadImageTUS(file)) ?? undefined;
+            serverImageTUSUrl = result.url || result.downloadUrl;
             if (!serverImageTUSUrl) {
               throw new Error(
-                t("chat.imageUploadFailed", "Image upload failed"),
+                t(
+                  "chat.imageUploadFailed",
+                  "Image upload failed (no URL returned)",
+                ),
               );
             }
           }
