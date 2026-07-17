@@ -65,3 +65,15 @@ configure_ai_provider` because the runtime reports no authenticated
 The bridge's stdout output is authoritative. Never invoke the platform
 install script (`setup.{macos,linux,windows}.*`) directly — only the
 bridge may run it, and only after explicit y/N consent.
+
+## Post-`ready` guidance
+
+When `setup: ready` fires, the wizard is done. Do **not** improvise a
+"Next: run X" hint — pick from the closed list below, or say nothing
+beyond the audit table.
+
+| Follow-up         | Command                    | When to suggest                                                                         |
+| ----------------- | -------------------------- | --------------------------------------------------------------------------------------- |
+| Opt-in connectors | `/openloomi:connect`       | User asks about connecting apps, or hasn't installed the composio CLI yet.              |
+| Opt-in hooks      | `/openloomi:hooks install` | User asks about hooks, transcript capture, or wants Pet state to drive the desktop app. |
+| Status check      | `/openloomi:status`        | User asks "is everything wired up?" — read-only snapshot.                               |
