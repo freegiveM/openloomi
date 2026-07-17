@@ -13,9 +13,9 @@
  */
 
 import { spawn, type ChildProcess } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { delimiter, join } from "node:path";
-import { platform } from "node:os";
+import { homedir, platform } from "node:os";
 
 import { createLogger } from "@/lib/utils/logger";
 
@@ -52,7 +52,7 @@ export type NativeRuntimeProbe = {
   reason: NativeRuntimeStatus;
   defaultAgent: "claude";
   cliPathPresent: boolean;
-  cliPathSource: "PATH" | "CLAUDE_CODE_PATH" | null;
+  cliPathSource: "PATH" | "CLAUDE_CODE_PATH" | "FALLBACK" | null;
   versionPresent: boolean;
   probes: {
     version?: ProbeResult;
@@ -73,16 +73,73 @@ function candidateBinaries(): string[] {
   return ["claude"];
 }
 
+// GUI apps launched via `open -a` (or directly by launchd on macOS) inherit
+// a stripped PATH that usually drops user bin dirs like `~/Library/pnpm`,
+// `~/.nvm/versions/node/*/bin`, `~/.local/bin`, etc. The bridge plugin
+// works around this with its own `getClaudeCliProbePath()` — we mirror
+// that here and additionally glob the nvm versions dir, since nvm can't
+// be expressed as a single PATH entry. Without this, `claude auth status`
+// appears "missing" to the embedded Next.js server even though the user's
+// terminal can run it just fine, which makes the "API key needed" onboarding
+// card falsely appear.
+function buildClaudeSearchPath(): string {
+  const home = homedir();
+  const dirs: string[] = [process.env.PATH || ""];
+
+  if (platform() === "win32") {
+    dirs.push(
+      join(home, "AppData", "Roaming", "npm"),
+      join(home, "AppData", "Local", "Programs", "nodejs"),
+      join(home, ".volta", "bin"),
+      "C:\\Program Files\\nodejs",
+      "C:\\Program Files (x86)\\nodejs",
+    );
+  } else {
+    dirs.push(
+      "/usr/local/bin",
+      "/opt/homebrew/bin",
+      join(home, ".local", "bin"),
+      join(home, ".npm-global", "bin"),
+      join(home, ".volta", "bin"),
+      join(home, ".bun", "bin"),
+      join(home, "Library", "pnpm"),
+      join(home, ".local", "share", "pnpm"),
+      join(home, "code", "node", "npm_global", "bin"),
+    );
+  }
+
+  return Array.from(new Set(dirs.filter(Boolean))).join(delimiter);
+}
+
+// nvm bins aren't on PATH under launchd and can't be added as a single
+// entry, so we glob `~/.nvm/versions/node/*/bin/claude` and return the
+// newest version's binary. Empty list means no nvm-managed claude (or
+// no nvm at all).
+function listNvmClaudeBinaries(): string[] {
+  try {
+    const nvmBase = join(homedir(), ".nvm", "versions", "node");
+    if (!existsSync(nvmBase)) return [];
+    return readdirSync(nvmBase)
+      .sort()
+      .reverse() // newest version first
+      .map((version) => join(nvmBase, version, "bin", "claude"))
+      .filter((candidate) => existsSync(candidate));
+  } catch {
+    return [];
+  }
+}
+
 function resolveClaudeCliPath(): {
   path: string | null;
-  source: "PATH" | "CLAUDE_CODE_PATH" | null;
+  source: "PATH" | "CLAUDE_CODE_PATH" | "FALLBACK" | null;
 } {
   const explicit = process.env.CLAUDE_CODE_PATH;
   if (explicit && existsSync(explicit)) {
     return { path: explicit, source: "CLAUDE_CODE_PATH" };
   }
 
-  const pathEnv = process.env.PATH || "";
+  // 1. Standard PATH walk, augmented with the common install dirs above.
+  const pathEnv = buildClaudeSearchPath();
   const pathDirs = pathEnv.split(delimiter).filter(Boolean);
   for (const bin of candidateBinaries()) {
     for (const dir of pathDirs) {
@@ -92,6 +149,13 @@ function resolveClaudeCliPath(): {
       }
     }
   }
+
+  // 2. nvm version glob — covers installs under `~/.nvm/versions/node/*`.
+  const nvmBins = listNvmClaudeBinaries();
+  if (nvmBins.length > 0) {
+    return { path: nvmBins[0], source: "FALLBACK" };
+  }
+
   return { path: null, source: null };
 }
 
