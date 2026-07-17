@@ -49,6 +49,17 @@ OpenLoomiは、オープンソースのAIパートナーです。デスクトッ
 
 詳細なドキュメントは[こちら](https://openloomi.ai/docs)で確認できます。
 
+**Agent プラグインとして使う**（Claude Code / Codex ユーザー向け）:
+
+OpenLoomi は公式の marketplace プラグインを提供しており、既存のエージェントをローカル OpenLoomi runtime へのフロントエンドにできます。
+
+| Agent       | インストール                                                                                  | 初回セットアップ                  |
+| ----------- | --------------------------------------------------------------------------------------------- | --------------------------------- |
+| Claude Code | `/plugin marketplace add melandlabs/openloomi`<br>`/plugin install openloomi`                 | `/openloomi:setup`                |
+| Codex CLI   | `codex plugin marketplace add melandlabs/openloomi`<br>`codex plugin add openloomi@openloomi` | `@OpenLoomi Run first-use setup.` |
+
+詳細は各プラグインの README を参照: [`plugins/claude/`](./plugins/claude/README.md) · [`plugins/codex/`](./plugins/codex/README.md)。
+
 **ローカルで開発**（開発者向け）:
 
 ```bash

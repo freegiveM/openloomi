@@ -36,9 +36,18 @@ OpenLoomi is an open-source AI coworker. Centered on a desktop **attention agent
 | ------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
 | [.dmg](https://github.com/melandlabs/openloomi/releases/download/v0.7.10/openloomi_0.7.10_macOS_aarch64.dmg) | [.dmg](https://github.com/melandlabs/openloomi/releases/download/v0.7.10/openloomi_0.7.10_macOS_amd64.dmg) | [.deb](https://github.com/melandlabs/openloomi/releases/download/v0.7.10/openloomi_0.7.10_linux_amd64.deb) / [.rpm](https://github.com/melandlabs/openloomi/releases/download/v0.7.10/openloomi_0.7.10_linux_amd64.rpm) | [.deb](https://github.com/melandlabs/openloomi/releases/download/v0.7.10/openloomi_0.7.10_linux_aarch64.deb) / [.rpm](https://github.com/melandlabs/openloomi/releases/download/v0.7.10/openloomi_0.7.10_linux_aarch64.rpm) | [.exe](https://github.com/melandlabs/openloomi/releases/download/v0.7.10/openloomi_0.7.10_windows_amd64.exe) |
 
-The desktop installers include `openloomi-ctl` for scripted one-shot usage from the installed app resources. See [OpenLoomi CLI](https://openloomi.ai/docs/openloomi-ctl) for bundled CLI paths, CI/CD, and `--one-shot --json` usage.
-
 Full documentation is available at [here](https://openloomi.ai/docs).
+
+**Use as an Agent plugin** (for Claude Code / Codex users):
+
+OpenLoomi ships official marketplace plugins that turn your existing agent into a front-end for the local OpenLoomi runtime.
+
+| Agent       | Install                                                                                       | First-run setup                   |
+| ----------- | --------------------------------------------------------------------------------------------- | --------------------------------- |
+| Claude Code | `/plugin marketplace add melandlabs/openloomi`<br>`/plugin install openloomi`                 | `/openloomi:setup`                |
+| Codex CLI   | `codex plugin marketplace add melandlabs/openloomi`<br>`codex plugin add openloomi@openloomi` | `@OpenLoomi Run first-use setup.` |
+
+See the plugin READMEs for full docs: [`plugins/claude/`](./plugins/claude/README.md) · [`plugins/codex/`](./plugins/codex/README.md).
 
 **Develop locally** (for developers):
 
