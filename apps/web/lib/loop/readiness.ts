@@ -74,7 +74,7 @@ function parseTimestamp(raw: unknown): Date | null {
 const EXTERNAL_ACTION_KINDS = new Set([
   "calendar_rsvp",
   "email_reply",
-  "slack_reply",
+  "im_reply",
   "github_review",
 ]);
 
@@ -123,6 +123,12 @@ export function deriveReadiness(decision: ReadableDecision): DecisionReadiness {
       return { status: "ready" };
     }
     case "draft_reply": {
+      if (!nonEmptyString(p.to)) {
+        return { status: "needs_context", missing: ["recipient"] };
+      }
+      return { status: "ready" };
+    }
+    case "im_reply": {
       if (!nonEmptyString(p.to)) {
         return { status: "needs_context", missing: ["recipient"] };
       }

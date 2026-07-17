@@ -80,7 +80,7 @@ describe("buildTickPrompt with custom extensions", () => {
       id: "pr_followup",
       label: "PR follow-up",
       icon: "ri-git-commit-line",
-      actionKind: "slack_reply",
+      actionKind: "im_reply",
       description: "Send Slack reminder to PR reviewer",
       createdAt: new Date().toISOString(),
     });
@@ -88,7 +88,7 @@ describe("buildTickPrompt with custom extensions", () => {
     expect(prompt).toContain("User-defined types (per-user extension");
     expect(prompt).toContain("`pr_followup`");
     expect(prompt).toContain("PR follow-up");
-    expect(prompt).toContain("`slack_reply`");
+    expect(prompt).toContain("`im_reply`");
   });
 
   it("includes a custom channel in the signal sources block", () => {
@@ -114,7 +114,7 @@ describe("buildTickPrompt with custom extensions", () => {
       id: "pr_followup",
       label: "PR follow-up",
       icon: "ri-git-commit-line",
-      actionKind: "slack_reply",
+      actionKind: "im_reply",
       createdAt: new Date().toISOString(),
     });
     customChannels.upsert({

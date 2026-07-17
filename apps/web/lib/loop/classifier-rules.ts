@@ -7,7 +7,7 @@
  *
  *   - Custom types give the agent *new ids to pick from*; they don't
  *     change *which signals get classified how*. If the LLM keeps
- *     misclassifying a Stripe refund as a `slack_reply`, registering
+ *     misclassifying a Stripe refund as a `im_reply`, registering
  *     a `refund_alert` type alone won't fix it — the LLM still has to
  *     notice the refund-shaped payload and reach for it.
  *   - Custom channels add new *signal sources*; same problem: once the

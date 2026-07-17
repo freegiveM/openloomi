@@ -16,7 +16,7 @@ export type DecisionType =
   | "draft_reply"
   | "review_pr"
   | "todo"
-  | "slack_reply"
+  | "im_reply"
   | "deadline_reminder"
   | "release_plan"
   | "requirement_synthesis"
@@ -35,7 +35,7 @@ export type DecisionStatus = "pending" | "done" | "dismissed";
 export type ActionKind =
   | "calendar_rsvp"
   | "email_reply"
-  | "slack_reply"
+  | "im_reply"
   | "github_review"
   | "deadline_notify"
   | "todo"
@@ -383,6 +383,7 @@ export type MuteScope =
   | { kind: "email"; from: string }
   | { kind: "calendar_event"; organizer: string; fallback?: "eventId" }
   | { kind: "slack_message"; user?: string; channel?: string }
+  | { kind: "im_message"; user?: string; channel?: string }
   | { kind: "obsidian_note_changed"; path: string }
   | { kind: "github_pr"; repo: string }
   | { kind: "github_issue"; repo: string }

@@ -292,6 +292,21 @@ function buildPrompt(decision: LoopDecision, mode: "dry" | "run"): string {
       d.body ?? "",
     );
   }
+  // IM reply (Telegram / Feishu / Lark / WeChat / QQ / DingTalk) has no
+  // subject line — inject only the body verbatim so the agent sends the
+  // user's edited message unchanged instead of re-drafting via the LLM.
+  if (decision.action?.kind === "im_reply" && decision.context?.draft) {
+    const d = decision.context.draft as {
+      subject?: string | null;
+      body?: string;
+    };
+    parts.push(
+      "",
+      "User-edited draft — send this body verbatim, do NOT redraft:",
+      "",
+      d.body ?? "",
+    );
+  }
   if (mode === "dry") {
     parts.push(
       "",

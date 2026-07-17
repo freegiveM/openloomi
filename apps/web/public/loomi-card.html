@@ -646,7 +646,7 @@
          Inline draft editor (draft_reply)
          Hidden by default; toggled on by `setEditMode(true)`. Replaces
          the action footer (and the chrome above it) with a Subject
-         input + Body textarea + Save / Save & Run / Cancel buttons so
+         input + Body textarea + Save / Save & Send / Cancel buttons so
          the user can tweak a Gmail draft before sending. Lives inside
          the [data-layout="decision"] section.
          ============================================================ */
@@ -739,6 +739,109 @@
         display: none;
       }
       .card.editing [data-layout="decision"] {
+        gap: 6px;
+      }
+
+      /* ============================================================
+         IM reply editor (#dec-editor-im) — body-only variant of
+         #dec-editor for Telegram / Feishu / Lark / WeChat / QQ /
+         DingTalk. No subject input; a recipient pill at the top keeps
+         the "To: @user · Channel" context visible after the chrome is
+         hidden. Toggled via .editing-im on the card root by
+         setEditModeIm().
+         ============================================================ */
+      #dec-editor-im {
+        display: none;
+        flex-direction: column;
+        gap: 6px;
+        flex: 1 1 auto;
+        min-height: 0;
+      }
+      #dec-editor-im.show {
+        display: flex;
+      }
+      #dec-editor-im,
+      #dec-editor-im-body {
+        -webkit-user-select: text;
+        user-select: text;
+      }
+      #dec-editor-im label {
+        font-family: var(--font-body);
+        font-size: 10px;
+        font-weight: 500;
+        letter-spacing: 0.02em;
+        color: var(--label);
+      }
+      #dec-editor-im .recipient-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        align-self: flex-start;
+        max-width: 100%;
+        font-family: var(--font-mono);
+        font-size: 10px;
+        font-weight: 600;
+        color: var(--blue);
+        background: var(--panel-soft);
+        border: 1px solid var(--blue-soft);
+        border-radius: 999px;
+        padding: 4px 10px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      #dec-editor-im-body {
+        font-family: var(--font-body);
+        font-size: 12px;
+        font-weight: 600;
+        line-height: 1.4;
+        color: var(--ink);
+        background: var(--panel-soft);
+        border: 1px solid var(--blue-soft);
+        border-radius: 8px;
+        padding: 8px 10px;
+        width: 100%;
+        flex: 1 1 auto;
+        min-height: 80px;
+        resize: vertical;
+        caret-color: var(--ink);
+      }
+      #dec-editor-im-body:focus {
+        outline: none;
+        border-color: var(--blue);
+        background: #fff;
+      }
+      #dec-editor-im-body::placeholder {
+        color: var(--muted);
+        opacity: 0.7;
+      }
+      #dec-editor-im-error {
+        font-size: 10px;
+        font-weight: 700;
+        color: var(--red);
+        line-height: 1.3;
+        display: none;
+      }
+      #dec-editor-im-error.show {
+        display: block;
+      }
+      #dec-editor-im-footer {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 6px;
+        flex: 0 0 auto;
+      }
+      .card.editing-im #dec-recommendation,
+      .card.editing-im #dec-source-chain,
+      .card.editing-im #dec-body,
+      .card.editing-im #dec-confidence-row,
+      .card.editing-im #dec-dialogue,
+      .card.editing-im #dec-evidence,
+      .card.editing-im #dec-status,
+      .card.editing-im #dec-footer {
+        display: none;
+      }
+      .card.editing-im [data-layout="decision"] {
         gap: 6px;
       }
 
@@ -1188,7 +1291,7 @@
 
       /* ============================================================
          Layout: DECISION  (Forms 4/5/8 · todo / draft_reply /
-                                       review_pr / slack_reply /
+                                       review_pr / im_reply /
                                        rsvp / release_plan /
                                        deadline_reminder)
          Demo: .decision-card full structure (source-chain,
@@ -2315,7 +2418,7 @@
         <div class="status-banner" id="dec-status"></div>
         <!-- Inline draft editor — hidden by default. Toggled on for
              draft_reply when the user clicks ↗ Edit. Replaces the
-             footer (Save & Run / Save / Cancel). The chrome above
+             footer (Save & Send / Save / Cancel). The chrome above
              (recommendation / source chain / confidence / dialogue /
              evidence) is hidden by the .card.editing class so the
              textarea has room inside the 360×420 window. Subject
@@ -2363,7 +2466,54 @@
               type="button"
               title="Save the draft and schedule the send"
             >
-              Save &amp; Run
+              Save &amp; Send
+            </button>
+          </div>
+        </div>
+        <!-- IM reply editor — body-only variant of #dec-editor for
+             Telegram / Feishu / Lark / WeChat / QQ / DingTalk. The
+             recipient pill is auto-filled from
+             decision.action.params.channel + .user by setEditModeIm().
+             There is no subject line — IM has no subject. -->
+        <div id="dec-editor-im">
+          <div class="recipient-pill" id="dec-editor-im-recipient">To: …</div>
+          <label for="dec-editor-im-body">Reply</label>
+          <textarea
+            id="dec-editor-im-body"
+            rows="6"
+            placeholder="Write your reply…"
+          ></textarea>
+          <div id="dec-editor-im-error" role="alert"></div>
+          <div id="dec-editor-im-footer">
+            <button
+              class="danger"
+              id="dec-editor-im-cancel"
+              data-editor-action="im-cancel"
+              data-editor-target="im"
+              type="button"
+              title="Discard local edits and close the editor"
+            >
+              Cancel
+            </button>
+            <button
+              class="ghost"
+              id="dec-editor-im-save"
+              data-editor-action="save"
+              data-editor-target="im"
+              type="button"
+              title="Save the draft and close the editor"
+            >
+              Save
+            </button>
+            <button
+              class="primary"
+              id="dec-editor-im-save-run"
+              data-editor-action="save-run"
+              data-editor-target="im"
+              type="button"
+              title="Save the draft and schedule the send"
+            >
+              Save &amp; Send
             </button>
           </div>
         </div>
@@ -2721,6 +2871,7 @@
         // can't double-fire and the user gets the "Saving…" status
         // banner instead of a blank gap.
         let editMode = false;
+        let editModeIm = false;
         let saving = false;
 
         /** Seconds from `now` until the given ISO timestamp (clamped >= 0). */
@@ -2735,7 +2886,7 @@
           rsvp: "◐",
           draft_reply: "✎",
           review_pr: "◇",
-          slack_reply: "▷",
+          im_reply: "ri-chat-ai-line",
           deadline_reminder: "◷",
           release_plan: "❖",
           todo: "▤",
@@ -2746,7 +2897,7 @@
           rsvp: "Send RSVP yes",
           draft_reply: "Send the drafted reply",
           review_pr: "Post review summary",
-          slack_reply: "Reply in thread",
+          im_reply: "Draft a quick reply",
           deadline_reminder: "Add calendar reminder",
           release_plan: "Open release plan",
           todo: "Add to today's todos",
@@ -2853,24 +3004,24 @@
               body: { verdict: "approve" },
             },
           ],
-          slack_reply: [
+          im_reply: [
             {
               action: "dismiss",
               label: "Skip",
               variant: "danger",
-              tip: "Don't post — leave the message unread, the draft is discarded",
+              tip: "Don't send — leave the message unanswered, the draft is discarded",
             },
             {
-              action: "open",
+              action: "edit",
               label: "↗ Edit",
               variant: "ghost",
-              tip: "Open the draft in the dashboard to tweak the message before posting",
+              tip: "Edit the reply body inline before sending",
             },
             {
               action: "run",
               label: "▶ Send",
               variant: "primary",
-              tip: "Post the drafted reply to the channel as-is",
+              tip: "Send the drafted reply (or the edited version if you saved one) as-is",
             },
           ],
           release_plan: [
@@ -2941,7 +3092,7 @@
           rsvp: "RSVP",
           draft_reply: "DRAFT_REPLY",
           review_pr: "REVIEW_PR",
-          slack_reply: "SLACK_REPLY",
+          im_reply: "IM_REPLY",
           deadline_reminder: "DEADLINE",
           release_plan: "RELEASE_PLAN",
           todo: "TODO",
@@ -3762,6 +3913,18 @@
             calendar_event: "cal",
             github_pr: "pr",
             slack_message: "slack",
+            telegram: "Telegram",
+            feishu: "Feishu",
+            lark: "Lark",
+            weixin: "WeChat",
+            qq: "QQ",
+            dingtalk: "DingTalk",
+            telegram_message: "telegram",
+            feishu_message: "feishu",
+            lark_message: "lark",
+            weixin_message: "weixin",
+            qq_message: "qq",
+            dingtalk_message: "dingtalk",
           };
           const rawType = decision.source_type || t;
           const nodes = [
@@ -4029,6 +4192,43 @@
           // Show the drafted reply body so the user sees what would go
           // out before clicking Run. Saves an edit cycle for the
           // common case where the draft is fine.
+          if (t === "im_reply") {
+            const params = (dec.action && dec.action.params) || {};
+            const draft =
+              (dec.context && dec.context.draft && dec.context.draft.body) ||
+              params.body ||
+              "";
+            const CHAN = {
+              telegram: "Telegram",
+              feishu: "Feishu",
+              lark: "Lark",
+              weixin: "WeChat",
+              qq: "QQ",
+              dingtalk: "DingTalk",
+            };
+            const channel = params.channel
+              ? CHAN[params.channel] || params.channel
+              : "";
+            const user = params.user || params.to || "";
+            const lab = document.createElement("span");
+            lab.className = "label";
+            lab.textContent = "Drafted reply";
+            bodyEl.appendChild(lab);
+            if (user || channel) {
+              const ctx = document.createElement("div");
+              ctx.className = "snippet";
+              ctx.textContent = `To: ${channel}${user ? ` · ${user}` : ""}`;
+              bodyEl.appendChild(ctx);
+            }
+            const draftEl = document.createElement("div");
+            draftEl.className = "draft";
+            draftEl.textContent = draft || "(empty draft)";
+            bodyEl.appendChild(draftEl);
+            bodyEl.hidden = false;
+            if (decEl) decEl.classList.add("show-body");
+            return;
+          }
+
           if (t === "draft_reply") {
             const draft =
               (dec.context && dec.context.draft && dec.context.draft.body) ||
@@ -4519,7 +4719,163 @@
           }
         }
 
-        // Delegated click handler for the editor's three buttons.
+        // ---------- IM reply editor (im_reply ↗ Edit) ----------
+        // Body-only mirror of setEditMode() for Telegram / Feishu / Lark
+        // / WeChat / QQ / DingTalk. Fills the recipient pill from
+        // action.params.channel + .user and pre-fills the body from
+        // context.draft.body (fallback action.params.body). Toggles the
+        // .editing-im class so the same chrome blocks hide.
+        async function setEditModeIm(on) {
+          editModeIm = !!on;
+          const editor = document.getElementById("dec-editor-im");
+          const recipient = document.getElementById("dec-editor-im-recipient");
+          const body = document.getElementById("dec-editor-im-body");
+          const err = document.getElementById("dec-editor-im-error");
+          if (editor) editor.classList.toggle("show", editModeIm);
+          card.classList.toggle("editing-im", editModeIm);
+          if (editModeIm) {
+            if (decision && decision.id) {
+              try {
+                const res = await fetch(
+                  `${window.__OPENLOOMI_API__ || ""}/api/loop/decision/${encodeURIComponent(decision.id)}`,
+                  { credentials: "include" },
+                );
+                if (res.ok) {
+                  const data = await res.json().catch(() => null);
+                  if (data && data.decision) {
+                    decision = data.decision;
+                  }
+                }
+              } catch (_) {
+                /* fall back to in-memory copy */
+              }
+            }
+            const params =
+              (decision && decision.action && decision.action.params) || {};
+            const CHAN = {
+              telegram: "Telegram",
+              feishu: "Feishu",
+              lark: "Lark",
+              weixin: "WeChat",
+              qq: "QQ",
+              dingtalk: "DingTalk",
+            };
+            const channel = params.channel
+              ? CHAN[params.channel] || params.channel
+              : "";
+            const user = params.user || params.to || "";
+            if (recipient) {
+              recipient.textContent = `To: ${user || "recipient"}${channel ? ` · ${channel}` : ""}`;
+            }
+            const saved = decision?.context?.draft;
+            const seedBody =
+              saved && typeof saved.body === "string"
+                ? saved.body
+                : typeof params.body === "string"
+                  ? params.body
+                  : "";
+            if (body) body.value = seedBody;
+            if (err) {
+              err.textContent = "";
+              err.classList.remove("show");
+            }
+            renderDecisionFooter();
+            requestAnimationFrame(() => {
+              if (body && document.activeElement !== body) {
+                body.focus();
+                const len = body.value.length;
+                try {
+                  body.setSelectionRange(len, len);
+                } catch (_) {
+                  /* noop */
+                }
+              }
+            });
+          } else {
+            if (err) {
+              err.textContent = "";
+              err.classList.remove("show");
+            }
+            renderDecisionFooter();
+          }
+        }
+
+        // Body-only mirror of saveDraft() — PATCHes draft { subject: null,
+        // body } and optionally schedules a Run.
+        async function saveDraftIm(opts) {
+          if (!decision || !decision.id) return;
+          if (saving) return;
+          const thenRun = !!(opts && opts.thenRun);
+          const bodyEl = document.getElementById("dec-editor-im-body");
+          const errEl = document.getElementById("dec-editor-im-error");
+          const body = bodyEl ? bodyEl.value : "";
+          if (body.trim().length === 0) {
+            if (errEl) {
+              errEl.textContent =
+                "Reply is required — write something before saving.";
+              errEl.classList.add("show");
+            }
+            if (bodyEl) bodyEl.focus();
+            return;
+          }
+          saving = true;
+          setStatus("running", "Saving…");
+          const btns = document.querySelectorAll(
+            '[data-editor-action][data-editor-target="im"]',
+          );
+          btns.forEach((b) => (b.disabled = true));
+          try {
+            const res = await fetch(
+              `${window.__OPENLOOMI_API__ || ""}/api/loop/decision/${encodeURIComponent(decision.id)}`,
+              {
+                method: "PATCH",
+                headers: { "content-type": "application/json" },
+                credentials: "include",
+                body: JSON.stringify({
+                  draft: { subject: null, body: body },
+                }),
+              },
+            );
+            if (res.status === 401) {
+              throw new Error("auth required (sign in again)");
+            }
+            if (res.status === 413) {
+              throw new Error("body too long (50k char max)");
+            }
+            if (res.status === 409) {
+              setEditModeIm(false);
+              showToast(
+                "This decision was already handled — closing editor.",
+                true,
+              );
+              return;
+            }
+            if (!res.ok) {
+              const text = await res.text().catch(() => "");
+              throw new Error(
+                `HTTP ${res.status}${text ? `: ${text.slice(0, 120)}` : ""}`,
+              );
+            }
+            decision.context = decision.context || {};
+            decision.context.draft = { subject: null, body: body };
+            setEditModeIm(false);
+            showToast("Draft saved", false);
+            if (thenRun) {
+              postAction("run", undefined);
+            }
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            setStatus("error", `Save failed: ${msg}`);
+            if (errEl) {
+              errEl.textContent = `Save failed: ${msg}`;
+              errEl.classList.add("show");
+            }
+          } finally {
+            saving = false;
+            btns.forEach((b) => (b.disabled = false));
+          }
+        }
+
         // Lives on the card root (same delegation pattern as the rest
         // of the card) and matches `[data-editor-action]`. Kept
         // separate from the main click handler so the dispatch is
@@ -4530,6 +4886,14 @@
           if (!btn) return;
           if (btn.disabled) return;
           const which = btn.dataset.editorAction;
+          // Route IM-editor clicks to the body-only saveDraftIm /
+          // setEditModeIm pair; email-editor clicks stay on saveDraft.
+          if (btn.dataset.editorTarget === "im") {
+            if (which === "save-run") saveDraftIm({ thenRun: true });
+            else if (which === "save") saveDraftIm({ thenRun: false });
+            else if (which === "im-cancel") setEditModeIm(false);
+            return;
+          }
           if (which === "save-run") saveDraft({ thenRun: true });
           else if (which === "save") saveDraft({ thenRun: false });
           else if (which === "cancel") setEditMode(false);
@@ -4551,7 +4915,7 @@
               setEditMode(false);
               return;
             }
-            // Cmd/Ctrl + Enter → Save & Run. Avoids Shift+Enter
+            // Cmd/Ctrl + Enter → Save & Send. Avoids Shift+Enter
             // (newline) and bare Enter (newline) so the natural
             // typing flow is preserved.
             if (
@@ -4577,6 +4941,35 @@
           });
         }
 
+        // Same Esc / Cmd+Enter / Cmd+S wiring for the IM body textarea.
+        const editorImBodyEl = document.getElementById("dec-editor-im-body");
+        if (editorImBodyEl) {
+          editorImBodyEl.addEventListener("keydown", (e) => {
+            if (e.key === "Escape" && !e.isComposing) {
+              e.preventDefault();
+              setEditModeIm(false);
+              return;
+            }
+            if (
+              (e.metaKey || e.ctrlKey) &&
+              e.key === "Enter" &&
+              !e.isComposing
+            ) {
+              e.preventDefault();
+              saveDraftIm({ thenRun: true });
+              return;
+            }
+            if (
+              (e.metaKey || e.ctrlKey) &&
+              (e.key === "s" || e.key === "S") &&
+              !e.isComposing
+            ) {
+              e.preventDefault();
+              saveDraftIm({ thenRun: false });
+            }
+          });
+        }
+
         // ---------- Brief layout (Form 6) ----------
         function renderBrief() {
           // Metrics pull from the brief payload if present, else derive
@@ -4586,6 +4979,7 @@
             prs = 0;
           for (const d of pendingList) {
             if (d.source === "gmail" && d.type === "draft_reply") unread++;
+            if (d.type === "im_reply") unread++;
             if (d.source === "github" && d.type === "review_pr") prs++;
           }
           if (typeof decision?.metrics === "object" && decision.metrics) {
@@ -5143,8 +5537,8 @@
                 "Send the drafted email — call the gmail composio tool with the subject/body from `context.draft` if present, otherwise draft from `decision.title`. Skill: `Skill composio execute GMAIL_SEND_MESSAGE on gmail with {...}`. CLI: `composio gmail send_message --json {...}`.",
               review_pr:
                 "Post a PR review — call the github composio tool with the verdict from `sub_action.verdict` (approve / comment / request_changes) on PR `params.number` in `params.repo`. Skill: `Skill composio execute GITHUB_CREATE_REVIEW on github with {...}`. CLI: `composio github create_review --json {...}`.",
-              slack_reply:
-                "Post the Slack reply — call the slack composio tool in the channel from `context.channel`, replying in-thread to `params.ts` if present. Skill: `Skill composio execute SLACK_SEND_MESSAGE on slack with {...}`. CLI: `composio slack send_message --json {...}`.",
+              im_reply:
+                "Send the drafted IM reply — discover the composio toolkit that matches params.channel (slack / telegram / feishu / lark / weixin / qq / dingtalk). For slack use SLACK_SEND_MESSAGE in `params.chatId` (channel), replying in-thread to `params.threadId` if present. For the others, run `composio search '<channel> send message'` first, then `Skill composio execute <DISCOVERED_SLUG> on <toolkit>` with {chat_id: params.chatId, text: <user-edited body from context.draft.body>}. Fallback CLI: `composio execute <DISCOVERED_SLUG> -d '<args-json>'`.",
               deadline_reminder:
                 'Create a deadline reminder — default: call the googlecalendar composio tool (skill: `Skill composio execute GOOGLECALENDAR_CREATE_EVENT on googlecalendar` or CLI: `composio googlecalendar create_event`) with `params.message` as the title and `params.notifyAt` → `params.deadlineAt` as the time window (or all-day on `params.deadlineAt`\'s date). If `params.channel === "slack"`, send a DM via the slack composio tool instead. Emit a single SSE `result` event whose `content` describes what you did (include the calendar event id / Slack ts / `skipped: <reason>`) — the system records `completed_at` and `result` automatically.',
               release_plan:
@@ -5399,7 +5793,9 @@
               showToast("Cancel the scheduled action first to edit.", true);
               return;
             }
-            setEditMode(true);
+            // draft_reply → subject+body editor; im_reply → body-only.
+            if (decision.type === "im_reply") setEditModeIm(true);
+            else setEditMode(true);
             return;
           }
           // Run / Dismiss / Dry / Promote: route through the one-shot
@@ -6136,14 +6532,15 @@
             // the layout re-renders against the new (non-pending)
             // decision.
             if (
-              editMode &&
+              (editMode || editModeIm) &&
               decision &&
               next &&
               next.id === decision.id &&
               next.status &&
               next.status !== "pending"
             ) {
-              setEditMode(false);
+              if (editMode) setEditMode(false);
+              if (editModeIm) setEditModeIm(false);
               showToast(
                 "This decision was already handled — your unsaved text was discarded",
                 true,

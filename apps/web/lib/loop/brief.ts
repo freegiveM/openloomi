@@ -112,7 +112,7 @@ const PRIORITY: Record<string, number> = {
   deadline_reminder: 1,
   review_pr: 2,
   draft_reply: 3,
-  slack_reply: 4,
+  im_reply: 4,
   todo: 5,
   linear_review: 6,
 };

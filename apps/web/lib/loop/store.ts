@@ -469,7 +469,7 @@ const MAX_MUTES = 1000;
 export const MUTABLE_DECISION_TYPES: ReadonlySet<DecisionType> = new Set([
   "rsvp",
   "draft_reply",
-  "slack_reply",
+  "im_reply",
   "review_pr",
   "todo",
   "deadline_reminder",

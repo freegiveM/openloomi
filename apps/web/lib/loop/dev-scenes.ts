@@ -439,15 +439,17 @@ export const DEV_SCENES: Record<SceneKey, DevScene> = {
           },
         },
       }),
-      // Slack thread — slack_reply card.
+      // Slack thread — im_reply card (Slack is an IM channel).
       decision({
-        type: "slack_reply",
+        type: "im_reply",
         title: "Reply in #frontend-shipping",
         action: {
-          kind: "slack_reply",
+          kind: "im_reply",
           params: {
-            channel: "frontend-shipping",
-            ts: "1735000000.000100",
+            channel: "slack",
+            chatId: "frontend-shipping",
+            user: "@dana",
+            threadId: "1735000000.000100",
           },
         },
         dialogue: "@-mention in #frontend-shipping — context already pulled.",

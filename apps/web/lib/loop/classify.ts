@@ -468,13 +468,50 @@ export function classify(
     }
   }
 
+  // Slack is handled as an IM channel — the same `im_reply` card (inline
+  // body editor + Save & Send) covers Slack alongside Telegram / Feishu /
+  // Lark / WeChat / QQ / DingTalk. `channel: "slack"` lets the runner pick
+  // SLACK_SEND_MESSAGE; `chatId` is the channel, `threadId` the ts.
   if (signal.type === "slack_message" && p.mentions_me) {
     return {
-      type: "slack_reply",
+      type: "im_reply",
       title: `Reply in #${String(p.channel ?? "channel")}`,
       action: {
-        kind: "slack_reply",
-        params: { channel: p.channel, ts: p.ts },
+        kind: "im_reply",
+        params: {
+          channel: "slack",
+          chatId: p.channel,
+          to: p.user,
+          user: p.user,
+          threadId: p.ts,
+        },
+      },
+    };
+  }
+
+  // IM channels (Telegram / Feishu / Lark / WeChat / QQ / DingTalk).
+  // Any `<im>_message` signal that is addressed to the user (mention, DM,
+  // or group @) becomes a first-class `im_reply`. `addressed` defaults to
+  // true when absent so a bare `<channel>_message` still surfaces a card.
+  const imMatch = /^(telegram|feishu|lark|weixin|qq|dingtalk)_message$/.exec(
+    String(signal.type),
+  );
+  if (imMatch && p.addressed !== false) {
+    const channel = imMatch[1];
+    const user = (p.user ?? p.from ?? "") as string;
+    const chatId = (p.chat_id ?? p.chatId ?? p.channel ?? "") as string;
+    return {
+      type: "im_reply",
+      title: `Reply on ${channel}${user ? ` to ${String(user)}` : ""}`.trim(),
+      action: {
+        kind: "im_reply",
+        params: {
+          channel,
+          chatId,
+          to: user,
+          user,
+          threadId: p.thread_id ?? p.threadId ?? null,
+        },
       },
     };
   }

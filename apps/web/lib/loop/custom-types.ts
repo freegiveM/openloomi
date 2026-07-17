@@ -27,7 +27,7 @@ import { ensureDirs, LOOP_PATHS } from "./paths";
 export const BUILTIN_ACTION_KINDS = [
   "calendar_rsvp",
   "email_reply",
-  "slack_reply",
+  "im_reply",
   "github_review",
   "deadline_notify",
   "todo",
@@ -54,7 +54,7 @@ export const BUILTIN_DECISION_TYPES: ReadonlySet<string> = new Set([
   "draft_reply",
   "review_pr",
   "todo",
-  "slack_reply",
+  "im_reply",
   "deadline_reminder",
   "release_plan",
   "requirement_synthesis",

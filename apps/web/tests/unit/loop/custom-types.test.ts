@@ -205,14 +205,14 @@ describe("customTypes CRUD", () => {
 });
 
 describe("BUILTIN_DECISION_TYPES", () => {
-  it("contains the 16 known built-ins", () => {
+  it("contains the 17 known built-ins", () => {
     expect(BUILTIN_DECISION_TYPES.size).toBe(17);
     for (const t of [
       "rsvp",
       "draft_reply",
       "review_pr",
       "todo",
-      "slack_reply",
+      "im_reply",
       "deadline_reminder",
       "release_plan",
       "requirement_synthesis",

@@ -139,8 +139,8 @@ function defaultDialogue(dec: LoopDecision): string {
       return serverI18n("loop.dialogue.draftReply");
     case "review_pr":
       return "A PR tagged you as reviewer — take a look?";
-    case "slack_reply":
-      return "Someone @-mentioned you on Slack — want me to grab context first?";
+    case "im_reply":
+      return "Someone messaged you — want me to draft a reply?";
     case "deadline_reminder": {
       const p = (dec.action?.params ?? {}) as {
         deadlineAt?: string;

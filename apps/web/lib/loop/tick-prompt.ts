@@ -337,6 +337,17 @@ accounted for in \`loop.log\`.
     safely dropped from the decision queue. They remain visible in \`signals.jsonl\` for
     debugging and can be promoted to a typed classifier branch later if needed.
 
+  im_message (telegram, feishu, lark, weixin, qq, dingtalk)
+    { channel, ts, user, text, chat_id, addressed }
+      - channel   the IM platform slug (telegram | feishu | lark | weixin | qq | dingtalk)
+      - user      the sender handle / id (e.g. "@alice")
+      - chat_id   the conversation id the reply must be sent to
+      - addressed true when the message is a DM, an @-mention, or a group @ that
+                  names the user; defaults to true when unknown.
+    Emit these with \`type: "<channel>_message"\` and \`source: "<channel>"\`. The
+    \`classify()\` function routes any \`<channel>_message\` with \`addressed !== false\`
+    onto a first-class \`im_reply\` decision (body-only inline editor + Save & Run).
+
 ${
   userChannels.length === 0
     ? ""
@@ -391,7 +402,7 @@ ${userChannels
   from vague phrases like "soon" or "next week" — confidence must be ≥ 0.7 to
   emit the hint. The hint is read by §5 and the TS-side classifier rule in \`classify.ts\`
   (the \`deadline_reminder\` branch — co-equal with rsvp / draft_reply / review_pr /
-  slack_reply / todo / obsidian_note_changed).
+  im_reply / todo / obsidian_note_changed).
 
 If you don't know a tool's schema, call \`Skill composio execute GMAIL_GET_SCHEMA\` (or the equivalent \`<TOOL>_GET_SCHEMA\` action) to inspect it before invoking the tool.
 
@@ -550,7 +561,9 @@ lib-level classifier exactly):
              comment / anything lacking a concrete actionable subject): DROP the
              signal. Do NOT emit an \`unknown\` action — the aggregator turns all
              remaining passive notifications into the single digest.
-    - slack_message with mentions_me                                  -> draft_reply (slack_reply)
+    - slack_message with mentions_me                                  -> draft_reply (im_reply, channel="slack")
+    - <im>_message with addressed=true                                -> draft_reply (im_reply)
+      (telegram | feishu | lark | weixin | qq | dingtalk — carries channel, chat_id, user)
     - signal with _deadlineHint.confidence ≥ 0.7                     -> deadline_reminder (deadline_notify)
       (skip when the same signal also matches the email /rsvp|invit|.../ or
        /please|could you|can you|need|asap|urgent|deadline|review/ rule — those
