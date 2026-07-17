@@ -79,6 +79,27 @@ function runOutcomeWithInput(args, env, input) {
   }
 }
 
+// Async counterpart: do NOT use this when an in-process server is
+// listening for the bridge to call into — execFileSync blocks the
+// Node event loop and starves the server.
+async function runOutcomeWithInputAsync(args, env, input) {
+  try {
+    const { stdout } = await execFileAsync("node", [BRIDGE, ...args], {
+      encoding: "utf8",
+      env: { ...process.env, ...env },
+      input,
+      cwd: env.BRIDGE_TEST_CWD || process.cwd(),
+    });
+    return { code: 0, stdout, stderr: "" };
+  } catch (e) {
+    return {
+      code: e.status ?? 1,
+      stdout: String(e.stdout ?? ""),
+      stderr: String(e.stderr ?? ""),
+    };
+  }
+}
+
 function runJson(args, env) {
   return JSON.parse(run(args, env));
 }
@@ -763,19 +784,36 @@ test("setup-status falls back to native integrations when loop connector status 
   });
 });
 
-test("setup-status aiProvider checks only report presence, never values", () => {
+test("setup-status aiProvider runtime check never reports key values", () => {
   withFakeHome((env) => {
     const j = runJson(["setup-status"], env);
-    // Every check entry must have {key, present, source}; no value field.
+    // The aiProvider checks[] is intentionally empty now (the bridge no
+    // longer reads provider env vars). Guard against accidentally
+    // re-introducing an entry that carries a key value.
     for (const entry of j.checks.aiProvider || []) {
-      assert.equal(typeof entry.key, "string");
-      assert.equal(typeof entry.present, "boolean");
-      assert.equal(typeof entry.source, "string");
       assert.ok(
         !("value" in entry),
-        `aiProvider check leaked a value: ${entry.key}`,
+        `aiProvider check leaked a value: ${entry.key ?? "<unknown>"}`,
       );
     }
+    // Runtime-sourced providers must also satisfy the no-value
+    // contract — anything that could carry an apiKey / token / secret
+    // value is forbidden here.
+    for (const provider of j.checks.aiProviderRuntime?.providers || []) {
+      for (const field of [
+        "value",
+        "apiKey",
+        "authToken",
+        "token",
+        "secret",
+      ]) {
+        assert.ok(
+          !(field in provider) || provider[field] === "",
+          `aiProviderRuntime.providers leaked a value via ${field}`,
+        );
+      }
+    }
+    // Same contract for the auth checks block.
     for (const entry of j.checks.auth || []) {
       assert.equal(typeof entry.key, "string");
       assert.equal(typeof entry.present, "boolean");
@@ -785,105 +823,127 @@ test("setup-status aiProvider checks only report presence, never values", () => 
   });
 });
 
-test("run preserves the direct runner by not synthesizing OPENLOOMI_API_URL", () => {
-  withFakeHome((env) => {
+test("run preserves the direct runner by not synthesizing OPENLOOMI_API_URL", async () => {
+  await withFakeHomeAsync(async (env) => {
     const ctl = writeFakeCtl(env.HOME);
     writeFakeToken(env.HOME);
-    const r = runOutcomeWithInput(
-      ["run"],
-      {
-        ...env,
-        OPENLOOMI_CTL: ctl,
-        OPENLOOMI_BASE_URL: "http://localhost:3515",
-        OPENLOOMI_API_URL: "",
-        ANTHROPIC_API_KEY: "sk-test-never-print",
+    await withLocalApiServer(
+      createReadySetupApiHandler(),
+      async ({ baseUrl }) => {
+        const r = await runOutcomeWithInputAsync(
+          ["run"],
+          {
+            ...env,
+            OPENLOOMI_CTL: ctl,
+            OPENLOOMI_BASE_URL: baseUrl,
+            OPENLOOMI_API_URL: "",
+            ANTHROPIC_API_KEY: "sk-test-never-print",
+          },
+          "Reply with exactly: OpenLoomi ready.",
+        );
+        assert.equal(r.code, 0, r.stderr || r.stdout);
+        const j = JSON.parse(r.stdout);
+        assert.equal(j.ready, true);
+        assert.equal(j.reason, "RUN_COMPLETE");
+        assert.equal(j.result.env.OPENLOOMI_API_URL, null);
+        assert.equal(j.result.prompt, "Reply with exactly: OpenLoomi ready.");
+        assert.ok(!r.stdout.includes("sk-test-never-print"));
       },
-      "Reply with exactly: OpenLoomi ready.",
     );
-    assert.equal(r.code, 0, r.stderr || r.stdout);
-    const j = JSON.parse(r.stdout);
-    assert.equal(j.ready, true);
-    assert.equal(j.reason, "RUN_COMPLETE");
-    assert.equal(j.result.env.OPENLOOMI_API_URL, null);
-    assert.equal(j.result.prompt, "Reply with exactly: OpenLoomi ready.");
-    assert.ok(!r.stdout.includes("sk-test-never-print"));
   });
 });
 
-test("run preserves an explicitly configured OPENLOOMI_API_URL", () => {
-  withFakeHome((env) => {
+test("run preserves an explicitly configured OPENLOOMI_API_URL", async () => {
+  await withFakeHomeAsync(async (env) => {
     const ctl = writeFakeCtl(env.HOME);
     writeFakeToken(env.HOME);
-    const r = runOutcomeWithInput(
-      ["run"],
-      {
-        ...env,
-        OPENLOOMI_CTL: ctl,
-        OPENLOOMI_BASE_URL: "http://localhost:3414",
-        OPENLOOMI_API_URL: "http://localhost:3515",
-        ANTHROPIC_API_KEY: "sk-test-never-print",
+    await withLocalApiServer(
+      createReadySetupApiHandler(),
+      async ({ baseUrl }) => {
+        const r = await runOutcomeWithInputAsync(
+          ["run"],
+          {
+            ...env,
+            OPENLOOMI_CTL: ctl,
+            OPENLOOMI_BASE_URL: baseUrl,
+            OPENLOOMI_API_URL: `${baseUrl}/api/loop`,
+            ANTHROPIC_API_KEY: "sk-test-never-print",
+          },
+          "Reply with exactly: OpenLoomi ready.",
+        );
+        assert.equal(r.code, 0, r.stderr || r.stdout);
+        const j = JSON.parse(r.stdout);
+        assert.equal(j.ready, true);
+        assert.equal(j.reason, "RUN_COMPLETE");
+        assert.equal(j.result.env.OPENLOOMI_API_URL, `${baseUrl}/api/loop`);
+        assert.ok(!r.stdout.includes("sk-test-never-print"));
       },
-      "Reply with exactly: OpenLoomi ready.",
     );
-    assert.equal(r.code, 0, r.stderr || r.stdout);
-    const j = JSON.parse(r.stdout);
-    assert.equal(j.ready, true);
-    assert.equal(j.reason, "RUN_COMPLETE");
-    assert.equal(j.result.env.OPENLOOMI_API_URL, "http://localhost:3515");
-    assert.ok(!r.stdout.includes("sk-test-never-print"));
   });
 });
 
-test("run refuses nested bridge invocation when an active run lock exists", () => {
-  withFakeHome((env) => {
+test("run refuses nested bridge invocation when an active run lock exists", async () => {
+  await withFakeHomeAsync(async (env) => {
     const ctl = writeFakeCtl(env.HOME);
     writeFakeToken(env.HOME);
     writeRunLock(env.HOME);
-    const r = runOutcomeWithInput(
-      ["run"],
-      {
-        ...env,
-        OPENLOOMI_CTL: ctl,
-        ANTHROPIC_API_KEY: "sk-test-never-print",
+    await withLocalApiServer(
+      createReadySetupApiHandler(),
+      async ({ baseUrl }) => {
+        const r = await runOutcomeWithInputAsync(
+          ["run"],
+          {
+            ...env,
+            OPENLOOMI_CTL: ctl,
+            OPENLOOMI_BASE_URL: baseUrl,
+            ANTHROPIC_API_KEY: "sk-test-never-print",
+          },
+          "Nested request should be refused.",
+        );
+        assert.equal(r.code, 1);
+        const j = JSON.parse(r.stdout);
+        assert.equal(j.reason, "RECURSION_GUARD");
+        assert.equal(j.ran, false);
+        assert.equal(j.command, "run");
+        assert.equal(j.nextAction, "return_without_bridge");
+        assert.ok(!r.stdout.includes("sk-test-never-print"));
       },
-      "Nested request should be refused.",
     );
-    assert.equal(r.code, 1);
-    const j = JSON.parse(r.stdout);
-    assert.equal(j.reason, "RECURSION_GUARD");
-    assert.equal(j.ran, false);
-    assert.equal(j.command, "run");
-    assert.equal(j.nextAction, "return_without_bridge");
-    assert.ok(!r.stdout.includes("sk-test-never-print"));
   });
 });
 
-test("run cleans stale lock and proceeds", () => {
-  withFakeHome((env) => {
+test("run cleans stale lock and proceeds", async () => {
+  await withFakeHomeAsync(async (env) => {
     const ctl = writeFakeCtl(env.HOME);
     writeFakeToken(env.HOME);
     const lockPath = writeRunLock(env.HOME, {
       startedAt: Date.now() - 10_000,
     });
-    const r = runOutcomeWithInput(
-      ["run"],
-      {
-        ...env,
-        OPENLOOMI_CTL: ctl,
-        OPENLOOMI_CODEX_BRIDGE_RUN_LOCK_TTL_MS: "1",
-        ANTHROPIC_API_KEY: "sk-test-never-print",
+    await withLocalApiServer(
+      createReadySetupApiHandler(),
+      async ({ baseUrl }) => {
+        const r = await runOutcomeWithInputAsync(
+          ["run"],
+          {
+            ...env,
+            OPENLOOMI_CTL: ctl,
+            OPENLOOMI_BASE_URL: baseUrl,
+            OPENLOOMI_CODEX_BRIDGE_RUN_LOCK_TTL_MS: "1",
+            ANTHROPIC_API_KEY: "sk-test-never-print",
+          },
+          "Stale lock should be ignored.",
+        );
+        assert.equal(r.code, 0, r.stderr || r.stdout);
+        const j = JSON.parse(r.stdout);
+        assert.equal(j.reason, "RUN_COMPLETE");
+        assert.equal(j.result.prompt, "Stale lock should be ignored.");
+        assert.equal(existsSync(lockPath), false, "run lock should be released");
       },
-      "Stale lock should be ignored.",
     );
-    assert.equal(r.code, 0, r.stderr || r.stdout);
-    const j = JSON.parse(r.stdout);
-    assert.equal(j.reason, "RUN_COMPLETE");
-    assert.equal(j.result.prompt, "Stale lock should be ignored.");
-    assert.equal(existsSync(lockPath), false, "run lock should be released");
   });
 });
 
-test("run translates --permission-mode to openloomi-ctl canonical values", () => {
+test("run translates --permission-mode to openloomi-ctl canonical values", async () => {
   const cases = [
     { input: "allow", expected: "bypass" },
     { input: "ask", expected: "ask" },
@@ -891,92 +951,110 @@ test("run translates --permission-mode to openloomi-ctl canonical values", () =>
   ];
 
   for (const { input, expected } of cases) {
-    withFakeHome((env) => {
+    await withFakeHomeAsync(async (env) => {
       const ctl = writeFakeCtl(env.HOME);
       writeFakeToken(env.HOME);
-      const r = runOutcomeWithInput(
-        ["run", "--permission-mode", input],
-        {
-          ...env,
-          OPENLOOMI_CTL: ctl,
-          ANTHROPIC_API_KEY: "sk-test-never-print",
+      await withLocalApiServer(
+        createReadySetupApiHandler(),
+        async ({ baseUrl }) => {
+          const r = await runOutcomeWithInputAsync(
+            ["run", "--permission-mode", input],
+            {
+              ...env,
+              OPENLOOMI_CTL: ctl,
+              OPENLOOMI_BASE_URL: baseUrl,
+              ANTHROPIC_API_KEY: "sk-test-never-print",
+            },
+            `bridge input ${input}`,
+          );
+          assert.equal(r.code, 0, r.stderr || r.stdout);
+          const j = JSON.parse(r.stdout);
+          assert.equal(j.ready, true);
+          assert.equal(j.reason, "RUN_COMPLETE");
+          assert.ok(Array.isArray(j.result.argv), "fake ctl must expose argv");
+          assert.deepEqual(j.result.argv.slice(0, 4), [
+            "--one-shot",
+            "--stdin",
+            "--json",
+            "--permission-mode",
+          ]);
+          assert.equal(j.result.argv[4], expected);
         },
-        `bridge input ${input}`,
       );
-      assert.equal(r.code, 0, r.stderr || r.stdout);
-      const j = JSON.parse(r.stdout);
-      assert.equal(j.ready, true);
-      assert.equal(j.reason, "RUN_COMPLETE");
-      assert.ok(Array.isArray(j.result.argv), "fake ctl must expose argv");
-      assert.deepEqual(j.result.argv.slice(0, 4), [
-        "--one-shot",
-        "--stdin",
-        "--json",
-        "--permission-mode",
-      ]);
-      assert.equal(j.result.argv[4], expected);
     });
   }
 });
 
-test("run omits --permission-mode and forwards deny to openloomi-ctl", () => {
-  withFakeHome((env) => {
+test("run omits --permission-mode and forwards deny to openloomi-ctl", async () => {
+  await withFakeHomeAsync(async (env) => {
     const ctl = writeFakeCtl(env.HOME);
     writeFakeToken(env.HOME);
-    const r = runOutcomeWithInput(
-      ["run"],
-      {
-        ...env,
-        OPENLOOMI_CTL: ctl,
-        ANTHROPIC_API_KEY: "sk-test-never-print",
+    await withLocalApiServer(
+      createReadySetupApiHandler(),
+      async ({ baseUrl }) => {
+        const r = await runOutcomeWithInputAsync(
+          ["run"],
+          {
+            ...env,
+            OPENLOOMI_CTL: ctl,
+            OPENLOOMI_BASE_URL: baseUrl,
+            ANTHROPIC_API_KEY: "sk-test-never-print",
+          },
+          "No permission flag at all.",
+        );
+        assert.equal(r.code, 0, r.stderr || r.stdout);
+        const j = JSON.parse(r.stdout);
+        assert.equal(j.reason, "RUN_COMPLETE");
+        assert.ok(Array.isArray(j.result.argv));
+        assert.deepEqual(j.result.argv.slice(0, 4), [
+          "--one-shot",
+          "--stdin",
+          "--json",
+          "--permission-mode",
+        ]);
+        assert.equal(j.result.argv[4], "deny");
       },
-      "No permission flag at all.",
     );
-    assert.equal(r.code, 0, r.stderr || r.stdout);
-    const j = JSON.parse(r.stdout);
-    assert.equal(j.reason, "RUN_COMPLETE");
-    assert.ok(Array.isArray(j.result.argv));
-    assert.deepEqual(j.result.argv.slice(0, 4), [
-      "--one-shot",
-      "--stdin",
-      "--json",
-      "--permission-mode",
-    ]);
-    assert.equal(j.result.argv[4], "deny");
   });
 });
 
-test("run refuses to escalate on unsupported --permission-mode values", () => {
+test("run refuses to escalate on unsupported --permission-mode values", async () => {
   for (const unsupported of ["", "approve", "yes", "BYPASS", "  allow  "]) {
-    withFakeHome((env) => {
+    await withFakeHomeAsync(async (env) => {
       const ctl = writeFakeCtl(env.HOME);
       writeFakeToken(env.HOME);
-      const r = runOutcomeWithInput(
-        ["run", "--permission-mode", unsupported],
-        {
-          ...env,
-          OPENLOOMI_CTL: ctl,
-          ANTHROPIC_API_KEY: "sk-test-never-print",
+      await withLocalApiServer(
+        createReadySetupApiHandler(),
+        async ({ baseUrl }) => {
+          const r = await runOutcomeWithInputAsync(
+            ["run", "--permission-mode", unsupported],
+            {
+              ...env,
+              OPENLOOMI_CTL: ctl,
+              OPENLOOMI_BASE_URL: baseUrl,
+              ANTHROPIC_API_KEY: "sk-test-never-print",
+            },
+            `unsupported mode: ${JSON.stringify(unsupported)}`,
+          );
+          assert.equal(r.code, 0, r.stderr || r.stdout);
+          const j = JSON.parse(r.stdout);
+          assert.equal(j.reason, "RUN_COMPLETE");
+          assert.ok(Array.isArray(j.result.argv));
+          assert.deepEqual(j.result.argv.slice(0, 4), [
+            "--one-shot",
+            "--stdin",
+            "--json",
+            "--permission-mode",
+          ]);
+          assert.equal(
+            j.result.argv[4],
+            "deny",
+            `unsupported mode ${JSON.stringify(unsupported)} must fall back to deny`,
+          );
+          assert.notEqual(j.result.argv[4], "bypass");
+          assert.notEqual(j.result.argv[4], "allow");
         },
-        `unsupported mode: ${JSON.stringify(unsupported)}`,
       );
-      assert.equal(r.code, 0, r.stderr || r.stdout);
-      const j = JSON.parse(r.stdout);
-      assert.equal(j.reason, "RUN_COMPLETE");
-      assert.ok(Array.isArray(j.result.argv));
-      assert.deepEqual(j.result.argv.slice(0, 4), [
-        "--one-shot",
-        "--stdin",
-        "--json",
-        "--permission-mode",
-      ]);
-      assert.equal(
-        j.result.argv[4],
-        "deny",
-        `unsupported mode ${JSON.stringify(unsupported)} must fall back to deny`,
-      );
-      assert.notEqual(j.result.argv[4], "bypass");
-      assert.notEqual(j.result.argv[4], "allow");
     });
   }
 });
@@ -1418,11 +1496,11 @@ test("codex-runtime-info returns the desktop-app Codex runtime switch plan", () 
   assert.equal(typeof j.switch.perPlatform.oneOff, "object");
   assert.match(
     j.switch.perPlatform.oneOff.darwin,
-    /OPENLOOMI_AGENT_PROVIDER codex/,
+    /OPENLOOMI_AGENT_PROVIDER=codex/,
   );
   assert.match(
     j.switch.perPlatform.oneOff.darwin,
-    /\/Applications\/openloomi\.app/,
+    /Quit \+ reopen OpenLoomi\.app/,
   );
   assert.match(
     j.switch.perPlatform.oneOff.linux,
@@ -1472,4 +1550,167 @@ test("codex-runtime-info defaults to claude when env is unset", () => {
   );
   // Empty string should fall back to claude (resolver treats empty as unset).
   assert.equal(j.defaults.currentDefaultProvider, "claude");
+});
+
+// -----------------------------------------------------------------------------
+// set-codex-runtime-env persistence
+//
+// These tests exercise the new --persist flag and the codex-runtime-info
+// `persistence` field. The bridge accepts the flag on every platform but only
+// the darwin branch materializes a LaunchAgent plist. Tests rely on the
+// host's actual platform: on macOS the dry-run JSON surfaces a "write plist"
+// action with the embedded XML, and on other platforms the persistence flag is
+// accepted but a no-op for the actions list. The escape behavior is verified
+// by parsing the embedded XML out of the write action's `-c` script.
+// -----------------------------------------------------------------------------
+
+test("set-codex-runtime-env --dry-run --persist plans the LaunchAgent install on darwin", () => {
+  if (process.platform !== "darwin") return;
+  const j = withFakeHome((env) =>
+    runJson(["set-codex-runtime-env", "codex", "--dry-run", "--persist"], env),
+  );
+  assert.equal(j.ok, true);
+  assert.equal(j.dryRun, true);
+  const labels = j.actions.map((a) => a.label);
+  assert.ok(
+    labels.includes("launchctl setenv"),
+    `expected launchctl setenv in ${JSON.stringify(labels)}`,
+  );
+  assert.ok(
+    labels.includes("mkdir LaunchAgents"),
+    `expected mkdir LaunchAgents in ${JSON.stringify(labels)}`,
+  );
+  assert.ok(
+    labels.includes("write plist"),
+    `expected write plist in ${JSON.stringify(labels)}`,
+  );
+  assert.ok(
+    labels.includes("launchctl bootstrap"),
+    `expected launchctl bootstrap in ${JSON.stringify(labels)}`,
+  );
+  // Plist content is embedded in the heredoc action. Pull it out and verify
+  // the essential fields.
+  const write = j.actions.find((a) => a.label === "write plist");
+  assert.equal(write.command, "/bin/sh");
+  const script = write.args[write.args.length - 1];
+  assert.match(script, /<key>RunAtLoad<\/key>/);
+  assert.match(script, /<true\/>/);
+  assert.match(script, /<key>Label<\/key>/);
+  assert.match(
+    script,
+    /<string>com\.openloomi\.codex-runtime-env<\/string>/,
+  );
+  assert.match(script, /<string>\/bin\/launchctl<\/string>/);
+  assert.match(script, /<string>setenv<\/string>/);
+  assert.match(script, /<string>OPENLOOMI_AGENT_PROVIDER<\/string>/);
+  assert.match(script, /<string>codex<\/string>/);
+});
+
+test("set-codex-runtime-env --dry-run without --persist only plans the launchctl write", () => {
+  const j = runJson(["set-codex-runtime-env", "codex", "--dry-run"]);
+  assert.equal(j.ok, true);
+  assert.equal(j.dryRun, true);
+  const labels = j.actions.map((a) => a.label);
+  // --persist is a no-op on non-darwin platforms; on darwin we must NOT see
+  // any of the LaunchAgent-specific steps when --persist is omitted.
+  for (const persistLabel of [
+    "mkdir LaunchAgents",
+    "write plist",
+    "launchctl bootstrap",
+    "launchctl bootout (best-effort)",
+    "rm plist",
+  ]) {
+    assert.ok(
+      !labels.includes(persistLabel),
+      `unexpected ${persistLabel} in ${JSON.stringify(labels)} without --persist`,
+    );
+  }
+});
+
+test("set-codex-runtime-env --unset --dry-run --persist plans bootout + rm on darwin", () => {
+  if (process.platform !== "darwin") return;
+  const j = withFakeHome((env) =>
+    runJson(
+      ["set-codex-runtime-env", "--unset", "--dry-run", "--persist"],
+      env,
+    ),
+  );
+  assert.equal(j.ok, true);
+  assert.equal(j.dryRun, true);
+  assert.equal(j.value, null);
+  const labels = j.actions.map((a) => a.label);
+  assert.ok(labels.includes("launchctl unsetenv"));
+  assert.ok(labels.includes("launchctl bootout (best-effort)"));
+  assert.ok(labels.includes("rm plist"));
+  // Notes should mention persistence is being removed.
+  assert.ok(
+    j.notes.some((n) => /no longer be re-applied on login/.test(n)),
+    `expected unset-persistence note, got ${JSON.stringify(j.notes)}`,
+  );
+});
+
+test("set-codex-runtime-env escapes XML metacharacters in plist value", () => {
+  if (process.platform !== "darwin") return;
+  // Values containing <, >, & must be encoded inside the <string> elements
+  // even though they would otherwise produce invalid XML.
+  const j = withFakeHome((env) =>
+    runJson(
+      [
+        "set-codex-runtime-env",
+        "codex&<weird>",
+        "--dry-run",
+        "--persist",
+      ],
+      env,
+    ),
+  );
+  const write = j.actions.find((a) => a.label === "write plist");
+  assert.ok(write, "expected a write plist action");
+  const script = write.args[write.args.length - 1];
+  // Encoded form should appear; the raw "<weird>" should not appear inside a
+  // <string>...</string> token after escaping.
+  assert.match(script, /codex&amp;&lt;weird&gt;/);
+});
+
+test("codex-runtime-info reports persistence state for the host platform", () => {
+  const j = withFakeHome((env) =>
+    runJson(["codex-runtime-info"], env),
+  );
+  assert.ok(j.persistence, "expected persistence field on codex-runtime-info");
+  // All three platform buckets should be present so callers can render a
+  // cross-platform table without branching.
+  assert.ok(j.persistence.darwin);
+  assert.ok(j.persistence.linux);
+  assert.ok(j.persistence.win32);
+  if (process.platform === "darwin") {
+    assert.equal(typeof j.persistence.darwin.launchAgentInstalled, "boolean");
+    assert.match(
+      j.persistence.darwin.launchAgentPath,
+      /Library\/LaunchAgents\/com\.openloomi\.codex-runtime-env\.plist$/,
+    );
+    // Fresh tmp home has no plist installed.
+    assert.equal(j.persistence.darwin.launchAgentInstalled, false);
+    assert.equal(j.persistence.linux.envFileInstalled, null);
+    assert.equal(j.persistence.win32.manualStepsRequired, true);
+  }
+});
+
+test("codex-runtime-info persistence.darwin.launchAgentInstalled flips true when plist exists", () => {
+  if (process.platform !== "darwin") return;
+  withFakeHome((env) => {
+    const plistPath = join(
+      env.HOME,
+      "Library",
+      "LaunchAgents",
+      "com.openloomi.codex-runtime-env.plist",
+    );
+    mkdirSync(dirname(plistPath), { recursive: true });
+    writeFileSync(
+      plistPath,
+      '<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict></dict></plist>\n',
+    );
+    const j = runJson(["codex-runtime-info"], env);
+    assert.equal(j.persistence.darwin.launchAgentInstalled, true);
+    assert.equal(j.persistence.darwin.launchAgentPath, plistPath);
+  });
 });
