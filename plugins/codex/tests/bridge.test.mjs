@@ -137,7 +137,7 @@ function withFakeHome(fn) {
     BRIDGE_TEST_CWD: tmp,
     PATH: pathWithNode,
     OPENLOOMI_BIN: "",
-    OPENLOOMI_CTL: "",
+    OPENLOOMI_APP: "",
     OPENLOOMI_HOME: "",
     OPENLOOMI_INSTALL_DIR: "",
     OPENLOOMI_REPO_DIR: "",
@@ -179,7 +179,7 @@ async function withFakeHomeAsync(fn) {
     BRIDGE_TEST_CWD: tmp,
     PATH: pathWithNode,
     OPENLOOMI_BIN: "",
-    OPENLOOMI_CTL: "",
+    OPENLOOMI_APP: "",
     OPENLOOMI_HOME: "",
     OPENLOOMI_INSTALL_DIR: "",
     OPENLOOMI_REPO_DIR: "",
@@ -211,25 +211,6 @@ function writeFakeToken(home) {
     join(dir, "token"),
     Buffer.from("fake-openloomi-token", "utf8").toString("base64"),
   );
-}
-
-function getRunLockPath(home) {
-  return join(home, ".openloomi", "codex-plugin-run.lock");
-}
-
-function writeRunLock(home, { startedAt = Date.now(), pid = 99999 } = {}) {
-  const lockPath = getRunLockPath(home);
-  mkdirSync(dirname(lockPath), { recursive: true });
-  writeFileSync(
-    lockPath,
-    JSON.stringify({
-      id: `test-lock-${startedAt}`,
-      pid,
-      startedAt,
-      command: "run",
-    }),
-  );
-  return lockPath;
 }
 
 async function withLocalApiServer(handler, fn) {
@@ -271,44 +252,35 @@ async function withPetApiServer(handler, fn) {
   return withLocalApiServer(handler, fn);
 }
 
-function writeFakeCtl(home) {
-  const nodeScript = join(home, "fake-openloomi-ctl.mjs");
-  writeFileSync(
-    nodeScript,
-    [
-      "if (process.argv.includes('--version')) {",
-      "  console.log('openloomi-ctl 9.9.9');",
-      "  process.exit(0);",
-      "}",
-      "let input = '';",
-      "process.stdin.setEncoding('utf8');",
-      "process.stdin.on('data', (chunk) => { input += chunk; });",
-      "process.stdin.on('end', () => {",
-      "  console.log(JSON.stringify({",
-      "    ok: true,",
-      "    env: { OPENLOOMI_API_URL: process.env.OPENLOOMI_API_URL || null },",
-      "    argv: process.argv.slice(2),",
-      "    prompt: input,",
-      "  }));",
-      "});",
-    ].join("\n"),
-  );
-
-  if (process.platform === "win32") {
-    const cmd = join(home, "openloomi-ctl.cmd");
+function writeFakeApp(home) {
+  if (process.platform === "darwin") {
+    const appDir = join(home, "OpenLoomi.app");
+    mkdirSync(join(appDir, "Contents"), { recursive: true });
     writeFileSync(
-      cmd,
-      `@"${process.execPath}" "%~dp0fake-openloomi-ctl.mjs" %*\r\n`,
+      join(appDir, "Contents", "Info.plist"),
+      [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">',
+        '<plist version="1.0">',
+        "<dict>",
+        "  <key>CFBundleName</key><string>OpenLoomi</string>",
+        "  <key>CFBundleShortVersionString</key><string>9.9.9</string>",
+        "  <key>CFBundleExecutable</key><string>OpenLoomi</string>",
+        "</dict>",
+        "</plist>",
+      ].join("\n"),
     );
-    return cmd;
+    return appDir;
   }
 
-  const shim = join(home, "openloomi-ctl");
-  const nodePath = process.execPath.replace(/'/g, "'\\''");
-  writeFileSync(
-    shim,
-    `#!/bin/sh\nexec '${nodePath}' "$(dirname "$0")/fake-openloomi-ctl.mjs" "$@"\n`,
-  );
+  if (process.platform === "win32") {
+    const shim = join(home, "openloomi.exe");
+    writeFileSync(shim, "@echo off\r\necho fake-openloomi-desktop\r\n");
+    return shim;
+  }
+
+  const shim = join(home, "openloomi");
+  writeFileSync(shim, "#!/bin/sh\necho fake-openloomi-desktop\n");
   chmodSync(shim, 0o755);
   return shim;
 }
@@ -410,7 +382,6 @@ test("version returns bridge identity and command list", () => {
     "workflow-guidance",
     "version",
     "help",
-    "run",
     "codex-runtime-info",
   ]) {
     assert.ok(j.commands.includes(cmd), `version.commands missing ${cmd}`);
@@ -443,13 +414,13 @@ test("setup-status apiProbe field is present and well-formed", () => {
 
 test("setup-status reports OPENLOOMI_API_UNREACHABLE when API down and no token", () => {
   withFakeHome((env) => {
-    const ctl = writeFakeCtl(env.HOME);
+    const ctl = writeFakeApp(env.HOME);
     // Make sure no token file is present and no local API is reachable
     // (fake HOME guarantees ~/.openloomi/token does not exist; the fake
     // env forces OPENLOOMI_BASE_URL to a closed port).
     const j = runJson(["setup-status"], {
       ...env,
-      OPENLOOMI_CTL: ctl,
+      OPENLOOMI_APP: ctl,
     });
     assert.equal(j.apiReachable, false);
     if (!j.tokenPresent) {
@@ -465,7 +436,7 @@ test("setup-status exposes the protocol contract fields", () => {
   for (const key of [
     "mode",
     "installed",
-    "ctlPath",
+    "appPath",
     "version",
     "tokenPresent",
     "aiProviderConfigured",
@@ -480,14 +451,14 @@ test("setup-status exposes the protocol contract fields", () => {
   assert.equal(typeof j.tokenPresent, "boolean");
   assert.equal(typeof j.installed, "boolean");
   assert.equal(typeof j.apiReachable, "boolean");
-  // Either an installed OpenLoomi has a ctlPath, or nextAction must point
+  // Either an installed OpenLoomi has an appPath, or nextAction must point
   // the user at install_openloomi / provide_install_or_repo_path.
   if (!j.installed) {
     assert.ok(
       [
         "install_openloomi",
         "provide_install_or_repo_path",
-        "build_or_stage_openloomi_ctl",
+        "build_or_install_openloomi",
       ].includes(j.nextAction),
       `unexpected nextAction when not installed: ${j.nextAction}`,
     );
@@ -496,7 +467,7 @@ test("setup-status exposes the protocol contract fields", () => {
 
 test("setup-status treats active native Codex runtime as execution-ready without an AI provider", async () => {
   await withFakeHomeAsync(async (env) => {
-    const ctl = writeFakeCtl(env.HOME);
+    const ctl = writeFakeApp(env.HOME);
     writeFakeToken(env.HOME);
 
     await withLocalApiServer(
@@ -513,7 +484,7 @@ test("setup-status treats active native Codex runtime as execution-ready without
       async ({ baseUrl }) => {
         const j = await runJsonAsync(["setup-status"], {
           ...env,
-          OPENLOOMI_CTL: ctl,
+          OPENLOOMI_APP: ctl,
           OPENLOOMI_BASE_URL: baseUrl,
           OPENLOOMI_AGENT_PROVIDER: "codex",
         });
@@ -536,7 +507,7 @@ test("setup-status treats active native Codex runtime as execution-ready without
 
 test("setup-status still requires an AI provider when the native Codex runtime is inactive", async () => {
   await withFakeHomeAsync(async (env) => {
-    const ctl = writeFakeCtl(env.HOME);
+    const ctl = writeFakeApp(env.HOME);
     writeFakeToken(env.HOME);
 
     await withLocalApiServer(
@@ -556,7 +527,7 @@ test("setup-status still requires an AI provider when the native Codex runtime i
       async ({ baseUrl }) => {
         const j = await runJsonAsync(["setup-status"], {
           ...env,
-          OPENLOOMI_CTL: ctl,
+          OPENLOOMI_APP: ctl,
           OPENLOOMI_BASE_URL: baseUrl,
         });
 
@@ -576,7 +547,7 @@ test("setup-status still requires an AI provider when the native Codex runtime i
 
 test("setup-status recommends connector setup when monitored connectors are disconnected", async () => {
   await withFakeHomeAsync(async (env) => {
-    const ctl = writeFakeCtl(env.HOME);
+    const ctl = writeFakeApp(env.HOME);
     writeFakeToken(env.HOME);
 
     await withLocalApiServer(
@@ -611,7 +582,7 @@ test("setup-status recommends connector setup when monitored connectors are disc
       async ({ baseUrl }) => {
         const j = await runJsonAsync(["setup-status"], {
           ...env,
-          OPENLOOMI_CTL: ctl,
+          OPENLOOMI_APP: ctl,
           OPENLOOMI_BASE_URL: baseUrl,
         });
 
@@ -636,7 +607,7 @@ test("setup-status recommends connector setup when monitored connectors are disc
 
 test("setup-status does not recommend connector setup when a monitored connector is connected", async () => {
   await withFakeHomeAsync(async (env) => {
-    const ctl = writeFakeCtl(env.HOME);
+    const ctl = writeFakeApp(env.HOME);
     writeFakeToken(env.HOME);
 
     await withLocalApiServer(
@@ -658,7 +629,7 @@ test("setup-status does not recommend connector setup when a monitored connector
       async ({ baseUrl }) => {
         const j = await runJsonAsync(["setup-status"], {
           ...env,
-          OPENLOOMI_CTL: ctl,
+          OPENLOOMI_APP: ctl,
           OPENLOOMI_BASE_URL: baseUrl,
         });
 
@@ -686,7 +657,7 @@ test("setup-status does not recommend connector setup when a monitored connector
 
 test("setup-status keeps core readiness when connector status endpoint fails", async () => {
   await withFakeHomeAsync(async (env) => {
-    const ctl = writeFakeCtl(env.HOME);
+    const ctl = writeFakeApp(env.HOME);
     writeFakeToken(env.HOME);
 
     await withLocalApiServer(
@@ -699,7 +670,7 @@ test("setup-status keeps core readiness when connector status endpoint fails", a
       async ({ baseUrl }) => {
         const j = await runJsonAsync(["setup-status"], {
           ...env,
-          OPENLOOMI_CTL: ctl,
+          OPENLOOMI_APP: ctl,
           OPENLOOMI_BASE_URL: baseUrl,
         });
 
@@ -724,7 +695,7 @@ test("setup-status keeps core readiness when connector status endpoint fails", a
 
 test("setup-status falls back to native integrations when loop connector status fails", async () => {
   await withFakeHomeAsync(async (env) => {
-    const ctl = writeFakeCtl(env.HOME);
+    const ctl = writeFakeApp(env.HOME);
     writeFakeToken(env.HOME);
 
     await withLocalApiServer(
@@ -753,7 +724,7 @@ test("setup-status falls back to native integrations when loop connector status 
       async ({ baseUrl }) => {
         const j = await runJsonAsync(["setup-status"], {
           ...env,
-          OPENLOOMI_CTL: ctl,
+          OPENLOOMI_APP: ctl,
           OPENLOOMI_BASE_URL: baseUrl,
         });
 
@@ -820,251 +791,6 @@ test("setup-status aiProvider runtime check never reports key values", () => {
       assert.equal(typeof entry.source, "string");
       assert.ok(!("value" in entry), `auth check leaked a value: ${entry.key}`);
     }
-  });
-});
-
-test("run preserves the direct runner by not synthesizing OPENLOOMI_API_URL", async () => {
-  await withFakeHomeAsync(async (env) => {
-    const ctl = writeFakeCtl(env.HOME);
-    writeFakeToken(env.HOME);
-    await withLocalApiServer(
-      createReadySetupApiHandler(),
-      async ({ baseUrl }) => {
-        const r = await runOutcomeWithInputAsync(
-          ["run"],
-          {
-            ...env,
-            OPENLOOMI_CTL: ctl,
-            OPENLOOMI_BASE_URL: baseUrl,
-            OPENLOOMI_API_URL: "",
-            ANTHROPIC_API_KEY: "sk-test-never-print",
-          },
-          "Reply with exactly: OpenLoomi ready.",
-        );
-        assert.equal(r.code, 0, r.stderr || r.stdout);
-        const j = JSON.parse(r.stdout);
-        assert.equal(j.ready, true);
-        assert.equal(j.reason, "RUN_COMPLETE");
-        assert.equal(j.result.env.OPENLOOMI_API_URL, null);
-        assert.equal(j.result.prompt, "Reply with exactly: OpenLoomi ready.");
-        assert.ok(!r.stdout.includes("sk-test-never-print"));
-      },
-    );
-  });
-});
-
-test("run preserves an explicitly configured OPENLOOMI_API_URL", async () => {
-  await withFakeHomeAsync(async (env) => {
-    const ctl = writeFakeCtl(env.HOME);
-    writeFakeToken(env.HOME);
-    await withLocalApiServer(
-      createReadySetupApiHandler(),
-      async ({ baseUrl }) => {
-        const r = await runOutcomeWithInputAsync(
-          ["run"],
-          {
-            ...env,
-            OPENLOOMI_CTL: ctl,
-            OPENLOOMI_BASE_URL: baseUrl,
-            OPENLOOMI_API_URL: `${baseUrl}/api/loop`,
-            ANTHROPIC_API_KEY: "sk-test-never-print",
-          },
-          "Reply with exactly: OpenLoomi ready.",
-        );
-        assert.equal(r.code, 0, r.stderr || r.stdout);
-        const j = JSON.parse(r.stdout);
-        assert.equal(j.ready, true);
-        assert.equal(j.reason, "RUN_COMPLETE");
-        assert.equal(j.result.env.OPENLOOMI_API_URL, `${baseUrl}/api/loop`);
-        assert.ok(!r.stdout.includes("sk-test-never-print"));
-      },
-    );
-  });
-});
-
-test("run refuses nested bridge invocation when an active run lock exists", async () => {
-  await withFakeHomeAsync(async (env) => {
-    const ctl = writeFakeCtl(env.HOME);
-    writeFakeToken(env.HOME);
-    writeRunLock(env.HOME);
-    await withLocalApiServer(
-      createReadySetupApiHandler(),
-      async ({ baseUrl }) => {
-        const r = await runOutcomeWithInputAsync(
-          ["run"],
-          {
-            ...env,
-            OPENLOOMI_CTL: ctl,
-            OPENLOOMI_BASE_URL: baseUrl,
-            ANTHROPIC_API_KEY: "sk-test-never-print",
-          },
-          "Nested request should be refused.",
-        );
-        assert.equal(r.code, 1);
-        const j = JSON.parse(r.stdout);
-        assert.equal(j.reason, "RECURSION_GUARD");
-        assert.equal(j.ran, false);
-        assert.equal(j.command, "run");
-        assert.equal(j.nextAction, "return_without_bridge");
-        assert.ok(!r.stdout.includes("sk-test-never-print"));
-      },
-    );
-  });
-});
-
-test("run cleans stale lock and proceeds", async () => {
-  await withFakeHomeAsync(async (env) => {
-    const ctl = writeFakeCtl(env.HOME);
-    writeFakeToken(env.HOME);
-    const lockPath = writeRunLock(env.HOME, {
-      startedAt: Date.now() - 10_000,
-    });
-    await withLocalApiServer(
-      createReadySetupApiHandler(),
-      async ({ baseUrl }) => {
-        const r = await runOutcomeWithInputAsync(
-          ["run"],
-          {
-            ...env,
-            OPENLOOMI_CTL: ctl,
-            OPENLOOMI_BASE_URL: baseUrl,
-            OPENLOOMI_CODEX_BRIDGE_RUN_LOCK_TTL_MS: "1",
-            ANTHROPIC_API_KEY: "sk-test-never-print",
-          },
-          "Stale lock should be ignored.",
-        );
-        assert.equal(r.code, 0, r.stderr || r.stdout);
-        const j = JSON.parse(r.stdout);
-        assert.equal(j.reason, "RUN_COMPLETE");
-        assert.equal(j.result.prompt, "Stale lock should be ignored.");
-        assert.equal(existsSync(lockPath), false, "run lock should be released");
-      },
-    );
-  });
-});
-
-test("run translates --permission-mode to openloomi-ctl canonical values", async () => {
-  const cases = [
-    { input: "allow", expected: "bypass" },
-    { input: "ask", expected: "ask" },
-    { input: "deny", expected: "deny" },
-  ];
-
-  for (const { input, expected } of cases) {
-    await withFakeHomeAsync(async (env) => {
-      const ctl = writeFakeCtl(env.HOME);
-      writeFakeToken(env.HOME);
-      await withLocalApiServer(
-        createReadySetupApiHandler(),
-        async ({ baseUrl }) => {
-          const r = await runOutcomeWithInputAsync(
-            ["run", "--permission-mode", input],
-            {
-              ...env,
-              OPENLOOMI_CTL: ctl,
-              OPENLOOMI_BASE_URL: baseUrl,
-              ANTHROPIC_API_KEY: "sk-test-never-print",
-            },
-            `bridge input ${input}`,
-          );
-          assert.equal(r.code, 0, r.stderr || r.stdout);
-          const j = JSON.parse(r.stdout);
-          assert.equal(j.ready, true);
-          assert.equal(j.reason, "RUN_COMPLETE");
-          assert.ok(Array.isArray(j.result.argv), "fake ctl must expose argv");
-          assert.deepEqual(j.result.argv.slice(0, 4), [
-            "--one-shot",
-            "--stdin",
-            "--json",
-            "--permission-mode",
-          ]);
-          assert.equal(j.result.argv[4], expected);
-        },
-      );
-    });
-  }
-});
-
-test("run omits --permission-mode and forwards deny to openloomi-ctl", async () => {
-  await withFakeHomeAsync(async (env) => {
-    const ctl = writeFakeCtl(env.HOME);
-    writeFakeToken(env.HOME);
-    await withLocalApiServer(
-      createReadySetupApiHandler(),
-      async ({ baseUrl }) => {
-        const r = await runOutcomeWithInputAsync(
-          ["run"],
-          {
-            ...env,
-            OPENLOOMI_CTL: ctl,
-            OPENLOOMI_BASE_URL: baseUrl,
-            ANTHROPIC_API_KEY: "sk-test-never-print",
-          },
-          "No permission flag at all.",
-        );
-        assert.equal(r.code, 0, r.stderr || r.stdout);
-        const j = JSON.parse(r.stdout);
-        assert.equal(j.reason, "RUN_COMPLETE");
-        assert.ok(Array.isArray(j.result.argv));
-        assert.deepEqual(j.result.argv.slice(0, 4), [
-          "--one-shot",
-          "--stdin",
-          "--json",
-          "--permission-mode",
-        ]);
-        assert.equal(j.result.argv[4], "deny");
-      },
-    );
-  });
-});
-
-test("run refuses to escalate on unsupported --permission-mode values", async () => {
-  for (const unsupported of ["", "approve", "yes", "BYPASS", "  allow  "]) {
-    await withFakeHomeAsync(async (env) => {
-      const ctl = writeFakeCtl(env.HOME);
-      writeFakeToken(env.HOME);
-      await withLocalApiServer(
-        createReadySetupApiHandler(),
-        async ({ baseUrl }) => {
-          const r = await runOutcomeWithInputAsync(
-            ["run", "--permission-mode", unsupported],
-            {
-              ...env,
-              OPENLOOMI_CTL: ctl,
-              OPENLOOMI_BASE_URL: baseUrl,
-              ANTHROPIC_API_KEY: "sk-test-never-print",
-            },
-            `unsupported mode: ${JSON.stringify(unsupported)}`,
-          );
-          assert.equal(r.code, 0, r.stderr || r.stdout);
-          const j = JSON.parse(r.stdout);
-          assert.equal(j.reason, "RUN_COMPLETE");
-          assert.ok(Array.isArray(j.result.argv));
-          assert.deepEqual(j.result.argv.slice(0, 4), [
-            "--one-shot",
-            "--stdin",
-            "--json",
-            "--permission-mode",
-          ]);
-          assert.equal(
-            j.result.argv[4],
-            "deny",
-            `unsupported mode ${JSON.stringify(unsupported)} must fall back to deny`,
-          );
-          assert.notEqual(j.result.argv[4], "bypass");
-          assert.notEqual(j.result.argv[4], "allow");
-        },
-      );
-    });
-  }
-});
-
-test("setup-status is not blocked by an active run lock", () => {
-  withFakeHome((env) => {
-    writeRunLock(env.HOME);
-    const j = runJson(["setup-status"], env);
-    assert.notEqual(j.reason, "RECURSION_GUARD");
-    assert.ok("ready" in j);
   });
 });
 
@@ -1198,15 +924,15 @@ test("setup without --yes returns awaiting_user_action when install is required"
     );
     if (j.setup === "awaiting_user_action") {
       // The state machine may now surface a new "open_openloomi" branch
-      // when the local OpenLoomi API is unreachable even though a ctl was
-      // explicitly disabled via OPENLOOMI_BIN. Accept that as an
-      // awaiting_user_action signal too — the user must launch the
-      // desktop app before the wizard can continue.
+      // when the local OpenLoomi API is unreachable even though no app was
+      // discovered. Accept that as an awaiting_user_action signal too —
+      // the user must launch the desktop app before the wizard can
+      // continue.
       assert.ok(
         [
           "confirm_install_openloomi",
           "install_openloomi",
-          "build_or_stage_openloomi_ctl",
+          "build_or_install_openloomi",
           "open_openloomi",
         ].includes(j.nextAction),
         `unexpected nextAction: ${j.nextAction}`,

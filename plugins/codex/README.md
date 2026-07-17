@@ -10,9 +10,9 @@ local privacy boundary.
 The plugin is designed to:
 
 - discover or install OpenLoomi for the user;
-- verify that `openloomi-ctl` is available;
+- discover the local OpenLoomi Desktop GUI app;
 - set up the Codex runtime path and guide AI provider fallback when needed;
-- run one-shot tasks through the local OpenLoomi runtime;
+- help users access OpenLoomi workflows (loop, memory, connectors, handoff) through Codex once OpenLoomi is ready;
 - help users access OpenLoomi-related workflows such as `openloomi-loop` and
   `openloomi-memory` from Codex;
 - optionally connect Codex task lifecycle events to the OpenLoomi Pet.
@@ -40,7 +40,7 @@ The first complete user flow should be:
 User installs the Codex plugin
   -> plugin checks whether OpenLoomi is installed
   -> plugin installs or guides installation if OpenLoomi is missing
-  -> plugin verifies openloomi-ctl
+  -> plugin verifies the OpenLoomi Desktop GUI app
   -> plugin sets or verifies the Codex runtime path
   -> plugin guides AI provider fallback only when needed
   -> plugin initializes or reuses a guest/session token
@@ -97,15 +97,14 @@ codex plugin add openloomi@openloomi
 - A Codex build that supports `codex plugin marketplace` (Codex CLI 0.144+).
 - For GitHub install: network access to `github.com`.
 - For local install: the OpenLoomi repository checked out somewhere writable.
-- OpenLoomi Desktop installed, or a source build that stages `openloomi-ctl`,
-  for any runtime task (`run`, handoff, loop, memory, connectors).
+- OpenLoomi Desktop installed, or a source build that produces the
+  OpenLoomi Desktop GUI app, for any handoff, loop, memory, or connector task.
 - Codex CLI available and configured as the recommended OpenLoomi desktop
   runtime, or an AI provider configured in OpenLoomi Desktop as a fallback.
 
 The plugin alone is enough for setup guidance and workflow discovery. If
-`openloomi-ctl` is missing, the plugin can still report readiness, install
-instructions, and workflow guidance, but `run` and handoff calls cannot
-execute.
+OpenLoomi Desktop is missing, the plugin can still report readiness, install
+instructions, and workflow guidance, but handoff calls cannot execute.
 
 ### Verify the Bridge Before Using Codex
 
@@ -157,19 +156,20 @@ Expected readiness milestones for a fully prepared environment:
 
 ```text
 installed: true
-ctlPath: <path to openloomi-ctl>
+appPath: <path to OpenLoomi Desktop GUI app>
 tokenPresent: true
 aiProviderConfigured: true
 ready: true
 nextAction: run
 ```
 
-If `setup-status` reports `SOURCE_FOUND_CLI_NOT_BUILT`, the checkout was
-detected but no `openloomi-ctl` was found. Install OpenLoomi Desktop or build
-and stage the CLI before testing runtime execution.
+If `setup-status` reports `SOURCE_FOUND_APP_NOT_BUILT`, the checkout was
+detected but the OpenLoomi Desktop app has not been built yet. Build the
+desktop app per the OpenLoomi repo's `apps/web/src-tauri/README.md`, or install
+the packaged Desktop release.
 
 If `tokenPresent` is `false`, open OpenLoomi Desktop and let it initialize a
-guest/session token. The plugin and `openloomi-ctl` read the token from:
+guest/session token. The plugin and the OpenLoomi runtime read the token from:
 
 ```text
 ~/.openloomi/token
@@ -229,12 +229,12 @@ Codex.
 `OpenLoomi is not installed`
 
 : Install the packaged OpenLoomi Desktop release or provide an explicit
-`OPENLOOMI_INSTALL_DIR` / `OPENLOOMI_CTL` path for development.
+`OPENLOOMI_INSTALL_DIR` / `OPENLOOMI_APP` path for development.
 
-`SOURCE_FOUND_CLI_NOT_BUILT`
+`SOURCE_FOUND_APP_NOT_BUILT`
 
-: The source checkout was detected, but no staged `openloomi-ctl` exists. The
-current plugin does not execute the source tree directly.
+: The source checkout was detected, but the OpenLoomi Desktop GUI app has not
+been built yet. The current plugin does not execute the source tree directly.
 
 `SESSION_INITIALIZATION_REQUIRED`
 
@@ -311,8 +311,8 @@ The wizard stops early at any step that requires explicit user action:
   wizard finishes, `status.aiProviderConfigured` may still be `false`; in
   that case follow the `configure-ai-provider` guidance from the
   `openloomi-install` sub-skill.
-- **Source checkout (`SOURCE_FOUND_CLI_NOT_BUILT`)** stops the wizard
-  with `nextAction: "build_or_stage_openloomi_ctl"`. The plugin never
+- **Source checkout (`SOURCE_FOUND_APP_NOT_BUILT`)** stops the wizard
+  with `nextAction: "build_or_install_openloomi"`. The plugin never
   builds OpenLoomi from source automatically.
 
 The wizard returns structured JSON so Codex (or any other caller) can
@@ -332,7 +332,7 @@ render each step:
   ],
   "status": {
     "installed": true,
-    "ctlPath": "/Applications/OpenLoomi.app/Contents/MacOS/openloomi-ctl",
+    "appPath": "/Applications/OpenLoomi.app",
     "tokenPresent": true,
     "aiProviderConfigured": false,
     "ready": true,
@@ -425,7 +425,7 @@ Codex
               -> readiness layer
               -> OpenLoomi skill guidance layer
               -> optional Codex hook layer
-              -> openloomi-ctl runner
+              -> OpenLoomi runtime launcher
                   -> OpenLoomi local runtime
                       -> memory
                       -> connectors
@@ -442,8 +442,9 @@ instead of copying connector, memory, or loop implementations into Codex.
 ### Packaged Desktop Install
 
 The user installed OpenLoomi through an official desktop installer or release
-artifact. The plugin should discover the bundled `openloomi-ctl`, verify it
-with `--version`, and use it for local tasks.
+artifact. The plugin should discover the bundled OpenLoomi Desktop GUI app
+(e.g. `OpenLoomi.app` on macOS, `openloomi.exe` on Windows, `openloomi.AppImage`
+on Linux) and use it to launch the local runtime.
 
 ### Source Checkout
 
@@ -451,9 +452,9 @@ The user cloned the OpenLoomi repository locally and wants Codex to work against
 that checkout. The plugin should detect source checkouts when explicitly
 configured or when known project markers are present.
 
-If a source checkout exists but the CLI is not built or staged, the plugin
-should return actionable instructions rather than building automatically without
-user confirmation.
+If a source checkout exists but the desktop app has not been built yet, the
+plugin should return actionable instructions rather than building automatically
+without user confirmation.
 
 ### Launching the desktop app with the Codex runtime
 
@@ -524,7 +525,7 @@ the export to your shell rc so future shells remember it:
 echo 'export OPENLOOMI_AGENT_PROVIDER=codex' >> ~/.zshrc
 ```
 
-The shell export helps the bridge itself and `openloomi-ctl`; the
+The shell export helps the bridge itself and the OpenLoomi runtime; the
 `set-codex-runtime-env` step is what makes the GUI launchd domain and the
 desktop session pick the variable up.
 
@@ -607,13 +608,13 @@ installer path where automatic installation is supported.
 
 ## Discovery Strategy
 
-The bridge should detect OpenLoomi in this order:
+The bridge should detect the OpenLoomi Desktop GUI app in this order:
 
 ```text
-1. OPENLOOMI_CTL
+1. OPENLOOMI_APP
 2. OPENLOOMI_HOME or OPENLOOMI_INSTALL_DIR
 3. OPENLOOMI_REPO_DIR
-4. PATH lookup for openloomi-ctl
+4. PATH lookup for the desktop app binary
 5. Platform default packaged install paths
 6. Previously saved non-secret plugin config
 7. User-provided install path or source checkout path
@@ -623,23 +624,25 @@ The bridge should detect OpenLoomi in this order:
 For packaged installs, check common layouts:
 
 ```text
-<install-root>/openloomi-ctl
-<install-root>/openloomi-ctl.exe
-<install-root>/cli/openloomi-ctl
-<install-root>/cli/openloomi-ctl.exe
-<install-root>/resources/cli/openloomi-ctl
-<install-root>/resources/cli/openloomi-ctl.exe
+# macOS
+/Applications/OpenLoomi.app
+~/Applications/OpenLoomi.app
+
+# Windows
+%LOCALAPPDATA%\OpenLoomi\openloomi.exe
+%ProgramFiles%\OpenLoomi\openloomi.exe
+
+# Linux
+/opt/openloomi/openloomi
+/usr/local/openloomi/openloomi
+~/.local/share/openloomi/openloomi
 ```
 
-For source checkouts, check project markers and likely CLI locations:
+For source checkouts, check project markers:
 
 ```text
 <repo-root>/package.json
 <repo-root>/apps/web/src-tauri/Cargo.toml
-<repo-root>/apps/web/src-tauri/cli/openloomi-ctl
-<repo-root>/apps/web/src-tauri/cli/openloomi-ctl.exe
-<repo-root>/apps/web/src-tauri/target/release/openloomi-ctl
-<repo-root>/apps/web/src-tauri/target/release/openloomi-ctl.exe
 ```
 
 ## Readiness Contract
@@ -650,8 +653,8 @@ For source checkouts, check project markers and likely CLI locations:
 {
   "mode": "packaged | source | unconfigured",
   "installed": true,
-  "ctlPath": "<resolved openloomi-ctl path>",
-  "version": "openloomi-ctl 0.7.9",
+  "appPath": "<resolved OpenLoomi Desktop app path>",
+  "version": "openloomi-desktop 0.7.9",
   "tokenPresent": true,
   "session": {
     "tokenPresent": true,
@@ -753,7 +756,7 @@ Common `nextAction` values:
 ```text
 install_openloomi
 provide_install_or_repo_path
-build_or_stage_openloomi_ctl
+build_or_install_openloomi
 initialize_openloomi_session
 open_openloomi
 configure_ai_provider
@@ -766,16 +769,15 @@ run
 Common `reason` values:
 
 ```text
-OPENLOOMI_CTL_NOT_FOUND
-OPENLOOMI_CTL_INVALID
-SOURCE_FOUND_CLI_NOT_BUILT
+OPENLOOMI_APP_NOT_FOUND
+OPENLOOMI_APP_INVALID
+SOURCE_FOUND_APP_NOT_BUILT
 INSTALL_REQUIRED
 SESSION_INITIALIZATION_REQUIRED
 READY_SESSION_BOOTSTRAP_PENDING
 AI_PROVIDER_REQUIRED
 AI_PROVIDER_STATUS_UNAVAILABLE
 CONNECTOR_SETUP_REQUIRED
-RECURSION_GUARD
 READY
 ```
 
@@ -1004,21 +1006,6 @@ detail - both `POST /api/remote-auth/guest` and the cookie-based
 `POST /api/auth/guest` + `GET /api/auth/token` flow end up writing the same
 `~/.openloomi/token` file. From outside, the bridge exposes only that a
 guest/session token was obtained, not which path produced it.
-
-## One-Shot Execution
-
-The MVP should prefer `openloomi-ctl` for local execution:
-
-```bash
-openloomi-ctl --one-shot --stdin --json --permission-mode deny
-```
-
-Using `--stdin` avoids shell quoting issues and keeps the task prompt out of
-command-line arguments.
-
-The local API is optional for the MVP. It may be used later for richer
-readiness checks, connector status, and setup handoffs, but every local API
-check must preserve the no-secrets contract.
 
 ## Non-Goals
 

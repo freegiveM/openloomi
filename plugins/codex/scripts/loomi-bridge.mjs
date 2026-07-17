@@ -21,7 +21,6 @@ import { fileURLToPath } from "node:url";
 const BRIDGE_VERSION = "0.7.9";
 const PLUGIN_PHASE = "runtime-provider-readiness";
 const COMMAND_TIMEOUT_MS = 5000;
-const RUN_TIMEOUT_MS = 120000;
 const INSTALL_TIMEOUT_MS = 10 * 60 * 1000;
 const RELEASE_LOOKUP_TIMEOUT_MS = 30000;
 const INSTALL_DOWNLOAD_TIMEOUT_MS = 15 * 60 * 1000;
@@ -32,7 +31,6 @@ const SESSION_API_TIMEOUT_MS = 5000;
 const API_PROBE_TIMEOUT_MS = 1000;
 const CONNECTOR_STATUS_TIMEOUT_MS = 2500;
 const MAX_COMMAND_OUTPUT = 4096;
-const RUN_LOCK_TTL_MS = RUN_TIMEOUT_MS + 60_000;
 const DEBUG_DISCOVERY = process.env.OPENLOOMI_DEBUG_DISCOVERY === "1";
 const MONITORING_CONNECTOR_IDS = new Set([
   "gmail",
@@ -91,7 +89,6 @@ const COMMANDS = new Set([
   "install-openloomi",
   "install-instructions",
   "pet",
-  "run",
   "set-codex-runtime-env",
   "setup",
   "setup-status",
@@ -320,7 +317,7 @@ async function buildSetupStatus() {
   const baseStatus = {
     mode: discovery.mode,
     installed: discovery.installed,
-    ctlPath: discovery.ctlPath,
+    appPath: discovery.appPath,
     version: discovery.version,
     tokenPresent: token.present,
     aiProviderConfigured: aiProvider.configured,
@@ -1038,7 +1035,7 @@ function installInstructions() {
     ready: false,
     installPlan: plan,
     instructions: [
-      "Install OpenLoomi from the official release artifact or provide a source checkout with a staged openloomi-ctl.",
+      "Install OpenLoomi from the official release artifact or build the OpenLoomi Desktop GUI app from a source checkout.",
       "The bridge will not download or install OpenLoomi unless install-openloomi is called with --confirm.",
       "On supported platforms, install-openloomi --confirm downloads the official artifact and installs it with the default installer path.",
       "After installation, re-run setup-status from the Codex plugin.",
@@ -1463,7 +1460,6 @@ function parseFlags(args) {
     downloadOnly: false,
     launch: false,
     model: null,
-    permissionMode: null,
     provider: null,
     sha256: null,
     workflow: null,
@@ -1517,17 +1513,6 @@ function parseFlags(args) {
 
     if (arg.startsWith("--model=")) {
       flags.model = arg.slice("--model=".length);
-      continue;
-    }
-
-    if (arg === "--permission-mode") {
-      flags.permissionMode = args[index + 1] || null;
-      index += 1;
-      continue;
-    }
-
-    if (arg.startsWith("--permission-mode=")) {
-      flags.permissionMode = arg.slice("--permission-mode=".length);
       continue;
     }
 
@@ -1636,14 +1621,6 @@ function getAiProviderSetupOptions(codexOAuth) {
       collectsSecrets: true,
       action:
         "Open OpenLoomi Desktop settings and configure provider base URL, API key, and model name there.",
-    },
-    {
-      id: "openloomi_cli_interactive",
-      available: true,
-      ownedBy: "OpenLoomi",
-      collectsSecrets: true,
-      action:
-        "Use an OpenLoomi-owned interactive CLI setup surface when openloomi-ctl exposes one.",
     },
   ];
 }
@@ -2402,168 +2379,6 @@ function getInstallerCommandLabel(filePath) {
   return extension ? `installer${extension}` : "installer";
 }
 
-// Bridge-facing writable permission mode (`allow | ask | deny`). Translates
-// `allow` to the CLI-facing `bypass` value before constructing the
-// `openloomi-ctl` argv. Keeps `ask` and `deny` unchanged so the bridge's
-// public contract stays stable while the CLI's canonical contract remains
-// `bypass | ask | deny` (see apps/web/src-tauri/src/cli.rs). Unknown or
-// omitted values fall back to `deny` so the default cannot escalate.
-const BRIDGE_PERMISSION_MODES = new Set(["allow", "ask", "deny"]);
-const BRIDGE_TO_CLI_PERMISSION_MODE = Object.freeze({
-  allow: "bypass",
-  ask: "ask",
-  deny: "deny",
-});
-
-function getPermissionMode(value) {
-  if (BRIDGE_PERMISSION_MODES.has(value)) {
-    return BRIDGE_TO_CLI_PERMISSION_MODE[value];
-  }
-
-  return "deny";
-}
-
-function runOpenLoomiOneShot({ ctlPath, permissionMode, prompt }) {
-  return runCommandWithInput(
-    ctlPath,
-    ["--one-shot", "--stdin", "--json", "--permission-mode", permissionMode],
-    prompt,
-    RUN_TIMEOUT_MS,
-    {
-      env: getOpenLoomiCtlChildEnv(),
-    },
-  );
-}
-
-function acquireRunLock() {
-  const lockPath = getRunLockPath();
-  const now = Date.now();
-  const lock = {
-    id: `${process.pid}-${now}-${Math.random().toString(36).slice(2)}`,
-    pid: process.pid,
-    startedAt: now,
-    command: "run",
-  };
-
-  mkdirSync(path.dirname(lockPath), { recursive: true });
-
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    const existing = readRunLock(lockPath);
-
-    if (existing && !isRunLockStale(existing, now)) {
-      return {
-        acquired: false,
-        lockPath,
-        existing,
-      };
-    }
-
-    if (existing) {
-      removeRunLock(lockPath);
-    }
-
-    try {
-      writeFileSync(lockPath, JSON.stringify(lock), {
-        flag: "wx",
-        mode: 0o600,
-      });
-
-      return {
-        acquired: true,
-        lockPath,
-        lock,
-      };
-    } catch (error) {
-      if (error?.code !== "EEXIST") {
-        throw error;
-      }
-    }
-  }
-
-  return {
-    acquired: false,
-    lockPath,
-    existing: readRunLock(lockPath),
-  };
-}
-
-function releaseRunLock(acquiredLock) {
-  if (!acquiredLock?.acquired) {
-    return;
-  }
-
-  const current = readRunLock(acquiredLock.lockPath);
-  if (current?.id === acquiredLock.lock.id) {
-    removeRunLock(acquiredLock.lockPath);
-  }
-}
-
-function getRunLockPath() {
-  return path.join(os.homedir(), ".openloomi", "codex-plugin-run.lock");
-}
-
-function readRunLock(lockPath) {
-  if (!isFile(lockPath)) {
-    return null;
-  }
-
-  try {
-    return JSON.parse(readFileText(lockPath));
-  } catch {
-    return {
-      id: "unreadable",
-      startedAt: 0,
-      command: "run",
-    };
-  }
-}
-
-function isRunLockStale(lock, now = Date.now()) {
-  const startedAt = Number(lock?.startedAt || 0);
-  return !startedAt || now - startedAt > getRunLockTtlMs();
-}
-
-function getRunLockTtlMs() {
-  const configured = Number(process.env.OPENLOOMI_CODEX_BRIDGE_RUN_LOCK_TTL_MS);
-  return Number.isFinite(configured) && configured > 0
-    ? configured
-    : RUN_LOCK_TTL_MS;
-}
-
-function removeRunLock(lockPath) {
-  try {
-    unlinkSync(lockPath);
-  } catch (error) {
-    if (error?.code !== "ENOENT") {
-      throw error;
-    }
-  }
-}
-
-function summarizeRunLock(lock) {
-  if (!lock) {
-    return null;
-  }
-
-  const startedAt = Number(lock.startedAt || 0);
-  return {
-    pid: Number(lock.pid || 0) || null,
-    command: lock.command || "run",
-    ageMs: startedAt ? Math.max(0, Date.now() - startedAt) : null,
-    stale: isRunLockStale(lock),
-  };
-}
-
-function getOpenLoomiCtlChildEnv() {
-  // Do not synthesize OPENLOOMI_API_URL from the readiness probe. In v0.7.9,
-  // setting it selects the legacy HTTP compatibility path and bypasses the
-  // packaged CLI's direct native-agent runner.
-  //
-  // An explicit caller-provided OPENLOOMI_API_URL is already inherited by the
-  // child through process.env in runCommandWithInput.
-  return {};
-}
-
 async function initializeSession() {
   let setup = await buildSetupStatus();
 
@@ -2618,7 +2433,7 @@ async function ensureOpenLoomiSession() {
   }
 
   const discovery = await discoverOpenLoomi();
-  const launch = launchOpenLoomiForSession(discovery.ctlPath);
+  const launch = launchOpenLoomiForSession(discovery.appPath);
 
   if (launch.launched) {
     const deadline = Date.now() + SESSION_BOOTSTRAP_TIMEOUT_MS;
@@ -3056,10 +2871,10 @@ function saveOpenLoomiToken(token) {
   });
 }
 
-function launchOpenLoomiForSession(ctlPath) {
-  const appPath = findOpenLoomiAppForCtl(ctlPath);
+function launchOpenLoomiForSession(appPath) {
+  const resolved = appPath ? normalizePath(appPath) : null;
 
-  if (!appPath) {
+  if (!resolved || !appPathExists(resolved)) {
     return {
       launched: false,
       reason: "APP_EXECUTABLE_NOT_FOUND",
@@ -3067,7 +2882,7 @@ function launchOpenLoomiForSession(ctlPath) {
   }
 
   try {
-    const child = spawn(appPath, [], {
+    const child = spawn(resolved, [], {
       detached: true,
       stdio: "ignore",
       windowsHide: false,
@@ -3077,37 +2892,15 @@ function launchOpenLoomiForSession(ctlPath) {
     return {
       launched: true,
       reason: "APP_LAUNCHED",
-      ...debugPath("appPath", appPath),
+      ...debugPath("appPath", resolved),
     };
   } catch {
     return {
       launched: false,
       reason: "APP_LAUNCH_FAILED",
-      ...debugPath("appPath", appPath),
+      ...debugPath("appPath", resolved),
     };
   }
-}
-
-// Walk up from a ctlPath looking for the enclosing `.app` bundle on
-// macOS. ctlPath typically lives at
-//   /Applications/OpenLoomi.app/Contents/Resources/cli/openloomi-ctl
-// so we walk up parent directories until we find one whose name ends
-// with `.app`. Returns null if no .app ancestor is found (e.g. a source
-// checkout).
-function findMacAppBundleForCtl(ctlPath) {
-  if (!ctlPath) return null;
-  let current = path.dirname(path.resolve(ctlPath));
-  for (
-    let index = 0;
-    index < 8 && current && current !== path.dirname(current);
-    index += 1
-  ) {
-    if (current.endsWith(".app") && isDirectory(current)) {
-      return current;
-    }
-    current = path.dirname(current);
-  }
-  return null;
 }
 
 // Programmatically launches the OpenLoomi desktop app so the local HTTP
@@ -3120,28 +2913,20 @@ function findMacAppBundleForCtl(ctlPath) {
 //   macOS   -> `open -a <bundle>`
 //   Linux   -> `gtk-launch <desktopId>` (best-effort), then direct spawn fallback
 //   Windows -> `cmd /c start "" <exe>`
-async function launchDesktopApp({ ctlPath, desktopMarker } = {}) {
-  // Resolve launch target. On macOS, ctlPath typically lives at
-  //   <Foo.app>/Contents/Resources/cli/openloomi-ctl
-  // so we walk up to the .app boundary. The default helper
-  // findOpenLoomiAppForCtl() only finds executables - it never returns
-  // the .app bundle itself - so without this fallback we'd be stuck on
-  // every installed macOS user.
-  let appPath = desktopMarker || null;
-  if (!appPath && process.platform === "darwin" && ctlPath) {
-    appPath = findMacAppBundleForCtl(ctlPath);
-  }
-  if (!appPath) {
-    appPath = findOpenLoomiAppForCtl(ctlPath);
-  }
+async function launchDesktopApp({ appPath } = {}) {
+  // The bridge hands the discovery result straight through; the desktop
+  // app path is the launch target on every platform.
+  const target = appPath ? normalizePath(appPath) : null;
 
-  if (!appPath) {
+  if (!target) {
     return {
       ok: false,
       code: "NO_LAUNCH_TARGET",
-      message: "No OpenLoomi app path or ctlPath to launch.",
+      message: "No OpenLoomi app path to launch.",
     };
   }
+
+  const resolvedAppPath = target;
 
   const platformName = process.platform;
   let cmd;
@@ -3150,11 +2935,11 @@ async function launchDesktopApp({ ctlPath, desktopMarker } = {}) {
 
   if (platformName === "darwin") {
     cmd = "open";
-    args = ["-a", appPath];
+    args = ["-a", resolvedAppPath];
     via = "open -a";
   } else if (platformName === "win32") {
     cmd = "cmd";
-    args = ["/c", "start", '""', appPath];
+    args = ["/c", "start", '""', resolvedAppPath];
     via = "cmd /c start";
   } else {
     // Linux: try gtk-launch first (a .desktop file shipped by the app
@@ -3179,7 +2964,7 @@ async function launchDesktopApp({ ctlPath, desktopMarker } = {}) {
         code: "SPAWN_FAILED",
         via,
         message: e instanceof Error ? e.message : String(e),
-        ...debugPath("appPath", appPath),
+        ...debugPath("appPath", resolvedAppPath),
       });
       return;
     }
@@ -3195,7 +2980,7 @@ async function launchDesktopApp({ ctlPath, desktopMarker } = {}) {
       ok: true,
       code: "LAUNCHED",
       via,
-      ...debugPath("appPath", appPath),
+      ...debugPath("appPath", resolvedAppPath),
       stderr: stderr.trim() || null,
     });
   });
@@ -3243,34 +3028,6 @@ async function waitForApi({ timeoutMs = 30_000, pollMs = 1000 } = {}) {
   };
 }
 
-function findOpenLoomiAppForCtl(ctlPath) {
-  const normalizedCtlPath = normalizePath(ctlPath);
-
-  if (!normalizedCtlPath) {
-    return null;
-  }
-
-  const dirs = [];
-  let current = path.dirname(normalizedCtlPath);
-
-  for (
-    let index = 0;
-    index < 6 && current && current !== path.dirname(current);
-    index += 1
-  ) {
-    dirs.push(current);
-    current = path.dirname(current);
-  }
-
-  const candidates = unique(
-    dirs.flatMap((directory) =>
-      getOpenLoomiAppNames().map((name) => path.join(directory, name)),
-    ),
-  );
-
-  return candidates.find(isFile) || null;
-}
-
 function getOpenLoomiAppNames() {
   if (process.platform === "win32") {
     return ["openloomi.exe", "OpenLoomi.exe"];
@@ -3281,6 +3038,44 @@ function getOpenLoomiAppNames() {
   }
 
   return ["openloomi", "OpenLoomi", "openloomi.AppImage", "OpenLoomi.AppImage"];
+}
+
+function appPathExists(candidate) {
+  if (process.platform === "darwin" && candidate.endsWith(".app")) {
+    return isDirectory(candidate);
+  }
+
+  return isFile(candidate);
+}
+
+async function readAppVersion(appPath) {
+  if (process.platform === "darwin" && appPath.endsWith(".app")) {
+    // .app bundles don't expose a versioned stdout. Use the CFBundleShortVersionString
+    // from Info.plist when present; fall back to a generic marker.
+    const infoPlist = path.join(appPath, "Contents", "Info.plist");
+    if (!isFile(infoPlist)) {
+      return "openloomi-desktop";
+    }
+
+    try {
+      const text = readFileText(infoPlist);
+      const match = text.match(
+        /<key>CFBundleShortVersionString<\/key>\s*<string>([^<]+)<\/string>/,
+      );
+      if (match) {
+        return `openloomi-desktop ${match[1].trim()}`;
+      }
+    } catch {
+      // ignore and fall through to the generic marker
+    }
+
+    return "openloomi-desktop";
+  }
+
+  // Standalone binaries (.exe, AppImage, plain executable) do not have
+  // a guaranteed --version protocol; return a generic marker so the
+  // discovery result is still useful.
+  return "openloomi-desktop";
 }
 
 function sleep(ms) {
@@ -3640,8 +3435,8 @@ function codexRuntimeInfo() {
 // Why this exists:
 //   On macOS the desktop app's web server runs inside the GUI launchd
 //   session, which does NOT inherit `export FOO=bar` from a terminal.
-//   Setting it from a shell works for `openloomi-ctl` and the bridge but
-//   `GET /api/native/providers` from the web server still reports
+//   Setting it from a shell works for the OpenLoomi runtime and the bridge
+//   but `GET /api/native/providers` from the web server still reports
 //   `defaultAgent: "claude"`, so the conversation setup CTA keeps asking
 //   for an Anthropic-compatible provider. The fix is `launchctl setenv`
 //   in the GUI domain followed by a Quit + reopen of OpenLoomi.app.
@@ -4265,7 +4060,7 @@ async function setup(args) {
         reason: status.reason,
         apiReachable: false,
       });
-      const launch = await launchDesktopApp({ ctlPath: status.ctlPath });
+      const launch = await launchDesktopApp({ appPath: status.appPath });
       record("launch", !!launch.ok, {
         code: launch.code,
         via: launch.via,
@@ -4364,134 +4159,6 @@ async function setup(args) {
   });
 }
 
-async function run() {
-  const flags = parseFlags(process.argv.slice(3));
-  const prompt = await readStdin();
-
-  if (!hasValue(prompt)) {
-    writeJson(
-      {
-        ready: false,
-        nextAction: "provide_stdin_prompt",
-        reason: "PROMPT_REQUIRED",
-        message:
-          "Pass the task prompt over stdin. Do not place long prompts or secrets in command-line arguments.",
-      },
-      1,
-    );
-    return;
-  }
-
-  let setup = await buildSetupStatus();
-
-  if (!setup.ready) {
-    writeJson(
-      {
-        ...setup,
-        ran: false,
-        command: "run",
-        message:
-          "OpenLoomi is not ready for one-shot execution. Complete the reported nextAction first.",
-      },
-      1,
-    );
-    return;
-  }
-
-  const session = await ensureOpenLoomiSession();
-
-  if (!session.ready) {
-    writeJson(
-      {
-        ready: false,
-        ran: false,
-        command: "run",
-        nextAction: session.nextAction,
-        reason: session.reason,
-        message: session.message,
-        session: session.session,
-      },
-      1,
-    );
-    return;
-  }
-
-  if (setup.sessionInitializationRequired) {
-    setup = await buildSetupStatus();
-
-    if (!setup.ready) {
-      writeJson(
-        {
-          ...setup,
-          ran: false,
-          command: "run",
-          message:
-            "OpenLoomi session is initialized, but setup is still not ready for one-shot execution.",
-        },
-        1,
-      );
-      return;
-    }
-  }
-
-  const permissionMode = getPermissionMode(flags.permissionMode);
-  const runLock = acquireRunLock();
-
-  if (!runLock.acquired) {
-    writeJson(
-      {
-        ready: false,
-        ran: false,
-        command: "run",
-        nextAction: "return_without_bridge",
-        reason: "RECURSION_GUARD",
-        message:
-          "A loomi-bridge run is already active. Refusing nested OpenLoomi bridge invocation.",
-        lock: summarizeRunLock(runLock.existing),
-      },
-      1,
-    );
-    return;
-  }
-
-  let result;
-
-  try {
-    result = await runOpenLoomiOneShot({
-      ctlPath: setup.ctlPath,
-      permissionMode,
-      prompt,
-    });
-  } finally {
-    releaseRunLock(runLock);
-  }
-
-  if (result.exitCode !== 0) {
-    writeJson(
-      {
-        ready: false,
-        ran: true,
-        ...normalizeRunFailure(result),
-      },
-      1,
-    );
-    return;
-  }
-
-  writeJson({
-    ready: true,
-    ran: true,
-    nextAction: "done",
-    reason: "RUN_COMPLETE",
-    result: parseJsonOrText(result.stdout),
-    openloomi: {
-      exitCode: result.exitCode,
-      signal: result.signal,
-      stderrPresent: hasValue(result.stderr),
-    },
-  });
-}
-
 function help() {
   writeJson({
     usage: "node scripts/loomi-bridge.mjs <command>",
@@ -4501,12 +4168,12 @@ function help() {
 
 async function discoverOpenLoomi() {
   const checked = [];
-  const explicitCtl = process.env.OPENLOOMI_CTL;
+  const explicitApp = process.env.OPENLOOMI_APP;
 
-  if (explicitCtl) {
-    const result = await validateCtlPath(expandHome(explicitCtl), {
+  if (explicitApp) {
+    const result = await validateAppPath(expandHome(explicitApp), {
       mode: "packaged",
-      source: "OPENLOOMI_CTL",
+      source: "OPENLOOMI_APP",
       checked,
     });
 
@@ -4541,7 +4208,10 @@ async function discoverOpenLoomi() {
       checked,
     });
 
-    if (result.status === "found" || result.status === "source-missing-cli") {
+    if (
+      result.status === "found" ||
+      result.status === "source-missing-app"
+    ) {
       return result;
     }
   }
@@ -4562,7 +4232,7 @@ async function discoverOpenLoomi() {
       source: "platform-default",
       checked: platformChecked,
     });
-    platformCandidatesChecked += getCtlCandidatesForRoot(root).length;
+    platformCandidatesChecked += getAppCandidatesForRoot(root).length;
 
     if (result.status === "found" || result.status === "invalid") {
       return {
@@ -4582,8 +4252,8 @@ async function discoverOpenLoomi() {
   const savedConfig = getSavedConfigCandidates();
 
   for (const config of savedConfig) {
-    if (config.ctlPath) {
-      const result = await validateCtlPath(config.ctlPath, {
+    if (config.appPath) {
+      const result = await validateAppPath(config.appPath, {
         mode: "packaged",
         source: config.source,
         checked,
@@ -4614,7 +4284,7 @@ async function discoverOpenLoomi() {
 
   if (
     cwdSource.status === "found" ||
-    cwdSource.status === "source-missing-cli"
+    cwdSource.status === "source-missing-app"
   ) {
     return cwdSource;
   }
@@ -4623,7 +4293,7 @@ async function discoverOpenLoomi() {
     status: "missing",
     mode: "unconfigured",
     installed: false,
-    ctlPath: null,
+    appPath: null,
     version: null,
     source: null,
     sourceRoot: null,
@@ -4632,10 +4302,10 @@ async function discoverOpenLoomi() {
 }
 
 async function validatePathLookup(checked) {
-  const candidates = findOnPath("openloomi-ctl");
+  const candidates = getAppBinaryCandidatesForPath();
 
   for (const candidate of candidates) {
-    const result = await validateCtlPath(candidate, {
+    const result = await validateAppPath(candidate, {
       mode: "packaged",
       source: "PATH",
       checked,
@@ -4686,24 +4356,21 @@ async function inspectSourceCheckout(root, options) {
     };
   }
 
-  const result = await validateRootCandidates(normalizedRoot, {
-    mode: "source",
+  // For source checkouts the desktop app is not yet built; surface
+  // source-missing-app so the readiness layer can route the user toward
+  // running the build or installing the packaged release.
+  options.checked.push({
     source: options.source,
-    checked: options.checked,
+    present: true,
+    reason: "SOURCE_CHECKOUT_DETECTED",
+    ...debugPath("root", normalizedRoot),
   });
 
-  if (result.status === "found") {
-    return {
-      ...result,
-      sourceRoot: normalizedRoot,
-    };
-  }
-
   return {
-    status: "source-missing-cli",
+    status: "source-missing-app",
     mode: "source",
     installed: false,
-    ctlPath: null,
+    appPath: null,
     version: null,
     source: options.source,
     sourceRoot: normalizedRoot,
@@ -4713,10 +4380,10 @@ async function inspectSourceCheckout(root, options) {
 
 async function validateRootCandidates(root, options) {
   const normalizedRoot = normalizePath(root);
-  const candidates = getCtlCandidatesForRoot(normalizedRoot);
+  const candidates = getAppCandidatesForRoot(normalizedRoot);
 
   for (const candidate of candidates) {
-    const result = await validateCtlPath(candidate, {
+    const result = await validateAppPath(candidate, {
       ...options,
       recordMissing: false,
     });
@@ -4738,10 +4405,10 @@ async function validateRootCandidates(root, options) {
   };
 }
 
-async function validateCtlPath(candidate, options) {
+async function validateAppPath(candidate, options) {
   const normalizedPath = normalizePath(candidate);
 
-  if (!normalizedPath || !isFile(normalizedPath)) {
+  if (!normalizedPath || !appPathExists(normalizedPath)) {
     if (options.recordMissing !== false) {
       options.checked.push({
         source: options.source,
@@ -4755,30 +4422,24 @@ async function validateCtlPath(candidate, options) {
     };
   }
 
-  const versionResult = await runCommand(normalizedPath, ["--version"]);
-  const version = firstLine(versionResult.stdout || versionResult.stderr);
+  const version = await readAppVersion(normalizedPath);
 
   options.checked.push({
     source: options.source,
     present: true,
-    versionValid: versionResult.exitCode === 0,
     ...debugPath("path", normalizedPath),
   });
 
-  if (versionResult.exitCode !== 0) {
+  if (version === null) {
     return {
       status: "invalid",
       mode: options.mode,
       installed: false,
-      ctlPath: normalizedPath,
-      version,
+      appPath: normalizedPath,
+      version: null,
       source: options.source,
       sourceRoot: null,
       checked: options.checked,
-      commandError: {
-        exitCode: versionResult.exitCode,
-        signal: versionResult.signal,
-      },
     };
   }
 
@@ -4786,7 +4447,7 @@ async function validateCtlPath(candidate, options) {
     status: "found",
     mode: options.mode,
     installed: true,
-    ctlPath: normalizedPath,
+    appPath: normalizedPath,
     version,
     source: options.source,
     sourceRoot: null,
@@ -4804,7 +4465,8 @@ function getReadinessDecision(
 ) {
   // codexRuntimeEnv is intentionally NOT a gate here: a missing
   // OPENLOOMI_AGENT_PROVIDER only blocks the OpenLoomi GUI desktop from
-  // routing through Codex; the bridge itself can still drive openloomi-ctl.
+  // routing through Codex; the bridge itself can still drive readiness
+  // through the discovered desktop app path.
   // The setup state machine handles that branch separately.
   void codexRuntimeEnv;
   const nativeCodexRuntimeReady = Boolean(nativeProviderStatus?.active);
@@ -4813,15 +4475,15 @@ function getReadinessDecision(
     return {
       ready: false,
       nextAction: "provide_install_or_repo_path",
-      reason: "OPENLOOMI_CTL_INVALID",
+      reason: "OPENLOOMI_APP_INVALID",
     };
   }
 
-  if (discovery.status === "source-missing-cli") {
+  if (discovery.status === "source-missing-app") {
     return {
       ready: false,
-      nextAction: "build_or_stage_openloomi_ctl",
-      reason: "SOURCE_FOUND_CLI_NOT_BUILT",
+      nextAction: "build_or_install_openloomi",
+      reason: "SOURCE_FOUND_APP_NOT_BUILT",
     };
   }
 
@@ -5138,24 +4800,19 @@ function summarizeRuntimeAiProviderAttempt(result) {
   };
 }
 
-function getCtlCandidatesForRoot(root) {
+function getAppCandidatesForRoot(root) {
   const normalizedRoot = normalizePath(root);
 
   if (!normalizedRoot) {
     return [];
   }
 
-  const names = getCtlNames();
-  const directories = [
-    "",
-    "bin",
-    "cli",
-    path.join("resources", "cli"),
-    path.join("src-tauri", "cli"),
-    path.join("target", "release"),
-    path.join("apps", "web", "src-tauri", "cli"),
-    path.join("apps", "web", "src-tauri", "target", "release"),
-  ];
+  const names = getOpenLoomiAppNames();
+  const directories = ["", "bin", "Contents/MacOS"];
+
+  if (process.platform !== "darwin") {
+    directories.push(path.join("Applications"));
+  }
 
   return unique(
     directories.flatMap((directory) =>
@@ -5164,17 +4821,15 @@ function getCtlCandidatesForRoot(root) {
   );
 }
 
-function getCtlNames() {
-  if (process.platform === "win32") {
-    return [
-      "openloomi-ctl.exe",
-      "openloomi-ctl.cmd",
-      "openloomi-ctl.bat",
-      "openloomi-ctl",
-    ];
-  }
+function getAppBinaryCandidatesForPath() {
+  const pathValue = process.env.PATH || "";
+  const names = getOpenLoomiAppNames();
 
-  return ["openloomi-ctl"];
+  return unique(
+    pathValue
+      .split(path.delimiter)
+      .flatMap((directory) => names.map((name) => path.join(directory, name))),
+  );
 }
 
 function getPlatformInstallRoots() {
@@ -5198,9 +4853,8 @@ function getPlatformInstallRoots() {
 
   if (process.platform === "darwin") {
     return [
-      "/Applications/OpenLoomi.app/Contents/Resources",
-      "/Applications/OpenLoomi.app/Contents/MacOS",
-      path.join(home, "Applications", "OpenLoomi.app", "Contents", "Resources"),
+      "/Applications/OpenLoomi.app",
+      path.join(home, "Applications", "OpenLoomi.app"),
       path.join(home, ".openloomi"),
     ];
   }
@@ -5224,9 +4878,9 @@ function getSavedConfigCandidates() {
   try {
     const config = JSON.parse(readFileText(configPath));
 
-    if (typeof config.openloomiCtl === "string") {
+    if (typeof config.openloomiApp === "string") {
       candidates.push({
-        ctlPath: expandHome(config.openloomiCtl),
+        appPath: expandHome(config.openloomiApp),
         source: "~/.openloomi/codex-plugin.json",
       });
     }
@@ -5245,17 +4899,6 @@ function getSavedConfigCandidates() {
   }
 
   return candidates;
-}
-
-function findOnPath(commandName) {
-  const pathValue = process.env.PATH || "";
-  const names = process.platform === "win32" ? getCtlNames() : [commandName];
-
-  return unique(
-    pathValue
-      .split(path.delimiter)
-      .flatMap((directory) => names.map((name) => path.join(directory, name))),
-  );
 }
 
 function isSourceCheckout(root) {

@@ -18,16 +18,16 @@ Steps:
 1. Start a new Codex thread after installing or refreshing the plugin cache.
 2. Ask: `@OpenLoomi Check whether OpenLoomi is ready.`
 3. Expected: the plugin calls `setup-status` and reports stable JSON fields:
-   `installed`, `ctlPath`, `tokenPresent`, `aiProviderConfigured`,
+   `installed`, `appPath`, `tokenPresent`, `aiProviderConfigured`,
    `apiReachable`, `ready`, `nextAction`, and `reason`.
 4. If `nextAction` is `open_openloomi`, open OpenLoomi Desktop and ask again.
 5. Ask: `@OpenLoomi Show the OpenLoomi workflows available from Codex.`
 6. Expected: Codex lists `openloomi-loop`, `openloomi-memory`,
    `openloomi-connectors`, and `openloomi-handoff`.
-7. Ask a minimal run prompt: `@OpenLoomi Reply with exactly: OpenLoomi ready.`
-8. Expected: `loomi-bridge run` returns `RUN_COMPLETE` or a structured
-   runtime error. It must not ask the user to paste API keys or tokens into
-   Codex chat.
+7. Ask a minimal handoff prompt: `@OpenLoomi Reply with exactly: OpenLoomi ready.`
+8. Expected: Codex routes through the OpenLoomi handoff skill and the local
+   runtime returns a structured result or runtime error. It must not ask the
+   user to paste API keys or tokens into Codex chat.
 
 ## B. Source Development E2E
 
@@ -54,12 +54,12 @@ Terminal B:
 cd <openloomi-repo>
 $repo = (Resolve-Path .).Path
 
-$env:OPENLOOMI_CTL = Join-Path $repo "apps\web\src-tauri\target\release\openloomi-ctl.exe"
+$env:OPENLOOMI_APP = Join-Path $repo "apps\web\src-tauri\target\release\openloomi.exe"
 $env:OPENLOOMI_BASE_URL = "http://localhost:3515"
 
 node plugins\codex\scripts\loomi-bridge.mjs initialize-session
 node plugins\codex\scripts\loomi-bridge.mjs setup-status
-"Reply with exactly: OpenLoomi ready." | node plugins\codex\scripts\loomi-bridge.mjs run
+"Reply with exactly: OpenLoomi ready." | node plugins\codex\scripts\loomi-bridge.mjs workflow-guidance
 ```
 
 Expected:
@@ -67,9 +67,10 @@ Expected:
 - `initialize-session` reports `SESSION_READY`.
 - `setup-status` reports `apiReachable: true` and `apiBaseUrl:
 "http://localhost:3515"` when the dev API is up.
-- `run` passes the resolved local API URL to `openloomi-ctl` as
-  `OPENLOOMI_API_URL` without requiring the user to set it manually.
-- A successful minimal prompt returns `RUN_COMPLETE` with `result.ok: true`.
+- `workflow-guidance` returns the local-API-aware handoff recipes when the
+  API is reachable.
+- The local API URL is consumed by the OpenLoomi Desktop runtime without
+  requiring the user to set it manually in Codex.
 
 ## C. Logs
 
@@ -93,6 +94,6 @@ Add-Content .git\info\exclude "plugins/codex/tests/logs/"
 node --test plugins\codex\tests\bridge.test.mjs
 ```
 
-The unit test suite uses fake homes, fake `openloomi-ctl` shims, and local
-closed API URLs so it does not depend on the developer's real OpenLoomi token,
-default install path, or Desktop process.
+The unit test suite uses fake homes, fake OpenLoomi Desktop app shims, and
+local closed API URLs so it does not depend on the developer's real OpenLoomi
+token, default install path, or Desktop process.
