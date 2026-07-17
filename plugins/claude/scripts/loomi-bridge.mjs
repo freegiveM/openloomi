@@ -811,10 +811,23 @@ async function probeClaudeNativeRuntime(aiProvider) {
 }
 
 function getExecutionProviderStatus(aiProvider, nativeRuntime) {
+  // `source` is the user-facing label for *how* the runtime is reaching
+  // an LLM. The HTTP probe (`aiProvider`) reports `configured: true`
+  // when EITHER a user-saved `anthropic_compatible` row OR the runtime's
+  // own nativeRuntime probe says "ready" — they're conflated in that
+  // field. We disambiguate using `directApi.userConfigured` (the
+  // per-user row flag carried alongside `configured`) so the label
+  // reflects the actual mechanism the user set up:
+  //   - "ai_provider" → the user explicitly saved an
+  //     `anthropic_compatible` row with a key
+  //   - "native_claude_runtime" → the user authenticated the host's
+  //     `claude` CLI (no direct API key)
   if (aiProvider?.configured) {
     return {
       ready: true,
-      source: "ai_provider",
+      source: aiProvider.directApi?.userConfigured
+        ? "ai_provider"
+        : "native_claude_runtime",
     };
   }
 
@@ -836,8 +849,25 @@ function providerStatusFields(aiProvider, nativeRuntime) {
     aiProvider,
     nativeRuntime,
   );
+  // `aiProviderConfigured` is the public "can the runtime talk to an LLM
+  // right now" signal. It's an OR of two sources:
+  //   1. `aiProvider.configured` — derived from the runtime's
+  //      `/api/preferences/ai` payload (per-user `anthropic_compatible`
+  //      row + nativeRuntime.authenticated as the runtime reports it).
+  //      This path can 401 for the bridge because the route requires a
+  //      NextAuth cookie, not the Bearer token the bridge sends.
+  //   2. `nativeRuntime.authenticated` — the bridge's own local
+  //      `claude auth status` probe via `probeClaudeNativeRuntime()`.
+  //      This always reflects the host's real CLI state, regardless
+  //      of the HTTP path's auth outcome.
+  // We OR them so the documented semantics hold:
+  // "`aiProviderConfigured` is derived from the runtime's `nativeRuntime`
+  // probe, with user-saved `anthropic_compatible` rows as a fallback"
+  // (see apps/marketing/content/plugins/claude.mdx).
   return {
-    aiProviderConfigured: !!aiProvider?.configured,
+    aiProviderConfigured: !!(
+      aiProvider?.configured || nativeRuntime?.authenticated
+    ),
     aiProviderStatus:
       aiProvider?.status ||
       (aiProvider?.ok ? "unknown" : aiProvider?.reason || "unknown"),

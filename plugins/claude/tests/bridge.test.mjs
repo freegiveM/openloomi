@@ -195,6 +195,12 @@ process.exit(1);
 }
 
 function aiPreferencesPayload(overrides = {}) {
+  // The real runtime always returns a `nativeRuntime` block (see
+  // apps/web/app/(chat)/api/preferences/ai/route.ts → probeNativeClaudeRuntime).
+  // The default below mirrors the "no native CLI on PATH / not active"
+  // shape so tests that don't override it get the same JSON contract
+  // the production runtime serves. Tests that want a different
+  // runtime state should pass `nativeRuntime: {...}` in `overrides`.
   return {
     settings: [],
     systemDefaults: {
@@ -203,6 +209,19 @@ function aiPreferencesPayload(overrides = {}) {
       },
     },
     defaultAgent: "claude",
+    nativeRuntime: {
+      checked: true,
+      available: false,
+      authenticated: false,
+      active: false,
+      ready: false,
+      reason: "DEFAULT_AGENT_UNAVAILABLE",
+      defaultAgent: null,
+      cliPathPresent: false,
+      cliPathSource: null,
+      versionPresent: false,
+      probes: {},
+    },
     ...overrides,
   };
 }
@@ -579,25 +598,56 @@ test("setup-status treats authenticated native Claude runtime as ready without A
       authenticated: true,
     });
 
-    await withPreferencesServer(aiPreferencesPayload(), async (baseUrl) => {
-      const j = await runJsonAsync(["setup-status"], {
-        ...env,
-        OPENLOOMI_BIN: fakeOpenLoomi.binPath,
-        OPENLOOMI_AUTH_TOKEN: "mock-bearer",
-        OPENLOOMI_BASE_URL: baseUrl,
-        CLAUDE_CODE_PATH: fakeClaude,
-      });
+    await withPreferencesServer(
+      aiPreferencesPayload({
+        // Mirror the real runtime response: when the host's `claude`
+        // CLI is authenticated, the runtime reports
+        // `nativeRuntime.authenticated: true` over the wire. With the
+        // bridge fix that OR's `nativeRuntime.authenticated` into
+        // `aiProviderConfigured`, this also flips the
+        // `aiProviderConfigured` flag to true (matching the
+        // documented semantics at
+        // apps/marketing/content/plugins/claude.mdx).
+        nativeRuntime: {
+          checked: true,
+          available: true,
+          authenticated: true,
+          active: true,
+          ready: true,
+          reason: "CLAUDE_CLI_AUTHENTICATED",
+          defaultAgent: "claude",
+          cliPathPresent: true,
+          cliPathSource: "PATH",
+          versionPresent: true,
+          probes: {},
+        },
+      }),
+      async (baseUrl) => {
+        const j = await runJsonAsync(["setup-status"], {
+          ...env,
+          OPENLOOMI_BIN: fakeOpenLoomi.binPath,
+          OPENLOOMI_AUTH_TOKEN: "mock-bearer",
+          OPENLOOMI_BASE_URL: baseUrl,
+          CLAUDE_CODE_PATH: fakeClaude,
+        });
 
-      assert.equal(j.aiProviderConfigured, false);
-      assert.equal(j.executionProviderReady, true);
-      assert.equal(j.executionProviderSource, "native_claude_runtime");
-      assert.equal(j.nativeRuntimeActive, true);
-      assert.equal(j.nativeRuntimeStatus, "CLAUDE_CLI_AUTHENTICATED");
-      assert.equal(j.nativeRuntime.authenticated, true);
-      assert.equal(j.ready, true);
-      assert.equal(j.nextAction, "run");
-      assert.equal(j.reason, "READY");
-    });
+        assert.equal(j.aiProviderConfigured, true);
+        assert.equal(j.executionProviderReady, true);
+        // Native CLI is the only configured source here (no
+        // anthropic_compatible row), so the user-facing label is
+        // `native_claude_runtime` even though the HTTP probe also
+        // reports `configured: true` (it relays nativeRuntime to the
+        // wire). `getExecutionProviderStatus` disambiguates by
+        // checking `directApi.userConfigured` — that's `false` here.
+        assert.equal(j.executionProviderSource, "native_claude_runtime");
+        assert.equal(j.nativeRuntimeActive, true);
+        assert.equal(j.nativeRuntimeStatus, "CLAUDE_CLI_AUTHENTICATED");
+        assert.equal(j.nativeRuntime.authenticated, true);
+        assert.equal(j.ready, true);
+        assert.equal(j.nextAction, "run");
+        assert.equal(j.reason, "READY");
+      },
+    );
   });
 });
 

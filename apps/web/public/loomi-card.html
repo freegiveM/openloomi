@@ -5941,6 +5941,14 @@
         // module). On `false` we also kick the Rust host once via
         // `pet:open-card` so a fresh user sees the missing-key card
         // without having to click the bubble first.
+        // SYNC NOTE: this is an *inline copy* of the React helper
+        // `hasUsableConversationApiConfiguration` in
+        // `apps/web/lib/ai/conversation-api-configuration.ts`. The card
+        // HTML is a standalone Tauri asset with no shared module graph,
+        // so the two predicates must stay in lock-step — when you edit
+        // one, edit the other in the same commit. Otherwise the pet card
+        // and the main chat guard will disagree about whether the user
+        // is configured, and the wrong surface will nag for a key.
         function evaluateAiConfigured(payload) {
           if (!payload || !payload.settings || !payload.systemDefaults)
             return false;
@@ -5952,6 +5960,20 @@
           // Mirrors `hasUsableConversationApiConfiguration` in
           // `apps/web/lib/ai/conversation-api-configuration.ts`.
           if (payload.defaultAgent && payload.defaultAgent !== "claude") {
+            return true;
+          }
+          // Built-in Claude agent: the server probes the user's local
+          // `claude` CLI auth and surfaces it as `nativeRuntime`. If the
+          // probe reports the runtime is ready / authenticated, no
+          // per-user Anthropic key is needed — short-circuit before we
+          // look at `systemDefaults.hasApiKey`, which is a stale
+          // env-var mirror and would falsely mark the user as
+          // configured in Tauri builds launched with an Anthropic key in
+          // their env.
+          if (
+            payload.nativeRuntime?.authenticated ||
+            payload.nativeRuntime?.ready
+          ) {
             return true;
           }
           const userSetting = (payload.settings || []).find(
