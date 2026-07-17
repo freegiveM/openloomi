@@ -131,7 +131,7 @@ node plugins/codex/scripts/loomi-bridge.mjs version
 ```json
 {
   "name": "openloomi-codex-bridge",
-  "version": "0.7.9",
+  "version": "0.7.10",
   "pluginPhase": "runtime-provider-readiness",
   "commands": [
     "codex-runtime-info",
@@ -654,7 +654,7 @@ For source checkouts, check project markers:
   "mode": "packaged | source | unconfigured",
   "installed": true,
   "appPath": "<resolved OpenLoomi Desktop app path>",
-  "version": "openloomi-desktop 0.7.9",
+  "version": "openloomi-desktop 0.7.10",
   "tokenPresent": true,
   "session": {
     "tokenPresent": true,

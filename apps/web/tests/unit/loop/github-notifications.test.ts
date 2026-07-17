@@ -47,7 +47,10 @@ function sig(
   };
 }
 
-function typedDecision(source: LoopSignal, type: LoopDecision["type"]): LoopDecision {
+function typedDecision(
+  source: LoopSignal,
+  type: LoopDecision["type"],
+): LoopDecision {
   return {
     id: `dec_${source.id}`,
     ts: "2026-07-17T00:00:00.000Z",
@@ -106,16 +109,14 @@ describe("isGithubNotificationSignal", () => {
 
 describe("deriveGithubWebUrl", () => {
   it("passes through github.com URLs", () => {
-    expect(
-      deriveGithubWebUrl("https://github.com/owner/repo/issues/1"),
-    ).toBe("https://github.com/owner/repo/issues/1");
+    expect(deriveGithubWebUrl("https://github.com/owner/repo/issues/1")).toBe(
+      "https://github.com/owner/repo/issues/1",
+    );
   });
 
   it("converts api.github.com issue URLs to web URLs", () => {
     expect(
-      deriveGithubWebUrl(
-        "https://api.github.com/repos/owner/repo/issues/123",
-      ),
+      deriveGithubWebUrl("https://api.github.com/repos/owner/repo/issues/123"),
     ).toBe("https://github.com/owner/repo/issues/123");
   });
 
@@ -132,7 +133,9 @@ describe("deriveGithubWebUrl", () => {
   });
 
   it("rejects non-HTTPS, foreign host, and garbage input", () => {
-    expect(deriveGithubWebUrl("http://github.com/owner/repo/issues/1")).toBeNull();
+    expect(
+      deriveGithubWebUrl("http://github.com/owner/repo/issues/1"),
+    ).toBeNull();
     expect(
       deriveGithubWebUrl("https://example.com/repos/owner/repo/issues/1"),
     ).toBeNull();
@@ -147,7 +150,10 @@ describe("githubNotificationKey", () => {
       sig("abc", {
         id: "thread-123",
         repository: { full_name: "owner/repo" },
-        subject: { title: "PR title", url: "https://api.github.com/repos/owner/repo/pulls/1" },
+        subject: {
+          title: "PR title",
+          url: "https://api.github.com/repos/owner/repo/pulls/1",
+        },
       }),
     );
     expect(key).toBe("gh:id:thread-123");
@@ -284,7 +290,10 @@ describe("isGithubDigestDecision + collectCoveredNotificationKeys", () => {
       status: "dismissed",
       type: "quiet_digest",
       title: "old",
-      action: { kind: "quiet_digest", params: { module: GITHUB_NOTIFICATIONS_MODULE } },
+      action: {
+        kind: "quiet_digest",
+        params: { module: GITHUB_NOTIFICATIONS_MODULE },
+      },
       context: {
         module: GITHUB_NOTIFICATIONS_MODULE,
         notification_keys: ["gh:other#1"],
@@ -389,7 +398,10 @@ describe("aggregateGithubNotifications", () => {
       status: "pending",
       type: "quiet_digest",
       title: "old",
-      action: { kind: "quiet_digest", params: { module: GITHUB_NOTIFICATIONS_MODULE } },
+      action: {
+        kind: "quiet_digest",
+        params: { module: GITHUB_NOTIFICATIONS_MODULE },
+      },
       context: {
         module: GITHUB_NOTIFICATIONS_MODULE,
         notification_keys: [coveredKey],
@@ -426,7 +438,8 @@ describe("aggregateGithubNotifications", () => {
     expect(r.kind).toBe("merge");
     expect(r.decision?.id).toBe(existing.id);
     expect(r.newKeys).toEqual(["gh:id:t-2"]);
-    const items = (r.decision?.context as Record<string, unknown>)?.items as Array<{
+    const items = (r.decision?.context as Record<string, unknown>)
+      ?.items as Array<{
       key: string;
     }>;
     const keys = items.map((i) => i.key);
@@ -451,7 +464,10 @@ describe("aggregateGithubNotifications", () => {
       status: "pending",
       type: "quiet_digest",
       title: "old",
-      action: { kind: "quiet_digest", params: { module: GITHUB_NOTIFICATIONS_MODULE } },
+      action: {
+        kind: "quiet_digest",
+        params: { module: GITHUB_NOTIFICATIONS_MODULE },
+      },
       context: {
         module: GITHUB_NOTIFICATIONS_MODULE,
         notification_keys: ["gh:o/r#1"],
@@ -470,9 +486,9 @@ describe("aggregateGithubNotifications", () => {
       now: "2026-07-17T00:00:00.000Z",
     });
     expect(r.kind).toBe("merge");
-    expect(
-      (r.decision?.context as Record<string, unknown>)?.created_ts,
-    ).toBe(originalTs);
+    expect((r.decision?.context as Record<string, unknown>)?.created_ts).toBe(
+      originalTs,
+    );
   });
 });
 
@@ -482,7 +498,11 @@ describe("findPendingGithubDigest", () => {
       { key: "gh:a#1", repo: "a", title: "t", summary: "" },
     ]);
     const done: LoopDecision = { ...pending, id: "x", status: "done" };
-    const dismissed: LoopDecision = { ...pending, id: "y", status: "dismissed" };
+    const dismissed: LoopDecision = {
+      ...pending,
+      id: "y",
+      status: "dismissed",
+    };
     expect(findPendingGithubDigest([pending])?.id).toBe(pending.id);
     expect(findPendingGithubDigest([done])).toBeNull();
     expect(findPendingGithubDigest([dismissed])).toBeNull();
