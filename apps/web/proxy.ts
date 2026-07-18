@@ -59,6 +59,13 @@ export async function proxy(request: NextRequest) {
   if (pathname.startsWith("/api/landing")) return NextResponse.next();
   if (pathname.startsWith("/api/remote-auth")) return NextResponse.next();
   if (pathname.startsWith("/api/remote-feedback")) return NextResponse.next();
+  // /api/pet/state trusts 127.0.0.1 loopback as its auth boundary (see
+  // `apps/web/app/api/pet/state/route.ts` docstring). Letting it through
+  // here avoids the proxy running `next-auth/jwt` on the request, which
+  // would reject the 2-segment guest token (Tauri `~/.openloomi/token`
+  // format) and surface as a misleading 401 AUTH_REQUIRED in dev mode
+  // and any non-Tauri context.
+  if (pathname.startsWith("/api/pet")) return NextResponse.next();
   if (pathname.startsWith("/api/brave-search")) return NextResponse.next();
   if (pathname.startsWith("/api/password-reset")) return NextResponse.next();
   if (pathname.startsWith("/api/ai")) return NextResponse.next();

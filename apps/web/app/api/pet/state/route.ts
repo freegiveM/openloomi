@@ -45,6 +45,7 @@
  *     a half-written file.
  */
 
+import { randomUUID } from "node:crypto";
 import { type NextRequest, NextResponse } from "next/server";
 import { promises as fs } from "node:fs";
 import os from "node:os";
@@ -94,7 +95,13 @@ async function persistRuntimeState(
   // Tauri watcher uses mtime to detect changes, so a torn write would
   // either be silently dropped or read with a stale payload. Renames
   // within the same filesystem are atomic on POSIX + NTFS.
-  const tmpPath = `${targetPath}.${process.pid}.tmp`;
+  //
+  // The tmp filename MUST be unique per request — not just per process.
+  // The Next.js server is a single Node process that handles every
+  // request, so `process.pid` alone collides across concurrent POSTs and
+  // the rename below ENOENTs when another request wins the race. Append
+  // a UUID to make each in-flight write land on its own file.
+  const tmpPath = `${targetPath}.${process.pid}.${randomUUID()}.tmp`;
   await fs.writeFile(tmpPath, JSON.stringify(payload), {
     encoding: "utf8",
     mode: 0o600,
