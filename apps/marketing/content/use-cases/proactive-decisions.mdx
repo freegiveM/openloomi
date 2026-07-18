@@ -18,7 +18,7 @@ OpenLoomi's **Proactive Execution Brain** runs inside the desktop app, watches e
 | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 👀 **Watch**    | Pulls new signals from Gmail, Calendar, GitHub, and Slack via Composio MCP and accepts voice memos, screenshots, links, pasted notes — every tick, in parallel         |
 | 🧠 **Enrich**   | Looks up senders / organizers / repos in your memory so the card arrives with full context attached — and **remembers** new contacts and recurring projects as it goes |
-| 🏷️ **Classify** | Maps each signal to a typed decision: `rsvp`, `draft_reply`, `review_pr`, `todo`, `im_reply`                                                                        |
+| 🏷️ **Classify** | Maps each signal to a typed decision: `rsvp`, `email_reply`, `review_pr`, `todo`, `im_reply`                                                                           |
 | ✅ **Pick**     | Review the queue in OpenLoomi's Loop panel, the local web UI, or the REPL — one keystroke to execute                                                                   |
 
 ---
@@ -57,7 +57,7 @@ The Loop is a scheduled task that ticks every 10 minutes by default. Every tick 
 tick 1  →  Pull (Composio MCP)  →  4 gmail + 1 calendar + 2 PRs + 1 slack
        →  Enrich  →  sender / org / repo lookup against your memory
        →  Filter hard rules  →  noreply@*, Gmail Promotions, already-replied
-       →  Classify  →  rsvp ×1 · draft_reply ×2 · review_pr ×1 · im_reply ×1
+       →  Classify  →  rsvp ×1 · email_reply ×2 · review_pr ×1 · im_reply ×1
        →  Queue  →  data/decisions.json (pending bucket)
 ```
 
@@ -81,7 +81,7 @@ The Loop never surfaces raw emails or PRs — every signal becomes a typed decis
 }
 ```
 
-`rsvp` from Calendar, `draft_reply` from Gmail, `review_pr` from GitHub — each typed so you know what kind of work it is before you open it.
+`rsvp` from Calendar, `email_reply` from Gmail, `review_pr` from GitHub — each typed so you know what kind of work it is before you open it.
 
 ---
 
@@ -184,10 +184,10 @@ Each toolkit OpenLoomi exposes for the Loop routes through Composio under the ho
 
    | Toolkit             | CLI command                   | What it powers          | OAuth scope                                    |
    | ------------------- | ----------------------------- | ----------------------- | ---------------------------------------------- |
-   | **Gmail**           | `composio add gmail`          | `draft_reply` decisions | Read inbox metadata, send on your behalf       |
+   | **Gmail**           | `composio add gmail`          | `email_reply` decisions | Read inbox metadata, send on your behalf       |
    | **Google Calendar** | `composio add googlecalendar` | `rsvp` decisions        | Read events, patch event responses             |
    | **GitHub**          | `composio add github`         | `review_pr` decisions   | Read PRs where you're a reviewer, post reviews |
-   | **Slack**           | `composio add slack`          | `im_reply` decisions | Read channels you're in, post replies          |
+   | **Slack**           | `composio add slack`          | `im_reply` decisions    | Read channels you're in, post replies          |
 
 3. Confirm all four are connected:
 
@@ -209,7 +209,7 @@ The Loop is a **continuously running execution brain** — it needs a scheduled 
 Start the openloomi-loop proactive execution brain.
 Run a tick every 10 minutes so new signals from Gmail / Calendar / GitHub / Slack
 get pulled, enriched through your memory, classified into typed decisions
-(rsvp / draft_reply / review_pr / todo / im_reply), and queued in the Loop panel.
+(rsvp / email_reply / review_pr / todo / im_reply), and queued in the Loop panel.
 ```
 
 OpenLoomi handles the rest — it creates the scheduled task, registers it in **Agent → Automation**, and runs the first tick immediately so the queue isn't empty. The Loop panel in the sidebar starts showing cards within seconds.
@@ -228,7 +228,7 @@ Three ways to inspect what the Loop has queued:
 
 Each card carries the memory refs that explain why it surfaced — click any **🧠 memory_refs** entry to inline-load the person / project / insight note. Screenshots of the web view's Queue tab and the four action buttons on every card live in [See It in Action](#see-it-in-action) — this step stays focused on setup.
 
-> **🔧 Extensible by design.** The four typed actions above (`rsvp`, `draft_reply`, `review_pr`, `im_reply`) are just the defaults — `openloomi-loop` is a normal OpenLoomi skill, so you can iterate on it like any other. Add new decision types, swap in custom classifiers, point at additional toolkits (`composio add linear`, `composio add notion`, `composio add jira`, …), or teach the Loop to handle a brand-new channel by editing the skill's classify / enrich code and reloading. Ask OpenLoomi in chat to evolve it — _"extend openloomi-loop to also classify Linear issues into `linear_review` decisions"_ — and it handles the edit + reload for you.
+> **🔧 Extensible by design.** The four typed actions above (`rsvp`, `email_reply`, `review_pr`, `im_reply`) are just the defaults — `openloomi-loop` is a normal OpenLoomi skill, so you can iterate on it like any other. Add new decision types, swap in custom classifiers, point at additional toolkits (`composio add linear`, `composio add notion`, `composio add jira`, …), or teach the Loop to handle a brand-new channel by editing the skill's classify / enrich code and reloading. Ask OpenLoomi in chat to evolve it — _"extend openloomi-loop to also classify Linear issues into `linear_review` decisions"_ — and it handles the edit + reload for you.
 
 ---
 
@@ -236,7 +236,7 @@ Each card carries the memory refs that explain why it surfaced — click any **�
 
 **🧠 Decisions, Not Streams**
 
-- Four inboxes collapse into one typed queue: `rsvp`, `draft_reply`, `review_pr`, `todo`, `im_reply`, etc.
+- Four inboxes collapse into one typed queue: `rsvp`, `email_reply`, `review_pr`, `todo`, `im_reply`, etc.
 - Each card carries the memory refs that explain why it surfaced — no guessing, no re-reading
 - Confidence score (0.85 known / 0.60 cold) lets you triage in one glance
 
