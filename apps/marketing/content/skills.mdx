@@ -1021,7 +1021,7 @@ The Loop shines when **ambient signals need to become actions** and the cost of 
 - 📥 **Inbox triage** — Sarah's email about "Q2 review tomorrow please RSVP" becomes a `draft_reply` card with her project context already attached.
 - 📅 **Calendar RSVPs** — A meeting invite where you haven't responded surfaces as an `rsvp` card with the organizer's last three notes already in the prompt.
 - 🔀 **PR review queue** — Every PR where you're a reviewer lands in the queue as a `review_pr` card, with the diff stats and the last CI status.
-- 💬 **Slack mentions** — Messages that @mention you become `slack_reply` cards with the thread context pre-loaded.
+- 💬 **Slack mentions** — Messages that @mention you become `im_reply` cards with the thread context pre-loaded.
 - ✅ **Assigned issues** — GitHub issues assigned to you surface as `todo` cards, with prior discussion linked.
 
 It is **not** designed for:
@@ -1056,7 +1056,7 @@ Three layers, all agentic — no subprocess hacks, no local memory cache:
 | ------------ | ---------------------------------------------------------------------------------------------- | --------------------------------- |
 | **Pull**     | Claude calls Composio MCP tools in parallel to fetch fresh signals                             | `data/signals.jsonl`              |
 | **Enrich**   | Each signal is enriched via openloomi-memory (sender lookup, project context, recent insights) | `~/.openloomi/data/memory/...`    |
-| **Classify** | LLM assigns a typed action (`rsvp`, `draft_reply`, `review_pr`, `slack_reply`, `todo`)         | `data/decisions.json`             |
+| **Classify** | LLM assigns a typed action (`rsvp`, `draft_reply`, `review_pr`, `im_reply`, `todo`)         | `data/decisions.json`             |
 | **Execute**  | You pick a card; Loop spawns a fresh `claude -p` with the full context                         | API calls (email, calendar, etc.) |
 
 Hard rules run **before** the LLM and short-circuit: `noreply@*` senders, Gmail `Promotions/Social/Forums/Updates/Spam` labels, already-accepted calendar events, and already-replied emails are skipped without ever reaching the classifier.
@@ -1225,7 +1225,7 @@ It then spawns `claude -p "<prompt>"` and inherits stdio, so you see Claude's ou
 | `draft_reply` | Email matching meeting/RSVP/invite patterns, or with action verbs from a known person | `email_reply`    |
 | `review_pr`   | GitHub PR where you're a reviewer                                                     | `github_review`  |
 | `todo`        | GitHub issue assigned to you, open                                                    | `todo`           |
-| `slack_reply` | Slack message that mentions you                                                       | `slack_reply`    |
+| `im_reply` | Slack message that mentions you                                                       | `im_reply`    |
 
 Confidence is **0.85** when the sender is in openloomi-memory (known contact), else **0.60**.
 

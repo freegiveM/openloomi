@@ -20,7 +20,7 @@ Loop is not a scheduled task, not an email reminder, and not a cron script. It's
 
 - 🔎 **See** — Every 10 minutes, fetch signals related to you from email / calendar / GitHub / Slack / Linear
 - 🧠 **Understand** — Enrich each signal with OpenLoomi memory (who's the sender, what project is this, what did we last discuss)
-- 🪪 **Judge** — Assign a typed action (`draft_reply`, `rsvp`, `review_pr`, `slack_reply`, `todo`) and a confidence score (0.60 – 0.85)
+- 🪪 **Judge** — Assign a typed action (`draft_reply`, `rsvp`, `review_pr`, `im_reply`, `todo`) and a confidence score (0.60 – 0.85)
 - 🃏 **Present** — Turn each one into a decision card, queue it for you
 - 🛡️ **Protect** — Dry-run always leads; **execution always waits for your Approve**
 
@@ -70,7 +70,7 @@ Loop surfaces an `rsvp` decision card, pre-loads Maya's last three related notes
 
 > **4:15 PM,** someone in the engineering channel pings you: "@you, is this PR already on staging?"
 
-Loop sees the @mention, recognises the sender as a frequent collaborator → pushes a `slack_reply` card with the previous three context messages pre-loaded.
+Loop sees the @mention, recognises the sender as a frequent collaborator → pushes a `im_reply` card with the previous three context messages pre-loaded.
 
 ### A GitHub Issue assigned to you
 
@@ -144,7 +144,7 @@ If you're new to Loop:
 
 ## Extending Loop: Custom Types & Channels
 
-Out of the box, Loop ships with five built-in sources (Email / Calendar / GitHub / Slack / Linear) and a closed set of typed actions (`draft_reply`, `rsvp`, `review_pr`, `slack_reply`, `todo`, …). For most users that's enough — but if you live inside other tools (Stripe, Notion, Linear, GitLab, internal CRMs, …) and want Loop to surface decisions from those, you can **register your own types and channels** without touching the source.
+Out of the box, Loop ships with five built-in sources (Email / Calendar / GitHub / Slack / Linear) and a closed set of typed actions (`draft_reply`, `rsvp`, `review_pr`, `im_reply`, `todo`, …). For most users that's enough — but if you live inside other tools (Stripe, Notion, Linear, GitLab, internal CRMs, …) and want Loop to surface decisions from those, you can **register your own types and channels** without touching the source.
 
 Loop exposes three extension points, both per-user and persisted in your local OpenLoomi home directory:
 
@@ -156,7 +156,7 @@ Loop exposes three extension points, both per-user and persisted in your local O
 
 ### How the extension model stays safe
 
-The runner that actually executes approved cards is a `switch` over a closed set of `ActionKind` literals. We deliberately don't open that switch up to user-typed strings — that would mean every new type requires a code change. Instead, every custom type **must map its `actionKind` to one of the 14 built-in runners** (`email_reply`, `slack_reply`, `calendar_rsvp`, `github_review`, `linear_review`, `todo`, `deadline_notify`, `release_plan`, `requirement_synthesis`, `contact_update`, `doc_update`, `brief`, `wrap`, `quiet_digest`). The classifier reads your registered list and adds the new ids to its candidate set; the UI reads it for label and icon; the runner is the only thing that doesn't change.
+The runner that actually executes approved cards is a `switch` over a closed set of `ActionKind` literals. We deliberately don't open that switch up to user-typed strings — that would mean every new type requires a code change. Instead, every custom type **must map its `actionKind` to one of the 14 built-in runners** (`email_reply`, `im_reply`, `calendar_rsvp`, `github_review`, `linear_review`, `todo`, `deadline_notify`, `release_plan`, `requirement_synthesis`, `contact_update`, `doc_update`, `brief`, `wrap`, `quiet_digest`). The classifier reads your registered list and adds the new ids to its candidate set; the UI reads it for label and icon; the runner is the only thing that doesn't change.
 
 Likewise, custom channels don't introduce a new polling runtime — they wrap an existing [Composio](https://composio.dev) toolkit. If Composio supports it, Loop can read it. Each channel is a small JSON record describing **which tool, how often, what shape to extract**, and the watcher throttles per-channel so a custom pull never starves the built-in sources.
 

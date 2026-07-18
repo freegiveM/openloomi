@@ -41,7 +41,7 @@ These two projects belong to different categories. **OpenLoomi** is a **product*
 | **Model Support**        | OpenAI, Anthropic (Claude), local adapters                                                                              | Any OpenAI-compatible chat, embedding, and rerank provider                           |
 | **Retrieval / RAG**      | Vector (sqlite-vec, pgvector) + FTS5 keyword path over `raw_messages`; results merged and ranked by relevance           | LanceDB hybrid retrieval (vector + BM25), built-in fusion                            |
 | **Agent Framework**      | Native agent API (`/api/native/agent`) + Claude Code + Vercel Sandbox + pluggable CLI                                   | Library-level — host agent owns the reasoning loop                                   |
-| **Inference Triggering** | Croner-scheduled Loop polling; strictly-typed decisions (`rsvp` / `draft_reply` / `review_pr` / `todo` / `slack_reply`) | Inline invocation by host agent; offline Reflection task for memory evolution        |
+| **Inference Triggering** | Croner-scheduled Loop polling; strictly-typed decisions (`rsvp` / `draft_reply` / `review_pr` / `todo` / `im_reply`) | Inline invocation by host agent; offline Reflection task for memory evolution        |
 
 ### 2.3 Database and Storage
 
@@ -94,7 +94,7 @@ Pull (21+ connectors)
 ```
 
 - **Four-tier memory architecture:** raw info → info insight → contextual memory → knowledge graph (see `skills/openloomi-memory/SKILL.md`).
-- **Five strictly-typed decisions** emitted by the Loop: `rsvp`, `draft_reply`, `review_pr`, `todo`, `slack_reply` (with support for extensible typed payloads).
+- **Five strictly-typed decisions** emitted by the Loop: `rsvp`, `draft_reply`, `review_pr`, `todo`, `im_reply` (with support for extensible typed payloads).
 - **Memory Consolidation** runs as a standalone package, rewriting long-term context out of the short-term buffer.
 - **Obsidian vault scanner** reads external Markdown vaults and weaves them into memory, letting users who already take notes in Obsidian keep their source of truth.
 

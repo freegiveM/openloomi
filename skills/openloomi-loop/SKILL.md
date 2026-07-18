@@ -178,12 +178,12 @@ curl -sS -X PUT "$BASE/api/loop/types" \
 
 - `id` — snake_case, 2-41 chars, must NOT collide with a built-in
   `DecisionType` (`rsvp`, `draft_reply`, `review_pr`, `todo`,
-  `slack_reply`, `deadline_reminder`, `release_plan`,
+  `im_reply`, `deadline_reminder`, `release_plan`,
   `requirement_synthesis`, `linear_review`, `contact_update`,
   `doc_update`, `brief`, `wrap`, `quiet_digest`, `noop`,
   `tick_summary`, `unknown`).
 - `actionKind` — must be one of the 14 built-in `ActionKind` literals
-  (`calendar_rsvp`, `email_reply`, `slack_reply`, `github_review`,
+  (`calendar_rsvp`, `email_reply`, `im_reply`, `github_review`,
   `deadline_notify`, `todo`, `linear_review`,
   `requirement_synthesis`, `release_plan`, `contact_update`,
   `doc_update`, `brief`, `wrap`, `quiet_digest`). Custom types

@@ -96,7 +96,7 @@ Loomi is the messenger for [Loop](/docs/loop), so anything Loop can decide, Loom
 
 When you register a custom decision type, three things change at the next tick:
 
-1. **The classifier sees it.** Loop's prompt now lists your custom ids (e.g. `birthday_wish`) alongside the built-ins, with the `actionKind` each one maps to. The agent can therefore pick them the same way it picks `draft_reply` or `slack_reply`.
+1. **The classifier sees it.** Loop's prompt now lists your custom ids (e.g. `birthday_wish`) alongside the built-ins, with the `actionKind` each one maps to. The agent can therefore pick them the same way it picks `draft_reply` or `im_reply`.
 2. **The card UI renders it.** Decision cards in the main OpenLoomi window, in the pet card, and in the bubble that Loomi shows use the `label` and `icon` you provided — so a `birthday_wish` card arrives with `ri-cake-2-line` and the text **"Birthday wish"** instead of falling back to a generic icon.
 3. **The bubble tone adapts.** When Loomi shows a one-liner summary for that card, it pulls from your custom `label` rather than a hard-coded string. The same applies to the chip Loomi tints on the card list.
 
