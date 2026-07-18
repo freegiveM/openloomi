@@ -619,3 +619,26 @@
 .bg-background-card {
   background-color: var(--color-background-card);
 }
+
+/* CSS-only fade-in replacement for the empty-chat greeting. Avoids pulling
+   framer-motion into the first paint when the chat is empty. */
+@keyframes greeting-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.greeting-anim {
+  animation: greeting-fade-in 0.4s ease-out both;
+}
+.greeting-anim--head {
+  animation-delay: 0.5s;
+}
+.greeting-anim--grid {
+  animation-delay: 0.7s;
+}

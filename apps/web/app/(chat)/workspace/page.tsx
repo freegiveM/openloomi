@@ -738,7 +738,7 @@ export default function LibraryPage() {
     const viewport = document.querySelector(
       "[data-radix-scroll-area-viewport]",
     ) as HTMLElement;
-    viewport?.addEventListener("scroll", handleScroll);
+    viewport?.addEventListener("scroll", handleScroll, { passive: true });
     return () => {
       viewport?.removeEventListener("scroll", handleScroll);
     };

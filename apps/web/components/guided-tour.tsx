@@ -137,7 +137,10 @@ export function GuidedTour({
     const handleScroll = () => updateRect(step);
 
     window.addEventListener("resize", handleResize);
-    window.addEventListener("scroll", handleScroll, true);
+    window.addEventListener("scroll", handleScroll, {
+      capture: true,
+      passive: true,
+    });
 
     if (step.selector) {
       const target = document.querySelector(step.selector);
@@ -152,7 +155,9 @@ export function GuidedTour({
         window.cancelAnimationFrame(rafRef.current);
       }
       window.removeEventListener("resize", handleResize);
-      window.removeEventListener("scroll", handleScroll, true);
+      window.removeEventListener("scroll", handleScroll, {
+        capture: true,
+      } as AddEventListenerOptions);
       observerRef.current?.disconnect();
       observerRef.current = null;
     };

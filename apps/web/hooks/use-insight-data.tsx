@@ -356,104 +356,142 @@ export function useInsightData({
     [],
   );
 
-  const filterCounts = useMemo<Record<string, number>>(() => {
+  // Single-pass decoration + aggregation.
+  //
+  // Previously `filterCounts` and `filteredInsights` each ran a full
+  // `baseInsights.filter(...)` per dimension (3 fixed + 1 per custom filter)
+  // and the sort comparator re-evaluated every classification + time on every
+  // comparison. We precompute each insight's classification once, then derive
+  // counts, the filtered subset, and the sort key from the decorated record.
+  const { filterCounts, filteredInsights, sortedInsights } = useMemo(() => {
     const counts: Record<string, number> = {
       all: baseInsights.length,
-      priority: baseInsights.filter((insight) =>
-        insightIsImportOrUrgentCallback(insight),
-      ).length,
-      mentions: baseInsights.filter((insight) => insightHasMyNickname(insight))
-        .length,
-      actionItems: baseInsights.filter(
-        (insight) => insightGetActions(insight).length > 0,
-      ).length,
+      priority: 0,
+      mentions: 0,
+      actionItems: 0,
     };
+    const activeCustomFilters: Array<{
+      id: string;
+      definition: InsightFilterDefinition;
+    }> = [];
     for (const filter of customFilters) {
       if (!filter.isArchived) {
-        const filterKey = `filter:${filter.id}`;
-        counts[filterKey] = baseInsights.filter((insight) =>
-          insightMatchesFilterDefinition(
-            insight,
-            filter.definition as InsightFilterDefinition,
-            filterContext,
-          ),
-        ).length;
+        activeCustomFilters.push({
+          id: filter.id,
+          definition: filter.definition as InsightFilterDefinition,
+        });
+        counts[`filter:${filter.id}`] = 0;
       }
     }
-    return counts;
+
+    type Decorated = {
+      insight: Insight;
+      isImport: boolean;
+      hasNick: boolean;
+      hasActions: boolean;
+      time: number;
+      customMatches: boolean[];
+    };
+
+    const decorated: Decorated[] = new Array(baseInsights.length);
+    for (let i = 0; i < baseInsights.length; i++) {
+      const insight = baseInsights[i];
+      const isImport = insightIsImportOrUrgentCallback(insight);
+      const hasNick = insightHasMyNickname(insight);
+      const hasActions = insightGetActions(insight).length > 0;
+      const time = getInsightTime(insight).getTime();
+
+      if (isImport) counts.priority += 1;
+      if (hasNick) counts.mentions += 1;
+      if (hasActions) counts.actionItems += 1;
+
+      const customMatches: boolean[] = new Array(activeCustomFilters.length);
+      for (let f = 0; f < activeCustomFilters.length; f++) {
+        const matched = insightMatchesFilterDefinition(
+          insight,
+          activeCustomFilters[f].definition,
+          filterContext,
+        );
+        customMatches[f] = matched;
+        if (matched) {
+          const key = `filter:${activeCustomFilters[f].id}`;
+          counts[key] = (counts[key] ?? 0) + 1;
+        }
+      }
+
+      decorated[i] = {
+        insight,
+        isImport,
+        hasNick,
+        hasActions,
+        time,
+        customMatches,
+      };
+    }
+
+    // Resolve the active filter once instead of per-insight.
+    const customFilterById = new Map(
+      activeCustomFilters.map((f, idx) => [f.id, idx] as const),
+    );
+
+    // Walk the decorated array once, applying the quickFilter inline so we
+    // avoid building a separate `filtered` array and an extra indexOf lookup.
+    const filteredDecorated: Decorated[] = [];
+    for (let i = 0; i < decorated.length; i++) {
+      const d = decorated[i];
+      let pass = false;
+      if (quickFilter === "all") {
+        pass = true;
+      } else {
+        switch (quickFilter) {
+          case "priority":
+            pass = d.isImport;
+            break;
+          case "mentions":
+            pass = d.hasNick;
+            break;
+          case "actionItems":
+            pass = d.hasActions;
+            break;
+          default: {
+            if (!allowedFilterValues.has(quickFilter)) {
+              pass = true;
+            } else if (quickFilter.startsWith("filter:")) {
+              const filterId = quickFilter.slice("filter:".length);
+              const idx = customFilterById.get(filterId);
+              pass = idx !== undefined ? d.customMatches[idx] : false;
+            }
+          }
+        }
+      }
+      if (pass) filteredDecorated.push(d);
+    }
+
+    // Sort on the cached primitives. Decorate-sort-undecorate: we already
+    // decorated above, so just sort and map back to the original insight.
+    filteredDecorated.sort((a, b) => {
+      if (a.hasNick !== b.hasNick) return a.hasNick ? -1 : 1;
+      if (a.isImport !== b.isImport) return a.isImport ? -1 : 1;
+      return b.time - a.time;
+    });
+
+    const filtered: Insight[] = filteredDecorated.map((d) => d.insight);
+    return {
+      filterCounts: counts,
+      filteredInsights: filtered,
+      sortedInsights: filtered,
+    };
   }, [
     baseInsights,
+    quickFilter,
+    allowedFilterValues,
+    customFilters,
+    filterContext,
+    language,
     insightHasMyNickname,
     insightIsImportOrUrgentCallback,
     insightGetActions,
-    customFilters,
-    filterContext,
   ]);
-
-  const filteredInsights = useMemo(
-    () =>
-      baseInsights.filter((insight) => {
-        if (quickFilter === "all") {
-          return true;
-        }
-        switch (quickFilter) {
-          case "priority":
-            return insightIsImportOrUrgentCallback(insight);
-          case "mentions":
-            return insightHasMyNickname(insight);
-          case "actionItems":
-            return insightGetActions(insight).length > 0;
-          default:
-            if (!allowedFilterValues.has(quickFilter)) {
-              return true;
-            }
-            if (quickFilter.startsWith("filter:")) {
-              const filterId = quickFilter.replace("filter:", "");
-              const filter = customFilters.find((f) => f.id === filterId);
-              if (filter) {
-                return insightMatchesFilterDefinition(
-                  insight,
-                  filter.definition as InsightFilterDefinition,
-                  filterContext,
-                );
-              }
-              return false;
-            }
-            return false;
-        }
-      }),
-    [
-      baseInsights,
-      quickFilter,
-      insightHasMyNickname,
-      insightIsImportOrUrgentCallback,
-      insightGetActions,
-      allowedFilterValues,
-      customFilters,
-      filterContext,
-    ],
-  );
-
-  const sortedInsights = useMemo(
-    () =>
-      [...filteredInsights].sort((a, b) => {
-        const aIsImport = insightIsImportOrUrgentCallback(a);
-        const bIsImport = insightIsImportOrUrgentCallback(b);
-        const aHasMyNickname = insightHasMyNickname(a);
-        const bHasMyNickname = insightHasMyNickname(b);
-
-        if (aHasMyNickname && !bHasMyNickname) return -1;
-        if (!aHasMyNickname && bHasMyNickname) return 1;
-
-        if (aIsImport && !bIsImport) return -1;
-        if (!aIsImport && bIsImport) return 1;
-
-        const timeA = getInsightTime(a).getTime();
-        const timeB = getInsightTime(b).getTime();
-        return timeB - timeA;
-      }),
-    [filteredInsights, insightHasMyNickname, insightIsImportOrUrgentCallback],
-  );
 
   const groupedInsights = useMemo(
     () => groupInsightsByDay(sortedInsights, language),

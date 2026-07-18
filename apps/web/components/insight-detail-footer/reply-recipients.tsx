@@ -293,12 +293,19 @@ export function ReplyRecipients({
       setDropdownPosition(newPosition);
     };
 
-    // Use capture mode to listen to all scroll events
-    window.addEventListener("scroll", handleScroll, true);
+    // Use capture mode to listen to all scroll events. Passive flag lets the
+    // browser scroll without waiting for the handler — it only reads layout
+    // for the dropdown position, never calls preventDefault().
+    window.addEventListener("scroll", handleScroll, {
+      capture: true,
+      passive: true,
+    });
     window.addEventListener("resize", handleResize);
 
     return () => {
-      window.removeEventListener("scroll", handleScroll, true);
+      window.removeEventListener("scroll", handleScroll, {
+        capture: true,
+      } as AddEventListenerOptions);
       window.removeEventListener("resize", handleResize);
     };
   }, [showContactsList, calculateDropdownPosition]);

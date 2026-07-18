@@ -1,6 +1,5 @@
 "use client";
 
-import { motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import type { UseChatHelpers } from "@ai-sdk/react";
 import type { ChatMessage } from "@openloomi/shared";
@@ -16,6 +15,10 @@ interface GreetingProps {
   sendMessage?: UseChatHelpers<ChatMessage>["sendMessage"];
   isAgentRunning?: boolean;
 }
+
+// CSS-based fade-in replacement for `motion.div` so we don't pull
+// framer-motion's animation runtime into the empty-chat first paint.
+// Keyframes are defined in `app/globals.css` (`@keyframes greeting-fade-in`).
 
 /**
  * Greeting component, displays welcome message and suggested actions.
@@ -36,24 +39,13 @@ export const Greeting = memo(function Greeting({
       className="max-w-3xl mx-auto mt-6 sm:mt-12 size-full w-full px-0 flex flex-col justify-center gap-4"
     >
       {/* Greeting text */}
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: 10 }}
-        transition={{ delay: 0.5 }}
-        className="w-full mb-0"
-      >
+      <div className="w-full mb-0 greeting-anim greeting-anim--head">
         <h2 className="text-3xl font-serif font-semibold text-center text-foreground tracking-normal mb-2">
           {t("common.chatSubTitle")}
         </h2>
-      </motion.div>
+      </div>
       {/* Suggested topic list (shown when there are no messages) */}
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: 10 }}
-        transition={{ delay: 0.7 }}
-      >
+      <div className="greeting-anim greeting-anim--grid">
         <div data-testid="suggested-actions" className="w-full">
           {/* 6 suggestion options - responsive grid layout */}
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 pl-3 pr-3">
@@ -67,7 +59,7 @@ export const Greeting = memo(function Greeting({
             ))}
           </div>
         </div>
-      </motion.div>
+      </div>
     </div>
   );
 });

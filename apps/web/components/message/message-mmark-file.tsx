@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { MindMapPreview } from "../artifacts/mindmap-preview";
+import { MindMapPreviewDynamic } from "./mindmap-preview-dynamic";
 
 interface MessageMmarkFileProps {
   /** File URL or blob path */
@@ -59,7 +59,11 @@ export function MessageMmarkFile({ src, filename }: MessageMmarkFileProps) {
 
   return (
     <div className="mt-3">
-      <MindMapPreview content={content} filename={filename} maxHeight="400px" />
+      <MindMapPreviewDynamic
+        content={content}
+        filename={filename}
+        maxHeight="400px"
+      />
     </div>
   );
 }

@@ -6,6 +6,16 @@ import remarkGfm from "remark-gfm";
 import type { Element } from "hast";
 import { openUrl } from "@/lib/tauri";
 
+// Module-level RegExp sources — compiled once. `renderInlineInstructionBadges`
+// copies them per call so each scan is re-entrant and concurrent renders don't
+// share `lastIndex`.
+const EVENT_TOKEN_RE = /\[\[ref:event:([^\]]*)\]\]/;
+const SKILL_TOKEN_RE = /\/([\w-]+)(?=\s|\/|$)/;
+
+// Hoisted so ReactMarkdown doesn't see a new array identity on every render
+// and break its own memoization path.
+const REMARK_PLUGINS = [remarkGfm];
+
 /**
  * Renders inline instruction tokens as badges.
  *
@@ -19,8 +29,10 @@ import { openUrl } from "@/lib/tauri";
 function renderInlineInstructionBadges(
   childrenText: string,
 ): React.ReactNode[] {
-  const EVENT_TOKEN_RE = /\[\[ref:event:([^\]]*)\]\]/g;
-  const SKILL_TOKEN_RE = /\/([\w-]+)(?=\s|\/|$)/g;
+  // Reuse module-level RegExp instances. They are stateful (lastIndex), so we
+  // build a fresh copy for each call to keep this function re-entrant.
+  const eventRe = new RegExp(EVENT_TOKEN_RE.source, "g");
+  const skillRe = new RegExp(SKILL_TOKEN_RE.source, "g");
 
   const badgeBaseClass =
     "inline-flex items-center gap-px rounded-md bg-muted px-[3px] py-px";
@@ -31,8 +43,6 @@ function renderInlineInstructionBadges(
   // Scan segments using while: each iteration takes the event/skill nearest to cursor.
   // For simplicity and stability, re-execute both regexes each round and compare indices.
   while (cursor < childrenText.length) {
-    const eventRe = new RegExp(EVENT_TOKEN_RE.source, "g");
-    const skillRe = new RegExp(SKILL_TOKEN_RE.source, "g");
     eventRe.lastIndex = cursor;
     skillRe.lastIndex = cursor;
 
@@ -421,10 +431,9 @@ const NonMemoizedMarkdown = ({
   children,
   renderInstructionBadges = true,
 }: MarkdownProps) => {
-  const remarkPlugins = [remarkGfm];
   return (
     <ReactMarkdown
-      remarkPlugins={remarkPlugins}
+      remarkPlugins={REMARK_PLUGINS}
       components={createComponents(renderInstructionBadges)}
       className="markdown-wrapper"
     >

@@ -20,7 +20,7 @@ import { useTranslation } from "react-i18next";
 import { useCopyToClipboard } from "usehooks-ts";
 import { useIntegrations } from "@/hooks/use-integrations";
 import { PreviewAttachment } from "../preview-attachment";
-import { MindMapPreview } from "../artifacts/mindmap-preview";
+import { MindMapPreviewDynamic } from "./mindmap-preview-dynamic";
 import { MessageMmarkFile } from "./message-mmark-file";
 import type { Insight } from "@/lib/db/schema";
 import { CitedInsightsDrawer } from "../cited-insights-drawer";
@@ -1043,7 +1043,7 @@ const PurePreviewMessage = ({
                       };
                       return (
                         <div key={key} className="mt-3">
-                          <MindMapPreview
+                          <MindMapPreviewDynamic
                             content={mindmapPart.content}
                             filename={mindmapPart.name}
                             maxHeight="400px"

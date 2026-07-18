@@ -111,6 +111,17 @@ function PureVirtualizedMessages({
     overscan: OVERSCAN,
   });
 
+  // O(1) vote lookup per visible row instead of Array.find on every render.
+  const voteByMessageId = useMemo(() => {
+    const map = new Map<string, Vote>();
+    if (votes) {
+      for (const vote of votes) {
+        map.set(vote.messageId, vote);
+      }
+    }
+    return map;
+  }, [votes]);
+
   return (
     <div
       ref={messagesContainerRef}
@@ -148,15 +159,11 @@ function PureVirtualizedMessages({
               }}
             >
               <PreviewMessage
-                key={`${message.id}-${virtualItem.index}`}
+                key={message.id}
                 chatId={chatId}
                 message={message}
                 isLoading={isAgentRunning}
-                vote={
-                  votes
-                    ? votes.find((vote) => vote.messageId === message.id)
-                    : undefined
-                }
+                vote={voteByMessageId.get(message.id)}
                 sendMessage={sendMessage}
                 setMessages={setMessages}
                 onRefresh={onRefresh}

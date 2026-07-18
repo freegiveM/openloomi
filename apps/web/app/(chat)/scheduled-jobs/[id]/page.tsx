@@ -27,7 +27,7 @@ import { toast } from "@/components/toast";
 import {
   NovelInstructionEditor,
   type NovelInstructionEditorRef,
-} from "@/components/novel-instruction-editor";
+} from "@/components/novel-instruction-editor-dynamic";
 import { MarkdownWithCitations } from "@/components/markdown-with-citations";
 import "@/i18n";
 import { TwoPaneSidebarLayout } from "@/components/layout/two-panel-sidebar-layout";

@@ -2,7 +2,6 @@ import { cookies } from "next/headers";
 import { AppSidebar } from "@/components/app-sidebar";
 import { SidebarInset, SidebarProvider } from "@openloomi/ui";
 import { auth } from "../(auth)/auth";
-import Script from "next/script";
 import CookieConfirm from "@/components/cookie-confirm";
 import "../../i18n";
 import { SessionProvider } from "next-auth/react";
@@ -30,10 +29,6 @@ export default async function Layout({
 
   return (
     <>
-      <Script
-        src="https://cdn.jsdelivr.net/pyodide/v0.23.4/full/pyodide.js"
-        strategy="afterInteractive"
-      />
       {/** AppSidebar needs session email info and quota usage */}
       <SessionProvider session={session}>
         <SessionAuthChecker />

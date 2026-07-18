@@ -141,6 +141,7 @@ const nextConfig = {
     proxyClientMaxBodySize: "100mb",
     // Optimize bundle size
     optimizePackageImports: [
+      "@openloomi/ui",
       "@radix-ui/react-icons",
       "react-icons",
       "framer-motion",

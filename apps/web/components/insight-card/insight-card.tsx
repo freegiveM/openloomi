@@ -5,7 +5,7 @@
  * Combines sub-components: badges row, title row, keywords, mobile time; uses design tokens (bg-card, border-border, shadow-sm, rounded-lg)
  */
 
-import { useMemo, useCallback } from "react";
+import { useMemo, useCallback, memo } from "react";
 import { useTranslation } from "react-i18next";
 import "../../i18n";
 import { cn } from "@/lib/utils";
@@ -24,7 +24,7 @@ import type { InsightCardProps } from "./insight-card-types";
 const timeFormatCache = new TimeFormatCache();
 const enableAction = false;
 
-export function InsightCard(props: InsightCardProps) {
+function PureInsightCard(props: InsightCardProps) {
   const {
     id,
     title,
@@ -115,7 +115,14 @@ export function InsightCard(props: InsightCardProps) {
       onClick={handleCardClick}
       role="button"
       data-insight-id={id}
-      style={{ overflow: "hidden" }}
+      style={{
+        // Skip rendering work for off-screen rows in long insight lists
+        // without affecting layout. contain-intrinsic-size gives the
+        // scroller a placeholder so scroll bars stay accurate.
+        contentVisibility: "auto",
+        containIntrinsicSize: "auto 96px",
+        overflow: "hidden",
+      }}
     >
       <div className="px-2 py-3 w-full">
         <div className="space-y-2">
@@ -248,3 +255,6 @@ export function InsightCard(props: InsightCardProps) {
     </div>
   );
 }
+
+export const InsightCard = memo(PureInsightCard);
+PureInsightCard.displayName = "InsightCard";

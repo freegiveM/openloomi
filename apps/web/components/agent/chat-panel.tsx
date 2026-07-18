@@ -245,7 +245,9 @@ export function AgentChatPanel({
       }, 3000);
     };
 
-    scrollContainer.addEventListener("scroll", handleScroll);
+    scrollContainer.addEventListener("scroll", handleScroll, {
+      passive: true,
+    });
     // Initial check
     handleScroll();
     // On init, show button based on scroll state (show immediately if already scrolled)

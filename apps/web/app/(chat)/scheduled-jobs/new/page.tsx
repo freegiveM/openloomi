@@ -10,7 +10,7 @@ import { toast } from "@/components/toast";
 import {
   NovelInstructionEditor,
   type NovelInstructionEditorRef,
-} from "@/components/novel-instruction-editor";
+} from "@/components/novel-instruction-editor-dynamic";
 import "@/i18n";
 import { TwoPaneSidebarLayout } from "@/components/layout/two-panel-sidebar-layout";
 import { DatePicker } from "@openloomi/ui";

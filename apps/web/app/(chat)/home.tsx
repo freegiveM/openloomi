@@ -36,10 +36,33 @@ import { NewInsightsSidePanel } from "@/components/agent/new-insights-side-panel
 import { useNewInsightsContext } from "@/components/insights-new-context";
 import type { ChatHistoryResponse } from "@/lib/ai/chat/api";
 import { mutate } from "swr";
+import useSWRInfinite from "swr/infinite";
 import { AddPlatformDialog } from "@/components/add-platform-dialog";
 import { useIntegrations } from "@/hooks/use-integrations";
 import { PanelSkeleton, ChatSkeleton } from "@/components/agent/panel-skeleton";
 import { RemixIcon } from "@/components/remix-icon";
+
+const HISTORY_PAGE_SIZE = 20;
+
+/**
+ * Keyed page fetcher for the chat history used by the right-side
+ * ChatHistorySidePanel. Uses `starting_after` for forward pagination
+ * (newest page first), matching the underlying `/api/history` route.
+ */
+function getHomeHistoryKey(
+  pageIndex: number,
+  previousPageData: ChatHistoryResponse | null,
+) {
+  if (previousPageData && previousPageData.hasMore === false) {
+    return null;
+  }
+  if (pageIndex === 0) {
+    return `/api/history?limit=${HISTORY_PAGE_SIZE}`;
+  }
+  const last = previousPageData?.chats?.at(-1);
+  if (!last) return null;
+  return `/api/history?limit=${HISTORY_PAGE_SIZE}&starting_after=${last.id}`;
+}
 
 // Lazy load motion components to reduce bundle size
 const MotionSection = dynamic(
@@ -199,74 +222,35 @@ export function Home() {
     return localActiveChatId;
   }, [page, urlChatId, localActiveChatId]);
 
-  // Data for Chat page right sidebar history (independent of Header, avoid dependency on internal implementation)
-  // Pagination state
-  const [chatsList, setChatsList] = useState<ChatHistoryResponse["chats"]>([]);
-  const [startingAfter, setStartingAfter] = useState<string | null>(null);
-  const [hasMore, setHasMore] = useState(true);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const isFirstLoadRef = useRef(true);
+  // Data for Chat page right sidebar history (independent of Header, avoid
+  // dependency on internal implementation). SWR Infinite handles dedup,
+  // abort-on-unmount, and shares the cache with the Header's `/api/history`
+  // key so the two views stay in sync.
+  const {
+    data: historyPages,
+    size: historySize,
+    setSize: setHistorySize,
+    isValidating: isHistoryValidating,
+    mutate: mutateHistoryPages,
+  } = useSWRInfinite<ChatHistoryResponse>(
+    (pageIndex, previousPageData) =>
+      page === "chat" ? getHomeHistoryKey(pageIndex, previousPageData) : null,
+    fetcher,
+    { revalidateFirstPage: false, parallel: false },
+  );
 
-  // Build API URL
-  const historyApiUrl = useMemo(() => {
-    if (page !== "chat") return null;
-    const url = new URL("/api/history", window.location.origin);
-    url.searchParams.set("limit", "20");
-    if (startingAfter) {
-      url.searchParams.set("starting_after", startingAfter);
-    }
-    return url.toString();
-  }, [page, startingAfter]);
-
-  // Use useEffect + fetch instead of useSWR, avoid data not updating due to onSuccess callback timing issue
-  useEffect(() => {
-    if (!historyApiUrl) return;
-
-    const abortController = new AbortController();
-    const isLoadMore = !isFirstLoadRef.current;
-    const url = historyApiUrl;
-
-    async function fetchHistory() {
-      try {
-        const data: ChatHistoryResponse = await fetcher(url);
-
-        // Check if request was aborted
-        if (abortController.signal.aborted) return;
-
-        if (isLoadMore) {
-          setChatsList((prev) => [...prev, ...data.chats]);
-        } else {
-          setChatsList(data.chats);
-          isFirstLoadRef.current = false;
-        }
-        setHasMore(data.hasMore);
-        setIsLoadingMore(false);
-      } catch (error) {
-        // Ignore abort errors (component unmounted)
-        if (error instanceof Error && error.name === "AbortError") {
-          return;
-        }
-        console.error("Error fetching chat history:", error);
-        setIsLoadingMore(false);
-      }
-    }
-
-    fetchHistory();
-
-    return () => {
-      abortController.abort();
-    };
-  }, [historyApiUrl]);
+  const chatsList = useMemo<ChatHistoryResponse["chats"]>(
+    () => historyPages?.flatMap((p) => p.chats) ?? [],
+    [historyPages],
+  );
+  const hasMore = historyPages?.at(-1)?.hasMore ?? true;
+  const isLoadingMore = isHistoryValidating && historySize > 1;
 
   // Load more
   const loadMoreChats = useCallback(() => {
-    if (!hasMore || isLoadingMore || chatsList.length === 0) return;
-    const lastChat = chatsList[chatsList.length - 1];
-    if (lastChat) {
-      setIsLoadingMore(true);
-      setStartingAfter(lastChat.id);
-    }
-  }, [hasMore, isLoadingMore, chatsList]);
+    if (!hasMore || isLoadingMore) return;
+    setHistorySize((s) => s + 1);
+  }, [hasMore, isLoadingMore, setHistorySize]);
 
   const sortedChatsForChatPage = useMemo(() => {
     if (!chatsList.length) return [];
@@ -578,8 +562,16 @@ export function Home() {
         credentials: "include",
       });
       if (!res.ok) return;
-      setChatsList((prev) => prev.filter((c) => c.id !== chatId));
-      // Refresh history data in ChatHeader
+      // Remove from the SWR cache so the side panel updates immediately,
+      // then revalidate the matching key to keep the header in sync.
+      mutateHistoryPages(
+        (pages) =>
+          pages?.map((page) => ({
+            ...page,
+            chats: page.chats.filter((c) => c.id !== chatId),
+          })) ?? pages,
+        { revalidate: false },
+      );
       mutate(
         (key) => typeof key === "string" && key.startsWith("/api/history"),
       );
@@ -587,7 +579,7 @@ export function Home() {
         handleChatIdChange(null);
       }
     },
-    [effectiveChatId, handleChatIdChange],
+    [effectiveChatId, handleChatIdChange, mutateHistoryPages],
   );
 
   const handleOpenRelatedInsight = useCallback(
@@ -617,7 +609,7 @@ export function Home() {
       return memoizedCategory || t("nav.inbox", "Insight Box");
     }
     return t("brief.title", "Daily Focus");
-  }, [mobileActivePanel, isInboxPage, memoizedCategory, t]);
+  }, [isInboxPage, memoizedCategory, t]);
 
   /** Utility page title mapping (single source of truth: only maintain here, PageSectionHeader reuses) */
   function getUtilityPageTitle(pageParam: string | null): string {
