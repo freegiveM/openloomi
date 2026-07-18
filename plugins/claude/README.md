@@ -111,6 +111,26 @@ A successful run prints `{setup: "ready", steps: [...]}` — you're done.
 
 ---
 
+## End-to-end user flow
+
+> **Want to see what this looks like in motion?** Read the dedicated
+> [Tour guide →](./WALKTHROUGH.md) — from "ask Claude Code to install
+> the plugin" through "custom Loop type fires on the next decision".
+
+The TL;DR of the full path: **install the plugin → land in a ready Claude
+Code session → see the Loomi Pet pop on the desktop (fox theme) → flip the
+theme to capybara via the right-click menu → call `/openloomi:status` for
+the canonical JSON → opt into the Pet-mirror + Stop-archive hooks via
+`/openloomi:hooks` → connect external apps via `/openloomi:connect` → and
+finally watch OpenLoomi's Loop surface decision cards in the desktop app**,
+all driven by slash commands you typed in Claude Code.
+
+The screenshots in the Tour guide are the canonical reference for the
+visual state of the system at every step. The remainder of this README is
+for command behavior, configuration, and contributor reference.
+
+---
+
 ## Daily use
 
 | Command                 | What it does                                                                                       |
