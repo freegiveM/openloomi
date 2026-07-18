@@ -13,7 +13,7 @@
 
 export type DecisionType =
   | "rsvp"
-  | "draft_reply"
+  | "email_reply"
   | "review_pr"
   | "todo"
   | "im_reply"
@@ -505,7 +505,7 @@ export interface ConnectorEntry {
   loopMonitored?: boolean;
   /**
    * #361 — decision-capable flag. `true` means this connector's payload
-   * has a supported classifier mapping (e.g. gmail → rsvp/draft_reply,
+   * has a supported classifier mapping (e.g. gmail → rsvp/email_reply,
    * google_calendar → rsvp, github → review_pr). `false` means signals
    * from this source are intentionally dropped with an explicit
    * "unsupported" reason — see `unsupportedSignals` on the tick result.
@@ -655,7 +655,7 @@ export type WrapNarrative = WrapNarrativeReady | WrapNarrativeGenerating | null;
 //
 // `id` is the originating `LoopDecision.id`. Two muted rows can have the same
 // `kind`+`title` (e.g. two `wrap` decisions on the same date, or multiple
-// `draft_reply` rows for the same thread), so we need a stable identity beyond
+// `email_reply` rows for the same thread), so we need a stable identity beyond
 // position for React keys and any future "un-mute from the UI" flow.
 
 export interface BriefMuted {

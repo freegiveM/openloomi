@@ -54,7 +54,7 @@ const MOCK_ITEMS: BriefItem[] = [
     reason: "small docs fix, ship-it candidate",
   },
   {
-    kind: "draft_reply",
+    kind: "email_reply",
     id: "dec_reply_sam_launch",
     title: "Reply · Sam re: launch timing",
     action: { kind: "email_reply", params: {} },

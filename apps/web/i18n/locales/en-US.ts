@@ -145,7 +145,7 @@ const en = {
       rsvp: "This calendar invite needs your call.",
     },
     // #363 — RSVP-specific decision card layers (issue #363). Kept under
-    // loop.rsvp.* so the same architecture can be adopted by draft_reply /
+    // loop.rsvp.* so the same architecture can be adopted by email_reply /
     // review_pr etc. without a namespace collision.
     rsvp: {
       invitationLabel: "Calendar invitation",

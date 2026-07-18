@@ -147,7 +147,7 @@ interface DecisionCardProps {
 
 const TYPE_ICON: Record<string, string> = {
   rsvp: "ri-calendar-check-line",
-  draft_reply: "ri-mail-send-line",
+  email_reply: "ri-mail-send-line",
   review_pr: "ri-git-pull-request-line",
   todo: "ri-checkbox-circle-line",
   im_reply: "ri-chat-ai-line",
@@ -164,7 +164,7 @@ const TYPE_ICON: Record<string, string> = {
 
 const TYPE_LABEL: Record<string, string> = {
   rsvp: "RSVP",
-  draft_reply: "Draft reply",
+  email_reply: "Draft reply",
   review_pr: "Review PR",
   todo: "Todo",
   im_reply: "IM reply",
@@ -620,7 +620,7 @@ export function DecisionCard({
     : null;
   const dialogue =
     decision.dialogue ??
-    (decision.type === "draft_reply"
+    (decision.type === "email_reply"
       ? t(
           "loop.dialogue.draftReply",
           "This email looks like it's waiting on you — should I draft a reply?",

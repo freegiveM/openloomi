@@ -430,7 +430,7 @@ describe("POST /api/loop/decision/[id] — execution outcome (#358)", () => {
 
   test("rsvp_attend on a non-RSVP decision refuses with a type error", async () => {
     const dec = decisions.add({
-      type: "draft_reply",
+      type: "email_reply",
       title: "Draft a reply",
       action: { kind: "email_reply", params: { to: "sam@example.com" } },
     });

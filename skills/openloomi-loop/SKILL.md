@@ -177,7 +177,7 @@ curl -sS -X PUT "$BASE/api/loop/types" \
 ```
 
 - `id` — snake_case, 2-41 chars, must NOT collide with a built-in
-  `DecisionType` (`rsvp`, `draft_reply`, `review_pr`, `todo`,
+  `DecisionType` (`rsvp`, `email_reply`, `review_pr`, `todo`,
   `im_reply`, `deadline_reminder`, `release_plan`,
   `requirement_synthesis`, `linear_review`, `contact_update`,
   `doc_update`, `brief`, `wrap`, `quiet_digest`, `noop`,
@@ -249,7 +249,7 @@ curl -sS -X DELETE "$BASE/api/loop/channels/stripe_charges" -H "Authorization: B
 ### Register a deterministic classifier rule
 
 Sometimes the LLM's classification drifts — it might call a same-day
-birthday signal `draft_reply` when you really want it as a
+birthday signal `email_reply` when you really want it as a
 `birthday_wish` card. **Classifier rules** let you pin routing
 deterministically. Each rule is a small safe AST: a `when` array of
 field predicates (no eval, no JS — just a closed op set), plus a

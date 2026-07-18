@@ -86,7 +86,7 @@ describe("validateCustomType", () => {
   });
 
   it("rejects ids that collide with built-in DecisionType", () => {
-    for (const id of ["rsvp", "draft_reply", "quiet_digest", "unknown"]) {
+    for (const id of ["rsvp", "email_reply", "quiet_digest", "unknown"]) {
       const r = validateCustomType({ ...valid(id), id });
       expect(r.ok).toBe(false);
       if (!r.ok) {
@@ -209,7 +209,7 @@ describe("BUILTIN_DECISION_TYPES", () => {
     expect(BUILTIN_DECISION_TYPES.size).toBe(17);
     for (const t of [
       "rsvp",
-      "draft_reply",
+      "email_reply",
       "review_pr",
       "todo",
       "im_reply",

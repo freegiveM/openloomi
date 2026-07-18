@@ -111,7 +111,7 @@ const PRIORITY: Record<string, number> = {
   rsvp: 1,
   deadline_reminder: 1,
   review_pr: 2,
-  draft_reply: 3,
+  email_reply: 3,
   im_reply: 4,
   todo: 5,
   linear_review: 6,

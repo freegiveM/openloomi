@@ -97,7 +97,7 @@ describe("computeWrapDialogue — scope-aware wording (#362)", () => {
       {
         id: "d1",
         title: "Reply to Alice",
-        type: "draft_reply",
+        type: "email_reply",
         completedAt: "2026-07-16T20:00:00Z",
         resultKind: "completed",
       },

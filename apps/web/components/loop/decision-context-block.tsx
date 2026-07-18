@@ -8,7 +8,7 @@
  * so this component stays a thin presentation layer.
  *
  * The block is type-dispatched: today only RSVP has a registered variant,
- * but the shape is intentionally open so `draft_reply` / `review_pr` /
+ * but the shape is intentionally open so `email_reply` / `review_pr` /
  * `deadline_reminder` can adopt the same architecture without changing
  * this file's contract. Unknown types render nothing — the parent card
  * keeps its existing layout.

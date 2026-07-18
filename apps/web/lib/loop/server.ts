@@ -135,7 +135,7 @@ function defaultDialogue(dec: LoopDecision): string {
       // graph into the Next.js server runtime; the web-side `loop.rsvp.*`
       // keys cover every locale the user can pick.
       return serverI18n("loop.dialogue.rsvp");
-    case "draft_reply":
+    case "email_reply":
       return serverI18n("loop.dialogue.draftReply");
     case "review_pr":
       return "A PR tagged you as reviewer — take a look?";

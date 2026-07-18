@@ -122,7 +122,7 @@ export function deriveReadiness(decision: ReadableDecision): DecisionReadiness {
       if (missing.length > 0) return { status: "needs_context", missing };
       return { status: "ready" };
     }
-    case "draft_reply": {
+    case "email_reply": {
       if (!nonEmptyString(p.to)) {
         return { status: "needs_context", missing: ["recipient"] };
       }

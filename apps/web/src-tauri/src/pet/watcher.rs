@@ -1241,7 +1241,7 @@ mod tests {
             pending: (0..pending)
                 .map(|i| DecItem {
                     id: Some(format!("dec_test_pending_{i}")),
-                    r#type: Some("draft_reply".into()),
+                    r#type: Some("email_reply".into()),
                     title: Some(format!("pending {i}")),
                     dialogue: None,
                     confidence: Some(0.8),
@@ -1255,7 +1255,7 @@ mod tests {
             done: (0..done)
                 .map(|i| DecItem {
                     id: Some(format!("dec_test_done_{i}")),
-                    r#type: Some("draft_reply".into()),
+                    r#type: Some("email_reply".into()),
                     title: Some(format!("done {i}")),
                     dialogue: None,
                     confidence: Some(0.8),
@@ -1269,7 +1269,7 @@ mod tests {
             dismissed: (0..dismissed)
                 .map(|i| DecItem {
                     id: Some(format!("dec_test_dismissed_{i}")),
-                    r#type: Some("draft_reply".into()),
+                    r#type: Some("email_reply".into()),
                     title: Some(format!("dismissed {i}")),
                     dialogue: None,
                     confidence: Some(0.8),
@@ -1337,7 +1337,7 @@ mod tests {
             done: (0..done)
                 .map(|i| DecItem {
                     id: Some(format!("dec_test_done_{i}")),
-                    r#type: Some("draft_reply".into()),
+                    r#type: Some("email_reply".into()),
                     title: Some(format!("done {i}")),
                     dialogue: None,
                     confidence: Some(0.8),
@@ -1438,7 +1438,7 @@ mod tests {
     fn dec_with_id(id: &str) -> DecItem {
         DecItem {
             id: Some(id.into()),
-            r#type: Some("draft_reply".into()),
+            r#type: Some("email_reply".into()),
             title: Some(format!("title {id}")),
             dialogue: Some("hello".into()),
             confidence: Some(0.8),

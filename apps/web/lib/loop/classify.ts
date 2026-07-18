@@ -349,7 +349,7 @@ export function classify(
     };
   }
 
-  // ---- deadline_reminder rule (co-equal with rsvp / draft_reply / etc.) ----
+  // ---- deadline_reminder rule (co-equal with rsvp / email_reply / etc.) ----
   const deadlineHint = p._deadlineHint as
     | {
         deadlineAt: string;
@@ -379,8 +379,8 @@ export function classify(
     };
     const source = sourceMap[signal.type];
     if (source) {
-      // Mutual exclusion with draft_reply: when the signal is an email, let
-      // the email branch below emit draft_reply (draft_reply wins when both
+      // Mutual exclusion with email_reply: when the signal is an email, let
+      // the email branch below emit email_reply (email_reply wins when both
       // rules match — replying is more actionable than a separate reminder).
       // For calendar_event / obsidian_note_changed / insight there is no
       // competing branch, so the deadline_reminder fires here.
@@ -436,7 +436,7 @@ export function classify(
     }
     if (/(rsvp|invit|meeting|join.*call|calendar)/.test(text)) {
       return {
-        type: "draft_reply",
+        type: "email_reply",
         title: `Reply: ${String(p.subject ?? "(no subject)")}`,
         action: {
           kind: "email_reply",
@@ -454,7 +454,7 @@ export function classify(
       /(please|could you|can you|need|asap|urgent|deadline|review)/.test(text)
     ) {
       return {
-        type: "draft_reply",
+        type: "email_reply",
         title: `Reply: ${String(p.subject ?? "(no subject)")}`,
         action: {
           kind: "email_reply",

@@ -20,7 +20,7 @@ Loop is not a scheduled task, not an email reminder, and not a cron script. It's
 
 - 🔎 **See** — Every 10 minutes, fetch signals related to you from email / calendar / GitHub / Slack / Linear
 - 🧠 **Understand** — Enrich each signal with OpenLoomi memory (who's the sender, what project is this, what did we last discuss)
-- 🪪 **Judge** — Assign a typed action (`draft_reply`, `rsvp`, `review_pr`, `im_reply`, `todo`) and a confidence score (0.60 – 0.85)
+- 🪪 **Judge** — Assign a typed action (`email_reply`, `rsvp`, `review_pr`, `im_reply`, `todo`) and a confidence score (0.60 – 0.85)
 - 🃏 **Present** — Turn each one into a decision card, queue it for you
 - 🛡️ **Protect** — Dry-run always leads; **execution always waits for your Approve**
 
@@ -37,13 +37,13 @@ The default is one tick every 10 minutes — quiet and out of your way. Bump it 
 Loop sees the email:
 
 1. Pulls OpenLoomi memory → Sarah is a product partner you've worked with for 2 years, 47 prior interactions
-2. Detects "tweaked agenda", "move it to" → classifies as `draft_reply`
+2. Detects "tweaked agenda", "move it to" → classifies as `email_reply`
 3. Confidence **0.85** (known contact)
 4. Generates a decision card in the queue:
 
 ```
 ┌────────────────────────────────────────────────────────┐
-│ ✉  draft_reply  ·  conf 0.85                dec_a3f2   │
+│ ✉  email_reply  ·  conf 0.85                dec_a3f2   │
 ├────────────────────────────────────────────────────────┤
 │ 🕐 2 min ago  ·  📧 Sarah Chen <sarah@acme.com>         │
 │ Subject: Q2 review agenda + 1:1 reschedule              │
@@ -144,7 +144,7 @@ If you're new to Loop:
 
 ## Extending Loop: Custom Types & Channels
 
-Out of the box, Loop ships with five built-in sources (Email / Calendar / GitHub / Slack / Linear) and a closed set of typed actions (`draft_reply`, `rsvp`, `review_pr`, `im_reply`, `todo`, …). For most users that's enough — but if you live inside other tools (Stripe, Notion, Linear, GitLab, internal CRMs, …) and want Loop to surface decisions from those, you can **register your own types and channels** without touching the source.
+Out of the box, Loop ships with five built-in sources (Email / Calendar / GitHub / Slack / Linear) and a closed set of typed actions (`email_reply`, `rsvp`, `review_pr`, `im_reply`, `todo`, …). For most users that's enough — but if you live inside other tools (Stripe, Notion, Linear, GitLab, internal CRMs, …) and want Loop to surface decisions from those, you can **register your own types and channels** without touching the source.
 
 Loop exposes three extension points, both per-user and persisted in your local OpenLoomi home directory:
 
@@ -223,7 +223,7 @@ curl -sS -X PUT "$BASE/api/loop/channels" \
 
 ### Register a deterministic classifier rule
 
-Sometimes you want **specific signal patterns to always route a certain way** — regardless of how the LLM interprets them. The classic example: a same-day birthday signal should always become a `birthday_wish` card, never a generic `draft_reply`. Classifier rules let you pin that routing deterministically.
+Sometimes you want **specific signal patterns to always route a certain way** — regardless of how the LLM interprets them. The classic example: a same-day birthday signal should always become a `birthday_wish` card, never a generic `email_reply`. Classifier rules let you pin that routing deterministically.
 
 A rule is a tiny safe AST — a `when` array of field predicates (no `eval`, no JS — just a closed op set), plus a `then` block that forces `type` / `actionKind` / a confidence floor.
 
@@ -256,7 +256,7 @@ A rule is enforced **twice** for safety:
 1. **In the prompt** — the tick prompt's §5 classifier list gets a new "User-defined classifier rules (HARD CONSTRAINTS — deterministic overrides)" block so the agent honours the rule on first pass.
 2. **Server-side, after the agentic tick** — `tick.ts::applyClassifierRules` re-evaluates every newly-added decision against the rule list and pins `type` / `actionKind` / `confidence` in `decisions.update()`. This catches cases where the LLM drifted, or where a long prompt truncated the hint.
 
-The end result on a same-day birthday signal — the LLM would have classified this as a generic `draft_reply`; with `force_birthday_today` in place, the card surfaces as your custom type instead:
+The end result on a same-day birthday signal — the LLM would have classified this as a generic `email_reply`; with `force_birthday_today` in place, the card surfaces as your custom type instead:
 
 <p align="center">
   <img
@@ -368,7 +368,7 @@ No. Any outbound action (send email, RSVP, reply on Slack, comment on GitHub) mu
 
 Yes — but **off by default**. In Settings → Loop → Automation Rules, you can configure rules like:
 
-- e.g. for `draft_reply` cards, if confidence ≥ 0.90 AND sender is on the trusted list → auto-send
+- e.g. for `email_reply` cards, if confidence ≥ 0.90 AND sender is on the trusted list → auto-send
 - We recommend only enabling auto-execute for **low-risk actions** (like marking a Linear ticket as done)
 
 ### Will Loop slow down my computer?

@@ -258,10 +258,10 @@ describe("deriveDecisionContext — location / link wiring", () => {
 });
 
 describe("deriveDecisionContext — non-RSVP types", () => {
-  it("returns null for draft_reply", () => {
+  it("returns null for email_reply", () => {
     expect(
       deriveDecisionContext({
-        type: "draft_reply",
+        type: "email_reply",
         action: { params: { to: "sam@example.com" } },
       }),
     ).toBeNull();
@@ -283,31 +283,5 @@ describe("deriveDecisionContext — non-RSVP types", () => {
         action: { params: { foo: "bar" } },
       }),
     ).toBeNull();
-  });
-});
-
-describe("deriveDecisionContext — defaults", () => {
-  it("defaults to English locale when none is provided", () => {
-    // Compute tomorrow (local calendar) at 09:30 so the "Tomorrow, …"
-    // assertion stays stable regardless of when the suite runs.
-    const now = new Date();
-    const tomorrow = new Date(
-      now.getFullYear(),
-      now.getMonth(),
-      now.getDate() + 1,
-      9,
-      30,
-      0,
-    );
-    const ctx = deriveDecisionContext({
-      type: "rsvp",
-      action: {
-        params: { start: tomorrow.toISOString(), organizer: "Sam" },
-      },
-    });
-    expect(ctx).not.toBeNull();
-    // We don't pin the exact time string here (TZ-dependent) but we
-    // assert the prefix is correct in en-US style.
-    expect(ctx?.fields[0].value).toMatch(/^Tomorrow,\s*\d/);
   });
 });

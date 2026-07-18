@@ -468,7 +468,7 @@ const MAX_MUTES = 1000;
  *  not auto-resurface on the next tick. */
 export const MUTABLE_DECISION_TYPES: ReadonlySet<DecisionType> = new Set([
   "rsvp",
-  "draft_reply",
+  "email_reply",
   "im_reply",
   "review_pr",
   "todo",

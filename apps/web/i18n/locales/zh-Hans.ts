@@ -141,7 +141,7 @@ const zh = {
       rsvp: "这封会议邀请需要你拍板。",
     },
     // #363 — RSVP-specific decision card layers (issue #363). 命名空间保留
-    // 在 loop.rsvp.*，方便后续 draft_reply / review_pr 等复用同套结构。
+    // 在 loop.rsvp.*，方便后续 email_reply / review_pr 等复用同套结构。
     rsvp: {
       invitationLabel: "会议邀请",
       decidePrompt: "你会参加这次会议吗?",

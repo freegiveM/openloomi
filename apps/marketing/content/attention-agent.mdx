@@ -96,7 +96,7 @@ Loomi is the messenger for [Loop](/docs/loop), so anything Loop can decide, Loom
 
 When you register a custom decision type, three things change at the next tick:
 
-1. **The classifier sees it.** Loop's prompt now lists your custom ids (e.g. `birthday_wish`) alongside the built-ins, with the `actionKind` each one maps to. The agent can therefore pick them the same way it picks `draft_reply` or `im_reply`.
+1. **The classifier sees it.** Loop's prompt now lists your custom ids (e.g. `birthday_wish`) alongside the built-ins, with the `actionKind` each one maps to. The agent can therefore pick them the same way it picks `email_reply` or `im_reply`.
 2. **The card UI renders it.** Decision cards in the main OpenLoomi window, in the pet card, and in the bubble that Loomi shows use the `label` and `icon` you provided — so a `birthday_wish` card arrives with `ri-cake-2-line` and the text **"Birthday wish"** instead of falling back to a generic icon.
 3. **The bubble tone adapts.** When Loomi shows a one-liner summary for that card, it pulls from your custom `label` rather than a hard-coded string. The same applies to the chip Loomi tints on the card list.
 
@@ -112,19 +112,19 @@ Concretely, the next tick will:
 - Stamp every record with the channel's `signalType` (e.g. `stripe_charge`) so the classifier and the audit log know which source produced it.
 - Inject a "User-defined channels" block into the tick prompt describing the `payloadShape` — so the agent knows what `stripe_charge` records look like and can prioritise them correctly.
 
-From Loomi's perspective, a `stripe_charge` decision card and a `draft_reply` decision card are the same kind of thing — both become a bubble with the same gestures, the same Approve / Edit Draft / Later / Skip actions, and the same audit-trail treatment.
+From Loomi's perspective, a `stripe_charge` decision card and a `email_reply` decision card are the same kind of thing — both become a bubble with the same gestures, the same Approve / Edit Draft / Later / Skip actions, and the same audit-trail treatment.
 
 > 💡 **Loomi stays out of the extension API.** The `openloomi-loop` skill talks to Loop's local JSON registries (`~/.openloomi/loop/custom-types.json` and `custom-channels.json`); Loomi just observes. You never need to teach the pet anything — it inherits.
 
 ### How classifier rules pin what Loomi surfaces
 
-Beyond teaching Loop **new kinds** of cards and **new sources** of signals, you can also pin the routing for specific signal patterns — so the LLM can't drift and accidentally surface a generic `draft_reply` card when you really wanted a `birthday_wish` card. That's what [classifier rules](/docs/loop#register-a-deterministic-classifier-rule) do. A rule is a tiny safe AST of field predicates (`signal.type eq "contact_birthday"` and `signal.payload.daysUntilNext eq 0`, for example) plus a `then` block that forces `type` / `actionKind` / a confidence floor.
+Beyond teaching Loop **new kinds** of cards and **new sources** of signals, you can also pin the routing for specific signal patterns — so the LLM can't drift and accidentally surface a generic `email_reply` card when you really wanted a `birthday_wish` card. That's what [classifier rules](/docs/loop#register-a-deterministic-classifier-rule) do. A rule is a tiny safe AST of field predicates (`signal.type eq "contact_birthday"` and `signal.payload.daysUntilNext eq 0`, for example) plus a `then` block that forces `type` / `actionKind` / a confidence floor.
 
 Because the rule is enforced **twice** (in the prompt the agent sees _and_ in a server-side post-processor that rewrites the persisted decision), Loomi ends up bubbling the card you actually wanted. A typical example:
 
 | Without a rule                                                                                         | With a rule                                                                                                                                              |
 | ------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Same-day birthday signal → LLM classifies as `draft_reply` (generic) → Loomi shows an email-reply card | Same signal → rule pins `type=birthday_wish`, `actionKind=email_reply`, `confidence ≥ 0.9` → Loomi shows a `🎂 Birthday wish` card with your custom icon |
+| Same-day birthday signal → LLM classifies as `email_reply` (generic) → Loomi shows an email-reply card | Same signal → rule pins `type=birthday_wish`, `actionKind=email_reply`, `confidence ≥ 0.9` → Loomi shows a `🎂 Birthday wish` card with your custom icon |
 
 A rule with `then.type = "noop"` does the opposite — it **suppresses** the decision entirely so the bubble never appears for that pattern. Rules live in `~/.openloomi/loop/classifier-rules.json`, are registered via the same [`openloomi-loop`](/docs/skills#openloomi-loop) skill (or the `PUT /api/loop/classifier-rules` HTTP endpoint), and apply on the very next tick — no rebuild needed. There's also a `POST /api/loop/classifier-rules/dry-run` endpoint that previews which rules would fire on a given signal, so you can iterate on the AST before going live.
 

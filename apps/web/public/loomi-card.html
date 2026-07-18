@@ -643,7 +643,7 @@
       }
 
       /* ============================================================
-         Inline draft editor (draft_reply)
+         Inline draft editor (email_reply)
          Hidden by default; toggled on by `setEditMode(true)`. Replaces
          the action footer (and the chrome above it) with a Subject
          input + Body textarea + Save / Save & Send / Cancel buttons so
@@ -1305,7 +1305,7 @@
       }
 
       /* ============================================================
-         Layout: DECISION  (Forms 4/5/8 · todo / draft_reply /
+         Layout: DECISION  (Forms 4/5/8 · todo / email_reply /
                                        review_pr / im_reply /
                                        rsvp / release_plan /
                                        deadline_reminder)
@@ -1478,7 +1478,7 @@
       /* ---------- Type-specific body content ----------
          Renders one of three things based on decision.type:
            - deadline_reminder: sender + subject + email snippet + countdown
-           - draft_reply: drafted body preview + thread context
+           - email_reply: drafted body preview + thread context
            - anything else: hidden (falls back to evidence pills)
          Lays out as a stack INSIDE the source-chain area so it never
          pushes the recommendation/footer off the 360×420 frame. When
@@ -2400,7 +2400,7 @@
         <div class="source-chain" id="dec-source-chain"></div>
         <!-- Type-specific body block. Renders one of:
              - deadline_reminder: sender + subject + email snippet + countdown
-             - draft_reply: drafted body preview + thread context
+             - email_reply: drafted body preview + thread context
              - rsvp: event time + organizer + attendee summary
              - review_pr: PR title + repo/diffstat + reviewer status
              - other types: hidden (falls back to evidence pills)
@@ -2432,7 +2432,7 @@
              banner is the primary signal. -->
         <div class="status-banner" id="dec-status"></div>
         <!-- Inline draft editor — hidden by default. Toggled on for
-             draft_reply when the user clicks ↗ Edit. Replaces the
+             email_reply when the user clicks ↗ Edit. Replaces the
              footer (Save & Send / Save / Cancel). The chrome above
              (recommendation / source chain / confidence / dialogue /
              evidence) is hidden by the .card.editing class so the
@@ -2880,7 +2880,7 @@
         // collide on `thinking`. Cleared when the user dismisses the
         // triggering decision, so the card returns to natural routing.
         let devForm = null;
-        // Inline draft-editor state (draft_reply ↗ Edit). `editMode` is
+        // Inline draft-editor state (email_reply ↗ Edit). `editMode` is
         // toggled by setEditMode(); `saving` is true while a PATCH
         // /api/loop/decision/:id is in flight so the editor buttons
         // can't double-fire and the user gets the "Saving…" status
@@ -2899,7 +2899,7 @@
 
         const TYPE_ICONS = {
           rsvp: "◐",
-          draft_reply: "✎",
+          email_reply: "✎",
           review_pr: "◇",
           im_reply: "ri-chat-ai-line",
           deadline_reminder: "◷",
@@ -2910,7 +2910,7 @@
         };
         const TYPE_RECOMMENDATIONS = {
           rsvp: "Send RSVP yes",
-          draft_reply: "Send the drafted reply",
+          email_reply: "Send the drafted reply",
           review_pr: "Post review summary",
           im_reply: "Draft a quick reply",
           deadline_reminder: "Add calendar reminder",
@@ -2928,7 +2928,7 @@
         //
         // Why this exists: the legacy footer showed the same generic
         // Open / Dismiss / Run trio for every decision type, which made
-        // RSVP, draft_reply, and review_pr all look identical even though
+        // RSVP, email_reply, and review_pr all look identical even though
         // they ask for very different user input. Mapping each type to
         // its natural buttons (Yes/No/Maybe, Send/Edit/Discard,
         // Approve/Comment, …) means the user sees the action
@@ -2977,7 +2977,7 @@
               tip: "Confirm attendance — Loomi adds it to your calendar and replies 'yes' to the host",
             },
           ],
-          draft_reply: [
+          email_reply: [
             {
               action: "dismiss",
               label: "Discard",
@@ -3105,7 +3105,7 @@
         ];
         const TYPE_LABELS = {
           rsvp: "RSVP",
-          draft_reply: "DRAFT_REPLY",
+          email_reply: "DRAFT_REPLY",
           review_pr: "REVIEW_PR",
           im_reply: "IM_REPLY",
           deadline_reminder: "DEADLINE",
@@ -4037,7 +4037,7 @@
           const parts = [];
           // Cluster count from the email/Slack thread dedupe. The tick
           // prompt is expected to populate `context.cluster.size` for
-          // deadline_reminder / draft_reply so the user immediately
+          // deadline_reminder / email_reply so the user immediately
           // knows whether the decision represents one event or many.
           const cluster =
             dec && dec.context && dec.context.cluster
@@ -4203,7 +4203,7 @@
             return;
           }
 
-          // ---------- draft_reply ----------
+          // ---------- email_reply ----------
           // Show the drafted reply body so the user sees what would go
           // out before clicking Run. Saves an edit cycle for the
           // common case where the draft is fine.
@@ -4244,7 +4244,7 @@
             return;
           }
 
-          if (t === "draft_reply") {
+          if (t === "email_reply") {
             const draft =
               (dec.context && dec.context.draft && dec.context.draft.body) ||
               (dec.action &&
@@ -4523,7 +4523,7 @@
           }
         }
 
-        // ---------- Inline draft editor (draft_reply) ----------
+        // ---------- Inline draft editor (email_reply) ----------
         // Toggles the subject/body form on the decision layout. When
         // `on` is true:
         //   - re-fetches the decision from /api/loop/decision/:id so
@@ -5074,7 +5074,7 @@
             conflicts = 0,
             prs = 0;
           for (const d of pendingList) {
-            if (d.source === "gmail" && d.type === "draft_reply") unread++;
+            if (d.source === "gmail" && d.type === "email_reply") unread++;
             if (d.type === "im_reply") unread++;
             if (d.source === "github" && d.type === "review_pr") prs++;
           }
@@ -5574,7 +5574,7 @@
         //
         //   The native-agent endpoint is built for long-running SSE:
         //   maxDuration=800s and 30s heartbeats keep the connection
-        //   alive across multi-minute tool calls (a draft_reply that
+        //   alive across multi-minute tool calls (a email_reply that
         //   triggers a Gmail send, an rsvp that walks a calendar event,
         //   etc.). Direct POST to the loop decision route can hit a
         //   `TypeError: Load failed` once the underlying `runDecision`
@@ -5629,7 +5629,7 @@
           } else if (action === "run") {
             const toolHints = {
               rsvp: "Send the RSVP — call the googlecalendar composio tool with `responseStatus: <sub_action.response>` (accepted / declined / tentative) on the event from `action.params.eventId`. Skill: `Skill composio execute GOOGLECALENDAR_EVENTS_MODIFY on googlecalendar with {...}`. CLI: `composio googlecalendar events_modify --json {...}`.",
-              draft_reply:
+              email_reply:
                 "Send the drafted email — call the gmail composio tool with the subject/body from `context.draft` if present, otherwise draft from `decision.title`. Skill: `Skill composio execute GMAIL_SEND_MESSAGE on gmail with {...}`. CLI: `composio gmail send_message --json {...}`.",
               review_pr:
                 "Post a PR review — call the github composio tool with the verdict from `sub_action.verdict` (approve / comment / request_changes) on PR `params.number` in `params.repo`. Skill: `Skill composio execute GITHUB_CREATE_REVIEW on github with {...}`. CLI: `composio github create_review --json {...}`.",
@@ -5879,7 +5879,7 @@
             return;
           }
           if (action === "edit") {
-            // Inline editor for draft_reply. Opens the subject/body form
+            // Inline editor for email_reply. Opens the subject/body form
             // (replaces the footer) so the user can tweak the draft
             // before clicking ▶ Send. Blocked while a scheduled action
             // is pending — editing the draft mid-flight would race with
@@ -5889,7 +5889,7 @@
               showToast("Cancel the scheduled action first to edit.", true);
               return;
             }
-            // draft_reply → subject+body editor; im_reply → body-only.
+            // email_reply → subject+body editor; im_reply → body-only.
             if (decision.type === "im_reply") setEditModeIm(true);
             else setEditMode(true);
             return;

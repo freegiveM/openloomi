@@ -51,7 +51,7 @@ export type BuiltInActionKind = (typeof BUILTIN_ACTION_KINDS)[number];
  */
 export const BUILTIN_DECISION_TYPES: ReadonlySet<string> = new Set([
   "rsvp",
-  "draft_reply",
+  "email_reply",
   "review_pr",
   "todo",
   "im_reply",

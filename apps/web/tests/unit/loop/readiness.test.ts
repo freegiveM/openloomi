@@ -108,7 +108,7 @@ describe("deriveReadiness — rsvp", () => {
 });
 
 // ---------------------------------------------------------------------------
-// deriveReadiness — deadline_reminder / draft_reply / unknown
+// deriveReadiness — deadline_reminder / email_reply / unknown
 // ---------------------------------------------------------------------------
 
 describe("deriveReadiness — deadline_reminder", () => {
@@ -137,10 +137,10 @@ describe("deriveReadiness — deadline_reminder", () => {
   });
 });
 
-describe("deriveReadiness — draft_reply", () => {
+describe("deriveReadiness — email_reply", () => {
   it("flags missing recipient", () => {
     const r = deriveReadiness({
-      type: "draft_reply",
+      type: "email_reply",
       action: { params: { subject: "hi" } },
     });
     expect(r.status).toBe("needs_context");
@@ -149,7 +149,7 @@ describe("deriveReadiness — draft_reply", () => {
 
   it("is ready with a recipient", () => {
     const r = deriveReadiness({
-      type: "draft_reply",
+      type: "email_reply",
       action: { params: { to: "sam@example.com" } },
     });
     expect(r.status).toBe("ready");
@@ -374,7 +374,7 @@ describe("derivePriority — never derived from confidence", () => {
 
   it("ready + no urgency signal → P2", () => {
     const p = derivePriority({
-      type: "draft_reply",
+      type: "email_reply",
       action: { params: { to: "sam@example.com" } },
     });
     expect(p).toBe("P2");
@@ -430,7 +430,7 @@ describe("readinessState", () => {
   it("upgrades ready+external+unknown counterparty to confirm", () => {
     expect(
       readinessState({
-        type: "draft_reply",
+        type: "email_reply",
         action: {
           kind: "email_reply",
           params: { to: "stranger@example.com" },
@@ -443,7 +443,7 @@ describe("readinessState", () => {
   it("keeps ready when the counterparty is known", () => {
     expect(
       readinessState({
-        type: "draft_reply",
+        type: "email_reply",
         action: {
           kind: "email_reply",
           params: { to: "sam@example.com" },

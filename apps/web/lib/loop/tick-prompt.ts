@@ -401,7 +401,7 @@ ${userChannels
   If no deadline is found, omit \`_deadlineHint\` entirely. Do not invent deadlines
   from vague phrases like "soon" or "next week" — confidence must be ≥ 0.7 to
   emit the hint. The hint is read by §5 and the TS-side classifier rule in \`classify.ts\`
-  (the \`deadline_reminder\` branch — co-equal with rsvp / draft_reply / review_pr /
+  (the \`deadline_reminder\` branch — co-equal with rsvp / email_reply / review_pr /
   im_reply / todo / obsidian_note_changed).
 
 If you don't know a tool's schema, call \`Skill composio execute GMAIL_GET_SCHEMA\` (or the equivalent \`<TOOL>_GET_SCHEMA\` action) to inspect it before invoking the tool.
@@ -519,7 +519,7 @@ lib-level classifier exactly):
     - sender matches /^(no-?reply|noreply|donotreply|notifications?@|mailer-daemon@|postmaster@)/i
       (extract the bare address from a "Display Name <addr@host>" From header first — GitHub
        notifications arrive as "org/repo <notifications@github.com>". This sender/origin evidence
-       ALWAYS wins over subject words: an automated sender NEVER produces draft_reply, even when the
+       ALWAYS wins over subject words: an automated sender NEVER produces email_reply, even when the
        subject contains RSVP / invite / review / request, and such senders are NOT known contacts —
        do not let memory/known-contact signals raise their actionability. #367)
     - gmail label in [Promotions, Social, Forums, Updates, Spam]
@@ -541,8 +541,8 @@ lib-level classifier exactly):
     The current user's email is available via \`openloomi-memory list-entities --type=person\` filtered to the \`self\` flag, or the email used by the connected Google Calendar account — look it up once at the start of §5 and reuse.
     - email (apply the Hard skip sender check FIRST — an automated/notification sender drops the
       signal before either rule below can match):
-        - with /rsvp|invit|meeting|join.*call|calendar/i in subj      -> draft_reply (email_reply)
-        - with /please|could you|can you|need|asap|urgent/i           -> draft_reply (email_reply)
+        - with /rsvp|invit|meeting|join.*call|calendar/i in subj      -> email_reply (email_reply)
+        - with /please|could you|can you|need|asap|urgent/i           -> email_reply (email_reply)
     - github_pr where state == "open" AND (user_is_reviewer OR requested_reviewers is empty)
                                                                       -> review_pr   (github_review)
     - github_issue open with assignee_login                           -> todo        (todo)
@@ -561,15 +561,15 @@ lib-level classifier exactly):
              comment / anything lacking a concrete actionable subject): DROP the
              signal. Do NOT emit an \`unknown\` action — the aggregator turns all
              remaining passive notifications into the single digest.
-    - slack_message with mentions_me                                  -> draft_reply (im_reply, channel="slack")
-    - <im>_message with addressed=true                                -> draft_reply (im_reply)
+    - slack_message with mentions_me                                  -> email_reply (im_reply, channel="slack")
+    - <im>_message with addressed=true                                -> email_reply (im_reply)
       (telegram | feishu | lark | weixin | qq | dingtalk — carries channel, chat_id, user)
     - signal with _deadlineHint.confidence ≥ 0.7                     -> deadline_reminder (deadline_notify)
       (skip when the same signal also matches the email /rsvp|invit|.../ or
        /please|could you|can you|need|asap|urgent|deadline|review/ rule — those
-       produce draft_reply instead; replying is more actionable than a separate
+       produce email_reply instead; replying is more actionable than a separate
        reminder, and a calendar event will be created when the user clicks Run
-       on the draft_reply decision.)
+       on the email_reply decision.)
     - obsidian_note_changed in projects/ or plans/                    -> release_plan (release_plan)
     - obsidian_note_changed in people/                                -> todo          (contact_update)
     - obsidian_note_changed in customers/                             -> requirement_synthesis (requirement_synthesis)
@@ -585,7 +585,7 @@ where <json> is (FIELD PLACEMENT IS STRICT — see warning below):
 \`\`\`json
 {
   "signal_id": "<sig id>",
-  "type": "<rsvp|draft_reply|review_pr|todo|...>",
+  "type": "<rsvp|email_reply|review_pr|todo|...>",
   "title": "<one-line summary>",
   "action": { "kind": "<typed>", "params": { ... } },
   "context": {

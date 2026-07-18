@@ -15,7 +15,7 @@
  *   - the field shape is intentionally flat: `icon` / `label` / `value` /
  *     optional `href`. Translation happens in the renderer, not here.
  *
- * Follow-up PRs can add a `case "draft_reply"` / `case "review_pr"` branch
+ * Follow-up PRs can add a `case "email_reply"` / `case "review_pr"` branch
  * without touching the renderer contract.
  */
 
@@ -310,7 +310,7 @@ export function deriveDecisionContext(
     case "rsvp":
       return deriveRsvpContext(decision, opts);
     // Other types fall through and return null until a follow-up PR adds
-    // a builder (draft_reply / review_pr / deadline_reminder / …). The
+    // a builder (email_reply / review_pr / deadline_reminder / …). The
     // architecture is type-extensible on purpose.
     default:
       return null;

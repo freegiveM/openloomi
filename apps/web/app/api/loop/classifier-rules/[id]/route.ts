@@ -2,7 +2,7 @@
  * DELETE /api/loop/classifier-rules/[id]
  *   Remove a user-defined classifier rule by id. Returns 404 if the
  *   rule was never registered (or was already removed). Built-in ids
- *   (rsvp / draft_reply / …) are not reachable here because the
+ *   (rsvp / email_reply / …) are not reachable here because the
  *   validator already rejects them on upsert.
  */
 

@@ -365,11 +365,11 @@ describe("classify — calendar_event gates", () => {
 /**
  * Regression coverage for issue #367: GitHub (and other automated)
  * notification emails whose subject happens to contain RSVP-related
- * words were misclassified as sendable `draft_reply` decisions.
+ * words were misclassified as sendable `email_reply` decisions.
  *
  * The invariant: sender/origin evidence wins over subject-word matches.
  * `classify()` must drop automated/notification senders BEFORE the two
- * email draft_reply branches — unconditionally, regardless of the
+ * email email_reply branches — unconditionally, regardless of the
  * noReplySkip preference or gateSignal() wiring — while still surfacing
  * genuine human correspondence.
  */
@@ -384,7 +384,7 @@ function makeEmailSignal(payload: Record<string, unknown>) {
 }
 
 describe("classify — email automated-sender gate (#367)", () => {
-  it("does NOT create a draft_reply for a GitHub notification titled 'restructure RSVP cards'", () => {
+  it("does NOT create a email_reply for a GitHub notification titled 'restructure RSVP cards'", () => {
     const sig = makeEmailSignal({
       from: "notifications@github.com",
       subject:
@@ -431,7 +431,7 @@ describe("classify — email automated-sender gate (#367)", () => {
     });
     const decision = classify(sig);
     expect(decision).not.toBeNull();
-    expect(decision?.type).toBe("draft_reply");
+    expect(decision?.type).toBe("email_reply");
     expect(decision?.action.kind).toBe("email_reply");
     expect((decision?.action.params as Record<string, unknown>).to).toBe(
       "mira@acme.dev",
@@ -446,7 +446,7 @@ describe("classify — email automated-sender gate (#367)", () => {
       threadId: "t5",
     });
     const decision = classify(sig);
-    expect(decision?.type).toBe("draft_reply");
+    expect(decision?.type).toBe("email_reply");
   });
 
   it("drops other automated senders (noreply@, mailer-daemon@) regardless of subject", () => {
