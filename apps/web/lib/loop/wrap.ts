@@ -155,17 +155,40 @@ async function readChronicleEvidence(date: string): Promise<WrapEvidence> {
     if (!parsed || typeof parsed !== "object") {
       return emptyEvidence("memory script returned no data");
     }
-    const items = (parsed as { insights?: unknown[] }).insights;
+    // openloomi-memory.cjs list-insights --json returns `{ items: [...] }`
+    // (NOT `{ insights: [...] }`). Each item's timestamp is `time`
+    // (ISO, e.g. "2026-07-18T17:40:39.000Z") and the chronicle-screen
+    // marker is `taskLabel: "chronicle_screen"` plus a `categories`
+    // array containing "chronicle" / "screen-memory" (there is no
+    // `origin` field). Match all three so the existing
+    // `chronicleScreenshots` counter only ticks on actual screens.
+    const items = (parsed as { items?: unknown[] }).items;
     if (!Array.isArray(items)) return emptyEvidence("no insights array");
     let chronicleScreenshots = 0;
     let chronicleInsights = 0;
     for (const raw of items) {
       if (!raw || typeof raw !== "object") continue;
       const it = raw as Record<string, unknown>;
-      const ts = typeof it.ts === "string" ? it.ts : "";
+      const ts = typeof it.time === "string" ? it.time : "";
       if (!ts.startsWith(date)) continue;
-      const origin = typeof it.origin === "string" ? it.origin : "";
-      if (origin === "chronicle" || origin === "screen") {
+      const taskLabel = typeof it.taskLabel === "string" ? it.taskLabel : "";
+      const categories = Array.isArray(it.categories)
+        ? (it.categories as unknown[]).filter(
+            (c): c is string => typeof c === "string",
+          )
+        : [];
+      const detailKind =
+        Array.isArray(it.details) &&
+        it.details[0] &&
+        typeof it.details[0] === "object"
+          ? ((it.details[0] as Record<string, unknown>).kind as unknown)
+          : undefined;
+      const isChronicleScreen =
+        taskLabel === "chronicle_screen" ||
+        detailKind === "chronicle_screen" ||
+        categories.includes("chronicle") ||
+        categories.includes("screen-memory");
+      if (isChronicleScreen) {
         chronicleScreenshots += 1;
       } else {
         chronicleInsights += 1;

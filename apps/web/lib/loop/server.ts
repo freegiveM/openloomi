@@ -376,7 +376,28 @@ export async function triggerBrief(
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     log(`brief action failed: ${msg}`);
-    const snapshot = buildBriefOnly({ force: opts.force ?? true });
+    // Defensive fallback: `buildBriefOnly` should never throw (its I/O
+    // is wrapped in try/catch), but if it does the route handler would
+    // surface a 500 with no body. Catch here and return a degraded
+    // `{ ok: false }` payload instead so the UI can at least toast the
+    // error message.
+    let snapshot: ReturnType<typeof buildBriefOnly> | undefined;
+    try {
+      snapshot = buildBriefOnly({ force: opts.force ?? true });
+    } catch (fallbackErr) {
+      const fallbackMsg =
+        fallbackErr instanceof Error
+          ? fallbackErr.message
+          : String(fallbackErr);
+      log(`brief fallback also failed: ${fallbackMsg}`);
+      return {
+        ok: false,
+        stats: { scanned: 0, surfaced: 0, muted: 0 },
+        items: [],
+        card: null,
+        error: `${msg} (fallback: ${fallbackMsg})`,
+      };
+    }
     return {
       ok: false,
       stats: snapshot.stats,
@@ -408,10 +429,26 @@ export async function triggerWrap(
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     log(`wrap action failed: ${msg}`);
-    // `build` is now async (#362) — best-effort fallback is a degraded
-    // snapshot without evidence. Wrapping in an async IIFE preserves
-    // the existing return shape.
-    const snapshot = await buildWrapOnly({ force: opts.force ?? true });
+    // Same defensive fallback pattern as `triggerBrief`: wrap
+    // `buildWrapOnly` in try/catch so a failure here can't bubble out
+    // of the route handler as a 500.
+    let snapshot: Awaited<ReturnType<typeof buildWrapOnly>> | undefined;
+    try {
+      snapshot = await buildWrapOnly({ force: opts.force ?? true });
+    } catch (fallbackErr) {
+      const fallbackMsg =
+        fallbackErr instanceof Error
+          ? fallbackErr.message
+          : String(fallbackErr);
+      log(`wrap fallback also failed: ${fallbackMsg}`);
+      return {
+        ok: false,
+        stats: { scanned: 0, surfaced: 0, muted: 0 },
+        items: [],
+        card: null,
+        error: `${msg} (fallback: ${fallbackMsg})`,
+      };
+    }
     return {
       ok: false,
       stats: {
