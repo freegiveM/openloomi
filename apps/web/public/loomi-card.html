@@ -663,9 +663,7 @@
       /* The page-level `html, body { user-select: none }` (line 75) blocks
          text selection in any descendant input/textarea. Re-enable it
          only for the editor so users can copy/edit text normally. */
-      #dec-editor,
-      #dec-editor-subject,
-      #dec-editor-body {
+      #dec-editor {
         -webkit-user-select: text;
         user-select: text;
       }
@@ -685,6 +683,16 @@
         color: var(--ink);
         background: var(--panel-soft);
         border: 1px solid var(--blue-soft);
+        /* Defensive: the page-level `html, body { user-select: none }`
+           combined with some webview shells' focus-activation races
+           on macOS NSPanel windows can silently drop pointer events on
+           descendants. Force pointer-events: auto on the editable
+           surface itself so the textarea always receives clicks + focus,
+           even if a future rule accidentally sets `pointer-events: none`
+           somewhere upstream. */
+        pointer-events: auto;
+        -webkit-user-select: text;
+        user-select: text;
         border-radius: 8px;
         padding: 8px 10px;
         width: 100%;
@@ -696,7 +704,7 @@
         flex: 1 1 auto;
         min-height: 80px;
         resize: vertical;
-        caret-color: var(--ink);
+        caret-color: currentColor;
       }
       #dec-editor-subject:focus,
       #dec-editor-body:focus {
@@ -804,7 +812,14 @@
         flex: 1 1 auto;
         min-height: 80px;
         resize: vertical;
-        caret-color: var(--ink);
+        caret-color: currentColor;
+        /* Defensive — see the matching comment on #dec-editor-subject
+           / #dec-editor-body above. Without this, the textarea can
+           silently lose click-to-focus when the parent NSPanel hasn't
+           promoted to key yet (macOS webview focus-activation race). */
+        pointer-events: auto;
+        -webkit-user-select: text;
+        user-select: text;
       }
       #dec-editor-im-body:focus {
         outline: none;
@@ -4593,19 +4608,39 @@
             // Re-render the footer so the Send/Edit/Discard buttons go
             // away (the editor footer is the new action surface).
             renderDecisionFooter();
-            // Focus on next paint so the layout has settled and the
+            // Focus on the next tick so the layout has settled and the
             // textarea is actually focusable. Caret at end so the user
             // can keep typing without manually re-positioning.
-            requestAnimationFrame(() => {
-              if (body && document.activeElement !== body) {
-                body.focus();
-                const len = body.value.length;
-                try {
-                  body.setSelectionRange(len, len);
-                } catch (_) {
-                  /* some input types don't support setSelectionRange */
-                }
+            //
+            // Why a setTimeout(60) instead of requestAnimationFrame:
+            // the card window is a Tauri NSPanel (`macos_window::
+            // configure_as_floating_panel`) — `panel.canBecomeKeyWindow`
+            // is false, so `w.set_focus()` in `show_card_window_with`
+            // can't actually promote the window to key on macOS until
+            // a click lands on the webview. requestAnimationFrame fires
+            // before that promotion happens, and `body.focus()` silently
+            // no-ops when the document isn't key, so the user would see
+            // the editor appear but the textarea stays un-focused and
+            // typing goes to the underlying window. A short setTimeout
+            // defers focus until after the first user click has been
+            // dispatched through the webview (see also the click-to-focus
+            // handler on #dec-editor below — it's the safety net for the
+            // case where the user opens the editor without clicking the
+            // window first).
+            const focusBody = () => {
+              if (!body || document.activeElement === body) return;
+              body.focus();
+              const len = body.value.length;
+              try {
+                body.setSelectionRange(len, len);
+              } catch (_) {
+                /* some input types don't support setSelectionRange */
               }
+            };
+            requestAnimationFrame(() => {
+              focusBody();
+              setTimeout(focusBody, 60);
+              setTimeout(focusBody, 200);
             });
           } else {
             if (err) {
@@ -4780,16 +4815,26 @@
               err.classList.remove("show");
             }
             renderDecisionFooter();
-            requestAnimationFrame(() => {
-              if (body && document.activeElement !== body) {
-                body.focus();
-                const len = body.value.length;
-                try {
-                  body.setSelectionRange(len, len);
-                } catch (_) {
-                  /* noop */
-                }
+            // Same NSPanel focus-activation dance as setEditMode() above —
+            // see that comment for why requestAnimationFrame alone isn't
+            // enough on macOS. Triple-tap (rAF + 60ms + 200ms) covers the
+            // window becoming key after the user's first click on the
+            // card, and the click-to-focus handler on #dec-editor-im is
+            // the safety net if focus is still lost.
+            const focusBodyIm = () => {
+              if (!body || document.activeElement === body) return;
+              body.focus();
+              const len = body.value.length;
+              try {
+                body.setSelectionRange(len, len);
+              } catch (_) {
+                /* noop */
               }
+            };
+            requestAnimationFrame(() => {
+              focusBodyIm();
+              setTimeout(focusBodyIm, 60);
+              setTimeout(focusBodyIm, 200);
             });
           } else {
             if (err) {
@@ -4898,6 +4943,57 @@
           else if (which === "save") saveDraft({ thenRun: false });
           else if (which === "cancel") setEditMode(false);
         });
+
+        // Click-to-focus fallback on both editor wrappers. The macOS
+        // NSPanel hosting the card doesn't accept keyboard focus until
+        // the user has clicked inside the webview at least once — and
+        // the only click that opens the editor is the "↗ Edit" button,
+        // which lives in the footer (a different DOM subtree). When
+        // the user clicks the editor surface (label, footer padding,
+        // whitespace between elements), the textarea may end up with
+        // focus but the window never promotes to key, so subsequent
+        // keystrokes fall through to the app behind the card.
+        //
+        // Re-firing `focus()` from inside this click handler runs *after*
+        // the NSPanel has promoted (clicks promote the window, then
+        // bubble up to this listener), so the second focus() call is the
+        // one that actually sticks. We only do this for clicks that
+        // landed on the editor's own surface — clicks on the editor's
+        // buttons / the textarea itself / the recipient pill are left
+        // alone to avoid fighting the user's selection.
+        const focusOnEditorSurface = (rootEl, targetEl) => {
+          if (!rootEl) return;
+          // Don't fight a click that already landed on something
+          // interactive (textarea, button, label that targets it,
+          // recipient pill, etc.) — the browser already did the right
+          // thing there.
+          if (
+            targetEl &&
+            targetEl.closest(
+              "button,input,textarea,select,[contenteditable='true'],label",
+            )
+          ) {
+            return;
+          }
+          const body = rootEl.querySelector(
+            rootEl.id === "dec-editor-im"
+              ? "#dec-editor-im-body"
+              : "#dec-editor-body",
+          );
+          if (body) body.focus();
+        };
+        const editorRoot = document.getElementById("dec-editor");
+        const editorImRoot = document.getElementById("dec-editor-im");
+        if (editorRoot) {
+          editorRoot.addEventListener("mousedown", (e) => {
+            focusOnEditorSurface(editorRoot, e.target);
+          });
+        }
+        if (editorImRoot) {
+          editorImRoot.addEventListener("mousedown", (e) => {
+            focusOnEditorSurface(editorImRoot, e.target);
+          });
+        }
 
         // Keyboard shortcuts on the body textarea. The subject input
         // intentionally does NOT get the Cmd+Enter shortcut — pressing
