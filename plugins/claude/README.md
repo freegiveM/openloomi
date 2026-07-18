@@ -113,12 +113,14 @@ A successful run prints `{setup: "ready", steps: [...]}` — you're done.
 
 ## Daily use
 
-| Command                | What it does                                                                                  |
-| ---------------------- | --------------------------------------------------------------------------------------------- |
-| `/openloomi:pet happy` | Set Pet state — also `idle juggling needsinput presenting sleeping sweeping thinking working` |
-| `/openloomi:usage`     | Today's LLM tokens / cost                                                                     |
-| `/openloomi:connect`   | Guided install of composio skill + screen memory (3 independent y/N)                          |
-| `/openloomi:status`    | Stable JSON: `mode / installed / ready / nextAction / reason`                                 |
+| Command                 | What it does                                                                                       |
+| ----------------------- | -------------------------------------------------------------------------------------------------- |
+| `/openloomi:pet happy`  | Set Pet state — also `idle juggling needsinput presenting sleeping sweeping thinking working`      |
+| `/openloomi:usage`      | Today's LLM tokens / cost                                                                          |
+| `/openloomi:connect`    | Guided install of composio skill + screen memory (3 independent y/N)                               |
+| `/openloomi:status`     | Stable JSON: `mode / installed / ready / nextAction / reason`                                      |
+| `/openloomi:loop`       | Loop dashboard snapshot (pending decisions, connectors, last tick) — doorway into `openloomi-loop` |
+| `/openloomi:memory <q>` | Search memory + knowledge base + insights — doorway into `openloomi-memory`                        |
 
 Failure modes surface as structured JSON — never stack traces. See the
 [Troubleshooting](#troubleshooting) section for the full `reason` table.
@@ -235,6 +237,8 @@ One note per session, ~6 KB tail-of-conversation summary, deduplicated by
 /openloomi:hooks install         merge lifecycle hooks into settings.json
 /openloomi:hooks uninstall       strip them back out
 /openloomi:hooks status          show hook merge state
+/openloomi:loop                  loop dashboard snapshot (doorway into openloomi-loop)
+/openloomi:memory <query>       search memory + KB + insights (doorway into openloomi-memory)
 /openloomi:help                  list these commands
 ```
 
@@ -287,18 +291,18 @@ The plugin ships one main entry skill (`openloomi`) plus eight sub-skills under
 frontmatter `description` — they share the same `loomi-bridge.mjs` runtime, no
 business logic is duplicated.
 
-| Skill                     | Path                                      | Trigger words                                                              | What it does                                                                                                                                                                                                                    |
-| ------------------------- | ----------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `openloomi`               | `skills/openloomi/SKILL.md`               | `/openloomi:*`, `openloomi`, `loomi`                                       | Main entrypoint. Dispatches to the right sub-skill or slash command.                                                                                                                                                            |
-| `openloomi-api`           | `skills/openloomi-api/SKILL.md`           | API endpoints, backend routes, auth, local API, integrations               | Reference for the 131 OpenLoomi HTTP routes (auth, AI, RAG, Loop, Pet, workspace, integrations). Triggered on API/backend questions.                                                                                            |
-| `openloomi-connectors`    | `skills/openloomi-connectors/SKILL.md`    | connect platform, integration status, list accounts, disconnect            | Manage the 7 native OpenLoomi integrations (Telegram, WhatsApp, iMessage, Feishu, DingTalk, QQ, WeChat) — OAuth, list accounts, status, disconnect, send messages. Pair with `composio` for non-native accounts.                |
-| `openloomi-feature-guide` | `skills/openloomi-feature-guide/SKILL.md` | "what can openloomi do", "怎么用", "how does openloomi work"               | Product overview, capability tour, and how-tos for non-developer questions.                                                                                                                                                     |
-| `openloomi-hooks`         | `skills/openloomi-hooks/SKILL.md`         | install hooks, `/openloomi:hooks`, mirror claude on pet, auto-archive stop | Lifecycle hooks installer — merges `hooks/hooks.json` into `~/.claude/settings.json` (merge-no-overwrite, atomic). Owns the opt-in Pet mirror and Stop-archive flow.                                                            |
-| `openloomi-install`       | `skills/openloomi-install/SKILL.md`       | install openloomi, 配置 openloomi, OPENLOOMI_NOT_INSTALLED                 | First-use install helper. Translates `setup-status` `reason` codes into concrete next actions; never downloads anything outside the plugin's own scripts.                                                                       |
-| `openloomi-loop`          | `skills/openloomi-loop/SKILL.md`          | loop tick, loop schedule, loop inbox, register loop type, add loop rule    | The proactive execution brain — pull signals, classify into decisions, schedule actions, register custom decision types / signal channels / classifier rules. Thin wrapper around `/api/loop/*`.                                |
-| `openloomi-memory`        | `skills/openloomi-memory/SKILL.md`        | memory search, knowledge base, documents, insights                         | Search local memory files (`~/.openloomi/data/memory/`), RAG documents, and structured insights; supports living connections, temporal queries, entity registry.                                                                |
-| `openloomi-pet`           | `skills/openloomi-pet/SKILL.md`           | pet state, `/openloomi:pet`, set pet, fox sprite, capybara sprite          | The 9-state Loomi Pet vocabulary (`happy`/`idle`/`juggling`/`needsinput`/`presenting`/`sleeping`/`sweeping`/`thinking`/`working`). Validates before any HTTP call; falls back gracefully if `/api/pet/state` doesn't exist yet. |
-| `composio`                | `skills/composio/SKILL.md`                | composio, 1000+ apps, external integrations                                | Third-party router for 1000+ apps via the Composio CLI (Gmail, Slack, GitHub, Linear, Jira, Notion, etc.). Pairs with `openloomi-connectors` for the native 7.                                                                  |
+| Skill                     | Path                                      | Trigger words                                                              | What it does                                                                                                                                                                                                                                               |
+| ------------------------- | ----------------------------------------- | -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `openloomi`               | `skills/openloomi/SKILL.md`               | `/openloomi:*`, `openloomi`, `loomi`                                       | Main entrypoint. Dispatches to the right sub-skill or slash command.                                                                                                                                                                                       |
+| `openloomi-api`           | `skills/openloomi-api/SKILL.md`           | API endpoints, backend routes, auth, local API, integrations               | Reference for the 131 OpenLoomi HTTP routes (auth, AI, RAG, Loop, Pet, workspace, integrations). Triggered on API/backend questions.                                                                                                                       |
+| `openloomi-connectors`    | `skills/openloomi-connectors/SKILL.md`    | connect platform, integration status, list accounts, disconnect            | Manage the 7 native OpenLoomi integrations (Telegram, WhatsApp, iMessage, Feishu, DingTalk, QQ, WeChat) — OAuth, list accounts, status, disconnect, send messages. Pair with `composio` for non-native accounts.                                           |
+| `openloomi-feature-guide` | `skills/openloomi-feature-guide/SKILL.md` | "what can openloomi do", "怎么用", "how does openloomi work"               | Product overview, capability tour, and how-tos for non-developer questions.                                                                                                                                                                                |
+| `openloomi-hooks`         | `skills/openloomi-hooks/SKILL.md`         | install hooks, `/openloomi:hooks`, mirror claude on pet, auto-archive stop | Lifecycle hooks installer — merges `hooks/hooks.json` into `~/.claude/settings.json` (merge-no-overwrite, atomic). Owns the opt-in Pet mirror and Stop-archive flow.                                                                                       |
+| `openloomi-install`       | `skills/openloomi-install/SKILL.md`       | install openloomi, 配置 openloomi, OPENLOOMI_NOT_INSTALLED                 | First-use install helper. Translates `setup-status` `reason` codes into concrete next actions; never downloads anything outside the plugin's own scripts.                                                                                                  |
+| `openloomi-loop`          | `skills/openloomi-loop/SKILL.md`          | loop tick, loop schedule, loop inbox, register loop type, add loop rule    | The proactive execution brain — pull signals, classify into decisions, schedule actions, register custom decision types / signal channels / classifier rules. Thin wrapper around `/api/loop/*`. Also reachable as `/openloomi:loop` (dashboard snapshot). |
+| `openloomi-memory`        | `skills/openloomi-memory/SKILL.md`        | memory search, knowledge base, documents, insights                         | Search local memory files (`~/.openloomi/data/memory/`), RAG documents, and structured insights; supports living connections, temporal queries, entity registry. Also reachable as `/openloomi:memory <query>` (search-all + recent insights).             |
+| `openloomi-pet`           | `skills/openloomi-pet/SKILL.md`           | pet state, `/openloomi:pet`, set pet, fox sprite, capybara sprite          | The 9-state Loomi Pet vocabulary (`happy`/`idle`/`juggling`/`needsinput`/`presenting`/`sleeping`/`sweeping`/`thinking`/`working`). Validates before any HTTP call; falls back gracefully if `/api/pet/state` doesn't exist yet.                            |
+| `composio`                | `skills/composio/SKILL.md`                | composio, 1000+ apps, external integrations                                | Third-party router for 1000+ apps via the Composio CLI (Gmail, Slack, GitHub, Linear, Jira, Notion, etc.). Pairs with `openloomi-connectors` for the native 7.                                                                                             |
 
 **Pairing notes:**
 
