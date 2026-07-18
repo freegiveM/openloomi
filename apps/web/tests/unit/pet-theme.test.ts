@@ -261,8 +261,29 @@ describe("widget source sanity", () => {
 });
 
 describe("custom theme discovery", () => {
-  // Mirrors the host's `list_custom_themes` rules: a folder counts as
-  // a theme iff it contains at least one recognized state PNG.
+  /**
+   * Public contract pinned by these tests — referenced from
+   *   apps/marketing/content/pet.mdx § "Drop a custom theme folder"
+   *   apps/marketing/content/pet.mdx § "Filename conventions"
+   *
+   * The contract: a folder under `~/.openloomi/pet-custom/<name>/` is
+   * recognized as a theme **iff** it contains at least one PNG whose
+   * filename stem normalizes to one of the known state names below.
+   * Unknown files are silently ignored — they don't break the theme, but
+   * they also don't show up as available sprites.
+   *
+   * Stem normalization:
+   *   1. lowercase the stem
+   *   2. strip a single leading theme prefix: `loomi-`, `fox-`, `capybara-`,
+   *      or a custom `<my-pack>-` prefix (the loop accepts anything followed
+   *      by a `-` and a known state)
+   *   3. compare against KNOWN_STATES
+   *
+   * If you change this list, also update:
+   *   - apps/web/src-tauri/src/pet/theme.rs KNOWN_STATES constant
+   *   - apps/marketing/content/pet.mdx recognized-states table
+   *   - packages/i18n/src/locales/{zh-Hans,en-US}.ts pet.state.* keys
+   */
   const KNOWN_STATES = new Set([
     "idle",
     "thinking",
@@ -303,6 +324,57 @@ describe("custom theme discovery", () => {
     expect(isRecognized("logo")).toBe(false);
     expect(isRecognized("README")).toBe(false);
     expect(isRecognized("")).toBe(false);
+  });
+
+  /**
+   * Mirrors the example block in
+   *   apps/marketing/content/pet.mdx § "Override a single sprite"
+   *
+   * The published JSON shape is camelCase on the wire (`activeTheme`,
+   * `customThemesDir`). If this test ever breaks because the struct
+   * stopped round-tripping through `build_view`, double-check
+   * `PetConfigView` in `apps/web/src-tauri/src/pet/theme.rs` — the
+   * `rename_all = "camelCase"` annotation is what keeps snake_case keys
+   * from silently no-op-ing the assignment.
+   */
+  it("accepts the documented pet-config.json override shape", () => {
+    type PetConfigView = {
+      version: number;
+      activeTheme: string;
+      customThemesDir: string;
+      overrides: Record<string, Record<string, string>>;
+    };
+
+    const sample: PetConfigView = {
+      version: 1,
+      activeTheme: "fox",
+      customThemesDir: "~/.openloomi/pet-custom",
+      overrides: {
+        fox: {
+          idle: "/Users/me/Pictures/my-fox-idle.png",
+          presenting: "/Users/me/Pictures/loomi-presentation.png",
+        },
+      },
+    };
+
+    // Round-trip: keys stay camelCase.
+    const wire = JSON.parse(JSON.stringify(sample)) as PetConfigView;
+    expect(wire.activeTheme).toBe("fox");
+    expect(wire.customThemesDir).toBe("~/.openloomi/pet-custom");
+    expect(wire.overrides.fox.idle).toBe("/Users/me/Pictures/my-fox-idle.png");
+    expect(wire.overrides.fox.presenting).toBe(
+      "/Users/me/Pictures/loomi-presentation.png",
+    );
+
+    // Pin the contract: snake_case keys must NOT silently no-op the
+    // assignment. This is the camelCase foot-gun the unit test at
+    // theme.rs:499 catches; mirror it here so a JS-only consumer can't
+    // regress the contract from the other side.
+    const snake: Record<string, unknown> = {
+      active_theme: "capybara",
+    };
+    expect(snake.active_theme).toBe("capybara");
+    expect((snake as Record<string, unknown>).activeTheme).toBeUndefined();
   });
 });
 

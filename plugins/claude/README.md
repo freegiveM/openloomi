@@ -152,6 +152,33 @@ The bridge is theme-agnostic — it sends state names; the OpenLoomi
 active (the plugin ships fox; capybara is also supported and falls back
 `greet → presenting`).
 
+### Custom pet themes & sprite overrides
+
+The pet's look is **file-driven**, not bridge-driven. The plugin ships the
+9-state vocabulary for the watcher, but the actual sprite Loomi paints
+comes from a small theme system on disk:
+
+| Layer               | Lives at                                           | What it does                                                      |
+| ------------------- | -------------------------------------------------- | ----------------------------------------------------------------- |
+| Built-in themes     | `apps/web/public/loomi-pet/assets/{fox,capybara}/` | Bundled fox (`loomi-*` prefix) and capybara sprites               |
+| Custom themes       | `~/.openloomi/pet-custom/<name>/`                  | Any folder with ≥1 recognized-state PNG becomes a theme           |
+| Per-state overrides | `~/.openloomi/pet-config.json`                     | `(theme, state) → absolute path` map; wins over both layers above |
+
+End-user guide: see [Customize your Loomi Pet](/docs/pet) — covers
+filename conventions (`idle.png`, `loomi-idle.png`, `my-pack-sweeping.png`
+all normalize correctly), the camelCase `pet-config.json` schema, and the
+~250 ms file-watcher live-reload.
+
+**The bridge never writes these files.** If the user asks "change my
+pet's look", direct them to the menu (right-click → Theme → Capybara) or
+to the file system. The runtime's file watcher does the work; the bridge
+only drives state transitions.
+
+**Do not** POST `sleeping` or `sweeping` from `/openloomi:pet` — the API
+rejects them with `400 invalid_state`. The Loop baseline watcher owns
+those two states. See the [`openloomi-pet` sub-skill](./skills/openloomi-pet/SKILL.md)
+for the full decision tree when the user asks about pet customization.
+
 The Stop hook reads your session transcript, takes the last 6 turns, caps at
 6 KB, and POSTs `{type: "note", groups: ["claude-code"]}` to
 `/api/insights`. It **always exits 0** — no archive is not an error.
@@ -310,14 +337,18 @@ vars.
 
 ### Change-map (edit X, also touch Y)
 
-| You changed…                     | …also update                                                                                                                              |
-| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| New bridge subcommand            | `commands/<x>.md` + subcommand table in `skills/openloomi/SKILL.md`                                                                       |
-| New Pet state                    | `CAPYBARA_STATES` constant in `loomi-bridge.mjs`; confirm sprite exists in both `apps/web/public/loomi-pet/assets/fox/` and `…/capybara/` |
-| New lifecycle hook               | `hooks/hooks.json` + the hook→state table above                                                                                           |
-| `nextAction` enum value          | `NEXT_ACTIONS` set in `loomi-bridge.mjs` + reason table                                                                                   |
-| Default base URL / model / port  | Top-of-file constants in `loomi-bridge.mjs` only                                                                                          |
-| Slash command auto-discover text | `description:` frontmatter line (matched char-by-char)                                                                                    |
+| You changed…                     | …also update                                                                                                                                                                                                                        |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| New bridge subcommand            | `commands/<x>.md` + subcommand table in `skills/openloomi/SKILL.md`                                                                                                                                                                 |
+| New Pet state                    | `CAPYBARA_STATES` constant in `loomi-bridge.mjs`; confirm sprite exists in both `apps/web/public/loomi-pet/assets/fox/` and `…/capybara/`                                                                                           |
+| Built-in theme sprite set        | `BUILTIN_THEMES` map in `apps/web/public/loomi-widget.html` **and** `BUILTIN_THEMES` const in `apps/web/src-tauri/src/pet/theme.rs` (kept in lock-step; the unit test at `apps/web/tests/unit/pet-theme.test.ts` pins the contract) |
+| Default theme name               | `DEFAULT_THEME` in `apps/web/src-tauri/src/pet/theme.rs`                                                                                                                                                                            |
+| Custom themes dir                | `DEFAULT_CUSTOM_THEMES_DIR` in `apps/web/src-tauri/src/pet/theme.rs`                                                                                                                                                                |
+| `pet-config.json` schema         | `PetConfig` struct in `theme.rs`; `PetConfigView` is the wire shape sent to the widget — keep `rename_all = "camelCase"` to avoid the silent `activeTheme → active_theme` no-op                                                     |
+| New lifecycle hook               | `hooks/hooks.json` + the hook→state table above                                                                                                                                                                                     |
+| `nextAction` enum value          | `NEXT_ACTIONS` set in `loomi-bridge.mjs` + reason table                                                                                                                                                                             |
+| Default base URL / model / port  | Top-of-file constants in `loomi-bridge.mjs` only                                                                                                                                                                                    |
+| Slash command auto-discover text | `description:` frontmatter line (matched char-by-char)                                                                                                                                                                              |
 
 ### Where each concern lives in code
 

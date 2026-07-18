@@ -5854,6 +5854,41 @@ const zhHans = {
     alreadyUpToDate: "已是最新版本，无需更新！",
     manualDownloadHint: "如果更新过程中遇到问题，可前往官网手动下载",
   },
+  // Loomi Pet theme system — desktop pet appearance customization.
+  // String sources: apps/web/public/loomi-widget.html context menu + theme picker.
+  pet: {
+    menu: {
+      title: "菜单",
+      openLoomi: "打开 Loomi",
+      settings: "设置",
+      theme: "主题",
+      themeFox: "狐狸",
+      themeCapybara: "水豚",
+      pauseReminders: "暂停提醒 1 小时",
+      checkNow: "立即检查",
+      quit: "退出 Loomi",
+    },
+    theme: {
+      customDirHelp: "把 PNG 放到 ~/.openloomi/pet-custom/<名称>/",
+      overrideHelp: "编辑 ~/.openloomi/pet-config.json",
+      statePrefixHelp: "文件名需包含状态名,如 idle.png、thinking.png",
+      noCustomThemes: "暂未发现自定义主题",
+      loadedToast: "主题 {{name}} 已加载",
+      loadFailedToast: "主题加载失败:{{reason}}",
+    },
+    state: {
+      idle: "空闲",
+      thinking: "思考中",
+      working: "工作中",
+      juggling: "多任务并行",
+      needsinput: "等你回复",
+      greet: "打个招呼",
+      sleeping: "睡觉中",
+      sweeping: "已忽略",
+      happy: "开心",
+      presenting: "有结果要看",
+    },
+  },
 };
 
 function deriveInsightCopy(input: unknown): unknown {

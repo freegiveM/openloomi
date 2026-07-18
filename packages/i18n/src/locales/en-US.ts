@@ -6202,6 +6202,42 @@ const enUS = {
     manualDownloadHint:
       "If you encounter issues during the update, you can manually download from the official website",
   },
+  // Loomi Pet theme system — desktop pet appearance customization.
+  // String sources: apps/web/public/loomi-widget.html context menu + theme picker.
+  pet: {
+    menu: {
+      title: "Menu",
+      openLoomi: "Open Loomi",
+      settings: "Settings",
+      theme: "Theme",
+      themeFox: "Fox",
+      themeCapybara: "Capybara",
+      pauseReminders: "Pause reminders for 1 hour",
+      checkNow: "Check now",
+      quit: "Quit Loomi",
+    },
+    theme: {
+      customDirHelp: "Drop PNGs into ~/.openloomi/pet-custom/<name>/",
+      overrideHelp: "Edit ~/.openloomi/pet-config.json",
+      statePrefixHelp:
+        "Filenames must contain a state name, e.g. idle.png, thinking.png",
+      noCustomThemes: "No custom themes found yet",
+      loadedToast: "Theme {{name}} loaded",
+      loadFailedToast: "Failed to load theme: {{reason}}",
+    },
+    state: {
+      idle: "Idle",
+      thinking: "Thinking",
+      working: "Working",
+      juggling: "Juggling",
+      needsinput: "Needs input",
+      greet: "Greet",
+      sleeping: "Sleeping",
+      sweeping: "Sweeping",
+      happy: "Happy",
+      presenting: "Presenting",
+    },
+  },
 };
 
 function deriveUnderstandingCopy(input: unknown): unknown {
