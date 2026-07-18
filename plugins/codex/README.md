@@ -710,28 +710,22 @@ local configuration or secure storage.
 
 After OpenLoomi starts, the plugin guides users toward OpenLoomi-related
 skills and workflows that are useful from Codex. The Codex plugin ships
-the following skills under `plugins/codex/skills/`:
+one main entry skill (`openloomi`) plus eight sub-skills under
+`skills/`. Each sub-skill is auto-loaded by Codex on demand based on its
+frontmatter `description` — they share the same `loomi-bridge.mjs`
+runtime, no business logic is duplicated.
 
-- `openloomi`: the main entry point. Triggers on any `OpenLoomi` / `Loomi`
-  mention and dispatches to the right sub-skill.
-- `openloomi-install`: walks install, first-use setup, AI provider setup,
-  and `SESSION_INITIALIZATION_REQUIRED` recovery flows.
-- `openloomi-loop`: run attention-loop and follow-up workflows.
-- `openloomi-memory`: search or write memory through OpenLoomi-owned
-  runtime surfaces. Thin wrapper — does not implement memory storage.
-- `openloomi-connectors`: check whether Slack, GitHub, Gmail, Calendar,
-  and other sources are configured before acting. Reports status only.
-- `openloomi-handoff`: send the current Codex task to Loomi for follow-up.
-  Exposed as a Codex skill; the Claude Code plugin exposes the same
-  capability through its own `/openloomi:*` slash-command surface instead.
-- `openloomi-api`: openloomi HTTP API reference (auth, chat, RAG,
-  workspace, integrations, feedback). Triggered by API / backend
-  questions.
-- `openloomi-feature-guide`: product overview, capabilities, and how-tos
-  for non-developer questions like "what can openloomi do".
-- `composio`: third-party 1000+ app integration router (Gmail, Slack,
-  GitHub, etc.) via the Composio CLI. Platform-agnostic; not OpenLoomi
-  business logic.
+| Skill                     | Path                                      | Trigger words                                                                  | What it does                                                                                                                                                                                                                                 |
+| ------------------------- | ----------------------------------------- | ------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `openloomi`               | `skills/openloomi/SKILL.md`               | `OpenLoomi`, `Loomi`, `@OpenLoomi`                                             | Main entrypoint. Dispatches to the right sub-skill or workflow.                                                                                                                                                                              |
+| `openloomi-install`       | `skills/openloomi-install/SKILL.md`       | install, first-use setup, AI provider setup, `SESSION_INITIALIZATION_REQUIRED` | Walks install / first-use / AI-provider setup / session recovery. Translates `setup-status` `reason` codes into concrete next actions.                                                                                                       |
+| `openloomi-loop`          | `skills/openloomi-loop/SKILL.md`          | loop tick, loop schedule, loop inbox, register loop type, add loop rule        | The proactive execution brain — pull signals, classify into decisions, schedule actions, register custom decision types / signal channels / classifier rules. Thin wrapper around `/api/loop/*`.                                             |
+| `openloomi-memory`        | `skills/openloomi-memory/SKILL.md`        | memory search, knowledge base, documents, insights                             | Search or write memory through OpenLoomi-owned runtime surfaces. Thin wrapper — does **not** implement memory storage.                                                                                                                       |
+| `openloomi-connectors`    | `skills/openloomi-connectors/SKILL.md`    | connect platform, integration status, list accounts, disconnect                | Check whether Slack, GitHub, Gmail, Calendar, and other sources are configured before acting. Reports status only; pair with `composio` for non-native accounts.                                                                             |
+| `openloomi-handoff`       | `skills/openloomi-handoff/SKILL.md`       | hand off, delegate, queue, remind, follow up                                   | **Codex-only.** Send the current Codex task to Loomi for follow-up. The Claude Code plugin exposes the same capability through its own `/openloomi:*` slash-command surface instead — see [Handoff parity note](#handoff-parity-note) below. |
+| `openloomi-api`           | `skills/openloomi-api/SKILL.md`           | API endpoints, backend routes, auth, local API, integrations                   | Reference for the 131 OpenLoomi HTTP routes (auth, AI, RAG, Loop, Pet, workspace, integrations). Triggered on API / backend questions.                                                                                                       |
+| `openloomi-feature-guide` | `skills/openloomi-feature-guide/SKILL.md` | "what can openloomi do", "怎么用", "how does openloomi work"                   | Product overview, capability tour, and how-tos for non-developer questions.                                                                                                                                                                  |
+| `composio`                | `skills/composio/SKILL.md`                | composio, 1000+ apps, external integrations                                    | Third-party 1000+ app integration router (Gmail, Slack, GitHub, Linear, Jira, Notion, etc.) via the Composio CLI. Platform-agnostic; not OpenLoomi business logic.                                                                           |
 
 The `workflow-guidance` bridge command exposes structured guidance for the
 four workflow skills (`openloomi-loop`, `openloomi-memory`,
@@ -739,6 +733,36 @@ four workflow skills (`openloomi-loop`, `openloomi-memory`,
 documentation or routing helpers. The plugin must not copy OpenLoomi
 connector, memory, loop, scheduling, or handoff persistence logic into
 Codex — runtime implementations stay inside the OpenLoomi desktop runtime.
+
+**Pairing notes:**
+
+- `openloomi-connectors` covers OpenLoomi's **native 7** platforms
+  (Telegram, WhatsApp, iMessage, Feishu, DingTalk, QQ, WeChat). For
+  accounts connected through **Composio** (Slack, Discord, X, LinkedIn,
+  Notion, HubSpot, Gmail via OAuth, etc.), invoke the `composio` skill in
+  parallel and present the union when the user asks "what am I connected
+  to?".
+- `openloomi-loop` reads/decides only — execution happens on user request
+  via `/api/loop/action/schedule`. It is read/derive, never destructive.
+- `openloomi-memory` is the canonical store. `openloomi-loop` deliberately
+  delegates persistence to memory instead of duplicating it.
+
+#### Handoff parity note
+
+Codex and Claude Code expose the same "send current task to Loomi for
+follow-up" capability through **different surfaces**:
+
+- **Codex** (`@OpenLoomi …`): the `openloomi-handoff` skill above — wraps
+  the request with the `taskPromptPrefix` returned by `workflow-guidance`
+  and pipes it into `loomi-bridge run` over stdin.
+- **Claude Code** (`/openloomi:*`): the slash-command surface. There is no
+  dedicated `openloomi-handoff` skill because `/openloomi:setup` /
+  `/openloomi:status` already cover the same user need through the
+  plugin's own commands.
+
+Both surfaces route to the same OpenLoomi runtime — the plugin stays a
+thin wrapper; persistence and notification routing live inside the
+OpenLoomi desktop runtime.
 
 ### Pet state control
 
