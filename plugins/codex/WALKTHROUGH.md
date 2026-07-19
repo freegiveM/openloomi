@@ -157,6 +157,8 @@ is stable: `mode / installed / version / tokenPresent /
 nativeRuntime / apiReachable / hooksInstalled /
 ready / nextAction / reason / source`
 
+![Step 8 — Codex verifies the live runtime via `lsof -iTCP:3414` + `curl /api/native/providers` and the canonical `OpenLoomi Status` block confirms Running: Yes · PID 2320 · port 3414 · Healthy · Ready](../../apps/marketing/public/img/openloomi/plugins/codex/08-openloomi-status-runtime-healthy.png)
+
 ## 9. Codex hooks — bundled by default, no install step
 
 Unlike the Claude plugin (where `/openloomi:hooks install` is opt-in),
@@ -211,6 +213,18 @@ platforms; or composio for the broader 1000+).
 The screenshot below shows the connector step in the middle of the
 wizard.
 
+### 11b. Preflight — verify connector readiness before handoff
+
+Before the handoff wizard runs, Codex preflights the `openloomi-
+connectors` skill — loads its workflow guidance, calls `setup-status`,
+and probes `GET /api/loop/connectors` to see what the runtime already
+knows. The screenshot shows Codex asking `$openloomi:openloomi-
+connectors` and the resulting `workflow-guidance` + `setup-status`
+output plus the curl against `http://127.0.0.1:3414/api/loop/
+connectors`.
+
+![Step 11b — preflight check: `$openloomi:openloomi-connectors` loads `workflow-guidance` + `setup-status`, then `curl /api/loop/connectors` returns the live connector state](../../apps/marketing/public/img/openloomi/plugins/codex/11b-connectors-skill-preflight.png)
+
 ## 12. After Composio connects — 6 active apps
 
 The next Codex turn can list what the user is actually wired up to. In
@@ -223,6 +237,13 @@ Connected via Composio (6 active): Gmail, Google Calendar, Google Drive, GitHub,
 Org: timi_workspace · Test user: pg-test-…
 ```
 
+The actual probe in this run shows **5 of 6 connected** (Drive comes
+in slightly later in the same session) — `Composio is authenticated
+and reports all five toolkits as connected` for Gmail, Google
+Calendar, GitHub, Slack, Linear.
+
+![Step 12 — Composio Connections block after the auth probe: Gmail / Google Calendar / GitHub / Slack / Linear all reported Connected (5 of 6; Google Drive lands shortly after)](../../apps/marketing/public/img/openloomi/plugins/codex/12-composio-connections-five-active.png)
+
 From this point on, Codex is a thin UI on top of OpenLoomi. Anything
 that happens in your connected apps — emails, PRs, calendar RSVPs,
 Linear issues, Slack messages — gets pulled into OpenLoomi's memory
@@ -230,25 +251,42 @@ and (if you opt in) into its proactive Loop.
 
 ## 13. `@OpenLoomi memory` — see what's already in your local memory
 
+### 13a. The memory skill is ready
+
+The first time the memory skill is invoked in a session, OpenLoomi
+prints a short welcome banner with example queries ("Search all my
+memory for Project X" / "Show recent Gmail insights" / "What did I
+know about John in January?" / "List my knowledge-base documents" /
+"Remember that I prefer morning meetings" / "Find related insights
+for insight_xxx"). Codex then re-invokes it a few times to prime the
+search side before falling through to the digest.
+
+![Step 13a — first invocation of `$openloomi:openloomi-memory`: the welcome banner lists example queries, and Codex hammers the skill a few times before the digest returns](../../apps/marketing/public/img/openloomi/plugins/codex/13a-memory-skill-welcome.png)
+
 ```text
 > @OpenLoomi memory
 ```
 
 The skill searches the local memory + knowledge base + insights and
 returns a digest of what OpenLoomi already knows. In this run, the
-digest includes:
+digest is "**Today's OpenLoomi Insights (UTC 2026-07-19)**" pulled
+via `list-insights --days=1`:
 
-- A **"From Loomi" callout** at the top: "Sarah's signature says 'Head
-  of Product' — memory still says PM" — the same drift that the Loop
-  is about to surface as a `CONTACT_UPDATE` card.
-- A **"Last 7 days (50 insights total)" table** with columns `# / Time
-(UTC) / Type / Importance / Title` — auto-captured Codex session
-  snapshots, Screen Memory captures, and the occasional archive note.
-- **Notes** at the bottom explaining the mix (e.g. "duplicated
-  sessions — two ingestion channels writing the same session", "two
-  oldest sessions reference loop tick / Loomi card / 继续切 decision
-  — carry-over from prior work before today's `@OpenLoomi install`
-  finished wiring up").
+- **Volume** — 200+ items returned, all session-hook captures
+  (platforms `codex` and `claude-code`, no Gmail / Telegram /
+  WhatsApp / Lark entries yet).
+- **Timeline (UTC, latest first)** — 17:06 / 17:05 Codex session
+  `019f7b56` Stop hooks, 16:08 earlier Codex capture, 15:50 Claude Code
+  session `e80da64c`, 15:28
+  Claude Code session `aa64ea6f` (TypeScript type check passed), with
+  more Codex captures spread across 14:xx–16:xx UTC.
+- **Shape of every item** — `platform = codex | claude-code` matching
+  groups; `importance / urgency = General`; `isFavorited /
+isArchived = false`; `people / categories / topKeywords` all empty
+  (no semantic extraction); `dedupeKey = null` (every Stop fires a new
+  row); `description` only carries the hook event, not the transcript.
+
+![Step 13 — `Today's OpenLoomi Insights (UTC 2026-07-19)` digest: Volume / Timeline (latest first) / Shape of every item / Takeaways](../../apps/marketing/public/img/openloomi/plugins/codex/13-memory-todays-insights.png)
 
 This is the read-only doorway into OpenLoomi's local memory. For a
 deeper search, pass a query: `@OpenLoomi memory <query>`.
@@ -257,9 +295,17 @@ deeper search, pass a query: `@OpenLoomi memory <query>`.
 
 Reading is half the story — you can also write. From any Codex turn,
 invoke `openloomi-memory add-memory "<text>" --file=<path>` and the
-entry lands in `~/.openloomi/data/memory/<path>`. Below, "My boss is
-Tom." is saved to `people/boss.md` and immediately searchable via
-`search-memory "boss"` or `search-all "boss tom"`.
+entry lands in `~/.openloomi/data/memory/<path>`. The actual run
+captured here used the lower-level `POST /api/insights` route to add
+"`Tom is my boss (manager → direct report)`" with `type:
+relationship` and `file: people/tom.md`. The runtime created
+`~/.openloomi/data/memory/people/tom.md` containing "Tom is my boss.
+Role: boss. Relationship: manager → direct report." and returned
+insight ID `b5cde372-eb1b-4698-a4f0-bff6a26496f5`. The entry is
+immediately searchable via `search-memory "boss"` or `search-all
+"boss tom"`.
+
+![Step 13b — `POST /api/insights` writes "Tom is my boss (manager → direct report)" to `people/tom.md`; runtime confirms `Insight created successfully` with ID `b5cde372-…` and the file `~/.openloomi/data/memory/people/tom.md` lands on disk](../../apps/marketing/public/img/openloomi/plugins/codex/13b-add-memory-tom-boss.png)
 
 ## 14. `@OpenLoomi loop` — see the Loop dashboard snapshot
 
@@ -269,19 +315,31 @@ Tom." is saved to `people/boss.md` and immediately searchable via
 
 The command hits `GET /api/loop/state` and returns the Loop dashboard:
 
-- **Header**: `enabled: true`, last tick timestamp.
+- **Header**: `enabled: true`, last tick timestamp (in this run,
+  `2026-07-19T17:04:55.797Z`, ~24h ago — stale because the
+  Composio backend was unreachable).
 - **Counts**: pending decisions, done, dismissed, signals seen (with
   unsupported count).
 - **Connector health**: per-connector status (`needs_setup` /
   `local-only` / linked) for every platform the Loop can pull from.
+  In this run, **0 of 6 connected** — all six need setup; five fail
+  with `composio backend unreachable (DNS / ConnectionRefused)`;
+  Obsidian reports `local-only` (no remote error); zero are
+  `loopMonitored` or `decisionCapable`, so the tick has nothing to
+  pull.
 - **Prefs in effect**: tick frequency, brief time, wrap time,
   quiet-when-empty, desktop notifications, promotion/no-reply skip,
-  narrative mode.
-- **Notes**: actionable observations — e.g. "all 5 Composio-backed
-  connectors share one failure: the local Composio surface isn't
-  reachable. Loop can't pull signals or generate decisions from
-  Gmail/Calendar/GitHub/Slack/Linear until `@OpenLoomi handoff` walks
-  the Composio install."
+  narrative mode (here `briefTime 09:00`, `wrapTime 21:00`,
+  `intervalSec 600`, `noReplySkip` / `promotionSkip` / `narrative` /
+  `quietWhenEmpty` all `on`; notifications off for both desktop and
+  the cron-completion pet).
+- **Notes / implication**: actionable observations — e.g. "No
+  signals means no classifications, which is why the inbox is empty
+  and `dismissed=1`" / "First fix is getting the Composio backend
+  reachable so connectors can flip to `connected`" / "Then reconnect
+  at least Gmail/Calendar/GitHub to start producing decisions".
+
+![Step 14 — `Loop Dashboard`: `0 of 6 connected`, Composio backend unreachable (5/6), Obsidian `local-only`, stale `last tick ~24h ago`; prefs `briefTime 09:00 / wrapTime 21:00 / intervalSec 600`; implication = unblock the Composio backend first](../../apps/marketing/public/img/openloomi/plugins/codex/14-loop-dashboard.png)
 
 This is purely a dashboard snapshot — the Loop never takes
 destructive actions from this command. For actions, the Loop pops
