@@ -163,7 +163,7 @@ tokenPresent: true
 executionProviderReady: true
 executionProviderSource: native_codex_runtime
 ready: true
-nextAction: run
+nextAction: null
 ```
 
 If anything in that block is `false`, jump to the troubleshooting section
@@ -618,7 +618,7 @@ For source checkouts, project markers:
     }
   },
   "ready": true,
-  "nextAction": "run",
+  "nextAction": null,
   "checks": {
     "nativeProvider": {
       "checked": true,
@@ -676,7 +676,7 @@ open_openloomi
 configure_connectors
 show_openloomi_skills
 return_without_bridge
-use_openloomi_api
+null   (ready — no further action; call the OpenLoomi API directly)
 ```
 
 **Common `reason` values:**

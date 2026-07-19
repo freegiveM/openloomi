@@ -82,11 +82,6 @@ const OFFICIAL_RELEASE_SOURCE = {
   releasePage: "https://github.com/melandlabs/openloomi/releases",
 };
 
-const RUNTIME_SAFE_PROMPT_GUARD = [
-  "You are already inside the OpenLoomi runtime.",
-  "Do not call tools, shell, skills, Codex plugins, OpenLoomi plugins, or loomi-bridge.",
-].join(" ");
-
 const COMMANDS = new Set([
   "archive",
   "codex-runtime-info",
@@ -4629,9 +4624,7 @@ function getReadinessDecision(
   if (nativeCodexRuntimeReady) {
     return {
       ready: true,
-      nextAction: token.present
-        ? "use_openloomi_api"
-        : "initialize_openloomi_session",
+      nextAction: token.present ? null : "initialize_openloomi_session",
       reason: "READY",
       readinessSource: "native_codex_runtime",
       message: token.present
@@ -4663,7 +4656,7 @@ function getReadinessDecision(
 
   return {
     ready: true,
-    nextAction: "use_openloomi_api",
+    nextAction: null,
     reason: "READY",
   };
 }

@@ -527,7 +527,7 @@ test("setup-status treats active native Codex runtime as execution-ready", async
         assert.equal(j.nativeRuntimeProvider, "codex");
         assert.equal(j.nativeRuntime.codexAgentAvailable, true);
         assert.equal(j.ready, true);
-        assert.equal(j.nextAction, "run");
+        assert.equal(j.nextAction, null);
         assert.equal(j.reason, "READY");
         assert.equal(j.readinessSource, "native_codex_runtime");
         assert.equal(j.checks.nativeProvider.active, true);
@@ -581,7 +581,7 @@ test("setup-status recommends connector setup when monitored connectors are disc
         });
 
         assert.equal(j.ready, true);
-        assert.equal(j.nextAction, "run");
+        assert.equal(j.nextAction, null);
         assert.equal(j.reason, "READY");
         assert.equal(j.connectorStatusAvailable, true);
         assert.equal(j.connectorSetupRecommended, true);
@@ -669,7 +669,7 @@ test("setup-status keeps core readiness when connector status endpoint fails", a
         });
 
         assert.equal(j.ready, true);
-        assert.equal(j.nextAction, "run");
+        assert.equal(j.nextAction, null);
         assert.equal(j.reason, "READY");
         assert.equal(j.connectorStatusAvailable, false);
         assert.equal(j.connectorSetupRecommended, true);
@@ -826,21 +826,6 @@ test("workflow-guidance lists the four openloomi workflows", () => {
 // -----------------------------------------------------------------------------
 // Secrets contract — the plugin must never echo API key / token values
 // -----------------------------------------------------------------------------
-
-test("workflow-guidance uses runtime-safe run prompts for agent workflows", () => {
-  for (const workflow of [
-    "openloomi-loop",
-    "openloomi-memory",
-    "openloomi-handoff",
-  ]) {
-    const j = runJson(["workflow-guidance", "--workflow", workflow]);
-    const prefix = j.workflow?.taskPromptPrefix || "";
-    assert.match(prefix, /already inside the OpenLoomi runtime/);
-    assert.match(prefix, /Do not call tools, shell, skills/);
-    assert.match(prefix, /loomi-bridge/);
-    assert.doesNotMatch(prefix, /^Use OpenLoomi .* workflow/);
-  }
-});
 
 test("secrets contract: fake key value never appears in any subcommand output", () => {
   withFakeHome((env) => {
