@@ -104,6 +104,19 @@ The pet re-skins in place. Same 9-state vocabulary (`happy` / `idle` /
 
 ![Step 7 — Capybara theme is hot-reloaded in place; readiness table unchanged](../../apps/marketing/public/img/openloomi/07-pet-capybara-theme.png)
 
+### 7c. Drop in your own theme — `kawaii` cat via `pet-custom/`
+
+The built-in themes are Fox and Capybara, but the pet watcher also
+auto-discovers any folder under `~/.openloomi/pet-custom/<name>/` with
+PNG state sprites. Drop a folder in, and the theme appears in the
+right-click menu within ~250 ms — no bridge call, no restart. Below, a
+`kawaii` cat pack is installed and active: the small sprite in the
+top-left of the desktop app swaps to the kawaii cat, and the
+inline chat pet (shown `thinking` with a thought bubble while a tool
+call is in flight) renders from the same pack.
+
+![Step 7c — Custom kawaii theme via ~/.openloomi/pet-custom/kawaii/; desktop sprite + inline chat pet both render from the pack](../../apps/marketing/public/img/openloomi/07c-pet-kawaii-theme.png)
+
 ### 7b. Manually override the Pet state with `/openloomi:pet`
 
 The hot-reload pet also accepts manual overrides from Claude Code. Type
