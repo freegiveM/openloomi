@@ -20,7 +20,6 @@ or executes anything outside the plugin's own scripts.
 | `install_openloomi` / `INSTALL_REQUIRED` | OpenLoomi Desktop is not on this machine. Call `install-instructions` to show the platform plan. Only call `install-openloomi --confirm` after the user explicitly approves installation. |
 | `SOURCE_FOUND_APP_NOT_BUILT` | A source checkout is present but the OpenLoomi Desktop GUI app has not been built yet. Recommend either building the source per the OpenLoomi repo's `apps/web/src-tauri/README.md` or installing the packaged Desktop release. |
 | `open_openloomi` / `OPENLOOMI_API_UNREACHABLE` / `SESSION_INITIALIZATION_REQUIRED` | OpenLoomi is installed but the local API or guest/session token is not ready. Ask the user to open OpenLoomi Desktop once, or run `setup` so the bridge can launch/init through OpenLoomi-owned surfaces. |
-| `run` / `READY_SESSION_BOOTSTRAP_PENDING` | Nothing to install. OpenLoomi is ready; the local API will mint a guest session on the next Codex handoff or runtime call. |
 
 Before applying the API-unreachable row, inspect `loopbackAccessAmbiguous`.
 When it is `true`, the result is inconclusive because the current Codex sandbox

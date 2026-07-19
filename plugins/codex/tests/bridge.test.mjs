@@ -395,6 +395,18 @@ test("version returns bridge identity and command list", () => {
   ]) {
     assert.ok(j.commands.includes(cmd), `version.commands missing ${cmd}`);
   }
+  assert.equal(j.commands.includes("run"), false);
+});
+
+test("Codex memory and connector helpers stay in parity with Claude", () => {
+  for (const relativePath of [
+    "skills/openloomi-memory/scripts/openloomi-memory.cjs",
+    "skills/openloomi-connectors/scripts/openloomi-connectors.cjs",
+  ]) {
+    const codexPath = join(PLUGIN_DIR, relativePath.replace(/^skills\//, "skills/"));
+    const claudePath = join(PLUGIN_DIR, "..", "claude", relativePath);
+    assert.equal(readFileSync(codexPath, "utf8"), readFileSync(claudePath, "utf8"));
+  }
 });
 
 // -----------------------------------------------------------------------------

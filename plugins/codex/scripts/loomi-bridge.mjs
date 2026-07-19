@@ -147,8 +147,7 @@ const WORKFLOW_GUIDANCE = [
       "Guide attention-loop, prioritization, wrap-up, and follow-up workflows through the local OpenLoomi runtime.",
     wrapperSkill: "openloomi-loop",
     readyRequired: true,
-    bridgeCommand: "run",
-    taskPromptPrefix: `${RUNTIME_SAFE_PROMPT_GUARD} Treat the user request as a loop planning request. Return the final planning result only.`,
+    bridgeCommand: "workflow-guidance",
     nextActionsWhenBlocked: [
       "install_openloomi",
       "initialize_openloomi_session",
@@ -156,7 +155,7 @@ const WORKFLOW_GUIDANCE = [
     ],
     safety: [
       "Do not implement loop scheduling or decision storage in the Codex plugin.",
-      "Pass the user task over stdin to the bridge run command when ready.",
+      "Use the documented OpenLoomi Loop API operations for the requested action.",
     ],
   },
   {
@@ -167,8 +166,7 @@ const WORKFLOW_GUIDANCE = [
       "Guide memory search, recall, write, and context workflows through OpenLoomi-owned memory surfaces.",
     wrapperSkill: "openloomi-memory",
     readyRequired: true,
-    bridgeCommand: "run",
-    taskPromptPrefix: `${RUNTIME_SAFE_PROMPT_GUARD} Treat the user request as a memory/context request. Return only the runtime result; do not read or write memory files directly.`,
+    bridgeCommand: "openloomi-memory",
     nextActionsWhenBlocked: [
       "install_openloomi",
       "initialize_openloomi_session",
@@ -208,8 +206,7 @@ const WORKFLOW_GUIDANCE = [
       "Guide handoff workflows that send the current Codex task to OpenLoomi for follow-up, reminders, or later attention.",
     wrapperSkill: "openloomi-handoff",
     readyRequired: true,
-    bridgeCommand: "run",
-    taskPromptPrefix: `${RUNTIME_SAFE_PROMPT_GUARD} Treat the user request as a handoff or follow-up request. Return the final runtime result only.`,
+    bridgeCommand: "workflow-guidance",
     nextActionsWhenBlocked: [
       "install_openloomi",
       "initialize_openloomi_session",
@@ -1370,10 +1367,7 @@ function workflowGuidance(args) {
     workflow: {
       ...workflow,
       readinessCheckCommand: "setup-status",
-      runCommand:
-        workflow.bridgeCommand === "run"
-          ? 'printf "%s" "<task>" | loomi-bridge run'
-          : workflow.bridgeCommand,
+      runCommand: workflow.bridgeCommand,
     },
   });
 }
@@ -4686,23 +4680,25 @@ function getReadinessDecision(
   if (nativeCodexRuntimeReady) {
     return {
       ready: true,
-      nextAction: "run",
+      nextAction: token.present
+        ? "use_openloomi_api"
+        : "initialize_openloomi_session",
       reason: "READY",
       readinessSource: "native_codex_runtime",
       message: token.present
         ? "OpenLoomi is ready through the native Codex runtime."
-        : "OpenLoomi is ready through the native Codex runtime. The bridge will initialize a local guest/session token on run before execution.",
+        : "OpenLoomi is ready through the native Codex runtime. Initialize a local guest/session token before calling authenticated OpenLoomi APIs.",
     };
   }
 
   if (!token.present) {
     return {
-      ready: true,
-      nextAction: "run",
-      reason: "READY_SESSION_BOOTSTRAP_PENDING",
+      ready: false,
+      nextAction: "initialize_openloomi_session",
+      reason: "SESSION_INITIALIZATION_REQUIRED",
       sessionInitializationRequired: true,
       message:
-        "OpenLoomi is installed. The bridge will initialize a local guest/session token on run before execution.",
+        "OpenLoomi is installed. Initialize a local guest/session token before calling authenticated OpenLoomi APIs.",
     };
   }
 
@@ -4718,7 +4714,7 @@ function getReadinessDecision(
 
   return {
     ready: true,
-    nextAction: "run",
+    nextAction: "use_openloomi_api",
     reason: "READY",
   };
 }
@@ -5486,9 +5482,6 @@ async function main() {
       break;
     case "pet":
       await petCommand(process.argv.slice(3));
-      break;
-    case "run":
-      await run();
       break;
     case "set-codex-runtime-env":
       await setCodexRuntimeEnv(process.argv.slice(3));

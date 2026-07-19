@@ -676,7 +676,7 @@ open_openloomi
 configure_connectors
 show_openloomi_skills
 return_without_bridge
-run
+use_openloomi_api
 ```
 
 **Common `reason` values:**
@@ -778,7 +778,7 @@ follow-up" capability through **different surfaces**:
 
 - **Codex** (`@OpenLoomi …`): the `openloomi-handoff` skill above — wraps
   the request with the `taskPromptPrefix` returned by `workflow-guidance`
-  and pipes it into `loomi-bridge run` over stdin.
+  and sends it through the workflow's dedicated bridge command or API route.
 - **Claude Code** (`/openloomi:*`): the slash-command surface. There is no
   dedicated `openloomi-handoff` skill because `/openloomi:setup` /
   `/openloomi:status` already cover the same user need through the

@@ -9,7 +9,7 @@ description: "openloomi API documentation and reference. Use when working with o
 
 ## API Modules
 
-All auth routes resolve against the local SQLite database. There is **no cloud dependency** — openloomi is fully self-contained. The `remote-auth` prefix is historical (the routes once proxied to a cloud server); today they are the canonical local endpoints, and the Claude/Codex plugin bridge uses `/api/remote-auth/user` as a port-discovery + auth-handshake probe.
+All auth routes resolve against the local SQLite database. There is **no cloud dependency** — openloomi is fully self-contained. The `remote-auth` prefix is historical (the routes once proxied to a cloud server); today they are the canonical local endpoints, and the Codex plugin bridge uses `/api/remote-auth/user` as a port-discovery + auth-handshake probe.
 
 This reference covers **131 route handlers** under 36 top-level `/api/*` modules (auto-surveyed from `apps/web/app/api/`).
 
@@ -330,7 +330,7 @@ TOKEN=$(cat ~/.openloomi/token | base64 -d)
 # 1. Check AI API status (no auth required)
 curl http://localhost:3414/api/ai/chat
 
-# 2. Get current user info (also used by Claude/Codex plugin as a port-discovery probe)
+# 2. Get current user info (also used by Codex plugin as a port-discovery probe)
 TOKEN=$(cat ~/.openloomi/token | base64 -d)
 curl http://localhost:3414/api/remote-auth/user \
   -H "Authorization: Bearer $TOKEN"
