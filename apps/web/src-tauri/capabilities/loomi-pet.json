@@ -24,7 +24,8 @@
     "core:window:allow-start-dragging",
     "allow-emit-dev-state",
     "allow-get-pet-config",
-    "allow-set-active-theme"
+    "allow-set-active-theme",
+    "allow-get-global-cursor-position"
   ],
   "remote": {
     "urls": [

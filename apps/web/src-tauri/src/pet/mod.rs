@@ -187,6 +187,41 @@ pub fn get_pet_config(app: tauri::AppHandle) -> PetConfigView {
     theme::build_view(cfg, custom)
 }
 
+/// Global cursor position reported by `device_query`, in physical
+/// screen pixels (top-left origin). The widget polls this at 4 Hz
+/// from `loomi-widget.html` so it can detect "cursor drifted onto an
+/// opaque pixel" even while the window is in click-through mode
+/// (macOS won't deliver `mousemove` in that state). See issue #392.
+///
+/// Uses `rename_all = "camelCase"` so the widget can read it as
+/// `{ x, y }` directly — the JS calls
+/// `t.core.invoke("get_global_cursor_position")` and indexes the
+/// result without a rename step.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CursorPosition {
+    pub x: i32,
+    pub y: i32,
+}
+
+/// Returns the current global cursor position in physical screen
+/// pixels. Read via `device_query::DeviceState::get_mouse()` which
+/// polls the OS event loop without taking any hooks. The struct is
+/// `Serialize` + `rename_all = "camelCase"` so the JS receives
+/// `{ x, y }` directly.
+///
+/// Defined at `pet::` scope (not in a submodule) for the same reason
+/// as `emit_dev_state` — `tauri::generate_handler!` resolves the
+/// `__cmd__...` / `__tauri_command_name_...` siblings via the path
+/// written in the macro arg list, and a `pub use` re-export compiles
+/// fine but the runtime invoke fails with `command not found`.
+#[tauri::command]
+pub fn get_global_cursor_position() -> CursorPosition {
+    let state = device_query::DeviceState::new();
+    let mouse = state.get_mouse();
+    CursorPosition { x: mouse.coords.0, y: mouse.coords.1 }
+}
+
 /// Updates only `activeTheme` (called by the right-click menu).
 /// Re-reads + re-emits so the widget can paint the new theme without
 /// a restart. Returns the fresh view so the JS side can update its
