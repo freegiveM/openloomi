@@ -22,6 +22,13 @@ If the bridge returns `ready: false`, follow the reported `nextAction`. Do not
 ask the user to paste API keys, OAuth tokens, connector secrets, or OpenLoomi
 auth tokens into Codex chat.
 
+When `setup-status` returns `loopbackAccessAmbiguous: true`, do not conclude
+that OpenLoomi is stopped. Codex network sandboxing can block access to the
+host's `localhost` even while the desktop API is listening. Request approval
+to run the commands in `loopbackAccess.verification.commands` outside the
+sandbox. If an outside-sandbox request reaches `/api/native/providers`, report
+OpenLoomi as running and identify the sandbox probe as a false negative.
+
 OpenLoomi guest sessions are supported. A missing token is not a request for
 account registration or manual token entry. When the bridge reports
 `initialize_openloomi_session` or `open_openloomi`, initialize a guest/session

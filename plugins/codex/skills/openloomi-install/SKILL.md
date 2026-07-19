@@ -22,6 +22,29 @@ or executes anything outside the plugin's own scripts.
 | `open_openloomi` / `OPENLOOMI_API_UNREACHABLE` / `SESSION_INITIALIZATION_REQUIRED` | OpenLoomi is installed but the local API or guest/session token is not ready. Ask the user to open OpenLoomi Desktop once, or run `setup` so the bridge can launch/init through OpenLoomi-owned surfaces. |
 | `run` / `READY_SESSION_BOOTSTRAP_PENDING` | Nothing to install. OpenLoomi is ready; the local API will mint a guest session on the next Codex handoff or runtime call. |
 
+Before applying the API-unreachable row, inspect `loopbackAccessAmbiguous`.
+When it is `true`, the result is inconclusive because the current Codex sandbox
+may block host loopback traffic. Request approval and run
+`loopbackAccess.verification.commands` outside the sandbox. Only tell the user
+to restart OpenLoomi if the outside-sandbox checks also fail.
+
+## Sandbox and installation
+
+Downloading and installing OpenLoomi can require capabilities that are blocked
+inside the current Codex sandbox:
+
+- GitHub release lookup and artifact download require network access.
+- The default installer may write to a system application directory such as
+  `/Applications`.
+- Interactive installers and launching OpenLoomi Desktop require GUI/process
+  access outside the sandbox.
+
+When an install command fails with a likely network, permission, filesystem, or
+GUI sandbox error, request approval and retry the same `loomi-bridge` command
+outside the sandbox. Do not work around the bridge by downloading or installing
+the artifact with unrelated commands. Do not report that the release URL is
+invalid or the installer is broken until the approved retry also fails.
+
 ## Codex runtime setup
 
 If the user is setting up OpenLoomi from Codex, explicitly asks to switch the

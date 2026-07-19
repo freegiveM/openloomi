@@ -436,6 +436,22 @@ test("setup-status reports OPENLOOMI_API_UNREACHABLE when API down and no token"
       assert.equal(j.ready, false);
       assert.equal(j.nextAction, "open_openloomi");
       assert.equal(j.reason, "OPENLOOMI_API_UNREACHABLE");
+      assert.equal(j.loopbackAccessAmbiguous, true);
+      assert.equal(j.loopbackAccess.ambiguous, true);
+      assert.equal(
+        j.loopbackAccess.reason,
+        "LOOPBACK_NETWORK_ACCESS_BLOCKED",
+      );
+      assert.equal(
+        j.loopbackAccess.verification.requiresOutsideSandbox,
+        true,
+      );
+      assert.ok(
+        j.loopbackAccess.verification.commands.some((command) =>
+          command.includes("/api/native/providers"),
+        ),
+      );
+      assert.deepEqual(j.checks.loopbackAccess, j.loopbackAccess);
     }
   });
 });
@@ -503,6 +519,9 @@ test("setup-status treats active native Codex runtime as execution-ready", async
         assert.equal(j.reason, "READY");
         assert.equal(j.readinessSource, "native_codex_runtime");
         assert.equal(j.checks.nativeProvider.active, true);
+        assert.equal(j.loopbackAccessAmbiguous, false);
+        assert.equal(j.loopbackAccess.ambiguous, false);
+        assert.equal(j.loopbackAccess.verification, null);
       },
     );
   });
@@ -766,6 +785,15 @@ test("install-instructions returns a supported install plan on darwin", () => {
   assert.ok(
     j.installPlan.safety.some((s) => s.includes("--confirm")),
     "install plan should mention --confirm",
+  );
+  assert.match(j.sandboxRequirements.network, /outside-sandbox/i);
+  assert.match(j.sandboxRequirements.filesystem, /system application/i);
+  assert.match(j.sandboxRequirements.process, /GUI\/process/i);
+  assert.match(j.sandboxRequirements.retryPolicy, /request approval/i);
+  assert.ok(
+    j.instructions.some((instruction) =>
+      instruction.includes("retry the same bridge command outside the sandbox"),
+    ),
   );
 });
 

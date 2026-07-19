@@ -119,6 +119,13 @@ The wizard never auto-installs from unofficial artifacts, never builds from
 source on your behalf, and never asks for API keys in chat — secrets are
 always entered inside OpenLoomi-owned UI.
 
+Codex sandboxing can block GitHub release lookup/download, writes to system
+application directories such as `/Applications`, installer execution, and GUI
+launching. On a likely sandbox-related network or permission failure, request
+approval and retry the same bridge command outside the sandbox before treating
+the release URL as unavailable or the installer as broken. Keep the retry on
+`loomi-bridge`; do not bypass its official-artifact allowlist and verification.
+
 You can run the same wizard from a terminal:
 
 ```bash
@@ -597,6 +604,19 @@ For source checkouts, project markers:
   "recommendedReason": "CONNECTOR_SETUP_REQUIRED",
   "connectorSetupUrl": "http://localhost:3515/connectors",
   "apiReachable": false,
+  "loopbackAccessAmbiguous": true,
+  "loopbackAccess": {
+    "ambiguous": true,
+    "reason": "LOOPBACK_NETWORK_ACCESS_BLOCKED",
+    "message": "Every loopback API probe failed with a network error...",
+    "verification": {
+      "requiresOutsideSandbox": true,
+      "commands": [
+        "lsof -nP -iTCP:3414 -sTCP:LISTEN",
+        "curl -sS -i --max-time 5 http://127.0.0.1:3414/api/native/providers"
+      ]
+    }
+  },
   "ready": true,
   "nextAction": "run",
   "checks": {
@@ -636,6 +656,14 @@ accounts from `/api/integrations` as status-only rows. This lets Codex
 show native connections such as Gmail or QQbot as connected even when the
 Loop/Composio probe is unavailable or slow, while still keeping all
 credentials inside OpenLoomi-owned surfaces.
+
+When every loopback probe fails with `NETWORK_ERROR`, `setup-status` sets
+`loopbackAccessAmbiguous: true`. This does not prove that OpenLoomi is stopped:
+Codex network sandboxing may prevent the bridge process from reaching services
+on the host's `localhost`. Consumers should request approval to run the
+provided `loopbackAccess.verification.commands` outside the sandbox before
+recommending an application restart. A successful outside-sandbox API request
+means the in-sandbox readiness result was a false negative.
 
 **Common `nextAction` values:**
 

@@ -309,11 +309,47 @@ async function probeApiReachable() {
   };
 }
 
+function getLoopbackAccessDiagnostic(apiProbe) {
+  const attempts = apiProbe?.attempts || [];
+  const ambiguous =
+    attempts.length > 0 &&
+    attempts.every((attempt) => {
+      if (attempt.reason !== "NETWORK_ERROR") return false;
+
+      try {
+        const host = new URL(attempt.baseUrl).hostname.toLowerCase();
+        return ["localhost", "127.0.0.1", "::1"].includes(host);
+      } catch {
+        return false;
+      }
+    });
+
+  return {
+    ambiguous,
+    reason: ambiguous ? "LOOPBACK_NETWORK_ACCESS_BLOCKED" : null,
+    message: ambiguous
+      ? "Every loopback API probe failed with a network error. OpenLoomi may be offline, or the current Codex sandbox may block localhost access. Re-check the listening port and API outside the sandbox before asking the user to restart OpenLoomi."
+      : null,
+    verification: ambiguous
+      ? {
+          requiresOutsideSandbox: true,
+          commands: [
+            "lsof -nP -iTCP:3414 -sTCP:LISTEN",
+            "lsof -nP -iTCP:3515 -sTCP:LISTEN",
+            "curl -sS -i --max-time 5 http://127.0.0.1:3414/api/native/providers",
+            "curl -sS -i --max-time 5 http://127.0.0.1:3515/api/native/providers",
+          ],
+        }
+      : null,
+  };
+}
+
 async function buildSetupStatus() {
   const discovery = await discoverOpenLoomi();
   const token = getTokenStatus();
   const codexRuntimeEnv = await getCodexRuntimeEnvStatus();
   const apiProbe = await probeApiReachable();
+  const loopbackAccess = getLoopbackAccessDiagnostic(apiProbe);
 
   const connectorStatus = await getConnectorStatus(
     apiProbe.reachableUrl,
@@ -370,6 +406,8 @@ async function buildSetupStatus() {
       attempts: apiProbe.attempts,
       source: apiProbe.source,
     },
+    loopbackAccessAmbiguous: loopbackAccess.ambiguous,
+    loopbackAccess,
     codexRuntimeEnvSet: codexRuntimeEnv.set,
     codexRuntimeEnv: {
       key: codexRuntimeEnv.key,
@@ -395,6 +433,7 @@ async function buildSetupStatus() {
       auth: token.checked,
       nativeProvider: nativeProviderStatus,
       apiProbe: apiProbe.attempts,
+      loopbackAccess,
       connectors: connectorStatus.check,
       discovery: discovery.checked,
       codexRuntimeEnv: {
@@ -1023,8 +1062,16 @@ function installInstructions() {
       "Install OpenLoomi from the official release artifact or build the OpenLoomi Desktop GUI app from a source checkout.",
       "The bridge will not download or install OpenLoomi unless install-openloomi is called with --confirm.",
       "On supported platforms, install-openloomi --confirm downloads the official artifact and installs it with the default installer path.",
+      "If release lookup or download fails with a network error under Codex sandboxing, request approval and retry the same bridge command outside the sandbox before treating the release URL as unavailable.",
+      "Installing into a system application directory, launching an installer, or opening OpenLoomi Desktop may also require approval to run outside the sandbox.",
       "After installation, re-run setup-status from the Codex plugin.",
     ],
+    sandboxRequirements: {
+      network: "GitHub release lookup and artifact download may require outside-sandbox network access.",
+      filesystem: "The default installer may need permission to write to a system application directory such as /Applications.",
+      process: "Launching an installer or OpenLoomi Desktop may require outside-sandbox GUI/process access.",
+      retryPolicy: "On a likely sandbox-related network or permission failure, request approval and retry the same operation outside the sandbox before diagnosing a broken release or installer.",
+    },
     bridge: {
       name: "openloomi-codex-bridge",
       version: BRIDGE_VERSION,
@@ -2345,7 +2392,7 @@ function getWindowsInstallCommand(filePath) {
 }
 
 async function initializeSession() {
-  let setup = await buildSetupStatus();
+  const setup = await buildSetupStatus();
 
   if (!setup.installed) {
     writeJson(
@@ -2526,7 +2573,7 @@ async function requestGuestToken(baseUrl) {
   // Neither path yielded a token. Surface the more informative failure:
   // if the remote-auth endpoint was reachable but rejected/errored, its
   // reason is more diagnostic than the cookie-side one.
-  if (remoteAuth && remoteAuth.reason) {
+  if (remoteAuth?.reason) {
     return remoteAuth;
   }
   return (
@@ -3943,9 +3990,7 @@ function planRuntimeEnvChange({ platform, key, value, flags }) {
       `printf '%s\n' '${key}=${value}' >> ${dir}/${LINUX_ENV_FILE}`,
     );
     notes.push(
-      "Wrote the per-user env file. Run `systemctl --user import-environment " +
-        key +
-        "` (or re-login) so the current desktop session picks it up.",
+      `Wrote the per-user env file. Run \`systemctl --user import-environment ${key}\` (or re-login) so the current desktop session picks it up.`,
     );
     return { actions, commands, notes, requiresRestart };
   }
@@ -4116,7 +4161,7 @@ async function setup(args) {
       record("install", ok, {
         code: r.code,
         exitCode: r.exitCode,
-        reason: r.parsed && r.parsed.reason,
+        reason: r.parsed?.reason,
       });
       if (!ok) {
         writeJson({
@@ -4151,9 +4196,9 @@ async function setup(args) {
       const ok = r.ok && r.parsed && r.parsed.ok === true;
       record("runtime_env", ok, {
         code: r.code,
-        before: r.parsed && r.parsed.before,
-        after: r.parsed && r.parsed.after,
-        platform: r.parsed && r.parsed.platform,
+        before: r.parsed?.before,
+        after: r.parsed?.after,
+        platform: r.parsed?.platform,
       });
       if (!ok) {
         writeJson({
@@ -4242,7 +4287,7 @@ async function setup(args) {
       record("initialize_session", ok, {
         code: r.code,
         exitCode: r.exitCode,
-        reason: r.parsed && r.parsed.reason,
+        reason: r.parsed?.reason,
       });
       if (!ok) {
         writeJson({
@@ -5179,7 +5224,7 @@ async function archiveCommand(args) {
   let stdinPayload = {};
   try {
     const raw = await readStdin();
-    if (raw && raw.trim()) {
+    if (raw?.trim()) {
       try {
         stdinPayload = JSON.parse(raw);
       } catch {
@@ -5231,16 +5276,16 @@ async function archiveCommand(args) {
     : `Codex session (${stamp.slice(0, 10)})`;
 
   const descriptionLines = [
-    `[codex session${sessionId ? " " + sessionId : ""}]`,
+    `[codex session${sessionId ? ` ${sessionId}` : ""}]`,
     `event: ${eventName}`,
     `cwd: ${cwd}`,
     `captured: ${stamp}`,
-    `source: codex-plugin-stop-hook`,
+    "source: codex-plugin-stop-hook",
     "(Codex's Stop hook does not currently expose a transcript path; richer session capture is left to apps/web's session-loop pipeline.)",
   ];
   let description = descriptionLines.join("\n");
   if (description.length > ARCHIVE_MAX_CONTENT_CHARS) {
-    description = description.slice(0, ARCHIVE_MAX_CONTENT_CHARS) + "…";
+    description = `${description.slice(0, ARCHIVE_MAX_CONTENT_CHARS)}…`;
   }
 
   const body = {
