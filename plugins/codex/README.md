@@ -565,7 +565,7 @@ For source checkouts, project markers:
   "mode": "packaged | source | unconfigured",
   "installed": true,
   "appPath": "<resolved OpenLoomi Desktop app path>",
-  "version": "openloomi-desktop 0.8.2",
+  "version": "openloomi-desktop 0.8.3",
   "tokenPresent": true,
   "session": {
     "tokenPresent": true,
