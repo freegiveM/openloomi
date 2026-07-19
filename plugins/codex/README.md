@@ -163,6 +163,27 @@ below.
 
 ---
 
+## End-to-end user flow
+
+> **Want to see what this looks like in motion?** Read the dedicated
+> [Tour guide →](./WALKTHROUGH.md) — from "ask Codex to install
+> the plugin" through "custom Loop type fires on the next decision".
+
+The TL;DR of the full path: **install the plugin → launch Codex with
+`--plugin-dir plugins/codex` → see the Loomi Pet pop on the desktop
+(fox theme) → flip the theme to capybara via the right-click menu →
+call `@OpenLoomi status` for the canonical JSON → the bundled Codex
+hooks drive the pet through every event automatically → connect
+external apps via `@OpenLoomi handoff` → and finally watch OpenLoomi's
+Loop surface decision cards in the desktop app** — all driven by
+prompts you typed in Codex.
+
+The screenshots in the Tour guide are the canonical reference for the
+visual state of the system at every step. The remainder of this README is
+for command behavior, configuration, and contributor reference.
+
+---
+
 ## What you can ask Codex
 
 Once the plugin is enabled and OpenLoomi is ready, treat `@OpenLoomi` as a
