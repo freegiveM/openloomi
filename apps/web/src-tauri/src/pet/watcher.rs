@@ -298,13 +298,7 @@ fn watch_loop(app: &AppHandle, setup_emitted: std::sync::Arc<std::sync::Mutex<bo
         // that ticks every poll.
         let last_polled_at = current_poll_timestamp_iso();
         let loop_enabled = is_loop_enabled();
-        publish_baseline_state_with_meta(
-            app,
-            state,
-            monologue,
-            loop_enabled,
-            Some(last_polled_at),
-        );
+        publish_baseline_state_with_meta(app, state, monologue, loop_enabled, Some(last_polled_at));
 
         // B2: keep bubble + card windows in sync. The bubble auto-shows
         // when the latest pending decision changes and auto-hides when

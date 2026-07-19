@@ -248,12 +248,7 @@ mod review_seen_tests {
     /// drag position persists across launches — see issue #341).
     #[test]
     fn window_labels_are_unique_and_nonempty() {
-        let labels = [
-            PET_LABEL,
-            PET_BUBBLE_LABEL,
-            PET_CARD_LABEL,
-            PET_DEV_LABEL,
-        ];
+        let labels = [PET_LABEL, PET_BUBBLE_LABEL, PET_CARD_LABEL, PET_DEV_LABEL];
         for label in labels {
             assert!(!label.is_empty(), "window label must not be empty");
         }

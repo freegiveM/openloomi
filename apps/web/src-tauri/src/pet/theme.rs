@@ -209,20 +209,58 @@ pub fn builtin_theme_base_dir(theme: &str) -> Option<PathBuf> {
 /// overrides when present. The widget uses this when building the
 /// `PetConfigView` — keeps the resolve priority centralized.
 ///
-/// For built-ins the asset path matches the on-disk filename
-/// convention (`loomi-pet/assets/<theme>/<sprite_prefix>-<state>.png`).
-/// The sprite prefix is NOT the same as the theme name — `fox` ships
-/// with the legacy `loomi-` prefix while `capybara` uses `capybara-`.
-/// We centralise that mapping in `builtin_sprite_prefix` so the JS
-/// `BUILTIN_THEMES` map and the Rust resolver stay in lock-step.
+/// Resolution order:
+///   1. Runtime override (`overrides[theme][state]` in pet-config.json).
+///   2. Built-in theme — asset path follows
+///      `loomi-pet/assets/<theme>/<sprite_prefix>-<state>.png`. The
+///      sprite prefix is NOT the same as the theme name — `fox` ships
+///      with the legacy `loomi-` prefix while `capybara` uses
+///      `capybara-`. Centralised in `builtin_sprite_prefix` so the JS
+///      `BUILTIN_THEMES` map and the Rust resolver stay in lock-step.
+///   3. Custom theme — scan `<customThemesDir>/<theme>/` for a PNG
+///      whose stem normalises to `state`. Supports bare names
+///      (`idle.png`), built-in prefixes (`fox-idle.png`), and the
+///      generic `<anything>-<state>.png` convention via
+///      `normalize_state_key`.
 pub fn resolve_sprite(cfg: &PetConfig, theme: &str, state: &str) -> Option<OverrideRef> {
     if let Some(path) = cfg.override_path(theme, state) {
         return Some(OverrideRef::Absolute { path });
     }
-    let prefix = builtin_sprite_prefix(theme)?;
-    builtin_theme_base_dir(theme).map(|base| OverrideRef::Asset {
-        path: format!("{}/{}-{}.png", base.display(), prefix, state),
-    })
+    if let Some(prefix) = builtin_sprite_prefix(theme) {
+        return builtin_theme_base_dir(theme).map(|base| OverrideRef::Asset {
+            path: format!("{}/{}-{}.png", base.display(), prefix, state),
+        });
+    }
+    find_custom_theme_sprite(cfg, theme, state)
+}
+
+/// Scan `<customThemesDir>/<theme>/` for a PNG whose stem normalises
+/// to `state`. Returns the absolute path so the widget can route it
+/// through `convertFileSrc`. Mirrors the matching logic in
+/// `has_known_state_png` so any naming convention the discovery code
+/// accepts is also accepted by the resolver.
+fn find_custom_theme_sprite(cfg: &PetConfig, theme: &str, state: &str) -> Option<OverrideRef> {
+    let theme_dir = cfg.custom_themes_path().join(theme);
+    let rd = std::fs::read_dir(&theme_dir).ok()?;
+    for e in rd.flatten() {
+        let p = e.path();
+        if !p.is_file() {
+            continue;
+        }
+        if p.extension()
+            .and_then(|s| s.to_str())
+            .map(str::to_ascii_lowercase)
+            != Some("png".into())
+        {
+            continue;
+        }
+        if let Some(stem) = p.file_stem().and_then(|s| s.to_str()) {
+            if normalize_state_key(stem) == state {
+                return Some(OverrideRef::Absolute { path: p });
+            }
+        }
+    }
+    None
 }
 
 /// Sprite filename prefix for a built-in theme. The directory name
@@ -493,6 +531,165 @@ mod tests {
         let cfg = PetConfig::default();
         let resolved = cfg.custom_themes_path();
         assert!(resolved.ends_with(".openloomi/pet-custom"));
+    }
+
+    // ---- resolve_sprite: custom-theme folder scan --------------------
+    //
+    // The third resolution branch (added when a regression was found
+    // where the custom-theme menu item was registered but the widget
+    // always fell back to fox idle) scans
+    // `<customThemesDir>/<theme>/` for a PNG whose stem normalises to
+    // the requested state.
+
+    /// Create a unique scratch theme dir under the OS temp root so
+    /// parallel `cargo test` invocations don't collide. Returns the
+    /// dir; caller is responsible for cleanup.
+    fn scratch_theme_dir(label: &str) -> PathBuf {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let pid = std::process::id();
+        let dir = std::env::temp_dir().join(format!(
+            "loomi-pet-test-{label}-{pid}-{n}-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&dir).expect("create scratch theme dir");
+        dir
+    }
+
+    fn cfg_pointing_at(dir: &Path) -> PetConfig {
+        let mut cfg = PetConfig::default();
+        cfg.custom_themes_dir = dir.to_string_lossy().to_string();
+        cfg
+    }
+
+    fn cleanup(dir: &Path) {
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn resolve_sprite_finds_bare_stem_in_custom_theme() {
+        let theme_dir = scratch_theme_dir("bare");
+        let theme = "kawaii-robot";
+        let theme_path = theme_dir.join(theme);
+        std::fs::create_dir_all(&theme_path).unwrap();
+        // Tiny 1×1 PNG so `is_file()` returns true.
+        std::fs::write(theme_path.join("idle.png"), [0x89, b'P', b'N', b'G']).unwrap();
+
+        let cfg = cfg_pointing_at(&theme_dir);
+        match resolve_sprite(&cfg, theme, "idle") {
+            Some(OverrideRef::Absolute { path }) => {
+                assert_eq!(path, theme_path.join("idle.png"));
+            }
+            other => panic!("expected Absolute, got {other:?}"),
+        }
+        cleanup(&theme_dir);
+    }
+
+    #[test]
+    fn resolve_sprite_accepts_prefixed_names_in_custom_theme() {
+        let theme_dir = scratch_theme_dir("prefixed");
+        let theme = "kawaii-robot";
+        let theme_path = theme_dir.join(theme);
+        std::fs::create_dir_all(&theme_path).unwrap();
+        // Mix of naming conventions the discovery code already accepts.
+        for (file, expected_state) in [
+            ("kawaii-robot-idle.png", "idle"),
+            ("fox-thinking.png", "thinking"),
+            ("MY-PACK-WORKING.png", "working"),
+            ("happy.png", "happy"),
+        ] {
+            std::fs::write(theme_path.join(file), [0x89, b'P', b'N', b'G']).unwrap();
+            let cfg = cfg_pointing_at(&theme_dir);
+            match resolve_sprite(&cfg, theme, expected_state) {
+                Some(OverrideRef::Absolute { path }) => assert_eq!(
+                    path,
+                    theme_path.join(file),
+                    "{file} should resolve to {expected_state}"
+                ),
+                other => panic!("{file}: expected Absolute, got {other:?}"),
+            }
+        }
+        cleanup(&theme_dir);
+    }
+
+    #[test]
+    fn resolve_sprite_returns_none_when_custom_theme_state_missing() {
+        let theme_dir = scratch_theme_dir("missing");
+        let theme = "kawaii-robot";
+        std::fs::create_dir_all(theme_dir.join(theme)).unwrap();
+        // Folder exists but no PNGs inside.
+        let cfg = cfg_pointing_at(&theme_dir);
+        assert!(resolve_sprite(&cfg, theme, "happy").is_none());
+        cleanup(&theme_dir);
+    }
+
+    #[test]
+    fn resolve_sprite_skips_non_png_files_in_custom_theme() {
+        let theme_dir = scratch_theme_dir("nonpng");
+        let theme = "kawaii-robot";
+        let theme_path = theme_dir.join(theme);
+        std::fs::create_dir_all(&theme_path).unwrap();
+        // Decoy with .jpg extension and a folder named idle.png — neither
+        // should match.
+        std::fs::write(theme_path.join("idle.jpg"), b"not a png").unwrap();
+        std::fs::create_dir_all(theme_path.join("idle.png")).unwrap();
+        let cfg = cfg_pointing_at(&theme_dir);
+        assert!(resolve_sprite(&cfg, theme, "idle").is_none());
+        cleanup(&theme_dir);
+    }
+
+    #[test]
+    fn resolve_sprite_override_wins_over_custom_folder_scan() {
+        // Branch 1 (runtime override) must take priority over branch 3
+        // (folder scan) so the user can pin a single state even after
+        // dropping a full theme into the custom folder.
+        let theme_dir = scratch_theme_dir("override-wins");
+        let theme_path = theme_dir.join("kawaii-robot");
+        std::fs::create_dir_all(&theme_path).unwrap();
+        std::fs::write(theme_path.join("idle.png"), [0x89, b'P', b'N', b'G']).unwrap();
+
+        let mut cfg = cfg_pointing_at(&theme_dir);
+        cfg.overrides
+            .entry("kawaii-robot".into())
+            .or_default()
+            .insert("idle".into(), PathBuf::from("/tmp/pinned-idle.png"));
+
+        match resolve_sprite(&cfg, "kawaii-robot", "idle") {
+            Some(OverrideRef::Absolute { path }) => {
+                assert_eq!(path, PathBuf::from("/tmp/pinned-idle.png"));
+            }
+            other => panic!("expected pinned override to win, got {other:?}"),
+        }
+        cleanup(&theme_dir);
+    }
+
+    #[test]
+    fn build_view_populates_overrides_for_custom_theme() {
+        // End-to-end: a folder drop should land in the wire payload as
+        // a populated overrides map. This is the exact shape the JS
+        // widget reads in `applyConfig`.
+        let theme_dir = scratch_theme_dir("build-view");
+        let theme_path = theme_dir.join("kawaii-robot");
+        std::fs::create_dir_all(&theme_path).unwrap();
+        std::fs::write(theme_path.join("happy.png"), [0x89, b'P', b'N', b'G']).unwrap();
+
+        let cfg = cfg_pointing_at(&theme_dir);
+        let view = build_view(cfg, vec!["kawaii-robot".into()]);
+        let entry = view
+            .overrides
+            .get("kawaii-robot")
+            .expect("custom theme should appear in overrides map");
+        match entry.get("happy") {
+            Some(OverrideRef::Absolute { path }) => {
+                assert_eq!(path, &theme_path.join("happy.png"));
+            }
+            other => panic!("expected Absolute happy sprite, got {other:?}"),
+        }
+        cleanup(&theme_dir);
     }
 
     #[test]

@@ -101,7 +101,10 @@ fn emit_state(app: &AppHandle, state: &VisualState) {
     });
     if let Some(obj) = payload.as_object_mut() {
         if let Some(ts) = state.last_polled_at.as_ref() {
-            obj.insert("last_polled_at".into(), serde_json::Value::String(ts.clone()));
+            obj.insert(
+                "last_polled_at".into(),
+                serde_json::Value::String(ts.clone()),
+            );
         }
     }
     let _ = app.emit_to(PET_LABEL, "loop:state", payload.clone());
@@ -202,12 +205,8 @@ mod tests {
 
     #[test]
     fn new_with_meta_preserves_extra_fields() {
-        let v = VisualState::new_with_meta(
-            "idle",
-            None,
-            false,
-            Some("2026-07-16T12:00:00Z".into()),
-        );
+        let v =
+            VisualState::new_with_meta("idle", None, false, Some("2026-07-16T12:00:00Z".into()));
         assert_eq!(v.state, "idle");
         assert_eq!(v.monologue, None);
         assert!(!v.enabled);
