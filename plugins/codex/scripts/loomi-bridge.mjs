@@ -255,57 +255,6 @@ async function getCodexRuntimeEnvStatus() {
   };
 }
 
-// Lightweight, unconditional reachability probe. Hits the runtime's
-// guest endpoint (the same one `initialize-session` will mint through)
-// and treats any HTTP response - including 4xx - as "the daemon is
-// listening". Used by `buildSetupStatus` to populate `apiProbe` and
-// `apiReachable` independently of whether a session token is present.
-//
-// Result shape (consumed by tests/bridge.test.mjs):
-//   {
-//     reachableUrl: <first URL that answered> | null,
-//     attempts: [
-//       { baseUrl, reason: 'HTTP_RESPONSE' | 'TIMEOUT' | 'NETWORK_ERROR', status?, error? }
-//     ]
-//   }
-async function probeApiReachable() {
-  const urls = getLocalApiBaseUrls();
-  const attempts = [];
-
-  for (const baseUrl of urls) {
-    try {
-      const res = await fetch(`${baseUrl}/api/remote-auth/guest`, {
-        method: "POST",
-        signal: AbortSignal.timeout(1500),
-        headers: { "content-type": "application/json" },
-        body: "{}",
-      });
-      attempts.push({
-        baseUrl,
-        reason: "HTTP_RESPONSE",
-        status: res.status,
-      });
-      return {
-        reachableUrl: baseUrl,
-        attempts,
-      };
-    } catch (e) {
-      const isAbort =
-        e && (e.name === "AbortError" || e.name === "TimeoutError");
-      attempts.push({
-        baseUrl,
-        reason: isAbort ? "TIMEOUT" : "NETWORK_ERROR",
-        error: e instanceof Error ? e.message : String(e),
-      });
-    }
-  }
-
-  return {
-    reachableUrl: null,
-    attempts,
-  };
-}
-
 function getLoopbackAccessDiagnostic(apiProbe) {
   const attempts = apiProbe?.attempts || [];
   const ambiguous =
@@ -345,7 +294,7 @@ async function buildSetupStatus() {
   const discovery = await discoverOpenLoomi();
   const token = getTokenStatus();
   const codexRuntimeEnv = await getCodexRuntimeEnvStatus();
-  const apiProbe = await probeApiReachable();
+  const apiProbe = await probeLocalApi();
   const loopbackAccess = getLoopbackAccessDiagnostic(apiProbe);
 
   const connectorStatus = await getConnectorStatus(
