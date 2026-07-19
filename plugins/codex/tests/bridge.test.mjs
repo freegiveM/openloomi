@@ -1183,14 +1183,24 @@ test("plugin manifest declares Codex hook bundle", () => {
     "Stop",
   ]) {
     assert.ok(Array.isArray(hooks.hooks[event]), `missing hook event ${event}`);
-    const command = hooks.hooks[event][0].hooks[0];
-    assert.match(command.command, /loomi-bridge\.mjs/);
-    assert.match(command.command, /--quiet/);
-    assert.match(command.commandWindows, /loomi-bridge\.mjs/);
-    assert.match(command.commandWindows, /\$env:PLUGIN_ROOT/);
-    assert.doesNotMatch(command.commandWindows, /%PLUGIN_ROOT%/);
-    assert.match(command.commandWindows, /--quiet/);
-    assert.equal(command.timeout, 5);
+    // Stop fans out to multiple bridge commands (archive + state happy),
+    // so iterate over every hook in the bundle. Other events still have
+    // a single command.
+    const eventHooks = hooks.hooks[event];
+    for (const eventHook of eventHooks) {
+      const command = eventHook.hooks[0];
+      assert.match(command.command, /loomi-bridge\.mjs/);
+      assert.match(command.command, /--quiet/);
+      assert.match(command.commandWindows, /loomi-bridge\.mjs/);
+      assert.match(command.commandWindows, /\$env:PLUGIN_ROOT/);
+      assert.doesNotMatch(command.commandWindows, /%PLUGIN_ROOT%/);
+      assert.match(command.commandWindows, /--quiet/);
+      // Archive runs on Stop with a 30s budget; everything else is 5s.
+      const expectedTimeout = /archive --event Stop/.test(command.command)
+        ? 30
+        : 5;
+      assert.equal(command.timeout, expectedTimeout);
+    }
   }
 });
 

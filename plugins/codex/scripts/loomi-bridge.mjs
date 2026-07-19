@@ -32,6 +32,12 @@ const API_PROBE_TIMEOUT_MS = 1000;
 const CONNECTOR_STATUS_TIMEOUT_MS = 2500;
 const MAX_COMMAND_OUTPUT = 4096;
 const DEBUG_DISCOVERY = process.env.OPENLOOMI_DEBUG_DISCOVERY === "1";
+// Absolute directory of this bridge script. Used to locate
+// `install-assets/setup.macos.sh` (and any future per-platform install
+// helpers) regardless of where the plugin is symlinked or installed.
+// Mirrors plugins/claude/scripts/loomi-bridge.mjs which resolves
+// `PLUGIN_DIR` the same way for its own install-assets lookup.
+const BRIDGE_SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const MONITORING_CONNECTOR_IDS = new Set([
   "gmail",
   "google_calendar",
@@ -82,6 +88,7 @@ const RUNTIME_SAFE_PROMPT_GUARD = [
 ].join(" ");
 
 const COMMANDS = new Set([
+  "archive",
   "codex-runtime-info",
   "configure-ai-provider",
   "help",
@@ -105,6 +112,14 @@ if (process.env.OPENLOOMI_TEST_HOOKS === "1") {
   COMMANDS.add("__test-ensure-runtime-env");
   COMMANDS.add("__test-launch-desktop");
 }
+
+// Auto-archive limits (Stop hook). Codex's hook payload doesn't expose
+// a transcript path, so the archive note is built from event metadata
+// only — much lighter than the Claude-side `cmdArchive`, which reads a
+// transcript JSONL off disk. Keep these tunable so future Codex hook
+// payloads with richer fields can use them without rewiring.
+const ARCHIVE_HTTP_TIMEOUT_MS = 5000;
+const ARCHIVE_MAX_CONTENT_CHARS = 4000;
 
 // Shared 9-state sprite vocabulary used by both the Claude plugin
 // (`cmdPet` in plugins/claude/scripts/loomi-bridge.mjs) and the Codex
@@ -1451,7 +1466,7 @@ function getInstallPlan() {
       "Review the install plan, then re-run install-openloomi with --confirm. Passing --artifact-url is optional and only accepted for allowlisted official sources.",
     safety: [
       "The plugin never downloads or installs OpenLoomi without --confirm.",
-      "On Windows, supported installers run silently with the default installer path.",
+      "On macOS and Windows, supported installers run silently with the default installer path.",
       "Use --download-only to resolve and download without installing.",
       "Use --launch to start the interactive installer UI instead of the default automatic install path.",
       "The plugin verifies GitHub release SHA-256 digest metadata when available.",
@@ -2332,30 +2347,16 @@ async function installDownloadedArtifact(filePath, options) {
 }
 
 function getDefaultInstallCommand(filePath) {
-  const extension = path.extname(filePath).toLowerCase();
-
-  if (process.platform !== "win32") {
-    return null;
+  if (process.platform === "darwin") {
+    return getMacosInstallCommand(filePath);
   }
 
-  if (extension === ".exe") {
-    return {
-      mode: "windows-nsis-silent-default-path",
-      command: filePath,
-      args: ["/S"],
-      label: "installer-exe",
-      safeArgs: ["/S"],
-    };
+  if (process.platform === "linux") {
+    return getLinuxInstallCommand(filePath);
   }
 
-  if (extension === ".msi") {
-    return {
-      mode: "windows-msi-silent-default-path",
-      command: "msiexec.exe",
-      args: ["/i", filePath, "/qn", "/norestart"],
-      label: "msiexec.exe",
-      safeArgs: ["/i", "<installer>", "/qn", "/norestart"],
-    };
+  if (process.platform === "win32") {
+    return getWindowsInstallCommand(filePath);
   }
 
   return null;
@@ -2386,6 +2387,126 @@ function getInstallerCommandLabel(filePath) {
   const extension = path.extname(filePath).toLowerCase();
 
   return extension ? `installer${extension}` : "installer";
+}
+
+// Resolves a file under `<plugin>/scripts/install-assets/` (with a
+// legacy `<plugin>/install-assets/` fallback for parity with the
+// Claude plugin). Returns the absolute path, or null if the file is
+// not present in either candidate location.
+function getInstallAssetPath(filename) {
+  const candidates = [
+    path.join(BRIDGE_SCRIPT_DIR, "install-assets", filename),
+    path.join(BRIDGE_SCRIPT_DIR, "..", "install-assets", filename),
+  ];
+
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
+// Returns the spawn descriptor for the macOS default-path install, or
+// null if the install helper script is not shipped. The helper is
+// `install-assets/setup.macos.sh`, a sibling of this bridge under the
+// plugin's scripts/ directory. It receives the downloaded .dmg path
+// as $1 and performs hdiutil attach + rsync into /Applications.
+//
+// Mirrors plugins/claude/scripts/install-assets/setup.macos.sh — the
+// two scripts share structure and stdout JSON shape so the install
+// record is consistent across plugins.
+function getMacosInstallCommand(filePath) {
+  const scriptPath = getInstallAssetPath("setup.macos.sh");
+
+  if (!scriptPath) {
+    return null;
+  }
+
+  return {
+    mode: "macos-hdiutil-rsync-default-path",
+    command: "bash",
+    args: [scriptPath, filePath],
+    label: "bash setup.macos.sh",
+    safeArgs: ["<install-script>", "<installer>"],
+  };
+}
+
+// Returns the spawn descriptor for the Linux default-path install, or
+// null if the install helper script is not shipped. The helper is
+// `install-assets/setup.linux.sh`, a sibling of this bridge under the
+// plugin's scripts/ directory. It receives the downloaded artifact path
+// as $1 and dispatches on its extension (.deb/.rpm/.AppImage/.tar.gz).
+//
+// Mirrors plugins/claude/scripts/install-assets/setup.linux.sh — the two
+// scripts share structure and stdout JSON shape so the install record is
+// consistent across plugins.
+function getLinuxInstallCommand(filePath) {
+  const scriptPath = getInstallAssetPath("setup.linux.sh");
+
+  if (!scriptPath) {
+    return null;
+  }
+
+  return {
+    mode: "linux-package-default-path",
+    command: "bash",
+    args: [scriptPath, filePath],
+    label: "bash setup.linux.sh",
+    safeArgs: ["<install-script>", "<installer>"],
+  };
+}
+
+// Returns the spawn descriptor for the Windows default-path install. When
+// the `install-assets/setup.windows.ps1` helper is shipped, we route
+// through it (it dispatches on .msi/.exe and emits the install-record
+// JSON, mirroring the macOS/Linux helpers). If the script is missing we
+// fall back to the built-in silent msiexec / NSIS invocation so older
+// bundles still install without the asset.
+function getWindowsInstallCommand(filePath) {
+  const scriptPath = getInstallAssetPath("setup.windows.ps1");
+
+  if (scriptPath) {
+    return {
+      mode: "windows-powershell-default-path",
+      command: "powershell.exe",
+      args: [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        scriptPath,
+        filePath,
+      ],
+      label: "powershell setup.windows.ps1",
+      safeArgs: ["<install-script>", "<installer>"],
+    };
+  }
+
+  const extension = path.extname(filePath).toLowerCase();
+
+  if (extension === ".exe") {
+    return {
+      mode: "windows-nsis-silent-default-path",
+      command: filePath,
+      args: ["/S"],
+      label: "installer-exe",
+      safeArgs: ["/S"],
+    };
+  }
+
+  if (extension === ".msi") {
+    return {
+      mode: "windows-msi-silent-default-path",
+      command: "msiexec.exe",
+      args: ["/i", filePath, "/qn", "/norestart"],
+      label: "msiexec.exe",
+      safeArgs: ["/i", "<installer>", "/qn", "/norestart"],
+    };
+  }
+
+  return null;
 }
 
 async function initializeSession() {
@@ -4854,15 +4975,31 @@ async function getRuntimeAiProviderStatus(tokenStatus) {
     const result = await requestAiProviderStatus(baseUrl, token);
     attempts.push(summarizeRuntimeAiProviderAttempt(result));
 
-    if (result.providers) {
+    if (result.providers && result.configured) {
       return {
-        configured: result.configured,
-        status: result.configured ? "runtime_configured" : "runtime_missing",
+        configured: true,
+        status: "runtime_configured",
         source: "openloomi-runtime",
         checked: true,
         baseUrl,
         attempts,
         providers: result.providers,
+      };
+    }
+  }
+
+  for (const baseUrl of getLocalApiBaseUrls()) {
+    const nativeStatus = await getNativeProviderStatus(baseUrl);
+    if (nativeStatus && nativeStatus.active) {
+      return {
+        configured: true,
+        status: "runtime_configured",
+        source: "openloomi-runtime",
+        checked: true,
+        baseUrl,
+        attempts,
+        providers: [],
+        nativeRuntimeActive: true,
       };
     }
   }
@@ -5333,6 +5470,220 @@ async function petCommand(args) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// archive
+//
+// Stop-hook companion to `state` and `pet`. Mirrors
+// `plugins/claude/scripts/loomi-bridge.mjs:cmdArchive` in spirit: when
+// Codex emits a `Stop` hook, POST a short note to the local OpenLoomi
+// runtime's /api/insights so the session shows up in the user's
+// OpenLoomi memory.
+//
+// Codex's Stop hook payload does NOT expose a transcript path (unlike
+// Claude's `transcript_path`), so the note body is metadata-only:
+//   - event name
+//   - session / thread id (if present in the payload)
+//   - working directory
+//   - timestamp
+// The note is tagged with `platform: "codex"` and `source:
+// codex-plugin-stop-hook` so downstream consumers can distinguish it
+// from Claude-session notes.
+//
+// Always exits 0 with structured JSON. The hook is fire-and-forget;
+// archive failures must never block Codex's response stream.
+// ---------------------------------------------------------------------------
+
+function parseArchiveCommandArgs(args) {
+  const out = { event: null, quiet: false };
+  for (let i = 0; i < (args || []).length; i += 1) {
+    const arg = args[i];
+    if (arg === "--event" && args[i + 1]) {
+      out.event = args[i + 1];
+      i += 1;
+    } else if (arg === "--quiet") {
+      out.quiet = true;
+    }
+  }
+  return out;
+}
+
+async function postInsight(baseUrl, token, body, { timeoutMs } = {}) {
+  try {
+    const response = await fetchWithTimeout(
+      `${baseUrl}/api/insights`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify(body),
+      },
+      timeoutMs || ARCHIVE_HTTP_TIMEOUT_MS,
+    );
+    const text = await response.text().catch(() => "");
+    let json = null;
+    try {
+      json = text ? JSON.parse(text) : null;
+    } catch {
+      json = { raw: text };
+    }
+    const attempt = {
+      baseUrl,
+      status: response.status,
+      reason: "HTTP_RESPONSE",
+    };
+    if (response.ok) {
+      return { ok: true, json, attempt };
+    }
+    return {
+      ok: false,
+      code: response.status === 404 ? "ENDPOINT_MISSING" : "INSIGHT_FAILED",
+      status: response.status,
+      json,
+      attempt,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      code: "API_UNREACHABLE",
+      message: error?.message || String(error),
+      attempt: {
+        baseUrl,
+        reason:
+          error?.name === "AbortError" ? "TIMEOUT" : "NETWORK_ERROR",
+        message: error?.message || String(error),
+      },
+    };
+  }
+}
+
+async function archiveCommand(args) {
+  // Always exit 0; never block Codex.
+  const { event: eventArg, quiet } = parseArchiveCommandArgs(args || []);
+  const finish = (payload) => {
+    if (quiet) return;
+    return writeJson(payload);
+  };
+
+  // Codex passes the event name via --event argv; some hooks also pipe
+  // a JSON payload via stdin (Codex's payload uses `hook_event_name`,
+  // matching the Claude convention). Read whatever is available and
+  // merge.
+  let stdinPayload = {};
+  try {
+    const raw = await readStdin();
+    if (raw && raw.trim()) {
+      try {
+        stdinPayload = JSON.parse(raw);
+      } catch {
+        stdinPayload = {};
+      }
+    }
+  } catch {
+    stdinPayload = {};
+  }
+
+  const eventName =
+    eventArg ||
+    stdinPayload.hook_event_name ||
+    stdinPayload.event ||
+    "";
+
+  if (eventName !== "Stop") {
+    return finish({
+      ok: true,
+      hook: "skipped",
+      reason: "not_stop_event",
+      event: eventName,
+    });
+  }
+
+  const sessionId =
+    stdinPayload.session_id ||
+    stdinPayload.thread_id ||
+    stdinPayload.conversation_id ||
+    null;
+  const cwd =
+    stdinPayload.cwd || stdinPayload.working_directory || process.cwd();
+  const stamp = new Date().toISOString();
+  const shortSession = sessionId ? String(sessionId).slice(0, 8) : null;
+
+  const tokenStatus = getTokenStatus();
+  const token = readOpenLoomiAuthToken(tokenStatus);
+  if (!token) {
+    return finish({
+      ok: true,
+      hook: "skipped",
+      reason: "token_missing",
+      event: eventName,
+    });
+  }
+
+  const title = shortSession
+    ? `Codex session ${shortSession} (${stamp.slice(0, 10)})`
+    : `Codex session (${stamp.slice(0, 10)})`;
+
+  const descriptionLines = [
+    `[codex session${sessionId ? " " + sessionId : ""}]`,
+    `event: ${eventName}`,
+    `cwd: ${cwd}`,
+    `captured: ${stamp}`,
+    `source: codex-plugin-stop-hook`,
+    "(Codex's Stop hook does not currently expose a transcript path; richer session capture is left to apps/web's session-loop pipeline.)",
+  ];
+  let description = descriptionLines.join("\n");
+  if (description.length > ARCHIVE_MAX_CONTENT_CHARS) {
+    description = description.slice(0, ARCHIVE_MAX_CONTENT_CHARS) + "…";
+  }
+
+  const body = {
+    type: "note",
+    title,
+    description,
+    platform: "codex",
+    groups: ["codex"],
+    sessionId,
+    source: "codex-plugin-stop-hook",
+    capturedAt: stamp,
+  };
+
+  const attempts = [];
+  for (const baseUrl of getLocalApiBaseUrls()) {
+    const result = await postInsight(baseUrl, token, body);
+    attempts.push(result.attempt);
+    if (result.ok) {
+      return finish({
+        ok: true,
+        hook: "ok",
+        event: eventName,
+        session: sessionId,
+        insightId: result.json?.id || null,
+        baseUrl,
+      });
+    }
+    if (result.code === "ENDPOINT_MISSING") {
+      return finish({
+        ok: false,
+        hook: "skipped",
+        reason: "endpoint_missing",
+        event: eventName,
+        baseUrl,
+        attempts,
+      });
+    }
+  }
+
+  return finish({
+    ok: false,
+    hook: "skipped",
+    reason: "api_unreachable",
+    event: eventName,
+    attempts,
+  });
+}
+
 function parseStateCommandArgs(args) {
   const out = {
     state: args && args.length > 0 ? args[0] : null,
@@ -5465,6 +5816,9 @@ async function main() {
   }
 
   switch (command) {
+    case "archive":
+      await archiveCommand(process.argv.slice(3));
+      break;
     case "codex-runtime-info":
       codexRuntimeInfo();
       break;
