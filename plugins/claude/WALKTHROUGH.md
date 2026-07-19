@@ -104,6 +104,16 @@ The pet re-skins in place. Same 9-state vocabulary (`happy` / `idle` /
 
 ![Step 7 — Capybara theme is hot-reloaded in place; readiness table unchanged](../../apps/marketing/public/img/openloomi/07-pet-capybara-theme.png)
 
+### 7b. Manually override the Pet state with `/openloomi:pet`
+
+The hot-reload pet also accepts manual overrides from Claude Code. Type
+`/openloomi:pet <state>` and the bridge writes the new state to
+`~/.openloomi/pet/runtime_state.json`; the file watcher picks it up and the
+sprite swaps within ~250 ms. Useful for "task done" beats where you want the
+pet to flip to `happy` between turns.
+
+![Step 7b — /openloomi:pet happy overrides the sprite; runtime state persisted to ~/.openloomi/pet/runtime_state.json](../../apps/marketing/public/img/openloomi/07b-pet-command-happy.png)
+
 ## 8. `/openloomi:status` returns the canonical JSON
 
 For any triage / bug report, paste the JSON output verbatim. The shape is
@@ -200,6 +210,16 @@ This is the read-only doorway into OpenLoomi's local memory. For a deeper
 search, pass a query: `/openloomi:memory <query>`.
 
 ![Step 13 — /openloomi:memory returns the recent-insights table + From Loomi callout](../../apps/marketing/public/img/openloomi/13-openloomi-memory-output.png)
+
+### 13b. Write to memory from Claude Code with `add-memory`
+
+Reading is half the story — you can also write. From any Claude Code turn,
+invoke `openloomi-memory add-memory "<text>" --file=<path>` and the entry
+lands in `~/.openloomi/data/memory/<path>`. Below, "My boss is Tom." is saved
+to `people/boss.md` and immediately searchable via `search-memory "boss"` or
+`search-all "boss tom"`.
+
+![Step 13b — openloomi-memory add-memory saves "My boss is Tom." to people/boss.md and is searchable right after](../../apps/marketing/public/img/openloomi/13b-add-memory-boss-tom.png)
 
 ## 14. `/openloomi:loop` — see the Loop dashboard snapshot
 
