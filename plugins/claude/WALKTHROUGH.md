@@ -78,7 +78,7 @@ folders.
 | ------------------ | ---------- |
 | Guest login        | Successful |
 | Runtime mode       | packaged   |
-| Version            | 0.8.0      |
+| Version            | 0.8.1      |
 | Local API          | Reachable  |
 | AI provider        | Configured |
 | Execution provider | Ready      |
@@ -247,7 +247,7 @@ evidence trace, and the action buttons at the bottom.
 | `REQUIREMENT_SYNTHESIS` | Cluster PRs/issues into a requirements doc  | "14 PRs/issues tagged loop/v0.9 — needs a single requirements doc"                     |
 | `RELEASE_PLAN`          | Draft a release plan from merged PRs        | "12 PRs merged since v0.8.1 — time to draft the v0.8.2 release plan"                   |
 | `CONTACT_UPDATE`        | Update a contact record when memory drifts  | "Sarah's signature says 'Head of Product' — memory still says PM"                      |
-| `DOC_UPDATE`            | Refresh a stale doc for the next version    | "docs/getting-started.md is stale (42 days, pre-v0.8.0)"                               |
+| `DOC_UPDATE`            | Refresh a stale doc for the next version    | "docs/getting-started.md is stale (42 days, pre-v0.8.1)"                               |
 | `DRAFT_REPLY`           | Pre-draft an outbound email                 | "Sarah needs the Q3 OKR draft status by Friday to align with finance"                  |
 | `REVIEW_PR`             | Surface a PR waiting on your review         | "PR #220 (lifestyle image prompts) is waiting on your review"                          |
 | `TODO`                  | Add a follow-up to your todo list           | "Bug: historical self-owned calendar events surface as fake RSVP decisions"            |
