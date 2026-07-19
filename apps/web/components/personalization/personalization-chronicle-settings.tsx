@@ -149,12 +149,6 @@ export function ChronicleSettings({ open = true }: ChronicleSettingsProps) {
         if (!response.ok) throw new Error("Failed to save settings");
         await mutateChroniclePrefs();
         void persistChronicleBootCheck(false);
-        toast({
-          type: "success",
-          description: enabled
-            ? t("chronicle.settings.enabled")
-            : t("chronicle.settings.disabled"),
-        });
       } catch (error) {
         console.error("[Chronicle Settings] Failed to save:", error);
         if (enabled) {
