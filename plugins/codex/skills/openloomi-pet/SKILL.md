@@ -115,3 +115,21 @@ Absolute paths only — the runtime routes them through `tauri::convertFileSrc`,
 - [Pet API](https://github.com/melandlabs/openloomi/blob/main/apps/marketing/content/pet-api.mdx) — `POST /api/pet/state` for external tools
 - [Attention Agent](https://github.com/melandlabs/openloomi/blob/main/apps/marketing/content/attention-agent.mdx) — the desktop pet as a whole
 - The runtime source: `apps/web/src-tauri/src/pet/theme.rs` (custom themes + overrides), `apps/web/src-tauri/src/pet/watcher.rs::map_state_to_pet` (state resolution)
+
+---
+
+## Sandbox and network
+
+If `node ... loomi-bridge.mjs pet <state>` or `POST /api/pet/state` fails
+with a network error (`ECONNREFUSED`, `ETIMEDOUT`, "unreachable"), check
+whether Codex is running inside a sandbox before concluding the OpenLoomi
+desktop API is stopped. Codex network sandboxing can block loopback access
+to the host's `localhost` (e.g. `http://localhost:3414`). The bridge's
+"would have set state to X — pending OpenLoomi endpoint" fallback hides
+this in many cases, but a genuine `ECONNREFUSED` still surfaces.
+
+Request approval and retry the same command outside the sandbox. If the
+outside-sandbox retry succeeds, treat the in-sandbox failure as a sandbox
+artifact. Do not tell the user the pet API is broken until the
+outside-sandbox retry also fails. See `openloomi` for the canonical
+`loopbackAccess.verification.commands` probe.

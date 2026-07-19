@@ -47,6 +47,28 @@ TOKEN=$(cat ~/.openloomi/token | base64 -d)
 
 Then pass `-H "Authorization: Bearer $TOKEN"` on every call below.
 
+---
+
+## Sandbox and network
+
+If `setup-status`, Loop API calls, or any local `curl` to the OpenLoomi
+desktop API fail with network errors (`ECONNREFUSED`, `ETIMEDOUT`,
+"unreachable"), check whether Codex is running inside a sandbox before
+concluding Loop or the OpenLoomi desktop is stopped. Codex network
+sandboxing can block:
+
+- Loopback access to the host's `localhost` (e.g. `http://localhost:3414`).
+- Outbound traffic to integration providers (Gmail, Slack, etc.) used by
+  signal channels.
+
+Request approval and retry the same call outside the sandbox. If the
+outside-sandbox retry succeeds, treat the in-sandbox failure as a sandbox
+artifact and continue. Do not declare Loop unhealthy until the
+outside-sandbox retry also fails. See `openloomi` for the canonical
+`loopbackAccess.verification.commands` probe.
+
+---
+
 ## API quick reference
 
 | Verb | Path | Use |

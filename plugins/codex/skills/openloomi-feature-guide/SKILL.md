@@ -1026,3 +1026,16 @@ Step 4/4: What You'll Receive
 
 - openloomi website: https://openloomi.ai
 - openloomi documents: https://openloomi.ai/docs
+
+---
+
+## Sandbox and network
+
+Codex plugins run inside a sandbox that can block loopback access to the
+OpenLoomi desktop API and outbound traffic to release/integration endpoints.
+If a related `openloomi` command fails with a network error
+(`ECONNREFUSED`, `ETIMEDOUT`, "unreachable"), request approval and retry
+the same command outside the sandbox before concluding that openloomi is
+unavailable or that the install is broken. See `openloomi` and
+`openloomi-install` for the canonical sandbox handling rules and the
+`loopbackAccess.verification.commands` probe.

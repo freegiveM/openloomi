@@ -67,6 +67,26 @@ The local API server runs on port **3414** (fallback: **3515**). If 3414 is unav
 
 ---
 
+## Sandbox and network
+
+If any connector command (`list-accounts`, `status`, `connect`, `disconnect`,
+`send-reply`, `query-contacts`) fails with a network error
+(`ECONNREFUSED`, `ETIMEDOUT`, "unreachable", or missing accounts), check
+whether Codex is running inside a sandbox before concluding the local API
+or a remote platform is down. Codex network sandboxing can block:
+
+- Loopback access to the host's `localhost` (e.g. `http://localhost:3414`).
+- Outbound traffic to OAuth providers and integration APIs (Slack, Discord,
+  X, Gmail, Outlook, Telegram, WhatsApp, etc.).
+
+Request approval and retry the same command outside the sandbox. If the
+outside-sandbox retry succeeds, treat the in-sandbox failure as a sandbox
+artifact and continue with the response. Do not conclude that a platform
+is disconnected or that OpenLoomi is stopped until the outside-sandbox
+retry also fails.
+
+---
+
 ## API Endpoints
 
 ### Integration Accounts

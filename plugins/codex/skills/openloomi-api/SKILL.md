@@ -269,6 +269,26 @@ Each integration platform has its own `/api/<platform>/*` module:
 
 ---
 
+## Sandbox and network
+
+If `curl` calls, the OpenLoomi CLI, or `setup-status` fail with network errors
+(e.g. `ECONNREFUSED`, `ETIMEDOUT`, "unreachable"), check whether Codex is
+running inside a sandbox before concluding the OpenLoomi desktop API is stopped.
+Codex network sandboxing can block:
+
+- Loopback access to the host's `localhost` (e.g. `http://localhost:3414` /
+  `http://localhost:3515`).
+- Outbound traffic to GitHub or other release endpoints used by install /
+  update flows.
+
+Request approval and retry the same call outside the sandbox. If the
+outside-sandbox retry succeeds, treat the in-sandbox failure as a sandbox
+artifact — not a real product problem. Do not recommend restarting OpenLoomi
+until the outside-sandbox checks also fail. See `openloomi` for the canonical
+`loopbackAccess.verification.commands` probe.
+
+---
+
 ## Error Handling
 
 ### Error Response Format

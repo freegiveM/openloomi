@@ -52,6 +52,24 @@ The CLI auto-reads your token from `~/.openloomi/token` (base64 encoded JWT).
 
 ---
 
+## Sandbox and network
+
+If memory commands or RAG API calls fail with network errors
+(`ECONNREFUSED`, `ETIMEDOUT`, "unreachable"), check whether Codex is running
+inside a sandbox before concluding OpenLoomi or the knowledge base is down.
+Codex network sandboxing can block:
+
+- Loopback access to the host's `localhost` (e.g. `http://localhost:3414`).
+- Reads of `~/.openloomi/data/memory/` if the sandbox restricts that path.
+- Outbound traffic to embedding / RAG providers.
+
+Request approval and retry the same command outside the sandbox. If the
+outside-sandbox retry succeeds, treat the in-sandbox failure as a sandbox
+artifact and continue with the response. Do not declare the knowledge base
+or local memory unavailable until the outside-sandbox retry also fails.
+
+---
+
 ## Local Memory Filesystem
 
 ### Overview
