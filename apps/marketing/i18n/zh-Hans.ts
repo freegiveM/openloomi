@@ -8,9 +8,9 @@ export const zhHans = {
     getStarted: "立即开始",
   },
   hero: {
-    title: "开源的 AI 同事与工作空间",
+    title: "开源的 AI 同事，由注意力代理驱动",
     subtitle:
-      "OpenLoomi 是一款 AI 同事与工作空间,为希望围绕 AI agent 构建本地优先工作记忆的开发者而生。它连接你的工作工具,让 AI 能理解人、项目、决策与跟进——在行动之前获得你的批准。",
+      "以桌面上的注意力代理为核心，OpenLoomi 接入你授权的工作工具和屏幕内容，构建关于你的人员、项目和决策的 Holistic Context，并告诉你发生了什么、为什么重要、下一步该做什么——把注意力留给你真正重要的事。",
     cta: "立即开始",
     installOnDesktop: "请在桌面端安装",
     installDesktopDesc:

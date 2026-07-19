@@ -8,9 +8,9 @@ export const en = {
     getStarted: "Get Started",
   },
   hero: {
-    title: "Open-source AI coworker and workspace with a Holistic Context",
+    title: "Open-source AI coworker, driven by attention agent",
     subtitle:
-      "OpenLoomi is an AI coworker and workspace for builders who want local-first work memory around their AI agents. It connects your work tools so AI can understand people, projects, decisions, and follow-ups — before it acts with your approval.",
+      "Centered on a desktop attention agent, OpenLoomi connects your authorized work tools and screen content, builds a holistic context of your people, projects, and decisions, and tells you what happened, why it matters, and what to do next — saving your attention for what matters.",
     cta: "Get Started",
     installOnDesktop: "Please install on desktop",
     installDesktopDesc:
