@@ -10,6 +10,11 @@ OpenLoomi's memory system is a local-first, tiered knowledge base built from mes
 
 This document covers the system architecture, data model, and the relationships between components.
 
+<img
+  src="/img/openloomi/arch.png"
+  alt="OpenLoomi memory architecture — Context sources feed the Proactive Agent, which drives the Controller and the Memory Brain (Save / Retrieve)"
+/>
+
 ---
 
 ## Holistic Context
@@ -57,6 +62,11 @@ OpenLoomi transforms this pattern for personal AI agents, extracting structured 
 ## System Overview
 
 The memory system spans five distinct data layers, each serving a different purpose in the information architecture:
+
+<img
+  src="/img/openloomi/memory-layers.png"
+  alt="OpenLoomi's five memory layers — raw_messages, memory_summaries, Insights, Knowledge Base, and Vector index"
+/>
 
 | Layer                | Storage | Purpose                                                |
 | -------------------- | ------- | ------------------------------------------------------ |

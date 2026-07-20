@@ -10,6 +10,11 @@ _Open-source AI coworker, driven by attention agent_
 
 OpenLoomi is an open-source AI coworker. Centered on a desktop **attention agent**, it connects your authorized work tools and screen content, builds a **holistic context** of your people, projects, and decisions, and tells you what happened, why it matters, what to do next, and surfaces daily summaries — saving your attention for what matters.
 
+<img
+  src="/img/openloomi/main-with-loomi.png"
+  alt="OpenLoomi main window with Loomi"
+/>
+
 ## What is it for?
 
 OpenLoomi gives you a desktop assistant for any Agent framework — Claude Code, Codex, OpenCode, Hermes, and OpenClaw all plug into the same resident desktop.
@@ -60,16 +65,12 @@ It's 9 AM — you've just sat down at your desk, your inbox isn't even open yet,
 - ✋ **You can interact with it directly** — click to open details, drag it anywhere on screen, right-click to pause, double-click to summon the main window.
 - 🎭 **Sleep mask, wagging tail, little hops** — rich expression animations make it feel "alive" rather than a cold notification.
 
+  <img
+    src="/img/openloomi/loomi-pet.gif"
+    alt="Loomi, the OpenLoomi attention agent pet"
+  />
+
 [Learn more →](/docs/attention-agent)
-
-### 🧠 Holistic Context
-
-OpenLoomi builds persistent knowledge graphs of people, projects, and decisions. Unlike other AIs that forget after each conversation, OpenLoomi's memory **grows on its own** — completely visible and auditable. Six months later, it still remembers your commitments and context. No more repeating yourself, no more context loss.
-
-- Remembers Q3 partnership direction confirmed with Sarah 3 months ago (budget: $50K)
-- Remembers demo feedback 6 weeks ago (needed security compliance materials)
-- Today when Sarah emails, automatically pulls historical context and generates reply draft
-- You can always see and audit exactly what OpenLoomi remembers about you
 
 ### 🔄 Loop — Scans Your To-Dos Every 10 Minutes
 
@@ -80,11 +81,37 @@ At the start of the day, what you really want to know isn't "how many unread ema
 - 🪪 **Decide** — tags each signal with a type (`email_reply` / `rsvp` / `review_pr` / `im_reply` / `todo`) and a confidence score
 - 🛡️ **Protect** — Dry-run always comes first, **execution always waits for your Approve**
 
+  <img
+    src="/img/openloomi/loomi-proactive-task.gif"
+    alt="Loomi surfacing a proactive task nudge"
+  />
+
 [Learn more →](/docs/loop)
+
+### 🧠 Holistic Context
+
+OpenLoomi builds persistent knowledge graphs of people, projects, and decisions. Unlike other AIs that forget after each conversation, OpenLoomi's memory **grows on its own** — completely visible and auditable. Six months later, it still remembers your commitments and context. No more repeating yourself, no more context loss.
+
+- Remembers Q3 partnership direction confirmed with Sarah 3 months ago (budget: $50K)
+- Remembers demo feedback 6 weeks ago (needed security compliance materials)
+- Today when Sarah emails, automatically pulls historical context and generates reply draft
+- You can always see and audit exactly what OpenLoomi remembers about you
+
+  <img
+    src="/img/openloomi/memory-layers.png"
+    alt="OpenLoomi holistic context memory layers"
+  />
+
+[Learn more →](/docs/memory)
 
 ### 💬 Chat — Assign Tasks Like Talking
 
 Describe your needs in plain language; OpenLoomi automatically understands intent and breaks it into executable steps. No complex commands to learn. [Learn more →](/docs/chat)
+
+<img
+  src="/img/openloomi/chat.png"
+  alt="OpenLoomi Chat assigning tasks in natural language"
+/>
 
 > **"Help me prepare investor meeting materials for next Monday"**
 >
@@ -94,21 +121,43 @@ Describe your needs in plain language; OpenLoomi automatically understands inten
 
 Use OpenLoomi directly inside Telegram, WhatsApp, iMessage, QQ, and Lark/Feishu — no separate app required. Assign tasks, get alerts, and receive results right where your conversations already happen. [Learn more →](/docs/messaging-apps)
 
-### 🖥️ Desktop Apps — Full Power on Your Computer
-
-OpenLoomi native desktop apps for **Windows**, **macOS**, and **Linux** give you a distraction-free, always-accessible workspace. Get the full power of OpenLoomi with keyboard shortcuts, system tray residence, and native notifications — all without opening a browser. [Learn more →](/docs/getting-started)
+<img
+  src="/img/openloomi/message-app.png"
+  alt="OpenLoomi running inside a messaging app"
+/>
 
 ### 🔒 Security & Local-First — Your Data, Your Sovereignty
 
 Privacy and intelligence aren't mutually exclusive. OpenLoomi uses **AES-256 end-to-end encryption**, hardware-isolated processing environments without any public gateways, and zero training commitments — your data never trains public AI models. Local-first architecture keeps raw data on your device, while full audit logs and SOC 2 compliance (in progress) give you complete visibility into every data access. [Learn more →](/docs/privacy-security)
 
+<img
+  src="/img/openloomi/audit/audit.png"
+  alt="OpenLoomi audit log — full visibility into every data access"
+/>
+
 ### 🧩 Any Agent Integration — Skills + Plugins
 
 OpenLoomi's context, memory, connectors, attention agent, and Loop engine are all delivered as open-source **Skills** and **Plugins**. Use OpenLoomi Desktop directly, or plug into an Agent you already use every day.
 
+<img src="/img/openloomi/skills.png" alt="OpenLoomi Skills catalog" />
+
 **Skills catalog** covers the everyday work scenarios — code generation, PDF creation, data analysis, browser automation, document creation, email writing, image generation, PPT creation, deep research — and is **continuously growing**. Import any skill from a GitHub repo or the Skill Hub.
 
 **Plugins** turn OpenLoomi's runtime into a front-end for existing agents: Claude Code, Codex CLI, OpenCode, Hermes, OpenClaw. Install once, and your agent gains OpenLoomi's holistic context, attention agent, and loop engine.
+
+**Inside Claude Code** — once the OpenLoomi plugin is installed, type `/openloomi:` and the slash-command autocomplete surfaces every OpenLoomi command (`/openloomi:setup`, `/openloomi:status`, `/openloomi:memory`, `/openloomi:loop`, …):
+
+<img
+  src="/img/openloomi/plugins/claude/04-slash-commands.png"
+  alt="Claude Code with /openloomi: typed — autocomplete lists every available OpenLoomi slash command"
+/>
+
+**Inside Codex CLI** — once the OpenLoomi plugin is installed, type `@OpenLoomi` (or just `@O`) and Codex surfaces the OpenLoomi skill namespace (`@OpenLoomi install`, `@OpenLoomi memory`, `@OpenLoomi loop`, `@OpenLoomi handoff`, …):
+
+<img
+  src="/img/openloomi/plugins/codex/04-discover-skills.png"
+  alt="Codex CLI with @O typed — the OpenLoomi skill namespace (openloomi, openloomi-install, openloomi-memory, openloomi-connectors, …) is surfaced"
+/>
 
 - Browse the [Skill catalog →](/docs/skills)
 - Browse the [Plugin catalog →](/docs/plugins)
@@ -119,6 +168,11 @@ OpenLoomi's context, memory, connectors, attention agent, and Loop engine are al
 ## A Complete Intelligence Loop: From Perception to Action
 
 OpenLoomi implements a full **"Receive → Process → Remember → Understand → Serve"** loop — mirroring how a capable human colleague operates:
+
+<img
+  src="/img/openloomi/components.png"
+  alt="The OpenLoomi intelligence loop — Receive multi-platform input, Process / denoise, Remember knowledge graph, Understand semantic; together driving proactive Action (summary / auto-reply / scheduled reports / deadline)"
+/>
 
 | Layer             | What It Does                                                                                                                       |
 | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
