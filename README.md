@@ -74,10 +74,10 @@ OpenLoomi ships official marketplace plugins that turn your existing agent into 
 
 | Agent       | Install                                                                                     | First-run setup                   |
 | ----------- | ------------------------------------------------------------------------------------------- | --------------------------------- |
-| Claude Code | `/plugin marketplace add melandlabs/openloomi`<br>`/plugin install openloomi`               | `/openloomi:setup`                |
-| Codex CLI   | `codex plugin marketplace add melandlabs/openloomi && codex plugin add openloomi@openloomi` | `@OpenLoomi Run first-use setup.` |
+| Claude Code | `/plugin marketplace add melandlabs/plugins`<br>`/plugin install openloomi`              | `/openloomi:setup`                |
+| Codex CLI   | `codex plugin marketplace add melandlabs/plugins && codex plugin add openloomi@openloomi` | `@OpenLoomi Run first-use setup.` |
 
-See the plugin READMEs for full docs: [`plugins/claude/`](./plugins/claude/README.md) · [`plugins/codex/`](./plugins/codex/README.md).
+The slim public marketplace lives at [`melandlabs/plugins`](https://github.com/melandlabs/plugins) so adding it only fetches the plugin payloads. See the plugin READMEs for full docs: [`plugins/claude/`](./plugins/claude/README.md) · [`plugins/codex/`](./plugins/codex/README.md).
 
 **Develop locally** (for developers):
 

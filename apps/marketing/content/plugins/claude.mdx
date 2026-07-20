@@ -24,10 +24,10 @@ Three paths:
 
 - **Marketplace**:
   ```text
-  /plugin marketplace add melandlabs/openloomi
+  /plugin marketplace add melandlabs/plugins
   /plugin install openloomi
   ```
-  Run each line separately in a Claude Code session — slash commands can't be chained with `&&`. The first line adds the OpenLoomi marketplace; the second installs the `openloomi` plugin from it. Then restart Claude Code and run `/openloomi:setup`.
+  Run each line separately in a Claude Code session — slash commands can't be chained with `&&`. The first line adds the slim [`melandlabs/plugins`](https://github.com/melandlabs/plugins) marketplace (only the plugin payloads); the second installs the `openloomi` plugin from it. Then restart Claude Code and run `/openloomi:setup`.
 - **From source**, pointing Claude Code at the plugin directory:
   ```text
   git clone https://github.com/melandlabs/openloomi.git
@@ -66,16 +66,16 @@ The screenshots below are from a real end-to-end run. Follow them in order — e
 
 Ask Claude Code to install the plugin from the GitHub URL — no copy-pasting commands needed.
 
-> Install the plugin and setup https://github.com/melandlabs/openloomi/tree/main/plugins/claude
+> Install the plugin and setup https://github.com/melandlabs/plugins/tree/main/openloomi/claude
 
 ![Step 1 — User asks Claude Code to install the plugin](/img/openloomi/plugins/claude/01-install-prompt.png)
 
 ### 2. Add the marketplace
 
-For the long-lived install path, add the marketplace once. Claude Code prompts for the source; enter `melandlabs/openloomi`.
+For the long-lived install path, add the marketplace once. Claude Code prompts for the source; enter `melandlabs/plugins`.
 
 ```text
-> /plugin marketplace add melandlabs/openloomi
+> /plugin marketplace add melandlabs/plugins
 ```
 
 ![Step 2 — Add the OpenLoomi marketplace](/img/openloomi/plugins/claude/02-add-marketplace.png)

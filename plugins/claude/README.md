@@ -48,15 +48,17 @@ Pick the channel that matches your situation.
 ### Install from GitHub
 
 ```text
-/plugin marketplace add melandlabs/openloomi
+/plugin marketplace add melandlabs/plugins
 /plugin install openloomi
 ```
 
 Run each line separately in a Claude Code session — slash commands can't be
-chained with `&&`. The first line adds the OpenLoomi marketplace; the second
-installs the `openloomi` plugin from it. Then **restart Claude Code** and run
-`/openloomi:setup` in a fresh session so the plugin cache is refreshed and
-the wizard can wire up the desktop app.
+chained with `&&`. The first line adds the slim OpenLoomi marketplace
+([`melandlabs/plugins`](https://github.com/melandlabs/plugins), which only
+contains the plugin payloads); the second installs the `openloomi` plugin
+from it. Then **restart Claude Code** and run `/openloomi:setup` in a fresh
+session so the plugin cache is refreshed and the wizard can wire up the
+desktop app.
 
 ### Install from a local checkout (plugin contributors)
 

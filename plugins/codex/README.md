@@ -39,14 +39,16 @@ You need a Codex build that supports `codex plugin marketplace` (Codex CLI
 ### Install from GitHub
 
 ```bash
-codex plugin marketplace add melandlabs/openloomi && codex plugin add openloomi@openloomi
+codex plugin marketplace add melandlabs/plugins && codex plugin add openloomi@openloomi
 ```
 
-Paste the whole line into a Codex shell — it adds the OpenLoomi marketplace
-and installs the `openloomi` plugin in one go. Then **restart Codex** and
-start a new thread so the cache is refreshed, and ask `@OpenLoomi Run
-first-use setup.` (or `node plugins/codex/scripts/loomi-bridge.mjs setup
---yes`) to wire up the desktop app.
+Paste the whole line into a Codex shell — it adds the slim
+[`melandlabs/plugins`](https://github.com/melandlabs/plugins) marketplace
+(only the plugin payloads) and installs the `openloomi` plugin in one go.
+Then **restart Codex** and start a new thread so the cache is refreshed,
+and ask `@OpenLoomi Run first-use setup.` (or
+`node plugins/codex/scripts/loomi-bridge.mjs setup --yes`) to wire up the
+desktop app.
 
 Codex installs the plugin into
 `~/.codex/plugins/cache/openloomi/openloomi/<version>`.
@@ -265,9 +267,13 @@ cached copy lives at
 
 ### Default agent still says `claude`
 
-After switching to the Codex runtime you may need to **quit and reopen
-OpenLoomi Desktop** so the new env reaches the freshly forked web process. To
-confirm the env actually landed:
+If you ran the bridge's `setup` wizard end-to-end, the env var change is
+already applied **and** the running desktop app has been auto-restarted so
+the freshly forked web server inherits it — you should not need to Quit+
+Reopen by hand. If you instead ran `set-codex-runtime-env` outside of
+setup (for example via a manual CLI invocation), the wizard's auto-restart
+is not in the loop and you'll need to **quit and reopen OpenLoomi Desktop**
+yourself. To confirm the env actually landed in either case:
 
 ```bash
 launchctl getenv OPENLOOMI_AGENT_PROVIDER
@@ -327,11 +333,14 @@ shell `export` won't reach it. Three tiers, each more durable than the last:
    flag is needed. On Windows the bridge prints manual steps instead of
    touching the registry.
 
-> **macOS caveat:** the GUI launchd session is separate from your terminal.
-> After tier 2 or 3, **quit and reopen `OpenLoomi.app`** so the new env is
-> inherited by the freshly forked web process. On Linux a per-user env file
-> applies on next login; on Windows you edit the user environment via
-> System Settings.
+> **macOS caveat:** the GUI launchd session is separate from your terminal,
+> so a freshly written `OPENLOOMI_AGENT_PROVIDER` is only inherited by
+> processes spawned *after* the write. The `/openloomi:setup` wizard detects
+> this and **automatically quits and relaunches** the running desktop app
+> when the env var changes — you do not need to manually Quit+Reopen. The
+> only time you need to do it by hand is if you invoked `set-codex-runtime-env`
+> directly (not through setup). On Linux a per-user env file applies on next
+> login; on Windows you edit the user environment via System Settings.
 
 Flags accepted by `set-codex-runtime-env`:
 

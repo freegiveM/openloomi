@@ -12,10 +12,10 @@ paths; this file covers the surface area that needs Claude Code itself
    pick whichever matches your situation:
    - **GitHub install** — two slash commands, entered one at a time inside any session:
      ```text
-     /plugin marketplace add melandlabs/openloomi
+     /plugin marketplace add melandlabs/plugins
      /plugin install openloomi
      ```
-     Slash commands can't be chained with `&&`; paste each line, hit enter, wait for the prompt to clear, then paste the next. To point at a fork / branch, use `melyourname/openloomi@branch-name`.
+     Slash commands can't be chained with `&&`; paste each line, hit enter, wait for the prompt to clear, then paste the next. To point at a fork / branch, use `melyourname/plugins@branch-name` (the slim marketplace repository).
    - **Built-in marketplace install** (after publish): `/plugin install openloomi` (short name, no `marketplace add` step needed).
    - **Dev from source** (only if you're editing the plugin): `claude --plugin-dir /Users/timi/codes/openloomi/plugins/claude`
 3. OpenLoomi Desktop is **not** installed yet (for the missing-install test).

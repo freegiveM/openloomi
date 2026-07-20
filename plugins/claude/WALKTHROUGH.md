@@ -28,12 +28,13 @@ in motion.
 ## 2. Add the marketplace
 
 ```text
-> /plugin marketplace add melandlabs/openloomi
+> /plugin marketplace add melandlabs/plugins
 ```
 
-Claude Code prompts for a source. Enter `melandlabs/openloomi` — it refreshes
+Claude Code prompts for a source. Enter `melandlabs/plugins` — it refreshes
 the marketplace cache and you now see the `openloomi` plugin in the
-marketplace list.
+marketplace list. The slim marketplace only carries the plugin payloads, so
+the add step stays under a couple of megabytes.
 
 ![Step 2 — Add the OpenLoomi marketplace](../../apps/marketing/public/img/openloomi/plugins/claude/02-add-marketplace.png)
 

@@ -31,10 +31,10 @@ The OpenLoomi repository root doubles as a Codex marketplace root. It ships `.ag
 ### From GitHub
 
 ```bash
-codex plugin marketplace add melandlabs/openloomi && codex plugin add openloomi@openloomi
+codex plugin marketplace add melandlabs/plugins && codex plugin add openloomi@openloomi
 ```
 
-Paste the whole line into a Codex shell — it adds the OpenLoomi marketplace and installs the `openloomi` plugin in one go. Codex fetches the repository, reads the marketplace manifest, and installs into `~/.codex/plugins/cache/openloomi/openloomi/<version>`. Restart Codex and start a new thread so the cache is refreshed, then ask `@OpenLoomi Run first-use setup.` to wire up the desktop app.
+Paste the whole line into a Codex shell — it adds the slim [`melandlabs/plugins`](https://github.com/melandlabs/plugins) marketplace and installs the `openloomi` plugin in one go. Codex fetches the repository, reads the marketplace manifest, and installs into `~/.codex/plugins/cache/openloomi/openloomi/<version>`. Restart Codex and start a new thread so the cache is refreshed, then ask `@OpenLoomi Run first-use setup.` to wire up the desktop app.
 
 ### From a local checkout (developers)
 
@@ -68,14 +68,14 @@ The screenshots below are from a real end-to-end run. Follow them in order — e
 
 Ask Codex to install the plugin from the GitHub URL — no copy-pasting commands needed.
 
-> Install the plugin and setup https://github.com/melandlabs/openloomi/tree/main/plugins/codex
+> Install the plugin and setup https://github.com/melandlabs/plugins/tree/main/openloomi/codex
 
 ### 2. Add the marketplace
 
-For the long-lived install path, add the marketplace once. Codex prompts for a source; enter `melandlabs/openloomi`.
+For the long-lived install path, add the marketplace once. Codex prompts for a source; enter `melandlabs/plugins`.
 
 ```text
-> codex plugin marketplace add melandlabs/openloomi
+> codex plugin marketplace add melandlabs/plugins
 ```
 
 ### 3. Or launch Codex pointing at a local checkout
