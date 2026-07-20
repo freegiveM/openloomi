@@ -99,6 +99,12 @@ emit_progress() {
   local out_partial="$1"
   local total_bytes="$2"
   local start_ts="$3"
+  # Trim any leading/trailing whitespace: the release-payload awk
+  # that extracts asset_size can leave a leading space on the
+  # number, which would otherwise fail the ^[0-9]+$ regex below
+  # and pin pct to -1.
+  total_bytes="${total_bytes#"${total_bytes%%[![:space:]]*}"}"
+  total_bytes="${total_bytes%"${total_bytes##*[![:space:]]}"}"
   local now_ts
   now_ts=$(date +%s)
   local elapsed_ms=$(( (now_ts - start_ts) * 1000 ))
