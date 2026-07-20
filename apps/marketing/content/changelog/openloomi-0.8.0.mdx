@@ -1,0 +1,47 @@
+---
+title: "OpenLoomi 0.8.0"
+description: "OpenLoomi 0.8.0 release notes"
+---
+
+# OpenLoomi 0.8.0 - July 17, 2026
+
+OpenLoomi 0.8.0 unifies proactive messaging decisions across every supported IM channel, makes memory lifecycle consolidation graph-driven, and hardens the Claude Code and Codex plugin setup experience. The release also improves packaged one-shot execution, GUI-launched runtime discovery, and the Quick Start documentation for agent plugins.
+
+### Notable Changes
+
+#### Unified IM Decision Type
+
+Loop now treats direct-message actions as one first-class concept instead of keeping Slack-specific behavior separate from other messaging platforms.
+
+- **`im_reply` Replaces `slack_reply`**: Decision types and action kinds now use `im_reply`, with Slack represented by `channel="slack"`
+- **Cross-Channel Classification**: Addressed messages from Slack, Telegram, Feishu/Lark, WeChat, QQ, and DingTalk can follow the same reply flow
+- **Body-Only Draft Editing**: IM cards use a message editor without an email-style subject line, with channel and recipient context shown in the card
+- **Runtime Tool Discovery**: IM execution discovers the appropriate connector tool at runtime rather than relying on a hardcoded Slack mapping
+- **Updated UI and Fixtures**: Labels, icons, unread counts, dev scenes, dry-run narratives, and tests now reflect the unified type
+
+#### Graph-Driven Memory Consolidation
+
+Memory lifecycle consolidation is now driven by the memory graph, giving consolidation decisions a structured view of relationships and supporting safer, more coherent memory maintenance.
+
+#### Claude Code and Codex Plugin Setup
+
+Agent plugin onboarding is more reliable across desktop and GUI-launched environments:
+
+- **Codex Provider Selection**: `OPENLOOMI_AGENT_PROVIDER=codex` is applied before the desktop app launches
+- **Automatic Desktop Launch**: Plugin setup launches the OpenLoomi desktop GUI when the app is not running
+- **Native Runtime Readiness**: Setup honors the native runtime's authenticated state when checking API-key readiness
+- **GUI Runtime Discovery**: The Claude CLI can be located correctly when OpenLoomi is launched from a GUI context
+- **Quick Start Guides**: Claude Code and Codex plugin installation steps are now included in the README
+
+#### CLI and Packaged Runtime Hardening
+
+- **Hardened One-Shot Runner**: Packaged native-agent one-shot execution is more resilient in released desktop builds
+- **Simplified Codex Discovery**: Codex no longer depends on the retired `openloomi-ctl` subprocess and discovery path
+
+#### Desktop Fixes
+
+- **Image Upload Correction**: The desktop app no longer attempts to upload images to the non-existent `/api/ai/v1/upload` endpoint
+
+### Breaking Changes
+
+- **`slack_reply` is removed**: Custom decision types, action handling, and integrations that refer to `slack_reply` should migrate to `im_reply`; use the `channel` field to identify Slack or another IM platform.

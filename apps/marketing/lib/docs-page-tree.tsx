@@ -58,6 +58,7 @@ const DOC_TITLES = new Map([
   ["/docs/reference/agent-runtimes/codex", "Codex CLI Runtime"],
   ["/docs/reference/openloomi-ctl", "OpenLoomi CLI"],
   ["/docs/reference/embedding-providers", "Embedding Providers"],
+  ["/docs/changelog/openloomi-0.8.0", "OpenLoomi 0.8.0"],
   ["/docs/changelog/openloomi-0.7.0", "OpenLoomi 0.7.0"],
   ["/docs/changelog/openloomi-0.6.0", "OpenLoomi 0.6.0"],
   ["/docs/changelog/openloomi-0.5.0", "OpenLoomi 0.5.0"],
