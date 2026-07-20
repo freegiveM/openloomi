@@ -10,6 +10,17 @@ _Open-source AI coworker, driven by attention agent_
 
 OpenLoomi is an open-source AI coworker. Centered on a desktop **attention agent**, it connects your authorized work tools and screen content, builds a **holistic context** of your people, projects, and decisions, and tells you what happened, why it matters, what to do next, and surfaces daily summaries — saving your attention for what matters.
 
+## What is it for?
+
+OpenLoomi gives you a desktop assistant for any Agent framework — Claude Code, Codex, OpenCode, Hermes, and OpenClaw all plug into the same resident desktop.
+
+- **Stop dropping commitments.** Overdue replies, creeping deadlines, "I'll send that follow-up Friday" — the desktop bubble nudges you, and you can extend the signals and decisions it watches for.
+- **Find anything from your work life in seconds.** "What did I decide about pricing last quarter?", "Who owns design on Acorn?", "What was I working on before vacation?" — memory spans tools and channels, no more digging through Slack, Gmail, or Notion.
+- **Get a morning brief and an end-of-day recap instead of opening nine apps.** The key info lands in one place.
+- **Ask AI for work help right inside your chat.** Draft a reply, summarize a long thread, schedule a follow-up — directly in Telegram, WhatsApp, iMessage, QQ, or Lark/Feishu.
+
+See the [Attention Agent](/docs/attention-agent) doc for the always-on companion that surfaces those reminders, or browse [Use cases](/docs/use-cases) for end-to-end workflows.
+
 ---
 
 ## Core Capabilities
@@ -114,23 +125,6 @@ OpenLoomi implements a full **"Receive → Process → Remember → Understand �
 | **🧠 Remember**   | Persistent knowledge graph — people, projects, decisions — survives conversations, platforms, and months of time                   |
 | **🎯 Understand** | Deep semantic intent, not just keywords — cross-modal understanding, emotional tone, contextual relevance                          |
 | **🚀 Serve**      | Proactive delivery — smart summaries, auto-replies, scheduled reports, personalized alerts — without being asked                   |
-
----
-
-### Memory That Compounds Over Time
-
-Inside OpenLoomi, memory is layered into multiple levels of abstraction:
-
-- **Raw information** — original messages, files, transcripts
-- **Information insights** — extracted entities, decisions, key events, timeline, event execute diff including why, what and how
-- **Contextual memory** — recent conversation state, temporary context
-- **Knowledge-base memory** — long-term people/projects/preferences knowledge graph
-
-This layered memory enables OpenLoomi to reason across both immediate context and deep historical knowledge simultaneously.
-A message from a client today is understood in light of a negotiation three months ago — automatically.
-
-OpenLoomi also exposes clean APIs through skills for all features. Critically, it provides APIs to control its own plane — meaning
-OpenLoomi can invoke itself to complete tasks, enabling self-iteration and continuous improvement without external prompting.
 
 ---
 
