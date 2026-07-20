@@ -118,7 +118,7 @@ A successful run prints `{setup: "ready", steps: [...]}` — you're done.
 ## End-to-end user flow
 
 > **Want to see what this looks like in motion?** Read the dedicated
-> [Tour guide →](./WALKTHROUGH.md) — from "ask Claude Code to install
+> [Tour guide →](https://openloomi.ai/docs/plugins/claude) — from "ask Claude Code to install
 > the plugin" through "custom Loop type fires on the next decision".
 
 The TL;DR of the full path: **install the plugin → land in a ready Claude

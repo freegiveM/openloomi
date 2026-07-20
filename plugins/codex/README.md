@@ -175,7 +175,7 @@ below.
 ## End-to-end user flow
 
 > **Want to see what this looks like in motion?** Read the dedicated
-> [Tour guide →](./WALKTHROUGH.md) — from "ask Codex to install
+> [Tour guide →](https://openloomi.ai/docs/plugins/codex) — from "ask Codex to install
 > the plugin" through "custom Loop type fires on the next decision".
 
 The TL;DR of the full path: **install the plugin → launch Codex with
