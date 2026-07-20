@@ -93,6 +93,8 @@ Requires Node.js 22+, pnpm 9+, Rust 1.75+, and on Windows: Visual Studio Build T
 
 ## Why It Is Different
 
+**OpenLoomi is open-source and neutral.** Instead of locking you into a single vendor's agent, it integrates with any Agent Runtime — Claude Code, Codex, OpenCode, Hermes, OpenClaw — and brings a shared, cross-agent layer to all of them: a resident desktop **attention agent**, **holistic context memory**, **platform connectors**, and **proactive tasks**. Whichever agent you run, OpenLoomi watches the door, remembers what matters, and surfaces only the decisions worth your time — so you spend your attention on the work, not on chasing it.
+
 | Compared with...           | OpenLoomi adds                                                                                                    |
 | -------------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | Claude Cowork-style agents | an open-source, local-first AI coworker and workspace with source evidence and approval                           |
