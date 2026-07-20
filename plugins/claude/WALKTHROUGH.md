@@ -298,11 +298,11 @@ evidence trace, and the action buttons at the bottom.
 | `EMAIL_REPLY`           | Pre-draft an outbound email                 | "Sarah needs the Q3 OKR draft status by Friday to align with finance"                  |
 | `LINEAR_REVIEW`         | Triage a Linear issue assigned to you       | "LIN-1234 (pet bubble drag-and-drop) is in In Review with you assigned"                |
 | `REQUIREMENT_SYNTHESIS` | Cluster PRs/issues into a requirements doc  | "14 PRs/issues tagged loop/v0.9 — needs a single requirements doc"                     |
-| `RELEASE_PLAN`          | Draft a release plan from merged PRs        | "12 PRs merged since v0.8.3 — time to draft the v0.8.3 release plan"                   |
+| `RELEASE_PLAN`          | Draft a release plan from merged PRs        | "12 PRs merged since v0.8.4 — time to draft the v0.8.4 release plan"                   |
 | `CONTACT_UPDATE`        | Update a contact record when memory drifts  | "Sarah's signature says 'Head of Product' — memory still says PM"                      |
-| `DOC_UPDATE`            | Refresh a stale doc for the next version    | "docs/getting-started.md is stale (42 days, pre-v0.8.3)"                               |
+| `DOC_UPDATE`            | Refresh a stale doc for the next version    | "docs/getting-started.md is stale (42 days, pre-v0.8.4)"                               |
 | `REVIEW_PR`             | Surface a PR waiting on your review         | "PR #220 (lifestyle image prompts) is waiting on your review"                          |
-| `DEADLINE_REMINDER`     | Surface an upcoming due date                | "v0.8.3 release plan due Friday — 3 PRs blocking the cut"                              |
+| `DEADLINE_REMINDER`     | Surface an upcoming due date                | "v0.8.4 release plan due Friday — 3 PRs blocking the cut"                              |
 | `TODO`                  | Add a follow-up to your todo list           | "Bug: historical self-owned calendar events surface as fake RSVP decisions"            |
 | `DIGEST` (QUIET)        | Consolidate a flood of low-priority signals | "8 GitHub notifications — none urgent individually, but here's the consolidated view"  |
 
@@ -316,7 +316,7 @@ A few of the cards in detail:
 
 ![Loop card — REQUIREMENT_SYNTHESIS for 14 PRs/issues tagged loop/v0.9](../../apps/marketing/public/img/openloomi/plugins/claude/18-loop-requirement-synthesis.png)
 
-![Loop card — RELEASE_PLAN for v0.8.3 "classifier-rules UX + custom channels"](../../apps/marketing/public/img/openloomi/plugins/claude/19-loop-release-plan.png)
+![Loop card — RELEASE_PLAN for v0.8.4 "classifier-rules UX + custom channels"](../../apps/marketing/public/img/openloomi/plugins/claude/19-loop-release-plan.png)
 
 ![Loop card — CONTACT_UPDATE for Sarah Chen's new "Head of Product" role](../../apps/marketing/public/img/openloomi/plugins/claude/20-loop-contact-update.png)
 
