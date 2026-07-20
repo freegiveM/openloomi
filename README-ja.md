@@ -36,6 +36,15 @@ OpenLoomiは、オープンソースのAIパートナーです。デスクトッ
   <img src="screenshots/app/main-with-loomi.png" alt="OpenLoomi メインウィンドウと Loomi" width="100%">
 </p>
 
+## 何に使える？
+
+OpenLoomi は、任意のエージェントフレームワークにデスクトップアシスタントを提供します——Claude Code、Codex、OpenCode、Hermes、OpenClaw をすべて同じ常駐デスクトップに接続できます。
+
+- 約束事を忘れない：未返信のメッセージ、迫る締め切り、「金曜に follow-up を送る」——デスクトップのバブルがさりげなくリマインド。監視するシグナルや意思決定は自分で拡張可能。
+- 仕事のことを一瞬で引き出す——「先四半期の価格、結局どう決めた？」「Acorn のデザイン担当は誰？」「休暇前、何やってたっけ？」——ツールとチャネルを横断して記憶。Slack / Gmail / Notion を探さなくていい。
+- 9 個のアプリを開く日々にお別れ、朝夕のブリーフィングで完了——重要な情報は一カ所に。
+- いつものチャットアプリ内で AI に仕事を手伝わせる——返信の下書き、長文スレッドの要約、follow-up の予約まで Telegram / WhatsApp / iMessage / QQ / Feishu で直接。
+
 ## 機能
 
 |     | 機能                                                                             | 内容                                                                                                                                                                                                                                                                                                                                                                             |
