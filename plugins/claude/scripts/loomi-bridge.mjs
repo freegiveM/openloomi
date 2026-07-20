@@ -48,11 +48,6 @@ import { EOL } from "node:os";
 import { homedir, platform, tmpdir } from "node:os";
 import { join, delimiter, sep, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  collectDiagnostics,
-  writeDiagnostics,
-  fileModeOctal,
-} from "../../_shared/setup-diagnostics.mjs";
 
 // ---------------------------------------------------------------------------
 // Constants & state
@@ -2925,171 +2920,6 @@ async function waitForApi({
 }
 
 // ---------------------------------------------------------------------------
-// Diagnostics (PR1 — opt-in --diagnostics flag)
-//
-// All subcommands accept `--diagnostics` to dump a redacted JSON snapshot
-// to ~/.openloomi/setup-debug-{ISO}.json and print the path on stderr.
-// The existing flow is unchanged; diagnostics is purely additive.
-// ---------------------------------------------------------------------------
-
-async function buildDiagnosticsProbes() {
-  const disc = discovery({});
-  const desktop = detectDesktopInstalled();
-  // desktopInstall shape matches the schema: { installed, version?, binPath?,
-  //   desktopMarker?, source? }.
-  const desktopInstall = {
-    installed: !!(disc.binPath || desktop.installed),
-    version: getInstallInfo()?.version || null,
-    binPath: disc.binPath || null,
-    desktopMarker:
-      disc.desktopMarker || (desktop.installed ? desktop.marker : null),
-    source: disc.source || null,
-  };
-
-  const matches = [];
-  if (disc.binPath) {
-    try {
-      const running = await probeDesktopProcessRunning(disc.binPath);
-      if (running) matches.push(basename(disc.binPath));
-    } catch {
-      /* noop */
-    }
-  }
-  const desktopProcess = { running: matches.length > 0, matches };
-
-  const baseUrl = openloomiBaseUrl();
-  let localApi = { url: baseUrl, reachable: false };
-  const start = Date.now();
-  try {
-    const res = await fetchWithRetry(
-      `${baseUrl}/api/remote-auth/user`,
-      { method: "GET" },
-      { timeoutMs: 1500, retries: 0 },
-    );
-    localApi = {
-      url: baseUrl,
-      reachable: res.status > 0,
-      status: res.status,
-      latencyMs: Date.now() - start,
-    };
-  } catch (e) {
-    localApi = {
-      url: baseUrl,
-      reachable: false,
-      error: String(e?.message || e),
-    };
-  }
-
-  const tokenPath = readOpenloomiTokenPath();
-  const tokenFile = {
-    present: !!tokenPath,
-    permsOctal: tokenPath ? fileModeOctal(tokenPath) : null,
-  };
-
-  const envShellVarsPresent = [];
-  for (const k of [
-    "ANTHROPIC_API_KEY",
-    "OPENLOOMI_AUTH_TOKEN",
-    "OPENLOOMI_BASE_URL",
-    "OPENLOOMI_BIN",
-    "OPENLOOMI_HOME",
-  ]) {
-    if (process.env[k]) envShellVarsPresent.push(k);
-  }
-  // Code presence of the macOS LaunchAgent plist is enough for the schema
-  // — we don't list persisted env values, only that the persistence layer
-  // exists. PR4 will populate this map for real.
-  const persistedVars = {};
-  if (detectPlatform() === "macos") {
-    const la = join(homedir(), "Library", "LaunchAgents", "com.openloomi.env.plist");
-    if (existsSync(la)) persistedVars["*"] = "launchctl";
-  }
-  const env = {
-    shellVarsPresent: envShellVarsPresent,
-    persistedVars,
-  };
-
-  // CLI probe — Claude only, the bridge does not handle codex auth.
-  const cliProbe = resolveClaudeCliPath();
-  const cli = {
-    claude: {
-      present: !!cliProbe?.path,
-      version: null,
-      authenticated: null,
-    },
-  };
-  if (cliProbe?.path) {
-    const v = await runBin(cliProbe.path, ["--version"], { timeoutMs: 3000 });
-    if (v?.ok && v.stdout) {
-      const m = v.stdout.match(/(\d+\.\d+\.\d+(?:[-+][\w.\-]+)?)/);
-      if (m) cli.claude.version = m[1];
-    }
-  }
-
-  // Provider / guest session — best-effort, never throws.
-  let provider = { active: null, detected: null, match: false };
-  let guestSession = { established: false };
-  try {
-    const ap = await probeAiProvider();
-    const detected = ap?.defaultAgent || null;
-    provider = {
-      active: detected,
-      detected,
-      match: !!ap?.configured,
-    };
-    if (ap?.configured && localApi.reachable) {
-      guestSession = { established: true };
-    }
-  } catch {
-    /* noop */
-  }
-
-  return {
-    desktopInstall,
-    desktopProcess,
-    localApi,
-    tokenFile,
-    env,
-    cli,
-    guestSession,
-    provider,
-  };
-}
-
-async function cmdDiagnostics({ printJson = false } = {}) {
-  const probes = await buildDiagnosticsProbes();
-  const diag = await collectDiagnostics({
-    bridgeVersion: PLUGIN_VERSION,
-    diskPath: join(homedir(), ".openloomi"),
-    probes,
-  });
-  const path = writeDiagnostics(diag, { homeDir: homedir() });
-  if (printJson) {
-    return { ok: true, diagnostics: diag, path };
-  }
-  return { ok: true, path };
-}
-
-// Run diagnostics before the subcommand when --diagnostics is set. Prints
-// the dump path on stderr so it doesn't pollute the JSON on stdout. We
-// return the path so callers can include it in error envelopes if they
-// want (PR2 will plumb this through).
-async function runPreDiagnostics() {
-  try {
-    const r = await cmdDiagnostics({ printJson: false });
-    if (r?.path) {
-      process.stderr.write(`[openloomi:diagnostics] wrote ${r.path}\n`);
-    }
-    return r.path;
-  } catch (e) {
-    process.stderr.write(
-      `[openloomi:diagnostics] failed: ${String(e?.message || e)}\n`,
-    );
-    return null;
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Command routing
 // ---------------------------------------------------------------------------
 
@@ -3097,14 +2927,6 @@ async function main() {
   const argv = process.argv.slice(2);
   const args = parseArgs(argv);
   const sub = args._[0];
-
-  // PR1: opt-in --diagnostics runs before the subcommand so users get a
-  // snapshot even when the subcommand errors out. We never `await` the
-  // subcommand inside the catch — we just print the path on stderr.
-  const wantsDiag = args.diagnostics === true || args.diagnostics === "true";
-  if (wantsDiag) {
-    await runPreDiagnostics();
-  }
 
   switch (sub) {
     case "version": {
@@ -3581,15 +3403,6 @@ async function main() {
       });
       return;
     }
-    case "diagnostics": {
-      // PR1: explicit diagnostics subcommand — emits the full JSON to
-      // stdout (for piping) and ALSO writes the file at
-      // ~/.openloomi/setup-debug-{ISO}.json (matching the --diagnostics
-      // flag behavior on every other subcommand).
-      const r = await cmdDiagnostics({ printJson: true });
-      out(r);
-      return;
-    }
     case "help": {
       process.stdout.write(
         [
@@ -3609,7 +3422,6 @@ async function main() {
           "  install-hooks                    merge into ~/.claude/settings.json",
           "  uninstall-hooks                  strip plugin hook block",
           "  hooks-status                     report merge state",
-          "  diagnostics                      redacted JSON setup snapshot",
           "  help                             this help",
           "",
         ].join("\n"),
@@ -3632,7 +3444,6 @@ async function main() {
           "install-hooks",
           "uninstall-hooks",
           "hooks-status",
-          "diagnostics",
           "help",
         ],
       });

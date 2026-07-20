@@ -17,12 +17,6 @@ import https from "node:https";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  collectDiagnostics,
-  writeDiagnostics,
-  fileModeOctal,
-  normalizeOs,
-} from "../../_shared/setup-diagnostics.mjs";
 
 const BRIDGE_VERSION = "0.8.3";
 const PLUGIN_PHASE = "runtime-provider-readiness";
@@ -152,7 +146,6 @@ function resolveManualArtifact() {
 const COMMANDS = new Set([
   "archive",
   "codex-runtime-info",
-  "diagnostics",
   "help",
   "initialize-session",
   "install-openloomi",
@@ -298,221 +291,6 @@ function writeJson(payload, exitCode = 0) {
 
 async function setupStatus() {
   writeJson(await buildSetupStatus());
-}
-
-// ---------------------------------------------------------------------------
-// Diagnostics (PR1 — opt-in --diagnostics flag)
-//
-// Writes a redacted JSON snapshot to ~/.openloomi/setup-debug-{ISO}.json
-// and prints the path on stderr. Existing flows unchanged.
-// ---------------------------------------------------------------------------
-
-async function buildCodexDiagnosticsProbes() {
-  // desktopInstall — use getPlatformInstallRoots and isFile to mirror the
-  // codex-bridge's own discovery.
-  const installRoots = getPlatformInstallRoots();
-  let installed = false;
-  let desktopMarker = null;
-  for (const root of installRoots) {
-    if (isFile(root) || isDirectory(root)) {
-      installed = true;
-      desktopMarker = root;
-      break;
-    }
-  }
-  // For the bin path, probe a few common bin candidates off the marker.
-  let binPath = null;
-  if (desktopMarker) {
-    if (process.platform === "darwin") {
-      const inner = path.join(desktopMarker, "Contents", "MacOS", "openloomi");
-      if (isFile(inner)) binPath = inner;
-    } else {
-      const inner = path.join(desktopMarker, "openloomi");
-      if (isFile(inner)) binPath = inner;
-    }
-  }
-  const desktopInstall = {
-    installed,
-    version: null,
-    binPath,
-    desktopMarker,
-    source: desktopMarker ? "platform_default" : null,
-  };
-
-  // desktopProcess — best-effort pgrep, never throws.
-  const matches = [];
-  if (binPath) {
-    try {
-      const base = path.basename(binPath);
-      const pattern =
-        process.platform === "darwin"
-          ? `Contents/MacOS/${base}`
-          : base;
-      const out = await new Promise((resolve) => {
-        let outBuf = "";
-        let proc;
-        try {
-          proc = spawn("pgrep", ["-if", pattern], {
-            stdio: ["ignore", "pipe", "ignore"],
-          });
-        } catch {
-          resolve("");
-          return;
-        }
-        proc.stdout?.on("data", (b) => (outBuf += b.toString("utf8")));
-        proc.on("error", () => resolve(""));
-        proc.on("exit", () => resolve(outBuf));
-      });
-      if (out) {
-        for (const line of out.split("\n").filter(Boolean)) {
-          matches.push(line);
-        }
-      }
-    } catch {
-      /* noop */
-    }
-  }
-  const desktopProcess = { running: matches.length > 0, matches };
-
-  // localApi — use the codex-bridge's own probe so the URL & reachable
-  // signal match what the rest of the bridge sees.
-  let localApi = { url: null, reachable: false };
-  try {
-    const probed = await probeLocalApi();
-    if (probed?.reachableUrl) {
-      const attempt = probed.attempts.find(
-        (a) => a.baseUrl === probed.reachableUrl,
-      );
-      localApi = {
-        url: probed.reachableUrl,
-        reachable: true,
-        status: attempt?.status,
-        latencyMs: attempt?.latencyMs,
-      };
-    } else {
-      localApi = {
-        url: getLocalApiBaseUrls()[0] || null,
-        reachable: false,
-        error: probed?.attempts?.[0]?.reason || "no_response",
-      };
-    }
-  } catch (e) {
-    localApi = { url: null, reachable: false, error: String(e?.message || e) };
-  }
-
-  const tokenStatus = getTokenStatus();
-  const tokenFilePath = getOpenLoomiTokenPath();
-  const tokenFile = {
-    present: tokenStatus.checked.some(
-      (c) => c.key === "~/.openloomi/token" && c.present,
-    ),
-    permsOctal: isFile(tokenFilePath) ? fileModeOctal(tokenFilePath) : null,
-  };
-
-  // env / persisted vars — codex already has its own persistence layer.
-  const shellVarsPresent = [];
-  for (const k of [
-    "OPENLOOMI_AGENT_PROVIDER",
-    "OPENLOOMI_AUTH_TOKEN",
-    "OPENLOOMI_API_BASE_URL",
-  ]) {
-    if (process.env[k]) shellVarsPresent.push(k);
-  }
-  const persistedVars = {};
-  if (process.platform === "darwin") {
-    const la = path.join(
-      os.homedir(),
-      "Library",
-      "LaunchAgents",
-      "com.openloomi.env.plist",
-    );
-    if (isFile(la)) persistedVars["*"] = "launchctl";
-  } else if (process.platform === "linux") {
-    const conf = path.join(
-      os.homedir(),
-      ".config",
-      "environment.d",
-      "openloomi.conf",
-    );
-    if (isFile(conf)) persistedVars["*"] = "environment.d";
-  } else if (process.platform === "win32") {
-    persistedVars["*"] = "hkcu";
-  }
-
-  // CLI probe — codex.
-  const cli = { codex: { present: false, version: null, authenticated: null } };
-  try {
-    const codexBin = lookupOnPath("codex");
-    if (codexBin) {
-      cli.codex.present = true;
-      const v = await new Promise((resolve) => {
-        let outBuf = "";
-        let proc;
-        try {
-          proc = spawn(codexBin, ["--version"], {
-            stdio: ["ignore", "pipe", "ignore"],
-          });
-        } catch {
-          resolve("");
-          return;
-        }
-        proc.stdout?.on("data", (b) => (outBuf += b.toString("utf8")));
-        proc.on("error", () => resolve(""));
-        proc.on("exit", () => resolve(outBuf));
-      });
-      if (v) {
-        const m = v.match(/(\d+\.\d+\.\d+(?:[-+][\w.\-]+)?)/);
-        if (m) cli.codex.version = m[1];
-      }
-    }
-  } catch {
-    /* noop */
-  }
-
-  // Provider / guest session — best-effort, never throws.
-  let provider = { active: null, detected: null, match: false };
-  let guestSession = { established: false };
-  try {
-    const baseUrl = getLocalApiBaseUrls()[0] || null;
-    if (baseUrl) {
-      const native = await getNativeProviderStatus(baseUrl);
-      const detected = native?.provider || null;
-      provider = {
-        active: detected,
-        detected,
-        match: !!(detected && native?.configured),
-      };
-      guestSession = { established: !!provider.match && localApi.reachable };
-    }
-  } catch {
-    /* noop */
-  }
-
-  return {
-    desktopInstall,
-    desktopProcess,
-    localApi,
-    tokenFile,
-    env: { shellVarsPresent, persistedVars },
-    cli,
-    guestSession,
-    provider,
-  };
-}
-
-async function cmdDiagnostics({ printJson = false } = {}) {
-  const probes = await buildCodexDiagnosticsProbes();
-  const diag = await collectDiagnostics({
-    bridgeVersion: BRIDGE_VERSION,
-    os: normalizeOs(process.platform),
-    diskPath: path.join(os.homedir(), ".openloomi"),
-    probes,
-  });
-  const filePath = writeDiagnostics(diag, { homeDir: os.homedir() });
-  if (printJson) {
-    return { ok: true, diagnostics: diag, path: filePath };
-  }
-  return { ok: true, path: filePath };
 }
 
 async function getCodexRuntimeEnvStatus() {
@@ -5948,23 +5726,6 @@ async function main() {
     return;
   }
 
-  // PR1: opt-in --diagnostics runs before the subcommand so users get a
-  // snapshot even when the subcommand errors out. We never block on it
-  // — just print the dump path on stderr and continue.
-  const argv = process.argv.slice(3);
-  if (argv.includes("--diagnostics")) {
-    try {
-      const r = await cmdDiagnostics({ printJson: false });
-      if (r?.path) {
-        process.stderr.write(`[openloomi:diagnostics] wrote ${r.path}\n`);
-      }
-    } catch (e) {
-      process.stderr.write(
-        `[openloomi:diagnostics] failed: ${String(e?.message || e)}\n`,
-      );
-    }
-  }
-
   switch (command) {
     case "archive":
       await archiveCommand(process.argv.slice(3));
@@ -5972,11 +5733,6 @@ async function main() {
     case "codex-runtime-info":
       codexRuntimeInfo();
       break;
-    case "diagnostics": {
-      const r = await cmdDiagnostics({ printJson: true });
-      writeJson(r);
-      break;
-    }
     case "help":
       help();
       break;
