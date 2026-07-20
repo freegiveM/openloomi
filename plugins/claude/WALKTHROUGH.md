@@ -43,9 +43,9 @@ the add step stays under a couple of megabytes.
 For plugin contributors (or anyone running from a checkout):
 
 ```text
-git clone https://github.com/melandlabs/openloomi.git
-cd openloomi
-claude --plugin-dir plugins/claude
+git clone https://github.com/melandlabs/plugins.git
+cd plugins
+claude --plugin-dir openloomi/claude
 ```
 
 The plugin is now loaded into the session; you can confirm by typing

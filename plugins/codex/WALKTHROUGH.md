@@ -44,7 +44,7 @@ cache and you now see the `openloomi` plugin in the marketplace list.
 For plugin contributors (or anyone running from a checkout):
 
 ```text
-git clone https://github.com/melandlabs/openloomi.git && cd openloomi && codex plugin marketplace add . && codex plugin add openloomi@openloomi
+git clone https://github.com/melandlabs/plugins.git && cd plugins && codex plugin marketplace add . && codex plugin add openloomi@openloomi
 ```
 
 The plugin is now loaded into the session; you can confirm by typing

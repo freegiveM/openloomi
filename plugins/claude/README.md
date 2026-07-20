@@ -63,9 +63,9 @@ desktop app.
 ### Install from a local checkout (plugin contributors)
 
 ```text
-git clone https://github.com/melandlabs/openloomi.git
-cd openloomi
-claude --plugin-dir plugins/claude
+git clone https://github.com/melandlabs/plugins.git
+cd plugins
+claude --plugin-dir openloomi/claude
 ```
 
 The `--plugin-dir` flag points Claude Code at the source checkout so your

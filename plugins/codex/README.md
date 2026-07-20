@@ -56,13 +56,13 @@ Codex installs the plugin into
 ### Install from a local checkout (contributors)
 
 ```bash
-git clone https://github.com/melandlabs/openloomi.git && cd openloomi && codex plugin marketplace add . && codex plugin add openloomi@openloomi
+git clone https://github.com/melandlabs/plugins.git && cd plugins && codex plugin marketplace add . && codex plugin add openloomi@openloomi
 ```
 
 The `.` argument tells Codex to use the repo root as a local marketplace;
-plugin resolution lands on `./plugins/codex`.
+plugin resolution lands on `./openloomi/codex`.
 
-When you change files under `plugins/codex/` and want to pick up your edits,
+When you change files under `openloomi/codex/` and want to pick up your edits,
 force a re-snapshot:
 
 ```bash
