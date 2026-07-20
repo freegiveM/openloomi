@@ -17,6 +17,12 @@ import https from "node:https";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  collectDiagnostics,
+  writeDiagnostics,
+  fileModeOctal,
+  normalizeOs,
+} from "../../_shared/setup-diagnostics.mjs";
 
 const BRIDGE_VERSION = "0.8.3";
 const PLUGIN_PHASE = "runtime-provider-readiness";
@@ -82,9 +88,71 @@ const OFFICIAL_RELEASE_SOURCE = {
   releasePage: "https://github.com/melandlabs/openloomi/releases",
 };
 
+// Restricted-network install (issue #401). When `OPENLOOMI_VERSION` is set
+// to a literal semver (e.g. `v0.8.2`), resolve that tag's release API
+// instead of /releases/latest. `OPENLOOMI_REPO` overrides the `owner/repo`
+// slug. Both are honored here AND forwarded to the install helper script
+// when the bridge spawns it. When one of the manual-path env vars
+// (`OPENLOOMI_INSTALLER_PATH`, `OPENLOOMI_DMG_PATH`, or the legacy
+// `OPENLOOMI_DMG`) points at an existing installer file on disk, the
+// network round-trip is skipped entirely — see resolveManualArtifact
+// below. See openloomi.ai/docs/install/restricted-network.
+function resolveReleaseApiUrl() {
+  const repoSlug =
+    process.env.OPENLOOMI_REPO ||
+    `${OFFICIAL_RELEASE_SOURCE.owner}/${OFFICIAL_RELEASE_SOURCE.repo}`;
+  const pinned = process.env.OPENLOOMI_VERSION;
+  if (pinned) {
+    return {
+      url: `https://api.github.com/repos/${repoSlug}/releases/tags/${pinned}`,
+      tag: pinned,
+    };
+  }
+  return {
+    url: `https://api.github.com/repos/${repoSlug}/releases/latest`,
+    tag: null,
+  };
+}
+
+// Cross-platform: resolve a pre-staged installer override (issue #401,
+// extended in #399 follow-up for Linux/Windows parity with macOS).
+// Returns an artifact descriptor mirroring `resolveOfficialInstallerArtifact`,
+// or `null` if no override is set or the file doesn't exist on disk.
+//
+// Accepted env vars (first non-empty existing file wins):
+//   1. OPENLOOMI_INSTALLER_PATH  — the cross-platform official name
+//      (works on macOS / Linux / Windows regardless of artifact type).
+//   2. OPENLOOMI_DMG_PATH        — historical macOS-focused name; kept
+//      for back-compat. Accepted on all platforms for convenience.
+//   3. OPENLOOMI_DMG             — legacy alias for (2).
+function resolveManualArtifact() {
+  const candidates = [
+    process.env.OPENLOOMI_INSTALLER_PATH,
+    process.env.OPENLOOMI_DMG_PATH,
+    process.env.OPENLOOMI_DMG,
+  ];
+  for (const value of candidates) {
+    if (!value) continue;
+    if (!existsSync(value)) continue;
+    const url = new URL(`file://${path.resolve(value)}`);
+    return {
+      url,
+      source: "manual-dmg-path",
+      name: path.basename(value),
+      size: null,
+      sha256: null,
+      releaseTag:
+        process.env.OPENLOOMI_VERSION_TAG || process.env.OPENLOOMI_VERSION || null,
+      releaseUrl: OFFICIAL_RELEASE_SOURCE.releasePage,
+    };
+  }
+  return null;
+}
+
 const COMMANDS = new Set([
   "archive",
   "codex-runtime-info",
+  "diagnostics",
   "help",
   "initialize-session",
   "install-openloomi",
@@ -230,6 +298,221 @@ function writeJson(payload, exitCode = 0) {
 
 async function setupStatus() {
   writeJson(await buildSetupStatus());
+}
+
+// ---------------------------------------------------------------------------
+// Diagnostics (PR1 — opt-in --diagnostics flag)
+//
+// Writes a redacted JSON snapshot to ~/.openloomi/setup-debug-{ISO}.json
+// and prints the path on stderr. Existing flows unchanged.
+// ---------------------------------------------------------------------------
+
+async function buildCodexDiagnosticsProbes() {
+  // desktopInstall — use getPlatformInstallRoots and isFile to mirror the
+  // codex-bridge's own discovery.
+  const installRoots = getPlatformInstallRoots();
+  let installed = false;
+  let desktopMarker = null;
+  for (const root of installRoots) {
+    if (isFile(root) || isDirectory(root)) {
+      installed = true;
+      desktopMarker = root;
+      break;
+    }
+  }
+  // For the bin path, probe a few common bin candidates off the marker.
+  let binPath = null;
+  if (desktopMarker) {
+    if (process.platform === "darwin") {
+      const inner = path.join(desktopMarker, "Contents", "MacOS", "openloomi");
+      if (isFile(inner)) binPath = inner;
+    } else {
+      const inner = path.join(desktopMarker, "openloomi");
+      if (isFile(inner)) binPath = inner;
+    }
+  }
+  const desktopInstall = {
+    installed,
+    version: null,
+    binPath,
+    desktopMarker,
+    source: desktopMarker ? "platform_default" : null,
+  };
+
+  // desktopProcess — best-effort pgrep, never throws.
+  const matches = [];
+  if (binPath) {
+    try {
+      const base = path.basename(binPath);
+      const pattern =
+        process.platform === "darwin"
+          ? `Contents/MacOS/${base}`
+          : base;
+      const out = await new Promise((resolve) => {
+        let outBuf = "";
+        let proc;
+        try {
+          proc = spawn("pgrep", ["-if", pattern], {
+            stdio: ["ignore", "pipe", "ignore"],
+          });
+        } catch {
+          resolve("");
+          return;
+        }
+        proc.stdout?.on("data", (b) => (outBuf += b.toString("utf8")));
+        proc.on("error", () => resolve(""));
+        proc.on("exit", () => resolve(outBuf));
+      });
+      if (out) {
+        for (const line of out.split("\n").filter(Boolean)) {
+          matches.push(line);
+        }
+      }
+    } catch {
+      /* noop */
+    }
+  }
+  const desktopProcess = { running: matches.length > 0, matches };
+
+  // localApi — use the codex-bridge's own probe so the URL & reachable
+  // signal match what the rest of the bridge sees.
+  let localApi = { url: null, reachable: false };
+  try {
+    const probed = await probeLocalApi();
+    if (probed?.reachableUrl) {
+      const attempt = probed.attempts.find(
+        (a) => a.baseUrl === probed.reachableUrl,
+      );
+      localApi = {
+        url: probed.reachableUrl,
+        reachable: true,
+        status: attempt?.status,
+        latencyMs: attempt?.latencyMs,
+      };
+    } else {
+      localApi = {
+        url: getLocalApiBaseUrls()[0] || null,
+        reachable: false,
+        error: probed?.attempts?.[0]?.reason || "no_response",
+      };
+    }
+  } catch (e) {
+    localApi = { url: null, reachable: false, error: String(e?.message || e) };
+  }
+
+  const tokenStatus = getTokenStatus();
+  const tokenFilePath = getOpenLoomiTokenPath();
+  const tokenFile = {
+    present: tokenStatus.checked.some(
+      (c) => c.key === "~/.openloomi/token" && c.present,
+    ),
+    permsOctal: isFile(tokenFilePath) ? fileModeOctal(tokenFilePath) : null,
+  };
+
+  // env / persisted vars — codex already has its own persistence layer.
+  const shellVarsPresent = [];
+  for (const k of [
+    "OPENLOOMI_AGENT_PROVIDER",
+    "OPENLOOMI_AUTH_TOKEN",
+    "OPENLOOMI_API_BASE_URL",
+  ]) {
+    if (process.env[k]) shellVarsPresent.push(k);
+  }
+  const persistedVars = {};
+  if (process.platform === "darwin") {
+    const la = path.join(
+      os.homedir(),
+      "Library",
+      "LaunchAgents",
+      "com.openloomi.env.plist",
+    );
+    if (isFile(la)) persistedVars["*"] = "launchctl";
+  } else if (process.platform === "linux") {
+    const conf = path.join(
+      os.homedir(),
+      ".config",
+      "environment.d",
+      "openloomi.conf",
+    );
+    if (isFile(conf)) persistedVars["*"] = "environment.d";
+  } else if (process.platform === "win32") {
+    persistedVars["*"] = "hkcu";
+  }
+
+  // CLI probe — codex.
+  const cli = { codex: { present: false, version: null, authenticated: null } };
+  try {
+    const codexBin = lookupOnPath("codex");
+    if (codexBin) {
+      cli.codex.present = true;
+      const v = await new Promise((resolve) => {
+        let outBuf = "";
+        let proc;
+        try {
+          proc = spawn(codexBin, ["--version"], {
+            stdio: ["ignore", "pipe", "ignore"],
+          });
+        } catch {
+          resolve("");
+          return;
+        }
+        proc.stdout?.on("data", (b) => (outBuf += b.toString("utf8")));
+        proc.on("error", () => resolve(""));
+        proc.on("exit", () => resolve(outBuf));
+      });
+      if (v) {
+        const m = v.match(/(\d+\.\d+\.\d+(?:[-+][\w.\-]+)?)/);
+        if (m) cli.codex.version = m[1];
+      }
+    }
+  } catch {
+    /* noop */
+  }
+
+  // Provider / guest session — best-effort, never throws.
+  let provider = { active: null, detected: null, match: false };
+  let guestSession = { established: false };
+  try {
+    const baseUrl = getLocalApiBaseUrls()[0] || null;
+    if (baseUrl) {
+      const native = await getNativeProviderStatus(baseUrl);
+      const detected = native?.provider || null;
+      provider = {
+        active: detected,
+        detected,
+        match: !!(detected && native?.configured),
+      };
+      guestSession = { established: !!provider.match && localApi.reachable };
+    }
+  } catch {
+    /* noop */
+  }
+
+  return {
+    desktopInstall,
+    desktopProcess,
+    localApi,
+    tokenFile,
+    env: { shellVarsPresent, persistedVars },
+    cli,
+    guestSession,
+    provider,
+  };
+}
+
+async function cmdDiagnostics({ printJson = false } = {}) {
+  const probes = await buildCodexDiagnosticsProbes();
+  const diag = await collectDiagnostics({
+    bridgeVersion: BRIDGE_VERSION,
+    os: normalizeOs(process.platform),
+    diskPath: path.join(os.homedir(), ".openloomi"),
+    probes,
+  });
+  const filePath = writeDiagnostics(diag, { homeDir: os.homedir() });
+  if (printJson) {
+    return { ok: true, diagnostics: diag, path: filePath };
+  }
+  return { ok: true, path: filePath };
 }
 
 async function getCodexRuntimeEnvStatus() {
@@ -549,7 +832,7 @@ async function getConnectorStatus(baseUrl, tokenStatus) {
   );
 
   try {
-    const response = await fetchWithTimeout(
+    const response = await fetchWithRetry(
       `${normalizedBaseUrl}${endpoint}`,
       {
         headers: {
@@ -557,7 +840,7 @@ async function getConnectorStatus(baseUrl, tokenStatus) {
         },
         redirect: "manual",
       },
-      CONNECTOR_STATUS_TIMEOUT_MS,
+      { timeoutMs: CONNECTOR_STATUS_TIMEOUT_MS },
     );
 
     if (!response.ok) {
@@ -690,13 +973,13 @@ async function getNativeIntegrationConnectorStatus(baseUrl, tokenStatus) {
   }
 
   try {
-    const sessionResponse = await fetchWithTimeout(
+    const sessionResponse = await fetchWithRetry(
       `${baseUrl}/api/auth/set-token?token=${encodeURIComponent(token)}`,
       {
         method: "GET",
         redirect: "manual",
       },
-      SESSION_API_TIMEOUT_MS,
+      { timeoutMs: SESSION_API_TIMEOUT_MS },
     );
     const cookieHeader = toCookieHeader(
       getSetCookieHeaders(sessionResponse.headers),
@@ -710,7 +993,7 @@ async function getNativeIntegrationConnectorStatus(baseUrl, tokenStatus) {
       };
     }
 
-    const response = await fetchWithTimeout(
+    const response = await fetchWithRetry(
       `${baseUrl}${endpoint}`,
       {
         headers: {
@@ -719,7 +1002,7 @@ async function getNativeIntegrationConnectorStatus(baseUrl, tokenStatus) {
         },
         redirect: "manual",
       },
-      CONNECTOR_STATUS_TIMEOUT_MS,
+      { timeoutMs: CONNECTOR_STATUS_TIMEOUT_MS },
     );
 
     if (!response.ok) {
@@ -1056,9 +1339,17 @@ async function installOpenLoomi(args) {
   let artifact;
 
   try {
+    // Resolution precedence (issue #401, extended cross-platform in #399):
+    //   1. --artifact-url=<url>     (manual, allowlisted URL)
+    //   2. OPENLOOMI_INSTALLER_PATH (pre-staged local installer — works
+    //      on macOS / Linux / Windows). Legacy aliases OPENLOOMI_DMG_PATH
+    //      and OPENLOOMI_DMG are also accepted for back-compat.
+    //   3. OPENLOOMI_VERSION=vX.Y.Z (pin a specific tag, no /releases/latest)
+    //   4. Default                  (latest official release)
     artifact = flags.artifactUrl
       ? getManualInstallerArtifact(flags.artifactUrl)
-      : await resolveOfficialInstallerArtifact();
+      : (resolveManualArtifact() ||
+        (await resolveOfficialInstallerArtifact()));
   } catch (error) {
     const normalized = normalizeBridgeError(
       error,
@@ -1100,9 +1391,28 @@ async function installOpenLoomi(args) {
   }
 
   let download;
+  let usingPreStagedArtifact = artifact.source === "manual-dmg-path";
 
   try {
-    download = await downloadInstallerArtifact(artifact);
+    if (usingPreStagedArtifact) {
+      // Pre-staged installer (issue #401 / OPENLOOMI_DMG_PATH,
+      // extended cross-platform in #399 to OPENLOOMI_INSTALLER_PATH).
+      // The file is already on disk and the user has chosen to skip the
+      // network round-trip. Skip the downloader entirely;
+      // installDownloadedArtifact just needs a path to the artifact.
+      const sourcePath =
+        process.env.OPENLOOMI_INSTALLER_PATH ||
+        process.env.OPENLOOMI_DMG_PATH ||
+        process.env.OPENLOOMI_DMG ||
+        "";
+      download = {
+        path: sourcePath,
+        bytes: 0,
+        preStaged: true,
+      };
+    } else {
+      download = await downloadInstallerArtifact(artifact);
+    }
   } catch (error) {
     const normalized = normalizeBridgeError(error, "DOWNLOAD_FAILED");
 
@@ -1122,10 +1432,13 @@ async function installOpenLoomi(args) {
     return;
   }
 
-  const expectedSha256 = argumentSha256 || artifact.sha256;
+  // Auto-verification only happens when we have a release digest to compare
+  // against. Pre-staged artifacts (OPENLOOMI_DMG_PATH) skip the auto check;
+  // they only verify the user-supplied --sha256 (if any).
+  const expectedSha256 = usingPreStagedArtifact ? argumentSha256 : argumentSha256 || artifact.sha256;
   const sha256Source = flags.sha256
     ? "argument"
-    : artifact.sha256
+    : artifact.sha256 && !usingPreStagedArtifact
       ? "github-release-digest"
       : null;
 
@@ -1355,12 +1668,16 @@ function normalizeWorkflowId(value) {
 }
 
 function getInstallPlan() {
+  // `officialReleaseApi` is computed from `resolveReleaseApiUrl()` so it
+  // reflects OPENLOOMI_VERSION / OPENLOOMI_REPO overrides instead of
+  // always pointing at /releases/latest. Issue #401.
+  const resolved = resolveReleaseApiUrl();
   return {
     platform: process.platform,
     arch: process.arch,
     supported: ["darwin", "linux", "win32"].includes(process.platform),
     officialReleasePage: OFFICIAL_RELEASE_SOURCE.releasePage,
-    officialReleaseApi: OFFICIAL_RELEASE_SOURCE.latestReleaseApi,
+    officialReleaseApi: resolved.url,
     artifactResolution:
       "The bridge resolves the latest official GitHub release asset for the current platform and architecture.",
     requiredUserAction:
@@ -1549,16 +1866,18 @@ function getManualInstallerArtifact(value) {
 }
 
 async function resolveOfficialInstallerArtifact() {
-  const release = await fetchJson(
-    new URL(OFFICIAL_RELEASE_SOURCE.latestReleaseApi),
-  );
+  // Pin to a specific tag when OPENLOOMI_VERSION is set, otherwise resolve
+  // /releases/latest. OPENLOOMI_REPO overrides the `owner/repo` slug for
+  // org-internal forks / mirrors. See issue #401.
+  const resolved = resolveReleaseApiUrl();
+  const release = await fetchJson(new URL(resolved.url));
   const assets = Array.isArray(release.assets) ? release.assets : [];
   const asset = selectInstallerAsset(assets);
 
   if (!asset) {
     throw new BridgeError(
       "ARTIFACT_RESOLUTION_FAILED",
-      `No supported OpenLoomi installer asset was found for ${process.platform}/${process.arch} in the latest official release.`,
+      `No supported OpenLoomi installer asset was found for ${process.platform}/${process.arch} in the ${resolved.tag ? `release ${resolved.tag}` : "latest official release"}.`,
       {
         platform: process.platform,
         arch: process.arch,
@@ -1579,7 +1898,7 @@ async function resolveOfficialInstallerArtifact() {
 
   return {
     url: artifact.url,
-    source: "github-release-latest",
+    source: resolved.tag ? "github-release-tag" : "github-release-latest",
     name: asset.name || getInstallerFilename(artifact.url),
     size: Number.isSafeInteger(asset.size) ? asset.size : null,
     sha256: normalizeSha256(asset.digest),
@@ -1729,14 +2048,33 @@ function fetchText(url, options) {
       return;
     }
 
+    // Optional GitHub auth (issue #399). The Releases API is anonymous by
+    // default, which trips GitHub's secondary rate limit at ~60 req/hr per
+    // IP and surfaces as a silent 403 → ARTIFACT_RESOLUTION_FAILED. Sending
+    // a Bearer token lifts that to 5,000 req/hr. Both env var names are
+    // accepted (GITHUB_TOKEN is the gh CLI convention; GH_TOKEN is what
+    // GitHub Actions exports by default).
+    // https://docs.github.com/en/rest/overview/resources-in-the-rest-api#rate-limiting
+    //
+    // We only attach the token to api.github.com URLs — GitHub release asset
+    // downloads go through objects.githubusercontent.com which doesn't
+    // accept Bearer auth, so leaking the header there would just bloat the
+    // request.
+    const headers = {
+      Accept: options.accept,
+      "Accept-Encoding": "identity",
+      "User-Agent": "Codex-OpenLoomi-Install",
+    };
+    const githubToken = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
+    const host = url && typeof url.hostname === "string" ? url.hostname : null;
+    if (githubToken && host === "api.github.com") {
+      headers.Authorization = `Bearer ${githubToken}`;
+    }
+
     const request = https.get(
       url,
       {
-        headers: {
-          Accept: options.accept,
-          "Accept-Encoding": "identity",
-          "User-Agent": "Codex-OpenLoomi-Install",
-        },
+        headers,
       },
       (response) => {
         const statusCode = response.statusCode || 0;
@@ -1755,6 +2093,34 @@ function fetchText(url, options) {
 
         if (statusCode !== 200) {
           response.resume();
+
+          // Detect the secondary rate limit (HTTP 403 + X-RateLimit-Remaining: 0).
+          // Without this branch, the caller would see a generic
+          // ARTIFACT_RESOLUTION_FAILED with no actionable hint. The bridge
+          // tests assert the `reason` string, so keep the public message
+          // stable; new fields live under `details`.
+          if (statusCode === 403) {
+            const remaining = response.headers["x-ratelimit-remaining"];
+            if (remaining === "0" || remaining === 0) {
+              const resetEpoch = Number(response.headers["x-ratelimit-reset"]);
+              reject(
+                new BridgeError(
+                  "RATE_LIMITED",
+                  "GitHub API anonymous rate limit hit. Set GITHUB_TOKEN to raise the limit, or wait and retry.",
+                  {
+                    officialReleaseApi: OFFICIAL_RELEASE_SOURCE.latestReleaseApi,
+                    resetAt: Number.isFinite(resetEpoch) && resetEpoch > 0
+                      ? new Date(resetEpoch * 1000).toISOString()
+                      : null,
+                    hint:
+                      "The anonymous rate limit is ~60 requests/hour per IP. Setting GITHUB_TOKEN (or GH_TOKEN) raises it to ~5,000/hour.",
+                  },
+                ),
+              );
+              return;
+            }
+          }
+
           reject(
             new BridgeError(
               options.reason,
@@ -2526,7 +2892,7 @@ async function requestGuestToken(baseUrl) {
 // Returns { baseUrl, status, reason, token?, path? }.
 async function requestRemoteAuthGuestToken(baseUrl) {
   try {
-    const res = await fetchWithTimeout(
+    const res = await fetchWithRetry(
       `${baseUrl}/api/remote-auth/guest`,
       {
         method: "POST",
@@ -2536,7 +2902,11 @@ async function requestRemoteAuthGuestToken(baseUrl) {
         },
         body: JSON.stringify({}),
       },
-      SESSION_API_TIMEOUT_MS,
+      // POST without a body is safely idempotent in the runtime's eyes: a
+      // 5xx means the token wasn't minted, so a follow-up call mints a
+      // fresh one. 404 is not retried (it's the "endpoint missing" signal
+      // the caller uses to fall through to the cookie flow).
+      { timeoutMs: SESSION_API_TIMEOUT_MS },
     );
 
     if (res.status === 404) {
@@ -2605,13 +2975,13 @@ async function requestRemoteAuthGuestToken(baseUrl) {
 // that the new dispatch above remains easy to read.
 async function requestGuestTokenViaCookie(baseUrl) {
   try {
-    const guestResponse = await fetchWithTimeout(
+    const guestResponse = await fetchWithRetry(
       `${baseUrl}/api/auth/guest?redirectUrl=/`,
       {
         method: "POST",
         redirect: "manual",
       },
-      SESSION_API_TIMEOUT_MS,
+      { timeoutMs: SESSION_API_TIMEOUT_MS },
     );
     const cookieHeader = toCookieHeader(
       getSetCookieHeaders(guestResponse.headers),
@@ -2626,7 +2996,7 @@ async function requestGuestTokenViaCookie(baseUrl) {
       };
     }
 
-    const tokenResponse = await fetchWithTimeout(
+    const tokenResponse = await fetchWithRetry(
       `${baseUrl}/api/auth/token`,
       {
         headers: {
@@ -2634,7 +3004,7 @@ async function requestGuestTokenViaCookie(baseUrl) {
         },
         redirect: "manual",
       },
-      SESSION_API_TIMEOUT_MS,
+      { timeoutMs: SESSION_API_TIMEOUT_MS },
     );
 
     if (!tokenResponse.ok) {
@@ -2681,6 +3051,177 @@ function fetchWithTimeout(url, options, timeoutMs) {
     ...options,
     signal: controller.signal,
   }).finally(() => clearTimeout(timer));
+}
+
+// ---------------------------------------------------------------------------
+// Network retry helper
+//
+// `fetchWithRetry(url, init, opts)` is a thin wrapper around `fetch` that
+// retries on transient failures:
+//
+//   * network errors (fetch threw, e.g. ECONNRESET / "fetch failed")
+//   * per-attempt timeouts (our AbortController fired)
+//   * HTTP 5xx
+//   * HTTP 429 (honoring Retry-After when present)
+//
+// Non-retryable:
+//   * HTTP 4xx other than 429 — the server actively rejected the request
+//   * AbortError caused by an *external* caller signal (init.signal) — we
+//     don't override the caller's intent to cancel.
+//
+// Backoff is exponential with full jitter, capped at `maxDelayMs`. Defaults
+// give 3 total attempts (initial + 2 retries) with 250 ms / 750 ms sleeps,
+// adding at most ~1 s of latency in the worst case. Each attempt has its
+// own `timeoutMs` budget, so a 5 s timeout means a hard ceiling of ~15 s
+// per call across all attempts.
+//
+// Designed for the local OpenLoomi API (127.0.0.1), where brief hiccups
+// are common during desktop-app launches. The helper is dependency-free
+// and safe to use from any of the existing call sites.
+// ---------------------------------------------------------------------------
+const DEFAULT_RETRY_BASE_DELAY_MS = 250;
+const DEFAULT_RETRY_MAX_DELAY_MS = 2000;
+const DEFAULT_RETRY_ATTEMPTS = 2; // initial + 2 retries = 3 total
+
+function defaultIsRetryable({ status, error }) {
+  if (error) {
+    // External caller-initiated aborts are not transient.
+    if (error.name === "AbortError" && error.__external) return false;
+    return true; // network error / our-internal timeout
+  }
+  if (status === 429) return true;
+  if (status >= 500 && status < 600) return true;
+  return false;
+}
+
+// Pick a Retry-After value from a Response (seconds or HTTP-date), or null.
+// Spec: https://datatracker.ietf.org/doc/html/rfc7231#section-7.1.3
+function readRetryAfterMs(res) {
+  const v = res?.headers?.get?.("retry-after");
+  if (!v) return null;
+  const asNum = Number(v);
+  if (Number.isFinite(asNum)) return Math.max(0, asNum * 1000);
+  const asDate = Date.parse(v);
+  if (Number.isFinite(asDate)) return Math.max(0, asDate - Date.now());
+  return null;
+}
+
+function computeBackoffMs(attempt, baseDelayMs, maxDelayMs) {
+  // attempt is 1-based: 1 -> base, 2 -> 2*base, ...
+  const exp = Math.min(maxDelayMs, baseDelayMs * 2 ** (attempt - 1));
+  // Full jitter: pick a random value in [baseDelayMs, exp] so a thundering
+  // herd of plugins retrying in lockstep doesn't synchronize. Lower bound
+  // stays at baseDelayMs so we still back off meaningfully on attempt 1.
+  const lo = Math.min(baseDelayMs, exp);
+  return lo + Math.floor(Math.random() * Math.max(1, exp - lo));
+}
+
+function sleepBridge(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function fetchWithRetry(url, init = {}, opts = {}) {
+  const {
+    timeoutMs,
+    retries = DEFAULT_RETRY_ATTEMPTS,
+    baseDelayMs = DEFAULT_RETRY_BASE_DELAY_MS,
+    maxDelayMs = DEFAULT_RETRY_MAX_DELAY_MS,
+    isRetryable = defaultIsRetryable,
+    onRetry,
+    sleepFn = sleepBridge,
+  } = opts;
+
+  const externalSignal = init.signal || null;
+  const maxAttempts = Math.max(1, retries + 1);
+  let lastError = null;
+  let lastStatus = 0;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    // Per-attempt controller. If we time out, the AbortError carries our
+    // internal reason so defaultIsRetryable knows to retry it.
+    const ctrl = new AbortController();
+    const onExternalAbort = () => ctrl.abort();
+    if (externalSignal) {
+      if (externalSignal.aborted) {
+        const e = new Error("aborted");
+        e.name = "AbortError";
+        e.__external = true;
+        throw e;
+      }
+      externalSignal.addEventListener("abort", onExternalAbort, {
+        once: true,
+      });
+    }
+    let timer = null;
+    if (Number.isFinite(timeoutMs) && timeoutMs > 0) {
+      timer = setTimeout(() => {
+        const e = new Error(`request timed out after ${timeoutMs}ms`);
+        e.name = "AbortError";
+        e.__external = false;
+        ctrl.abort();
+      }, timeoutMs);
+    }
+
+    try {
+      const res = await fetch(url, { ...init, signal: ctrl.signal });
+      lastStatus = res.status;
+
+      if (!isRetryable({ status: res.status, error: null }) || attempt === maxAttempts) {
+        return res;
+      }
+
+      // Retryable HTTP status — back off and try again.
+      const retryAfter = readRetryAfterMs(res);
+      const delayMs = retryAfter ?? computeBackoffMs(attempt, baseDelayMs, maxDelayMs);
+      if (typeof onRetry === "function") {
+        try {
+          onRetry({ attempt, delayMs, reason: `http_${res.status}` });
+        } catch {
+          /* non-fatal */
+        }
+      }
+      // Drain the body so the underlying socket can be reused / closed cleanly.
+      try {
+        await res.arrayBuffer();
+      } catch {
+        /* ignore */
+      }
+      await sleepFn(delayMs);
+      continue;
+    } catch (error) {
+      lastError = error;
+      const retryable = isRetryable({ status: 0, error });
+      if (!retryable || attempt === maxAttempts) {
+        throw error;
+      }
+      const delayMs = computeBackoffMs(attempt, baseDelayMs, maxDelayMs);
+      if (typeof onRetry === "function") {
+        try {
+          onRetry({
+            attempt,
+            delayMs,
+            reason: error?.name === "AbortError" ? "timeout" : "network",
+          });
+        } catch {
+          /* non-fatal */
+        }
+      }
+      await sleepFn(delayMs);
+      continue;
+    } finally {
+      if (timer) clearTimeout(timer);
+      if (externalSignal) {
+        externalSignal.removeEventListener("abort", onExternalAbort);
+      }
+    }
+  }
+
+  // Unreachable: the loop above always either returns or throws. Defensive
+  // throw so callers can rely on this function never resolving to undefined.
+  if (lastError) throw lastError;
+  const e = new Error(`fetch failed after ${maxAttempts} attempts (status ${lastStatus})`);
+  e.__lastStatus = lastStatus;
+  throw e;
 }
 
 function getSetCookieHeaders(headers) {
@@ -3256,7 +3797,7 @@ async function postPetState(
   if (event) body.event = event;
 
   try {
-    const response = await fetchWithTimeout(
+    const response = await fetchWithRetry(
       `${baseUrl}/api/pet/state`,
       {
         method: "POST",
@@ -3267,7 +3808,11 @@ async function postPetState(
         },
         body: JSON.stringify(body),
       },
-      timeoutMs,
+      // Pet state is fire-and-forget from hooks; the runtime treats
+      // duplicate events as idempotent (latest state wins), so a 5xx
+      // retry is safe. Backoff is small enough not to delay Stop/SubAgent
+      // hook responses noticeably.
+      { timeoutMs },
     );
 
     const text = await response.text().catch(() => "");
@@ -5097,7 +5642,7 @@ function parseArchiveCommandArgs(args) {
 
 async function postInsight(baseUrl, token, body, { timeoutMs } = {}) {
   try {
-    const response = await fetchWithTimeout(
+    const response = await fetchWithRetry(
       `${baseUrl}/api/insights`,
       {
         method: "POST",
@@ -5108,7 +5653,7 @@ async function postInsight(baseUrl, token, body, { timeoutMs } = {}) {
         },
         body: JSON.stringify(body),
       },
-      timeoutMs || ARCHIVE_HTTP_TIMEOUT_MS,
+      { timeoutMs: timeoutMs || ARCHIVE_HTTP_TIMEOUT_MS },
     );
     const text = await response.text().catch(() => "");
     let json = null;
@@ -5403,6 +5948,23 @@ async function main() {
     return;
   }
 
+  // PR1: opt-in --diagnostics runs before the subcommand so users get a
+  // snapshot even when the subcommand errors out. We never block on it
+  // — just print the dump path on stderr and continue.
+  const argv = process.argv.slice(3);
+  if (argv.includes("--diagnostics")) {
+    try {
+      const r = await cmdDiagnostics({ printJson: false });
+      if (r?.path) {
+        process.stderr.write(`[openloomi:diagnostics] wrote ${r.path}\n`);
+      }
+    } catch (e) {
+      process.stderr.write(
+        `[openloomi:diagnostics] failed: ${String(e?.message || e)}\n`,
+      );
+    }
+  }
+
   switch (command) {
     case "archive":
       await archiveCommand(process.argv.slice(3));
@@ -5410,6 +5972,11 @@ async function main() {
     case "codex-runtime-info":
       codexRuntimeInfo();
       break;
+    case "diagnostics": {
+      const r = await cmdDiagnostics({ printJson: true });
+      writeJson(r);
+      break;
+    }
     case "help":
       help();
       break;

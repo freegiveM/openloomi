@@ -457,6 +457,143 @@ function readStageTimeouts(args) {
   return { installMs, launchMs, apiMs, permissionMs, totalMs };
 }
 
+// Compose a concrete `/openloomi:setup --yes ...` resume command for an
+// install failure. The install timeout flag is raised to a level that
+// comfortably covers a slow 50 Mbps download so the user's retry doesn't
+// hit the same wall.
+function installResumeCommand() {
+  const tuned = Math.max(DEFAULT_INSTALL_TIMEOUT_MS, 600_000);
+  return `/openloomi:setup --yes --install-timeout ${tuned}`;
+}
+
+// Map a non-OK install result to a stable, human `message` and at least
+// one concrete next action in `hints[]`. Resumable cases additionally
+// receive `canResume: true` and a pre-built `resumeCommand` so the chat
+// layer doesn't have to invent the flags.
+//
+// Covers at minimum the codes the platform helpers can emit today:
+//   EXIT_22, EXIT_28, EXIT_35, INSTALL_TIMEOUT / TIMEOUT,
+//   SPAWN_FAILED, INSTALL_SCRIPT_MISSING, NON_INTERACTIVE_REQUIRES_YES,
+//   CANCELLED, and a generic `EXIT_*` fallback.
+//
+// `result.elapsedMs` (when present) is preserved; `result.stdout` /
+// `result.stderr` are preserved as-is so the chat layer can echo the
+// raw helper output if it wants to. Already-populated `message` /
+// `hints` on `result` win so callers can override.
+function installErrorGuidance(result) {
+  const code = result?.code || "EXIT_NONZERO";
+  const baseHints = [
+    "Re-run /openloomi:setup to retry — already-completed steps will be skipped.",
+  ];
+  // Allow callers to seed either field; we only fill in what's missing.
+  const out = {
+    code,
+    message: typeof result?.message === "string" ? result.message : null,
+    hints: Array.isArray(result?.hints) && result.hints.length > 0
+      ? result.hints.slice()
+      : null,
+    canResume: typeof result?.canResume === "boolean" ? result.canResume : true,
+    resumeCommand: result?.resumeCommand || installResumeCommand(),
+  };
+
+  switch (code) {
+    case "EXIT_22": {
+      if (!out.message) {
+        out.message =
+          "The GitHub asset server returned an HTTP error (curl exit 22). The release may not exist, your network blocked the CDN, or a rate limit was hit.";
+      }
+      out.hints = out.hints || [
+        "If you are on a corporate network, see https://openloomi.ai/docs/install/restricted-network.",
+        "Pin a known-good release with OPENLOOMI_VERSION=vX.Y.Z and re-run /openloomi:setup.",
+        "Pre-stage a local bundle: export OPENLOOMI_DMG_PATH=/path/to/file.dmg (mac) and re-run setup.",
+        ...baseHints,
+      ];
+      break;
+    }
+    case "EXIT_28": {
+      if (!out.message) {
+        out.message =
+          "The download timed out (curl exit 28). The connection is too slow or unstable to complete the asset transfer within the current budget.";
+      }
+      out.hints = out.hints || [
+        `Re-run /openloomi:setup --yes --install-timeout ${Math.max(DEFAULT_INSTALL_TIMEOUT_MS, 600_000)} to give the download more time.`,
+        "If you are on a slow or metered connection, see https://openloomi.ai/docs/install/restricted-network.",
+        "Pre-stage a local bundle with OPENLOOMI_DMG_PATH (mac) or --offline <path> and re-run setup.",
+      ];
+      break;
+    }
+    case "EXIT_35": {
+      if (!out.message) {
+        out.message =
+          "TLS handshake to the asset CDN failed (curl exit 35). Your network may require a corporate CA bundle or a TLS-inspection proxy.";
+      }
+      out.hints = out.hints || [
+        "If you are behind a corporate proxy or TLS inspection, see https://openloomi.ai/docs/install/restricted-network.",
+        "Set NODE_EXTRA_CA_CERTS=/path/to/corp-ca.pem (or add the CA via macOS Profiles) and re-run setup.",
+        "Pre-stage a local bundle with OPENLOOMI_DMG_PATH (mac) or --offline <path> and re-run setup.",
+        ...baseHints,
+      ];
+      break;
+    }
+    case "INSTALL_TIMEOUT":
+    case "TIMEOUT": {
+      const ms =
+        Number.isFinite(result?.budgetMs) && result.budgetMs > 0
+          ? `${result.budgetMs}ms`
+          : `${DEFAULT_INSTALL_TIMEOUT_MS}ms`;
+      if (!out.message) {
+        out.message = `Install exceeded the time budget (${ms}).`;
+      }
+      out.hints = out.hints || [
+        `Re-run /openloomi:setup --yes --install-timeout ${Math.max(DEFAULT_INSTALL_TIMEOUT_MS, 600_000)} to give the download more time.`,
+        "If you are on a slow or metered connection, see https://openloomi.ai/docs/install/restricted-network.",
+      ];
+      break;
+    }
+    case "SPAWN_FAILED": {
+      if (!out.message) {
+        out.message =
+          "Could not start the platform install helper. Make sure bash (macOS/Linux) or PowerShell (Windows) is on PATH.";
+      }
+      out.hints = out.hints || [
+        "Verify that bash (macOS/Linux) or PowerShell (Windows) is on PATH.",
+        "Re-run /openloomi:setup --yes from a regular terminal session.",
+      ];
+      break;
+    }
+    case "INSTALL_SCRIPT_MISSING": {
+      if (!out.message) {
+        out.message = "No install script shipped for this platform.";
+      }
+      out.hints = out.hints || [
+        "Visit https://openloomi.ai/docs/install and follow the manual steps.",
+        "Re-run /openloomi:setup from inside the plugin directory so the helper scripts are reachable.",
+      ];
+      break;
+    }
+    case "CANCELLED":
+    case "NON_INTERACTIVE_REQUIRES_YES": {
+      out.hints = out.hints || [
+        "Re-run /openloomi:setup --yes to pre-approve the install in non-interactive shells.",
+      ];
+      break;
+    }
+    default: {
+      // Generic EXIT_<n> / unknown code
+      const numeric = String(code).replace(/^EXIT_/, "");
+      if (!out.message) {
+        out.message = `Install exited with code ${numeric}.`;
+      }
+      out.hints = out.hints || [
+        "See the install helper's stderr output (printed above) for details.",
+        "If you are behind a corporate proxy, see https://openloomi.ai/docs/install/restricted-network.",
+        ...baseHints,
+      ];
+    }
+  }
+  return out;
+}
+
 // Build the actionable hints list for an API timeout. Order is deliberate:
 // the most likely cause goes first so it survives any UI truncation.
 // All entries are safe to print verbatim — no secrets, no installation
@@ -2416,12 +2553,26 @@ async function runInstallScript({
   // narrative. The bridge intentionally does NOT strip these here: doing
   // so would silently break `--offline <path>` and the env-var form of
   // the same path.
+  const startedAt = Date.now();
   return await new Promise((resolve) => {
     let stdout = "";
     let stderr = "";
     let tickHandle = null;
     let budgetHandle = null;
+    let resolved = false;
+    // Latest `[openloomi-installer] stage=...` line seen on stderr. Kept
+    // only for diagnostics; the helper's raw stderr is forwarded to
+    // process.stderr as it arrives so the user sees progress in real time.
+    let lastStage = null;
+    // Detect stage lines emitted by the install helpers — they're
+    // verbose by design so the chat layer can surface them as a
+    // structured `stage=` field without re-parsing free-form prose.
+    const stageLineRe = /^\[openloomi-installer\]\s+(?:stage=([a-z_]+))/;
     const finalize = (result) => {
+      // Guard against double-resolve: timeout + exit / spawn + exit
+      // can race. The first writer wins; later calls become no-ops.
+      if (resolved) return;
+      resolved = true;
       if (tickHandle) {
         clearInterval(tickHandle);
         tickHandle = null;
@@ -2430,11 +2581,45 @@ async function runInstallScript({
         clearTimeout(budgetHandle);
         budgetHandle = null;
       }
-      resolve(result);
+      const elapsedMs = Date.now() - startedAt;
+      const base = {
+        elapsedMs,
+        lastStage,
+        stdout,
+        stderr,
+        budgetMs: Number.isFinite(budgetMs) ? budgetMs : null,
+      };
+      // OK passes through untouched — only failure paths need the
+      // mapper to guarantee non-empty `hints` and a concrete next step.
+      const merged = result.ok ? { ...base, ...result } : { ...base, ...result };
+      if (!result.ok) {
+        Object.assign(merged, installErrorGuidance(merged));
+      }
+      resolve(merged);
     };
     const child = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"] });
     child.stdout.on("data", (b) => (stdout += b.toString("utf8")));
-    child.stderr.on("data", (b) => (stderr += b.toString("utf8")));
+    // Tee child stderr to process.stderr as it arrives (so the user
+    // sees progress live, instead of waiting for the child to exit)
+    // while still buffering the full text for the final result. This
+    // is the fix for issue #398: a 200 MB DMG download previously
+    // buffered silently until the helper returned.
+    child.stderr.on("data", (b) => {
+      const text = b.toString("utf8");
+      stderr += text;
+      try {
+        process.stderr.write(text);
+      } catch {
+        /* stderr may be piped / closed; not fatal */
+      }
+      // Update diagnostics only — never filter or rewrite the bytes the
+      // user sees. We scan the last tail so chunked writes still match.
+      const tail = text.split(/\r?\n/);
+      for (const line of tail) {
+        const m = stageLineRe.exec(line);
+        if (m) lastStage = m[1];
+      }
+    });
     child.on("error", (e) =>
       finalize({
         ok: false,
@@ -2442,7 +2627,7 @@ async function runInstallScript({
         message: String(e?.message || e),
       }),
     );
-    child.on("exit", (code) => {
+    child.on("exit", (code, signal) => {
       // Parse the install script's structured stdout line (if any). The
       // script emits a single JSON object describing what it installed.
       // We extract it from the captured stdout so we don't have to re-curl
@@ -2457,11 +2642,22 @@ async function runInstallScript({
           /* ignore malformed */
         }
       }
+      // If the per-stage budget killed the child with SIGKILL we still
+      // want a stable INSTALL_TIMEOUT code (the timeout handler will
+      // have already called finalize, but if the child happened to exit
+      // first we want the timeout-friendly code path here too).
+      if (signal === "SIGKILL" && Number.isFinite(budgetMs) && budgetMs > 0) {
+        finalize({
+          ok: false,
+          code: "INSTALL_TIMEOUT",
+          message: `Install exceeded ${budgetMs}ms budget. Re-run with a higher --install-timeout (default ${DEFAULT_INSTALL_TIMEOUT_MS}ms).`,
+        });
+        return;
+      }
       finalize({
         ok: code === 0,
         code: code === 0 ? "OK" : `EXIT_${code}`,
-        stdout,
-        stderr,
+        signal: signal || null,
       });
     });
     // Drive a 1 Hz heartbeat on stderr so the user sees the install is
@@ -2497,8 +2693,6 @@ async function runInstallScript({
           ok: false,
           code: "INSTALL_TIMEOUT",
           message: `Install exceeded ${budgetMs}ms budget. Re-run with a higher --install-timeout (default ${DEFAULT_INSTALL_TIMEOUT_MS}ms).`,
-          stdout,
-          stderr,
         });
       }, budgetMs);
       if (budgetHandle.unref) budgetHandle.unref();
@@ -3019,22 +3213,27 @@ async function main() {
           });
           if (!r.install?.ok) {
             const elapsedMs = Date.now() - stageStartedAt;
+            // `runInstallScript` already maps every non-OK result to a
+            // human message + non-empty hints + concrete resume command
+            // via `installErrorGuidance`. Surface those fields directly
+            // so the chat layer has a stable shape regardless of which
+            // exit code or failure mode the helper produced (issue #398).
+            const ins = r.install || {};
             out({
               ok: false,
               setup: "install_failed",
-              code: r.install?.code || "EXIT_NONZERO",
+              code: ins.code || "EXIT_NONZERO",
               stage: "install",
               elapsedMs,
-              canResume: r.install?.code === "INSTALL_TIMEOUT",
-              hints:
-                r.install?.code === "INSTALL_TIMEOUT"
-                  ? [
-                      "Re-run /openloomi:setup --yes --install-timeout 600000 to give the download more time.",
-                      "If you are on a slow or metered connection, see https://openloomi.ai/docs/install/restricted-network.",
-                    ]
-                  : undefined,
+              message: ins.message,
+              hints: Array.isArray(ins.hints) && ins.hints.length > 0
+                ? ins.hints
+                : undefined,
+              canResume: typeof ins.canResume === "boolean" ? ins.canResume : true,
+              resumeCommand: ins.resumeCommand,
+              lastStage: ins.lastStage || null,
               steps,
-              install: r.install,
+              install: ins,
               status: r.status,
             });
             return;
@@ -3268,8 +3467,25 @@ async function main() {
       return;
     }
     case "install": {
-      const r = await cmdInstall({ yes: !!args.yes });
-      out(r);
+      // Honor --install-timeout for the direct install path so users
+      // running `node loomi-bridge.mjs install --yes` get the same 1 Hz
+      // heartbeat as the `/openloomi:setup` wizard (issue #398). The
+      // setup wizard passes its own ticker; this branch owns it itself.
+      const stages = readStageTimeouts(args);
+      const installTicker = makeStageTicker("install", stages.installMs);
+      installTicker();
+      const tickHandle = setInterval(() => installTicker(), 1000);
+      if (tickHandle.unref) tickHandle.unref();
+      try {
+        const r = await cmdInstall({
+          yes: !!args.yes,
+          onTick: () => installTicker(),
+          budgetMs: stages.installMs,
+        });
+        out(r);
+      } finally {
+        clearInterval(tickHandle);
+      }
       return;
     }
     case "login": {
