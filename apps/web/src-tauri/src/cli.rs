@@ -2329,7 +2329,7 @@ async fn check_network_connectivity() -> PreflightCheck {
 
     // GitHub Releases is the only update source.
     let mut request = client
-        .get("https://api.github.com/repos/melandlabs/openloomi/tags")
+        .get("https://api.github.com/repos/melandlabs/openloomi/releases/latest")
         .header("Accept", "application/vnd.github+json");
     if let Ok(token) = std::env::var("GITHUB_TOKEN") {
         if !token.is_empty() {
@@ -2341,7 +2341,7 @@ async fn check_network_connectivity() -> PreflightCheck {
         Ok(response) if response.status().is_success() => PreflightCheck {
             name: "network",
             ok: true,
-            detail: "GitHub tags reachable".to_string(),
+            detail: "GitHub releases reachable".to_string(),
         },
         Ok(response) => PreflightCheck {
             name: "network",

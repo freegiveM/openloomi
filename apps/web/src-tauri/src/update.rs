@@ -491,6 +491,20 @@ pub async fn check_for_update() -> Result<UpdateCheckResult, String> {
     crate::panic_guard::catch_unwind_future_result("check_for_update", do_check_for_update()).await
 }
 
+#[derive(Debug, serde::Deserialize)]
+struct GithubAsset {
+    name: String,
+    browser_download_url: String,
+    size: u64,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct GithubRelease {
+    tag_name: String,
+    html_url: String,
+    assets: Vec<GithubAsset>,
+}
+
 /// Internal: performs the actual update check (can be called directly from Rust).
 pub async fn do_check_for_update() -> Result<UpdateCheckResult, String> {
     let current_version = env!("CARGO_PKG_VERSION");
@@ -500,33 +514,44 @@ pub async fn do_check_for_update() -> Result<UpdateCheckResult, String> {
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
 
-    let latest_version = fetch_version_from_github(&client).await?;
-
-    let latest_tag = format!("v{}", latest_version);
-    let download_filename = get_platform_download_filename(&latest_tag).unwrap_or_default();
-
-    let has_update =
-        is_newer_version(&latest_version, current_version) && !download_filename.is_empty();
-
-    let download_url = if !download_filename.is_empty() {
-        format!(
-            "https://github.com/melandlabs/openloomi/releases/download/{}/{}",
-            latest_tag, download_filename
-        )
-    } else {
-        String::new()
+    let release = fetch_latest_release(&client).await?;
+    let Some(release) = release else {
+        return Ok(UpdateCheckResult {
+            has_update: false,
+            latest_version: String::new(),
+            current_version: current_version.to_string(),
+            download_url: String::new(),
+            release_url: String::new(),
+            file_size: 0,
+        });
     };
+
+    let latest_version = release
+        .tag_name
+        .strip_prefix('v')
+        .unwrap_or(&release.tag_name)
+        .to_string();
+
+    let expected_filename = get_platform_download_filename(&release.tag_name);
+    let matching_asset = release
+        .assets
+        .iter()
+        .find(|a| expected_filename.as_deref() == Some(a.name.as_str()));
+
+    let has_update = is_newer_version(&latest_version, current_version) && matching_asset.is_some();
+
+    let download_url = matching_asset
+        .map(|a| a.browser_download_url.clone())
+        .unwrap_or_default();
+    let file_size = matching_asset.map(|a| a.size).unwrap_or(0);
 
     Ok(UpdateCheckResult {
         has_update,
         latest_version,
         current_version: current_version.to_string(),
         download_url,
-        release_url: format!(
-            "https://github.com/melandlabs/openloomi/releases/tag/{}",
-            latest_tag
-        ),
-        file_size: 0,
+        release_url: release.html_url,
+        file_size,
     })
 }
 
@@ -604,9 +629,9 @@ async fn download_update_asset_for_cli(result: &UpdateCheckResult) -> Result<Pat
     Ok(download_path)
 }
 
-async fn fetch_version_from_github(client: &reqwest::Client) -> Result<String, String> {
+async fn fetch_latest_release(client: &reqwest::Client) -> Result<Option<GithubRelease>, String> {
     let mut req = client
-        .get("https://api.github.com/repos/melandlabs/openloomi/tags")
+        .get("https://api.github.com/repos/melandlabs/openloomi/releases/latest")
         .header("Accept", "application/vnd.github+json");
     if let Ok(token) = std::env::var("GITHUB_TOKEN") {
         if !token.is_empty() {
@@ -620,6 +645,10 @@ async fn fetch_version_from_github(client: &reqwest::Client) -> Result<String, S
         .map_err(|e| format!("GitHub API request failed: {}", e))?;
 
     let status = response.status();
+    if status == reqwest::StatusCode::NOT_FOUND {
+        // No published release yet — not an error condition.
+        return Ok(None);
+    }
     if !status.is_success() {
         let body = response.text().await.unwrap_or_default();
         return Err(format!(
@@ -633,21 +662,12 @@ async fn fetch_version_from_github(client: &reqwest::Client) -> Result<String, S
         ));
     }
 
-    let tags: Vec<serde_json::Value> = response
+    let release: GithubRelease = response
         .json()
         .await
         .map_err(|e| format!("Failed to parse GitHub response: {}", e))?;
 
-    let latest_tag = tags
-        .first()
-        .and_then(|t| t["name"].as_str())
-        .ok_or("No tags found")?
-        .to_string();
-
-    Ok(latest_tag
-        .strip_prefix('v')
-        .unwrap_or(&latest_tag)
-        .to_string())
+    Ok(Some(release))
 }
 
 /// Tauri command: start downloading update (non-blocking, returns immediately).
@@ -1300,5 +1320,43 @@ mod tests {
         assert_eq!(result.unwrap_err(), "backup failed");
 
         let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn parses_release_with_assets() {
+        use serde_json::json;
+        let payload = json!({
+            "tag_name": "v1.5.0",
+            "html_url": "https://github.com/melandlabs/openloomi/releases/tag/v1.5.0",
+            "assets": [{
+                "name": "openloomi_1.5.0_macOS_aarch64.dmg",
+                "browser_download_url": "https://github.com/melandlabs/openloomi/releases/download/v1.5.0/openloomi_1.5.0_macOS_aarch64.dmg",
+                "size": 12_345_678_u64,
+            }],
+        });
+        let release: GithubRelease = serde_json::from_value(payload).expect("valid payload");
+        assert_eq!(release.tag_name, "v1.5.0");
+        assert_eq!(release.assets.len(), 1);
+        assert_eq!(release.assets[0].size, 12_345_678);
+    }
+
+    #[test]
+    fn rejects_payload_missing_tag_name() {
+        use serde_json::json;
+        let payload = json!({ "html_url": "...", "assets": [] });
+        assert!(serde_json::from_value::<GithubRelease>(payload).is_err());
+    }
+
+    #[test]
+    fn accepts_release_with_no_assets() {
+        use serde_json::json;
+        let payload = json!({
+            "tag_name": "v1.5.0",
+            "html_url": "https://github.com/melandlabs/openloomi/releases/tag/v1.5.0",
+            "assets": [],
+        });
+        let release: GithubRelease = serde_json::from_value(payload).expect("valid");
+        assert!(release.assets.is_empty());
+        // do_check_for_update will set has_update: false in this case.
     }
 }
