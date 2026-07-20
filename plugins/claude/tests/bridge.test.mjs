@@ -804,7 +804,12 @@ const isUnix = !isWindows;
 
 test(
   "setup returns API_NOT_READY with stable code + hints when the local API never responds (issue #397)",
-  { skip: !isUnix || existsSync("/Applications/OpenLoomi.app") || existsSync("/opt/openloomi") },
+  {
+    skip:
+      !isUnix ||
+      existsSync("/Applications/OpenLoomi.app") ||
+      existsSync("/opt/openloomi"),
+  },
   async () => {
     await withClaHomeAsync({}, async (env, { home }) => {
       // Stage the desktop-installed-but-helper-missing state the wizard
@@ -822,22 +827,13 @@ test(
       // different stop condition). We don't want that branch here.
       const fakeBin = mkdtempSync(join(tmpdir(), "openloomi-fakebin-"));
       try {
-        writeFileSync(
-          join(fakeBin, "gtk-launch"),
-          "#!/bin/sh\nexit 0\n",
-          { mode: 0o755 },
-        );
+        writeFileSync(join(fakeBin, "gtk-launch"), "#!/bin/sh\nexit 0\n", {
+          mode: 0o755,
+        });
         chmodSync(join(fakeBin, "gtk-launch"), 0o755);
 
         const result = await runAsync(
-          [
-            "setup",
-            "--yes",
-            "--api-timeout",
-            "1500",
-            "--max-wait",
-            "3000",
-          ],
+          ["setup", "--yes", "--api-timeout", "1500", "--max-wait", "3000"],
           {
             ...env,
             PATH: makePath([fakeBin]),
@@ -880,7 +876,12 @@ test(
 
 test(
   "setup honors --max-wait as a global cap when --api-timeout is omitted (issue #397 back-compat)",
-  { skip: !isUnix || existsSync("/Applications/OpenLoomi.app") || existsSync("/opt/openloomi") },
+  {
+    skip:
+      !isUnix ||
+      existsSync("/Applications/OpenLoomi.app") ||
+      existsSync("/opt/openloomi"),
+  },
   async () => {
     await withClaHomeAsync({}, async (env, { home }) => {
       mkdirSync(join(home, ".local", "share", "openloomi"), {
@@ -888,11 +889,9 @@ test(
       });
       const fakeBin = mkdtempSync(join(tmpdir(), "openloomi-fakebin-"));
       try {
-        writeFileSync(
-          join(fakeBin, "gtk-launch"),
-          "#!/bin/sh\nexit 0\n",
-          { mode: 0o755 },
-        );
+        writeFileSync(join(fakeBin, "gtk-launch"), "#!/bin/sh\nexit 0\n", {
+          mode: 0o755,
+        });
         chmodSync(join(fakeBin, "gtk-launch"), 0o755);
 
         const t0 = Date.now();
@@ -910,7 +909,9 @@ test(
         const j = JSON.parse(result.stdout);
         // The failure shape from issue #397 is stable across name-flipping.
         assert.equal(j.setup, "api_not_ready");
-        assert.ok(["API_NOT_READY", "PERMISSION_PROMPT_LIKELY"].includes(j.code));
+        assert.ok(
+          ["API_NOT_READY", "PERMISSION_PROMPT_LIKELY"].includes(j.code),
+        );
         // --max-wait=2000 should NOT stall the wizard for the full 120 s
         // default — back-compat callers must still get a prompt fail.
         assert.ok(
@@ -923,4 +924,3 @@ test(
     });
   },
 );
-

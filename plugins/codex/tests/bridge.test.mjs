@@ -403,9 +403,15 @@ test("Codex memory and connector helpers stay in parity with Claude", () => {
     "skills/openloomi-memory/scripts/openloomi-memory.cjs",
     "skills/openloomi-connectors/scripts/openloomi-connectors.cjs",
   ]) {
-    const codexPath = join(PLUGIN_DIR, relativePath.replace(/^skills\//, "skills/"));
+    const codexPath = join(
+      PLUGIN_DIR,
+      relativePath.replace(/^skills\//, "skills/"),
+    );
     const claudePath = join(PLUGIN_DIR, "..", "claude", relativePath);
-    assert.equal(readFileSync(codexPath, "utf8"), readFileSync(claudePath, "utf8"));
+    assert.equal(
+      readFileSync(codexPath, "utf8"),
+      readFileSync(claudePath, "utf8"),
+    );
   }
 });
 
@@ -450,14 +456,8 @@ test("setup-status reports OPENLOOMI_API_UNREACHABLE when API down and no token"
       assert.equal(j.reason, "OPENLOOMI_API_UNREACHABLE");
       assert.equal(j.loopbackAccessAmbiguous, true);
       assert.equal(j.loopbackAccess.ambiguous, true);
-      assert.equal(
-        j.loopbackAccess.reason,
-        "LOOPBACK_NETWORK_ACCESS_BLOCKED",
-      );
-      assert.equal(
-        j.loopbackAccess.verification.requiresOutsideSandbox,
-        true,
-      );
+      assert.equal(j.loopbackAccess.reason, "LOOPBACK_NETWORK_ACCESS_BLOCKED");
+      assert.equal(j.loopbackAccess.verification.requiresOutsideSandbox, true);
       assert.ok(
         j.loopbackAccess.verification.commands.some((command) =>
           command.includes("/api/native/providers"),
@@ -1301,10 +1301,7 @@ test("set-codex-runtime-env --dry-run --persist plans the LaunchAgent install on
   assert.match(script, /<key>RunAtLoad<\/key>/);
   assert.match(script, /<true\/>/);
   assert.match(script, /<key>Label<\/key>/);
-  assert.match(
-    script,
-    /<string>com\.openloomi\.codex-runtime-env<\/string>/,
-  );
+  assert.match(script, /<string>com\.openloomi\.codex-runtime-env<\/string>/);
   assert.match(script, /<string>\/bin\/launchctl<\/string>/);
   assert.match(script, /<string>setenv<\/string>/);
   assert.match(script, /<string>OPENLOOMI_AGENT_PROVIDER<\/string>/);
@@ -1360,12 +1357,7 @@ test("set-codex-runtime-env escapes XML metacharacters in plist value", () => {
   // even though they would otherwise produce invalid XML.
   const j = withFakeHome((env) =>
     runJson(
-      [
-        "set-codex-runtime-env",
-        "codex&<weird>",
-        "--dry-run",
-        "--persist",
-      ],
+      ["set-codex-runtime-env", "codex&<weird>", "--dry-run", "--persist"],
       env,
     ),
   );
@@ -1378,9 +1370,7 @@ test("set-codex-runtime-env escapes XML metacharacters in plist value", () => {
 });
 
 test("codex-runtime-info reports persistence state for the host platform", () => {
-  const j = withFakeHome((env) =>
-    runJson(["codex-runtime-info"], env),
-  );
+  const j = withFakeHome((env) => runJson(["codex-runtime-info"], env));
   assert.ok(j.persistence, "expected persistence field on codex-runtime-info");
   // All three platform buckets should be present so callers can render a
   // cross-platform table without branching.
@@ -1444,9 +1434,13 @@ test("__test-ensure-runtime-env returns well-shaped result with a reason field",
   assert.equal(j.key, "OPENLOOMI_AGENT_PROVIDER");
   assert.equal(j.value, "codex");
   assert.ok(
-    ["applied", "already_codex", "user_override", "unsupported", "failed"].includes(
-      j.reason,
-    ),
+    [
+      "applied",
+      "already_codex",
+      "user_override",
+      "unsupported",
+      "failed",
+    ].includes(j.reason),
     `unexpected reason: ${j.reason}`,
   );
 });
@@ -1560,9 +1554,13 @@ test("__test-launch-desktop rejects no appPath with NO_LAUNCH_TARGET", () => {
   assert.ok(j.env, "expected env wiring metadata even on the no-target path");
   assert.equal(typeof j.env, "object");
   assert.ok(
-    ["applied", "already_codex", "user_override", "unsupported", "failed"].includes(
-      j.env.reason,
-    ),
+    [
+      "applied",
+      "already_codex",
+      "user_override",
+      "unsupported",
+      "failed",
+    ].includes(j.env.reason),
     `unexpected env.reason: ${j.env.reason}`,
   );
 });
@@ -1604,9 +1602,13 @@ test("__test-launch-desktop with a real-looking path carries env wiring result",
     assert.equal(j.env.key, "OPENLOOMI_AGENT_PROVIDER");
     assert.equal(j.env.value, "codex");
     assert.ok(
-      ["applied", "already_codex", "user_override", "unsupported", "failed"].includes(
-        j.env.reason,
-      ),
+      [
+        "applied",
+        "already_codex",
+        "user_override",
+        "unsupported",
+        "failed",
+      ].includes(j.env.reason),
       `unexpected env.reason: ${j.env.reason}`,
     );
   } finally {

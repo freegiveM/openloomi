@@ -136,7 +136,9 @@ function resolveManualArtifact() {
       size: null,
       sha256: null,
       releaseTag:
-        process.env.OPENLOOMI_VERSION_TAG || process.env.OPENLOOMI_VERSION || null,
+        process.env.OPENLOOMI_VERSION_TAG ||
+        process.env.OPENLOOMI_VERSION ||
+        null,
       releaseUrl: OFFICIAL_RELEASE_SOURCE.releasePage,
     };
   }
@@ -1087,10 +1089,14 @@ function installInstructions() {
       "After installation, re-run setup-status from the Codex plugin.",
     ],
     sandboxRequirements: {
-      network: "GitHub release lookup and artifact download may require outside-sandbox network access.",
-      filesystem: "The default installer may need permission to write to a system application directory such as /Applications.",
-      process: "Launching an installer or OpenLoomi Desktop may require outside-sandbox GUI/process access.",
-      retryPolicy: "On a likely sandbox-related network or permission failure, request approval and retry the same operation outside the sandbox before diagnosing a broken release or installer.",
+      network:
+        "GitHub release lookup and artifact download may require outside-sandbox network access.",
+      filesystem:
+        "The default installer may need permission to write to a system application directory such as /Applications.",
+      process:
+        "Launching an installer or OpenLoomi Desktop may require outside-sandbox GUI/process access.",
+      retryPolicy:
+        "On a likely sandbox-related network or permission failure, request approval and retry the same operation outside the sandbox before diagnosing a broken release or installer.",
     },
     bridge: {
       name: "openloomi-codex-bridge",
@@ -1144,8 +1150,7 @@ async function installOpenLoomi(args) {
     //   4. Default                  (latest official release)
     artifact = flags.artifactUrl
       ? getManualInstallerArtifact(flags.artifactUrl)
-      : (resolveManualArtifact() ||
-        (await resolveOfficialInstallerArtifact()));
+      : resolveManualArtifact() || (await resolveOfficialInstallerArtifact());
   } catch (error) {
     const normalized = normalizeBridgeError(
       error,
@@ -1231,7 +1236,9 @@ async function installOpenLoomi(args) {
   // Auto-verification only happens when we have a release digest to compare
   // against. Pre-staged artifacts (OPENLOOMI_DMG_PATH) skip the auto check;
   // they only verify the user-supplied --sha256 (if any).
-  const expectedSha256 = usingPreStagedArtifact ? argumentSha256 : argumentSha256 || artifact.sha256;
+  const expectedSha256 = usingPreStagedArtifact
+    ? argumentSha256
+    : argumentSha256 || artifact.sha256;
   const sha256Source = flags.sha256
     ? "argument"
     : artifact.sha256 && !usingPreStagedArtifact
@@ -1904,12 +1911,13 @@ function fetchText(url, options) {
                   "RATE_LIMITED",
                   "GitHub API anonymous rate limit hit. Set GITHUB_TOKEN to raise the limit, or wait and retry.",
                   {
-                    officialReleaseApi: OFFICIAL_RELEASE_SOURCE.latestReleaseApi,
-                    resetAt: Number.isFinite(resetEpoch) && resetEpoch > 0
-                      ? new Date(resetEpoch * 1000).toISOString()
-                      : null,
-                    hint:
-                      "The anonymous rate limit is ~60 requests/hour per IP. Setting GITHUB_TOKEN (or GH_TOKEN) raises it to ~5,000/hour.",
+                    officialReleaseApi:
+                      OFFICIAL_RELEASE_SOURCE.latestReleaseApi,
+                    resetAt:
+                      Number.isFinite(resetEpoch) && resetEpoch > 0
+                        ? new Date(resetEpoch * 1000).toISOString()
+                        : null,
+                    hint: "The anonymous rate limit is ~60 requests/hour per IP. Setting GITHUB_TOKEN (or GH_TOKEN) raises it to ~5,000/hour.",
                   },
                 ),
               );
@@ -2962,13 +2970,17 @@ async function fetchWithRetry(url, init = {}, opts = {}) {
       const res = await fetch(url, { ...init, signal: ctrl.signal });
       lastStatus = res.status;
 
-      if (!isRetryable({ status: res.status, error: null }) || attempt === maxAttempts) {
+      if (
+        !isRetryable({ status: res.status, error: null }) ||
+        attempt === maxAttempts
+      ) {
         return res;
       }
 
       // Retryable HTTP status — back off and try again.
       const retryAfter = readRetryAfterMs(res);
-      const delayMs = retryAfter ?? computeBackoffMs(attempt, baseDelayMs, maxDelayMs);
+      const delayMs =
+        retryAfter ?? computeBackoffMs(attempt, baseDelayMs, maxDelayMs);
       if (typeof onRetry === "function") {
         try {
           onRetry({ attempt, delayMs, reason: `http_${res.status}` });
@@ -3015,7 +3027,9 @@ async function fetchWithRetry(url, init = {}, opts = {}) {
   // Unreachable: the loop above always either returns or throws. Defensive
   // throw so callers can rely on this function never resolving to undefined.
   if (lastError) throw lastError;
-  const e = new Error(`fetch failed after ${maxAttempts} attempts (status ${lastStatus})`);
+  const e = new Error(
+    `fetch failed after ${maxAttempts} attempts (status ${lastStatus})`,
+  );
   e.__lastStatus = lastStatus;
   throw e;
 }
@@ -3183,11 +3197,9 @@ async function probeDesktopProcessRunning(appPath) {
 
   if (process.platform === "win32") {
     return await new Promise((resolve) => {
-      const proc = spawn(
-        "tasklist",
-        ["/FI", `IMAGENAME eq ${binName}.exe`],
-        { stdio: ["ignore", "pipe", "ignore"] },
-      );
+      const proc = spawn("tasklist", ["/FI", `IMAGENAME eq ${binName}.exe`], {
+        stdio: ["ignore", "pipe", "ignore"],
+      });
       let out = "";
       proc.stdout?.on("data", (b) => (out += b.toString("utf8")));
       proc.on("exit", () => resolve(/openloomi/i.test(out)));
@@ -3230,7 +3242,11 @@ async function quitDesktopApp({ appPath, graceMs = 5000 } = {}) {
   }
   const binName = path.basename(appPath.replace(/\.app$/i, ""));
   if (!binName) {
-    return { ok: false, code: "BAD_APP_PATH", message: `Cannot derive binName from ${appPath}.` };
+    return {
+      ok: false,
+      code: "BAD_APP_PATH",
+      message: `Cannot derive binName from ${appPath}.`,
+    };
   }
 
   // Determine the bundle display name (darwin `osascript` needs it). When
@@ -3247,8 +3263,15 @@ async function quitDesktopApp({ appPath, graceMs = 5000 } = {}) {
   if (process.platform === "darwin") {
     // Preferred: AppleScript. Skipped gracefully if osascript isn't
     // available (rare; mostly inside locked-down sandboxes).
-    const r = await runCapture("osascript", ["-e", `tell application "${bundleName}" to quit`]);
-    attempted.push({ via: "osascript", exitCode: r.exitCode, stderr: r.stderr?.slice(0, 200) });
+    const r = await runCapture("osascript", [
+      "-e",
+      `tell application "${bundleName}" to quit`,
+    ]);
+    attempted.push({
+      via: "osascript",
+      exitCode: r.exitCode,
+      stderr: r.stderr?.slice(0, 200),
+    });
     if (r.exitCode === 0) sigSent = true;
   }
 
@@ -4333,8 +4356,14 @@ function planRuntimeEnvChange({ platform, key, value, flags }) {
           command: "launchctl",
           args: ["bootout", guiTarget, plistPath],
         });
-        actions.push({ label: "rm plist", command: "rm", args: ["-f", plistPath] });
-        commands.push(`launchctl bootout ${guiTarget} ${plistPath}  # best-effort`);
+        actions.push({
+          label: "rm plist",
+          command: "rm",
+          args: ["-f", plistPath],
+        });
+        commands.push(
+          `launchctl bootout ${guiTarget} ${plistPath}  # best-effort`,
+        );
         commands.push(`rm -f ${plistPath}`);
         notes.push(
           `Removed LaunchAgent ${plistPath}. ${key} will no longer be re-applied on login.`,
@@ -4833,10 +4862,7 @@ async function discoverOpenLoomi() {
       checked,
     });
 
-    if (
-      result.status === "found" ||
-      result.status === "source-missing-app"
-    ) {
+    if (result.status === "found" || result.status === "source-missing-app") {
       return result;
     }
   }
@@ -5652,8 +5678,7 @@ async function postInsight(baseUrl, token, body, { timeoutMs } = {}) {
       message: error?.message || String(error),
       attempt: {
         baseUrl,
-        reason:
-          error?.name === "AbortError" ? "TIMEOUT" : "NETWORK_ERROR",
+        reason: error?.name === "AbortError" ? "TIMEOUT" : "NETWORK_ERROR",
         message: error?.message || String(error),
       },
     };
@@ -5687,10 +5712,7 @@ async function archiveCommand(args) {
   }
 
   const eventName =
-    eventArg ||
-    stdinPayload.hook_event_name ||
-    stdinPayload.event ||
-    "";
+    eventArg || stdinPayload.hook_event_name || stdinPayload.event || "";
 
   if (eventName !== "Stop") {
     return finish({

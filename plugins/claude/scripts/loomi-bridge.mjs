@@ -84,11 +84,11 @@ const ARCHIVE_MAX_CONTENT_CHARS = 6000; // 6k char summary cap
 // below are the new defaults: each is independently tunable so a slow
 // download does not steal budget from the API wait, and vice versa.
 // ---------------------------------------------------------------------------
-const DEFAULT_INSTALL_TIMEOUT_MS = 300_000;    //  5 min — covers slow 50 Mbps
-const DEFAULT_LAUNCH_TIMEOUT_MS = 10_000;      // 10 s
-const DEFAULT_API_TIMEOUT_MS = 120_000;        //  2 min — first-run default
-const DEFAULT_PERMISSION_GRACE_MS = 60_000;    //  1 min extra for TCC prompts
-const SETUP_MAX_WAIT_DEFAULT_MS = 120_000;     // --max-wait legacy default
+const DEFAULT_INSTALL_TIMEOUT_MS = 300_000; //  5 min — covers slow 50 Mbps
+const DEFAULT_LAUNCH_TIMEOUT_MS = 10_000; // 10 s
+const DEFAULT_API_TIMEOUT_MS = 120_000; //  2 min — first-run default
+const DEFAULT_PERMISSION_GRACE_MS = 60_000; //  1 min extra for TCC prompts
+const SETUP_MAX_WAIT_DEFAULT_MS = 120_000; // --max-wait legacy default
 
 // Throttle live progress lines to ~1 Hz so we don't spam the terminal.
 // The value is the most-recent full-second tick we already printed for a
@@ -362,13 +362,17 @@ async function fetchWithRetry(url, init = {}, opts = {}) {
       const res = await fetch(url, { ...init, signal: ctrl.signal });
       lastStatus = res.status;
 
-      if (!isRetryable({ status: res.status, error: null }) || attempt === maxAttempts) {
+      if (
+        !isRetryable({ status: res.status, error: null }) ||
+        attempt === maxAttempts
+      ) {
         return res;
       }
 
       // Retryable HTTP status — back off and try again.
       const retryAfter = readRetryAfterMs(res);
-      const delayMs = retryAfter ?? computeBackoffMs(attempt, baseDelayMs, maxDelayMs);
+      const delayMs =
+        retryAfter ?? computeBackoffMs(attempt, baseDelayMs, maxDelayMs);
       if (typeof onRetry === "function") {
         try {
           onRetry({ attempt, delayMs, reason: `http_${res.status}` });
@@ -415,7 +419,9 @@ async function fetchWithRetry(url, init = {}, opts = {}) {
   // Unreachable: the loop above always either returns or throws. Defensive
   // throw so callers can rely on this function never resolving to undefined.
   if (lastError) throw lastError;
-  const e = new Error(`fetch failed after ${maxAttempts} attempts (status ${lastStatus})`);
+  const e = new Error(
+    `fetch failed after ${maxAttempts} attempts (status ${lastStatus})`,
+  );
   e.__lastStatus = lastStatus;
   throw e;
 }
@@ -484,9 +490,10 @@ function installErrorGuidance(result) {
   const out = {
     code,
     message: typeof result?.message === "string" ? result.message : null,
-    hints: Array.isArray(result?.hints) && result.hints.length > 0
-      ? result.hints.slice()
-      : null,
+    hints:
+      Array.isArray(result?.hints) && result.hints.length > 0
+        ? result.hints.slice()
+        : null,
     canResume: typeof result?.canResume === "boolean" ? result.canResume : true,
     resumeCommand: result?.resumeCommand || installResumeCommand(),
   };
@@ -600,9 +607,7 @@ function apiNotReadyHints({ stage, platformName, canResume }) {
       "If macOS is showing a permission prompt for OpenLoomi, approve it and run /openloomi:setup again.",
     );
   }
-  hints.push(
-    "Run /openloomi:setup --max-wait 180000 to give it more time.",
-  );
+  hints.push("Run /openloomi:setup --max-wait 180000 to give it more time.");
   hints.push(
     "If you are offline or behind a corporate proxy, see https://openloomi.ai/docs/install/restricted-network.",
   );
@@ -1738,7 +1743,7 @@ async function buildStatus({ json = true, explicit = null } = {}) {
         version: null,
         tokenPresent: tokenPresent(),
         aiProviderConfigured: (await probeAiProvider()).configured,
-          apiReachable,
+        apiReachable,
         canGuestLogin: apiReachable,
         hooksInstalled: detectHooksInstalled(),
         ready: false,
@@ -1938,7 +1943,10 @@ function loadHooksTemplate() {
 // the placeholder expands to empty and Node tries to resolve
 // `/scripts/loomi-bridge.mjs` from the filesystem root.
 function substitutePluginRoot(command) {
-  if (typeof command !== "string" || !command.includes("${CLAUDE_PLUGIN_ROOT}")) {
+  if (
+    typeof command !== "string" ||
+    !command.includes("${CLAUDE_PLUGIN_ROOT}")
+  ) {
     return command;
   }
   // Wrap the substituted path in double quotes so paths with spaces parse
@@ -2586,7 +2594,9 @@ async function runInstallScript({
       };
       // OK passes through untouched — only failure paths need the
       // mapper to guarantee non-empty `hints` and a concrete next step.
-      const merged = result.ok ? { ...base, ...result } : { ...base, ...result };
+      const merged = result.ok
+        ? { ...base, ...result }
+        : { ...base, ...result };
       if (!result.ok) {
         Object.assign(merged, installErrorGuidance(merged));
       }
@@ -2695,7 +2705,11 @@ async function runInstallScript({
   });
 }
 
-async function cmdInstall({ yes = false, onTick = null, budgetMs = null } = {}) {
+async function cmdInstall({
+  yes = false,
+  onTick = null,
+  budgetMs = null,
+} = {}) {
   const platformName = detectPlatform();
   const r = await runInstallScript({ platformName, yes, onTick, budgetMs });
   // After install, refresh discovery state.
@@ -2725,11 +2739,9 @@ async function probeDesktopProcessRunning(binPath) {
   if (platformName === "windows") {
     const binName = binPath.split(/[\\/]/).pop() || "";
     return await new Promise((resolve) => {
-      const proc = spawn(
-        "tasklist",
-        ["/FI", `IMAGENAME eq ${binName}`],
-        { stdio: ["ignore", "pipe", "ignore"] },
-      );
+      const proc = spawn("tasklist", ["/FI", `IMAGENAME eq ${binName}`], {
+        stdio: ["ignore", "pipe", "ignore"],
+      });
       let out = "";
       proc.stdout?.on("data", (b) => (out += b.toString("utf8")));
       proc.on("exit", () => resolve(out.includes(binName)));
@@ -3048,10 +3060,12 @@ async function main() {
               stage: "install",
               elapsedMs,
               message: ins.message,
-              hints: Array.isArray(ins.hints) && ins.hints.length > 0
-                ? ins.hints
-                : undefined,
-              canResume: typeof ins.canResume === "boolean" ? ins.canResume : true,
+              hints:
+                Array.isArray(ins.hints) && ins.hints.length > 0
+                  ? ins.hints
+                  : undefined,
+              canResume:
+                typeof ins.canResume === "boolean" ? ins.canResume : true,
               resumeCommand: ins.resumeCommand,
               lastStage: ins.lastStage || null,
               steps,
@@ -3125,8 +3139,7 @@ async function main() {
             }
             // Honor the global cap (--max-wait) once we know the user
             // asked for a ceiling smaller than what we've already spent.
-            const overCap =
-              elapsedMs > stages.totalMs + stages.permissionMs;
+            const overCap = elapsedMs > stages.totalMs + stages.permissionMs;
             const hints = apiNotReadyHints({
               stage: wait.stage || "wait_api",
               platformName: detectPlatform(),
@@ -3218,8 +3231,7 @@ async function main() {
             }
             // Honor the global cap (--max-wait) once we know the user
             // asked for a ceiling smaller than what we've already spent.
-            const overCap =
-              elapsedMs > stages.totalMs + stages.permissionMs;
+            const overCap = elapsedMs > stages.totalMs + stages.permissionMs;
             const hints = apiNotReadyHints({
               stage: wait.stage || "wait_api",
               platformName: detectPlatform(),
