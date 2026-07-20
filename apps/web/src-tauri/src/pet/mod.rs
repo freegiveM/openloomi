@@ -219,7 +219,10 @@ pub struct CursorPosition {
 pub fn get_global_cursor_position() -> CursorPosition {
     let state = device_query::DeviceState::new();
     let mouse = state.get_mouse();
-    CursorPosition { x: mouse.coords.0, y: mouse.coords.1 }
+    CursorPosition {
+        x: mouse.coords.0,
+        y: mouse.coords.1,
+    }
 }
 
 /// Updates only `activeTheme` (called by the right-click menu).
