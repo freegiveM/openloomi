@@ -57,7 +57,10 @@ describe("loomi-widget — stable drag wiring", () => {
     const start = stripped.indexOf("function onPointerDown");
     const end = stripped.indexOf("function onPointerMove", start);
     expect(start, "onPointerDown not defined").toBeGreaterThan(-1);
-    expect(end, "onPointerMove not defined after onPointerDown").toBeGreaterThan(start);
+    expect(
+      end,
+      "onPointerMove not defined after onPointerDown",
+    ).toBeGreaterThan(start);
     const fnBody = stripped.slice(start, end);
     // Coordinate bookkeeping — used to classify click vs. drag in
     // onPointerUp. Without this the pointerup branch can never
@@ -137,7 +140,9 @@ describe("loomi-widget — #392 click-through plumbing removed", () => {
     // to recover from `setIgnoreCursorEvents(true)` while the
     // window was in click-through mode. Both the command and the
     // `t.core.invoke` call site must be gone.
-    expect(stripped).not.toMatch(/t\.core\.invoke\(\s*["']get_global_cursor_position["']/);
+    expect(stripped).not.toMatch(
+      /t\.core\.invoke\(\s*["']get_global_cursor_position["']/,
+    );
     expect(stripped).not.toMatch(/get_global_cursor_position/);
   });
 
