@@ -46,7 +46,7 @@
 # Reference: https://openloomi.ai/docs/install/macos
 # Restricted-network companion: https://openloomi.ai/docs/install/restricted-network
 
-set -euo pipefail
+set -eo pipefail
 
 REPO_SLUG="${OPENLOOMI_REPO:-melandlabs/openloomi}"
 GITHUB_RELEASE_LATEST="https://api.github.com/repos/${REPO_SLUG}/releases/latest"
