@@ -2339,7 +2339,7 @@ async function main() {
       // with a clear `nextAction` and stop.
       const explicit = args["bin-path"] || null;
       const yesFlag = !!args.yes;
-      const maxWaitMs = Number(args["max-wait"] || 30_000);
+      const maxWaitMs = Number(args["max-wait"] || 120_000);
       const maxSteps = 8; // hard ceiling on chained transitions
       const steps = [];
 

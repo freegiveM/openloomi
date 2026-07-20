@@ -43,11 +43,11 @@ configure_ai_provider` because the runtime reports no authenticated
 
 ## Flags
 
-| Flag         | Default | Meaning                                                                                                                                                        |
-| ------------ | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--yes`      | off     | Pre-approve install (otherwise the bridge prompts y/N — but in Claude Code's Bash tool there is no TTY, so without `--yes` the install would silently cancel). |
-| `--max-wait` | 30000   | Total milliseconds the bridge will spend waiting for the desktop app's local API to come up after launch.                                                      |
-| `--bin-path` | _auto_  | Override the discovered helper binary path (advanced).                                                                                                         |
+| Flag         | Default | Meaning                                                                                                                                                                   |
+| ------------ | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--yes`      | off     | Pre-approve install (otherwise the bridge prompts y/N — but in Claude Code's Bash tool there is no TTY, so without `--yes` the install would silently cancel).            |
+| `--max-wait` | 120000  | Total milliseconds the bridge will spend waiting for the desktop app's local API to come up after launch. Defaults to 120s to absorb the first-run install + TCC prompts. |
+| `--bin-path` | _auto_  | Override the discovered helper binary path (advanced).                                                                                                                    |
 
 ## Stop conditions and what they mean
 

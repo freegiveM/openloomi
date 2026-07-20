@@ -4041,7 +4041,7 @@ async function setup(args) {
   // checks whether the native Codex runtime is active.
   const flags = parseFlags(args);
   const yesFlag = !!flags.yes || !!flags.confirm;
-  const maxWaitMs = Number(flags["max-wait"] || 30_000);
+  const maxWaitMs = Number(flags["max-wait"] || 120_000);
   const maxSteps = 8; // hard ceiling on chained transitions
   const steps = [];
 
