@@ -79,6 +79,7 @@ import {
   createClaudeQueryOptions,
   DEFAULT_ALLOWED_TOOLS,
 } from "./query-options";
+import { claudeAgentSdkTransport, ClaudeRuntimeSession } from "./runtime";
 import {
   buildClaudeSettingSources,
   clearSkillsForClaudeSession,
@@ -1693,9 +1694,6 @@ ${formattedMessages}${truncationNotice}\n\n---\n## Current Request\n`;
       includeTimings: true,
     });
 
-    const sentTextHashes = new Set<string>();
-    const sentToolIds = new Set<string>();
-
     // Build sandbox options for workspace instruction
     const sandboxOpts: SandboxOptions | undefined = options?.sandbox?.enabled
       ? {
@@ -1896,6 +1894,14 @@ ${formattedMessages}${truncationNotice}\n\n---\n## Current Request\n`;
       skipWebFetchPreflight: true,
     });
     const runtimeOptions: AgentOptions = options ?? {};
+    const claudeRuntime = new ClaudeRuntimeSession({
+      runtimeSessionId: session.id,
+      runEpoch: 0,
+      sdkTransport: claudeAgentSdkTransport,
+      logger,
+      createMessageId: () => this.generateMessageId(),
+      supplementalInput: options?.supplementalInput,
+    });
     const queryOptions = createClaudeQueryOptions({
       sessionId: session.id,
       cwd: sessionCwd,
@@ -1904,6 +1910,7 @@ ${formattedMessages}${truncationNotice}\n\n---\n## Current Request\n`;
       settingSources,
       settings: settingsConfig,
       agentOptions: options,
+      supplementalInput: claudeRuntime.liveInputSource,
       permissionMode: options?.permissionMode,
       abortController: session.abortController,
       env: envConfig,
@@ -1942,49 +1949,22 @@ ${formattedMessages}${truncationNotice}\n\n---\n## Current Request\n`;
           )
         : basePrompt;
 
-      // Track whether we've sent text via stream_event to avoid duplication
-      let hasStreamedText = false;
-      let queryMessageCount = 0;
+      claudeRuntime.start({
+        initialPrompt: queryPrompt,
+        queryOptions,
+      });
 
-      for await (const message of query({
-        prompt: queryPrompt,
-        options: queryOptions,
-      })) {
+      for await (const agentMessage of claudeRuntime.subscribe()) {
         if (session.abortController.signal.aborted) {
           console.log(
             `[Claude ${session.id}] query() abort signal detected, breaking loop`,
           );
           break;
         }
-
-        for (const agentMessage of convertClaudeSdkMessage({
-          message,
-          sentTextHashes,
-          sentToolIds,
-          hasStreamedText,
-          createMessageId: () => this.generateMessageId(),
-        })) {
-          yield agentMessage;
-          // Track streamed text so the converter can ignore duplicated final
-          // assistant text while still recovering final-message tool calls.
-          if (
-            (message as { type?: string }).type === "stream_event" &&
-            agentMessage.type === "text"
-          ) {
-            hasStreamedText = true;
-          }
-        }
-
-        // Reset hasStreamedText after processing all messages in this batch
-        // If we sent stream text, reset the flag for the next assistant message
-        if ((message as { type?: string }).type === "assistant") {
-          hasStreamedText = false;
-        }
-
-        queryMessageCount++;
+        yield agentMessage;
       }
       console.log(
-        `[Claude ${session.id}] query() for-await loop completed normally. Total SDK messages: ${queryMessageCount}`,
+        `[Claude ${session.id}] query() for-await loop completed normally. Total SDK messages: ${claudeRuntime.sdkMessageCount}`,
       );
     } catch (error) {
       // Log detailed error information to file for debugging
@@ -2120,6 +2100,7 @@ ${formattedMessages}${truncationNotice}\n\n---\n## Current Request\n`;
         };
       }
     } finally {
+      await claudeRuntime.close();
       this.sessions.delete(session.id);
       // Windows cleanup prevents skill files generated for this session from
       // leaking into the next Claude Code run.
