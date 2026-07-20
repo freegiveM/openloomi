@@ -39,21 +39,22 @@ You need a Codex build that supports `codex plugin marketplace` (Codex CLI
 ### Install from GitHub
 
 ```bash
-codex plugin marketplace add melandlabs/openloomi
-codex plugin add openloomi@openloomi
+codex plugin marketplace add melandlabs/openloomi && codex plugin add openloomi@openloomi
 ```
 
-Codex fetches the repo, reads the marketplace manifest at the root, and
-installs the `openloomi` plugin into
+Paste the whole line into a Codex shell — it adds the OpenLoomi marketplace
+and installs the `openloomi` plugin in one go. Then **restart Codex** and
+start a new thread so the cache is refreshed, and ask `@OpenLoomi Run
+first-use setup.` (or `node plugins/codex/scripts/loomi-bridge.mjs setup
+--yes`) to wire up the desktop app.
+
+Codex installs the plugin into
 `~/.codex/plugins/cache/openloomi/openloomi/<version>`.
 
 ### Install from a local checkout (contributors)
 
 ```bash
-git clone https://github.com/melandlabs/openloomi.git
-cd openloomi
-codex plugin marketplace add .
-codex plugin add openloomi@openloomi
+git clone https://github.com/melandlabs/openloomi.git && cd openloomi && codex plugin marketplace add . && codex plugin add openloomi@openloomi
 ```
 
 The `.` argument tells Codex to use the repo root as a local marketplace;
@@ -63,9 +64,7 @@ When you change files under `plugins/codex/` and want to pick up your edits,
 force a re-snapshot:
 
 ```bash
-codex plugin marketplace remove openloomi
-codex plugin marketplace add .
-codex plugin add openloomi@openloomi
+codex plugin marketplace remove openloomi && codex plugin marketplace add . && codex plugin add openloomi@openloomi
 ```
 
 Either way, **restart Codex and start a new thread** after installing — Codex
@@ -84,6 +83,12 @@ only picks up the new plugin when a fresh process loads the cache.
 - Codex CLI on your `PATH` (e.g. `brew install --cask codex` or
   `npm i -g @openai/codex`) if you want OpenLoomi to route through your
   Codex runtime.
+
+> **Restricted networks?** If `github.com` / `api.github.com` /
+> `objects.githubusercontent.com` is blocked by your firewall, see the
+> [Restricted-Network Install guide](/docs/install/restricted-network)
+> for the offline/corporate-proxy path (`OPENLOOMI_VERSION`,
+> `OPENLOOMI_INSTALLER_PATH`, mirror verification, …).
 
 ---
 

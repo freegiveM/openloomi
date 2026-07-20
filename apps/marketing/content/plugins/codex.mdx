@@ -30,28 +30,22 @@ The OpenLoomi repository root doubles as a Codex marketplace root. It ships `.ag
 
 ### From GitHub
 
-```
-codex plugin marketplace add melandlabs/openloomi
-codex plugin add openloomi@openloomi
+```bash
+codex plugin marketplace add melandlabs/openloomi && codex plugin add openloomi@openloomi
 ```
 
-Codex fetches the repository, reads the marketplace manifest, and installs into `~/.codex/plugins/cache/openloomi/openloomi/<version>`. Restart Codex and start a new thread so the cache is refreshed.
+Paste the whole line into a Codex shell — it adds the OpenLoomi marketplace and installs the `openloomi` plugin in one go. Codex fetches the repository, reads the marketplace manifest, and installs into `~/.codex/plugins/cache/openloomi/openloomi/<version>`. Restart Codex and start a new thread so the cache is refreshed, then ask `@OpenLoomi Run first-use setup.` to wire up the desktop app.
 
 ### From a local checkout (developers)
 
-```
-git clone https://github.com/melandlabs/openloomi.git
-cd openloomi
-codex plugin marketplace add .
-codex plugin add openloomi@openloomi
+```bash
+git clone https://github.com/melandlabs/openloomi.git && cd openloomi && codex plugin marketplace add . && codex plugin add openloomi@openloomi
 ```
 
 To pick up local edits to `plugins/codex/`, force Codex to re-snapshot the marketplace:
 
-```
-codex plugin marketplace remove openloomi
-codex plugin marketplace add .
-codex plugin add openloomi@openloomi
+```bash
+codex plugin marketplace remove openloomi && codex plugin marketplace add . && codex plugin add openloomi@openloomi
 ```
 
 ### Requirements

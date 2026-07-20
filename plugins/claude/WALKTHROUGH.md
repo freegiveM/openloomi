@@ -42,7 +42,9 @@ marketplace list.
 For plugin contributors (or anyone running from a checkout):
 
 ```text
-% claude --plugin-dir plugins/claude
+git clone https://github.com/melandlabs/openloomi.git
+cd openloomi
+claude --plugin-dir plugins/claude
 ```
 
 The plugin is now loaded into the session; you can confirm by typing

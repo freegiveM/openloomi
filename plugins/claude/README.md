@@ -52,9 +52,11 @@ Pick the channel that matches your situation.
 /plugin install openloomi
 ```
 
-Claude Code fetches the repo, reads the marketplace manifest at the root,
-and installs the plugin. Restart Claude Code and start a new session so the
-plugin cache is refreshed.
+Run each line separately in a Claude Code session — slash commands can't be
+chained with `&&`. The first line adds the OpenLoomi marketplace; the second
+installs the `openloomi` plugin from it. Then **restart Claude Code** and run
+`/openloomi:setup` in a fresh session so the plugin cache is refreshed and
+the wizard can wire up the desktop app.
 
 ### Install from a local checkout (plugin contributors)
 
@@ -80,6 +82,12 @@ edits are picked up live — useful when hacking on the plugin itself.
   with no API key sharing between Claude Code and OpenLoomi.
 
 Inside any session, `/openloomi:help` lists all 8 commands.
+
+> **Restricted networks?** If `github.com` / `api.github.com` /
+> `objects.githubusercontent.com` is blocked by your firewall, see the
+> [Restricted-Network Install guide](/docs/install/restricted-network)
+> for the offline/corporate-proxy path (`OPENLOOMI_VERSION`,
+> `OPENLOOMI_INSTALLER_PATH`, mirror verification, …).
 
 ---
 

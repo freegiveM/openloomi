@@ -23,12 +23,15 @@ The plugin is a thin bridge. It never reimplements OpenLoomi business logic — 
 Three paths:
 
 - **Marketplace**:
-  ```
+  ```text
   /plugin marketplace add melandlabs/openloomi
   /plugin install openloomi
   ```
+  Run each line separately in a Claude Code session — slash commands can't be chained with `&&`. The first line adds the OpenLoomi marketplace; the second installs the `openloomi` plugin from it. Then restart Claude Code and run `/openloomi:setup`.
 - **From source**, pointing Claude Code at the plugin directory:
-  ```
+  ```text
+  git clone https://github.com/melandlabs/openloomi.git
+  cd openloomi
   claude --plugin-dir plugins/claude
   ```
 - **Local marketplace checkout** as an alternative before the marketplace listing goes live.
@@ -82,7 +85,9 @@ For the long-lived install path, add the marketplace once. Claude Code prompts f
 If you're hacking on the plugin (or running from source), point Claude Code at the directory and your edits are picked up live.
 
 ```text
-% claude --plugin-dir plugins/claude
+git clone https://github.com/melandlabs/openloomi.git
+cd openloomi
+claude --plugin-dir plugins/claude
 ```
 
 ![Step 3 — Launch Claude Code with the local plugin directory](/img/openloomi/plugins/claude/03-local-plugin-dir.png)

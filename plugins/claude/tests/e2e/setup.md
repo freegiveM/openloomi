@@ -10,12 +10,12 @@ paths; this file covers the surface area that needs Claude Code itself
 1. Node 18+ is on `PATH` (`node --version`).
 2. Claude Code is installed. The e2e checklist is load-channel-agnostic;
    pick whichever matches your situation:
-   - **GitHub install** — two-step inside any session:
+   - **GitHub install** — two slash commands, entered one at a time inside any session:
      ```text
      /plugin marketplace add melandlabs/openloomi
      /plugin install openloomi
      ```
-     To point at a fork / branch, use `melyourname/openloomi@branch-name`.
+     Slash commands can't be chained with `&&`; paste each line, hit enter, wait for the prompt to clear, then paste the next. To point at a fork / branch, use `melyourname/openloomi@branch-name`.
    - **Built-in marketplace install** (after publish): `/plugin install openloomi` (short name, no `marketplace add` step needed).
    - **Dev from source** (only if you're editing the plugin): `claude --plugin-dir /Users/timi/codes/openloomi/plugins/claude`
 3. OpenLoomi Desktop is **not** installed yet (for the missing-install test).

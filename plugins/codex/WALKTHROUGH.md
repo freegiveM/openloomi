@@ -28,13 +28,13 @@ in motion.
 ## 2. Install the Plugin from the marketplace
 
 ```text
-codex plugin marketplace add melandlabs/openloomi
-codex plugin add openloomi@openloomi
+codex plugin marketplace add melandlabs/openloomi && codex plugin add openloomi@openloomi
 ```
 
-Codex prompts for a source. Enter `melandlabs/openloomi` — it refreshes
-the marketplace cache and you now see the `openloomi` plugin in the
-marketplace list.
+Paste the whole line into a Codex shell — it adds the marketplace and
+installs the `openloomi` plugin in one go. Codex prompts for a source on
+first run; enter `melandlabs/openloomi` — it refreshes the marketplace cache
+and you now see the `openloomi` plugin in the marketplace list.
 
 ![Step 2](../../apps/marketing/public/img/openloomi/plugins/codex/02-install-from-marketplace.png)
 
@@ -43,10 +43,7 @@ marketplace list.
 For plugin contributors (or anyone running from a checkout):
 
 ```text
-git clone https://github.com/melandlabs/openloomi.git
-cd openloomi
-codex plugin marketplace add .
-codex plugin add openloomi@openloomi
+git clone https://github.com/melandlabs/openloomi.git && cd openloomi && codex plugin marketplace add . && codex plugin add openloomi@openloomi
 ```
 
 The plugin is now loaded into the session; you can confirm by typing
