@@ -63,29 +63,32 @@ Type `/openloomi:` — Claude Code surfaces the full namespace:
 
 ![Step 4 — /openloomi: autocomplete lists every available command](../../apps/marketing/public/img/openloomi/plugins/claude/04-slash-commands.png)
 
-## 5. Run `/openloomi:setup` — readiness table + fox Pet appears
+## 5. Run `/openloomi:setup` — readiness table + Pet appears
 
 The wizard auto-chains install → launch → wait API → guest login. When it
 finishes, the bridge prints a small readiness table on the **left**, and the
-Loomi Pet pops onto your desktop in the **fox** theme on the **right** with
-a `Loomi is on watch` badge.
+Loomi Pet pops onto your desktop on the **right** with a `Loomi is on watch`
+badge. The screenshot below shows the **kawaii cat** pack as the active
+sprite (a custom theme loaded via `~/.openloomi/pet-custom/kawaii/`, see
+step 7c) — the built-in default is the **Fox** theme, which the right-click
+context menu lists as `THEME: Fox ✓, Capybara` (step 6).
 
 The pet is the file-watcher-driven widget — it doesn't talk to the bridge; it
-watches `~/.openloomi/pet-config.json` and the `assets/{fox,capybara}/`
-folders.
+watches `~/.openloomi/pet-config.json` and the
+`assets/{fox,capybara,~/.openloomi/pet-custom/<name>}/` folders.
 
 | Item               | Status     |
 | ------------------ | ---------- |
 | Guest login        | Successful |
 | Runtime mode       | packaged   |
-| Version            | 0.8.3      |
+| Version            | 0.8.0      |
 | Local API          | Reachable  |
 | AI provider        | Configured |
 | Execution provider | Ready      |
 | Desktop process    | Running    |
 | Final status       | **READY**  |
 
-![Step 5 — Setup completes; readiness table is READY and the fox Pet appears on the desktop](../../apps/marketing/public/img/openloomi/plugins/claude/05-setup-ready-and-fox-pet.png)
+![Step 5 — Setup completes; readiness table is READY and the kawaii cat Pet appears on the desktop with the `Loomi is on watch` badge](../../apps/marketing/public/img/openloomi/plugins/claude/05-setup-ready-and-fox-pet.png)
 
 ## 6. Right-click the Pet to open the context menu
 
@@ -104,6 +107,16 @@ The pet re-skins in place. Same 9-state vocabulary (`happy` / `idle` /
 
 ![Step 7 — Capybara theme is hot-reloaded in place; readiness table unchanged](../../apps/marketing/public/img/openloomi/plugins/claude/07-pet-capybara-theme.png)
 
+### 7b. Manually override the Pet state with `/openloomi:pet`
+
+The hot-reload pet also accepts manual overrides from Claude Code. Type
+`/openloomi:pet <state>` and the bridge writes the new state to
+`~/.openloomi/pet/runtime_state.json`; the file watcher picks it up and the
+sprite swaps within ~250 ms. Useful for "task done" beats where you want the
+pet to flip to `happy` between turns.
+
+![Step 7b — `/openloomi:pet happy` overrides the sprite; runtime state persisted to `~/.openloomi/pet/runtime_state.json`](../../apps/marketing/public/img/openloomi/plugins/claude/07b-pet-command-happy.png)
+
 ### 7c. Drop in your own theme — `kawaii` cat via `pet-custom/`
 
 The built-in themes are Fox and Capybara, but the pet watcher also
@@ -115,17 +128,7 @@ top-left of the desktop app swaps to the kawaii cat, and the
 inline chat pet (shown `thinking` with a thought bubble while a tool
 call is in flight) renders from the same pack.
 
-![Step 7c — Custom kawaii theme via ~/.openloomi/pet-custom/kawaii/; desktop sprite + inline chat pet both render from the pack](../../apps/marketing/public/img/openloomi/plugins/claude/07c-pet-kawaii-theme.png)
-
-### 7b. Manually override the Pet state with `/openloomi:pet`
-
-The hot-reload pet also accepts manual overrides from Claude Code. Type
-`/openloomi:pet <state>` and the bridge writes the new state to
-`~/.openloomi/pet/runtime_state.json`; the file watcher picks it up and the
-sprite swaps within ~250 ms. Useful for "task done" beats where you want the
-pet to flip to `happy` between turns.
-
-![Step 7b — /openloomi:pet happy overrides the sprite; runtime state persisted to ~/.openloomi/pet/runtime_state.json](../../apps/marketing/public/img/openloomi/plugins/claude/07b-pet-command-happy.png)
+![Step 7c — Custom kawaii theme via `~/.openloomi/pet-custom/kawaii/`; desktop sprite + inline chat pet both render from the pack](../../apps/marketing/public/img/openloomi/plugins/claude/07c-pet-kawaii-theme.png)
 
 ## 8. `/openloomi:status` returns the canonical JSON
 
@@ -134,7 +137,7 @@ stable: `mode / installed / version / tokenPresent / aiProviderConfigured /
 nativeRuntime / apiReachable / hooksInstalled / ready / nextAction / reason /
 source`.
 
-![Step 8 — /openloomi:status prints stable readiness JSON (fox pet is back on watch)](../../apps/marketing/public/img/openloomi/plugins/claude/08-status-json.png)
+![Step 8 — `/openloomi:status` prints stable readiness JSON with the kawaii cat Pet back on watch](../../apps/marketing/public/img/openloomi/plugins/claude/08-status-json.png)
 
 ## 9. Opt into the Pet mirror + Stop archive
 
@@ -198,6 +201,18 @@ issues, Slack messages — gets pulled into OpenLoomi's memory and (if you opt
 in) into its proactive Loop.
 
 ![Step 12 — After Composio connects, 6 active apps listed in Claude Code](../../apps/marketing/public/img/openloomi/plugins/claude/12-composio-connected.png)
+
+> **Run note (real data, not a copy)**: the screenshots for **step 12**
+> and **step 14** were captured in two different sessions. Step 12's
+> probe landed cleanly with six Composio apps active (Gmail, Google
+> Calendar, Google Drive, GitHub, Linear, Slack). Step 14's probe was
+> taken later, after the local Composio surface had gone unreachable
+> (`composio surface isn't reachable`), so the Loop dashboard flipped
+> the Composio apps back to `needs_setup`. Step 14's image is internally
+> consistent (5 Composio apps Gmail/Calendar/GitHub/Slack/Linear +
+> Obsidian `local-only` = 6 total connectors), but that count differs
+> from step 12 because the two probes are from different runs. The fix
+> path is documented in step 14.
 
 ## 13. `/openloomi:memory` — see what's already in your local memory
 
@@ -374,7 +389,7 @@ curl -s -X PUT -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/j
   }'
 ```
 
-![Step 14 — Register a custom decision type via PUT /api/loop/types](../../apps/marketing/public/img/openloomi/plugins/claude/27-register-loop-type.png)
+![Step 16 — Register a custom decision type via `PUT /api/loop/types`](../../apps/marketing/public/img/openloomi/plugins/claude/27-register-loop-type.png)
 
 ## 17. The custom type fires on the next signal
 
@@ -382,7 +397,7 @@ When the next matching signal arrives, your custom card appears in the
 desktop app with the icon and label you registered, the `iMessage` signal +
 type metadata, and the standard action row.
 
-![Step 15 — MOM_IMESSAGE_ALERT custom type fires and surfaces a high-priority todo card](../../apps/marketing/public/img/openloomi/plugins/claude/28-loop-mom-imessage-alert.png)
+![Step 17 — MOM_IMESSAGE_ALERT custom type fires and surfaces a high-priority todo card](../../apps/marketing/public/img/openloomi/plugins/claude/28-loop-mom-imessage-alert.png)
 
 ---
 

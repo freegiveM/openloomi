@@ -188,9 +188,11 @@ Connected via Composio (6 active): Gmail, Google Calendar, Google Drive, GitHub,
 Org: timi_workspace · Test user: pg-test-…
 ```
 
-The actual probe in this run shows **5 of 6 connected** (Drive comes in slightly later in the same session) — `Composio is authenticated and reports all five toolkits as connected` for Gmail, Google Calendar, GitHub, Slack, Linear.
+The probe at this point showed all six toolkits reachable, with a happy Pet sprite reflecting the successful run.
 
-![Step 12 — Composio Connections block after the auth probe: Gmail / Google Calendar / GitHub / Slack / Linear all reported Connected (5 of 6; Google Drive lands shortly after)](/img/openloomi/plugins/codex/12-composio-connections-five-active.png)
+![Step 12 — Composio Connections block after the auth probe: Gmail / Google Calendar / Google Drive / GitHub / Linear / Slack all reported Connected (6 active), with the happy Pet sprite reflecting the success](/img/openloomi/plugins/codex/12-composio-connections-five-active.png)
+
+> **Run note (real data, not a copy)**: the screenshots for **step 12** and **step 14** were captured in two different sessions. Step 12's probe landed cleanly with all six Composio apps connected. Step 14's probe was taken later, after the local Composio surface had gone unreachable (`composio backend unreachable (DNS / ConnectionRefused)`), so the Loop dashboard flipped every connector back to `needs_setup`. That isn't a regression — it's how the dashboard honestly reports a dead connector backend.
 
 ### 13. `@OpenLoomi memory` — see what's already in your local memory
 
@@ -311,7 +313,7 @@ curl -s -X PUT -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/j
 
 The next iMessage from mom surfaces the new card with your icon, label, and a high-priority todo action.
 
-![Step 15 — MOM_IMESSAGE_ALERT custom type fires and surfaces a high-priority todo card](/img/openloomi/plugins/codex/28-loop-mom-imessage-alert.png)
+![Step 17 — MOM_IMESSAGE_ALERT custom type fires and surfaces a high-priority todo card](/img/openloomi/plugins/codex/28-loop-mom-imessage-alert.png)
 
 ---
 

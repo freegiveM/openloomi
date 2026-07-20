@@ -23,132 +23,149 @@ in motion.
 > Install the plugin and setup https://github.com/melandlabs/openloomi/tree/main/plugins/codex
 ```
 
-## 2. Add the marketplace
+![Step 1](../../apps/marketing/public/img/openloomi/plugins/codex/01-install-in-codex.png)
+
+## 2. Install the Plugin from the marketplace
 
 ```text
-> codex plugin marketplace add melandlabs/openloomi
+codex plugin marketplace add melandlabs/openloomi
+codex plugin add openloomi@openloomi
 ```
 
 Codex prompts for a source. Enter `melandlabs/openloomi` — it refreshes
 the marketplace cache and you now see the `openloomi` plugin in the
 marketplace list.
 
-![Step 2 — codex plugin marketplace add melandlabs/openloomi + codex plugin add openloomi@openloomi resolves the marketplace cache](../../apps/marketing/public/img/openloomi/plugins/codex/02-add-marketplace.png)
+![Step 2](../../apps/marketing/public/img/openloomi/plugins/codex/02-install-from-marketplace.png)
 
 ## 3. Launch Codex pointing at the local plugin
 
 For plugin contributors (or anyone running from a checkout):
 
 ```text
-% codex --plugin-dir plugins/codex
+git clone https://github.com/melandlabs/openloomi.git
+cd openloomi
+codex plugin marketplace add .
+codex plugin add openloomi@openloomi
 ```
 
 The plugin is now loaded into the session; you can confirm by typing
-`@OpenLoomi` and seeing the skill resolve.
-
-![Step 3 — codex CLI loaded with MiniMax-M3 model and the OpenLoomi plugin ready to install](../../apps/marketing/public/img/openloomi/plugins/codex/03-launch-codex-with-plugin-dir.png)
+`@OpenLoomi` (next step) and watching the skill resolve.
 
 ## 4. Discover the skills
 
-Type `@OpenLoomi` — Codex surfaces the skill namespace. The thin
-`openloomi` skill is the entry point, with sub-skills for
-`openloomi-install` (install / configure the desktop), `openloomi-pet`
-(pet state & themes), `openloomi-memory` (memory), `openloomi-loop`
-(loop dashboard), `openloomi-connectors` (native connectors), and
-`openloomi-handoff` (hand work off to the loop).
+Type `@o` (or `@OpenLoomi`) — Codex surfaces the skill namespace. The
+thin `openloomi` skill is the entry point, with sub-skills for
+`openloomi-install` (install / configure the desktop), `openloomi-api`
+(local OpenLoomi from Codex), `openloomi-connectors` (native connector
+readiness), `openloomi-feature-guide` (capability lookup),
+`openloomi-handoff` (hand work off to the loop), plus `openloomi` itself
+for the read-only runtime doorway.
 
-- `@OpenLoomi` — read-only doorway into the local runtime
-- `@OpenLoomi install` — install / launch / configure the desktop app
-- `@OpenLoomi status` — stable JSON status
-- `@OpenLoomi pet <state>` — set the Loomi Pet state
-- `@OpenLoomi memory` / `@OpenLoomi memory <query>` — local memory
-- `@OpenLoomi loop` — Loop dashboard snapshot
-- `@OpenLoomi handoff` — send a task to Loomi for follow-up
+![Step 4 — typing `@o` in Codex surfaces the full skill namespace: `openloomi`, `openloomi-api`, `openloomi-connectors`, `openloomi-feature-guide`, `openloomi-handoff`, `openloomi-install`, `openloomi-loop`, `openloomi-memory`, `openloomi-pet` …](../../apps/marketing/public/img/openloomi/plugins/codex/04-discover-skills.png)
 
-![Step 4 — typing @OpenLoomi surfaces the full skill namespace (openloomi, openloomi-api, openloomi-connectors, openloomi-feature-guide, openloomi-handoff, openloomi-install, …)](../../apps/marketing/public/img/openloomi/plugins/codex/04-discover-skills.png)
+From the in-chat skill descriptions:
 
-## 5. Run `@OpenLoomi install` — readiness table + fox Pet appears
+- `openloomi` — Use your local OpenLoomi assistant from Codex (read-only
+  doorway into the runtime).
+- `openloomi-install` — OpenLoomi install & first-use setup helper for
+  Codex.
+- `openloomi-api` — Reference for the local HTTP API.
+- `openloomi-connectors` — Connector readiness guidance for native
+  installs.
+- `openloomi-feature-guide` — Feature / capability lookup.
+- `openloomi-handoff` — Hand the current task to Loomi for follow-up.
+
+## 5. Run `@OpenLoomi install` — readiness table + Pet appears
 
 The install skill auto-chains install → launch → wait API → guest login.
-When it finishes, the bridge prints a small readiness table on the
-**left**, and the Loomi Pet pops onto your desktop in the **fox** theme
-on the **right** with a `Loomi is on watch` badge.
+When it finishes, Codex prints the canonical `OpenLoomi Setup Status
+(English)` block on the left, and the Loomi Pet pops onto your desktop
+with a `Loomi is on watch` badge. Right-click the Pet and the context
+menu exposes **Open Loomi / Settings / THEME (Fox ✓, Capybara) / Quit**
+— visible in the same screenshot below.
 
-The pet is the file-watcher-driven widget — it doesn't talk to the
+The pet is a file-watcher-driven widget — it doesn't talk to the
 bridge; it watches `~/.openloomi/pet-config.json` and the
 `assets/{fox,capybara}/` folders.
 
-| Item               | Status     |
-| ------------------ | ---------- |
-| Guest login        | Successful |
-| Runtime mode       | packaged   |
-| Version            | 0.8.3      |
-| Local API          | Reachable  |
-| Execution provider | Ready      |
-| Desktop process    | Running    |
-| Final status       | **READY**  |
+In this run the install landed in `awaiting_user_action` with
+`reason: AI_PROVIDER_REQUIRED` and `nextAction: configure_ai_provider`
+— the runtime is reachable and the LaunchAgent is installed, but no AI
+provider is configured yet (sign into the host's `claude` CLI or save
+an Anthropic-compatible endpoint in Preferences → API Settings).
 
-![Step 5 — setup prints the OpenLoomi Setup Status block from Codex (ok / setup / nextAction / reason / ready) once the install chain completes](../../apps/marketing/public/img/openloomi/plugins/codex/05-install-readiness.png)
+| Field                   | Value this run                                                 |
+| ----------------------- | -------------------------------------------------------------- |
+| `ok`                    | `true`                                                         |
+| `setup`                 | `awaiting_user_action`                                         |
+| `nextAction`            | `configure_ai_provider`                                        |
+| `reason`                | `AI_PROVIDER_REQUIRED`                                         |
+| `ready`                 | `false`                                                        |
+| `mode`                  | `packaged`                                                     |
+| `installed`             | `true` (`/Applications/OpenLoomi.app`)                         |
+| `tokenPresent`          | `true` (session token via `~/.openloomi/token`)                |
+| `apiReachable`          | `true` → `http://localhost:3414` (HTTP 200)                    |
+| `codexRuntimeEnvSet`    | `true` → `OPENLOOMI_AGENT_PROVIDER=codex` (launchd-gui)        |
+| `LaunchAgent installed` | `~/Library/LaunchAgents/com.openloomi.codex-runtime-env.plist` |
+| `connectors available`  | `gmail, google_calendar, github, slack, linear, obsidian`      |
+| `connectorSetupUrl`     | `http://localhost:3414/connectors`                             |
 
-![Step 5a — OpenLoomi Desktop itself launches in parallel: Chats / Tasks / Connectors / Library sidebar plus the chat panel; the Loomi Pet (here, the kawaii cat pack) sits in the corner mirroring state](../../apps/marketing/public/img/openloomi/plugins/codex/05a-openloomi-desktop-app.png)
+![Step 5 — setup prints the `OpenLoomi Setup Status (English)` block from Codex with the right-click Pet menu visible (Open Loomi / Settings / THEME: Fox ✓, Capybara / Quit)](../../apps/marketing/public/img/openloomi/plugins/codex/05-install-readiness.png)
 
-### 5b. If the Pet looks lost — read the `reason`
+## 6. Drive the Pet state from Codex with `@OpenLoomi pet happy`
 
-When a runtime dependency is missing the setup block surfaces a
-`reason` such as `AI_PROVIDER_REQUIRED` and the Pet swaps to a
-wondering pose. The red callout below shows the exact field to look
-at — `reason` plus `nextAction` (here `configure_ai_provider`) tells
-you which env variable or connector to set up next.
-
-![Step 5b — OpenLoomi Setup Status with the wondering Pet highlighted; read `reason: AI_PROVIDER_REQUIRED` and `nextAction: configure_ai_provider` to drive the next step](../../apps/marketing/public/img/openloomi/plugins/codex/05b-install-readiness-pending.png)
-
-## 6. Right-click the Pet to open the context menu
-
-The pet's context menu exposes **Open Loomi / Settings / THEME (Fox ✓,
-Capybara) / Quit**. The theme switch is hot-reload — the file watcher
-picks up `activeTheme` in `pet-config.json` within ~250 ms, and the
-bridge never writes these files.
-
-![Step 6 — right-clicking the Pet opens the Open Loomi context menu with Open Loomi / Settings / THEME (Fox ✓, Capybara) / Quit](../../apps/marketing/public/img/openloomi/plugins/codex/06-pet-context-menu.png)
-
-## 7. Pick **Capybara** — the theme hot-reloads immediately
-
-The pet re-skins in place. Same 9-state vocabulary (`happy` / `idle` /
-`juggling` / `needsinput` / `presenting` / `sleeping` / `sweeping` /
-`thinking` / `working`) — only the artwork changes.
-
-### 7c. Drop in your own theme — `kawaii` cat via `pet-custom/`
-
-The built-in themes are Fox and Capybara, but the pet watcher also
-auto-discovers any folder under `~/.openloomi/pet-custom/<name>/` with
-PNG state sprites. Drop a folder in, and the theme appears in the
-right-click menu within ~250 ms — no bridge call, no restart. Below, a
-`kawaii` cat pack is installed and active: the small sprite in the
-top-left of the desktop app swaps to the kawaii cat, and the inline
-chat pet (shown `thinking` with a thought bubble while a tool call is
-in flight) renders from the same pack.
-
-![Step 7c — `@OpenLoomi pet happy` drives the new kawaii pack; the Pet flips to the happy sprite across the desktop app and the inline chat simultaneously](../../apps/marketing/public/img/openloomi/plugins/codex/07c-pet-kawaii-theme.png)
-
-### 7b. Manually override the Pet state from Codex
-
-The hot-reload pet also accepts manual overrides from Codex. Have
+The hot-reload pet also accepts manual state overrides from Codex. Have
 Codex call the bridge directly:
 
 ```text
 > @OpenLoomi pet happy
 ```
 
-or, equivalently:
+or, equivalently, run the bridge yourself:
 
 ```bash
 node "${CODEX_PLUGIN_ROOT:-plugins/codex}/scripts/loomi-bridge.mjs" pet happy
 ```
 
 The bridge writes the new state to
-`~/.openloomi/pet/runtime_state.json`; the file watcher picks it up and
-the sprite swaps within ~250 ms. Useful for "task done" beats where you
-want the pet to flip to `happy` between turns.
+`~/.openloomi/pet/runtime_state.json`; the file watcher picks it up
+and the sprite swaps within ~250 ms. The bridge returns
+`code: PET_STATE_SET`, `state: happy`, `persisted_at`,
+`path`, and `baseUrl` for confirmation.
+
+![Step 6 — `@OpenLoomi pet happy` writes `PET_STATE_SET` to `~/.openloomi/pet/runtime_state.json` and the kawaii cat Pet flips to `happy`](../../apps/marketing/public/img/openloomi/plugins/codex/06-pet-status-happy.png)
+
+Useful for "task done" beats where you want the pet to flip to
+`happy` between turns, or any other state in the 9-state vocabulary
+(`happy` / `idle` / `juggling` / `needsinput` / `presenting` /
+`sleeping` / `sweeping` / `thinking` / `working`).
+
+## 7. Pick **Capybara** — the theme hot-reloads immediately
+
+The pet re-skins in place. The theme switch is hot-reload — the file
+watcher picks up `activeTheme` in `pet-config.json` within ~250 ms, and
+the bridge never writes these files.
+
+### 7a. With Capybara active — the readiness table reflects the new theme
+
+The Pet is rendered through `~/.openloomi/assets/capybara/{state}.png`;
+the readiness table on the left is unchanged — only the artwork
+swapped.
+
+![Step 7a — Capybara theme is hot-reloaded; readiness table on the left unchanged, Pet on the right now wears the Capybara sprite in `thinking` pose](../../apps/marketing/public/img/openloomi/plugins/codex/07b-pet-capybara-theme.png)
+
+### 7b. Drop in your own theme — `kawaii` cat via `pet-custom/`
+
+The built-in themes are Fox and Capybara, but the pet watcher also
+auto-discovers any folder under `~/.openloomi/pet-custom/<name>/` with
+PNG state sprites. Drop a folder in, and the theme appears in the
+right-click menu within ~250 ms — no bridge call, no restart. Below, a
+`kawaii` cat pack is installed and active: the inline chat Pet in
+OpenLoomi Desktop (shown `thinking` with a thought bubble while a tool
+call is in flight) renders from the same pack.
+
+![Step 7b — Custom `kawaii` theme via `~/.openloomi/pet-custom/kawaii/`; the inline chat Pet in OpenLoomi Desktop wears the kawaii cat sprite in `thinking` pose during a `bailian-cli` tool call](../../apps/marketing/public/img/openloomi/plugins/codex/07c-pet-kawaii-theme.png)
 
 ## 8. `@OpenLoomi status` returns the canonical JSON
 
@@ -237,17 +254,24 @@ Connected via Composio (6 active): Gmail, Google Calendar, Google Drive, GitHub,
 Org: timi_workspace · Test user: pg-test-…
 ```
 
-The actual probe in this run shows **5 of 6 connected** (Drive comes
-in slightly later in the same session) — `Composio is authenticated
-and reports all five toolkits as connected` for Gmail, Google
-Calendar, GitHub, Slack, Linear.
+The probe at this point showed all six toolkits reachable, with a
+happy Pet sprite reflecting the successful run.
 
-![Step 12 — Composio Connections block after the auth probe: Gmail / Google Calendar / GitHub / Slack / Linear all reported Connected (5 of 6; Google Drive lands shortly after)](../../apps/marketing/public/img/openloomi/plugins/codex/12-composio-connections-five-active.png)
+![Step 12 — Composio Connections block after the auth probe: Gmail / Google Calendar / Google Drive / GitHub / Linear / Slack all reported Connected (6 active), with the happy Pet sprite reflecting the success](../../apps/marketing/public/img/openloomi/plugins/codex/12-composio-connections-five-active.png)
 
 From this point on, Codex is a thin UI on top of OpenLoomi. Anything
 that happens in your connected apps — emails, PRs, calendar RSVPs,
 Linear issues, Slack messages — gets pulled into OpenLoomi's memory
 and (if you opt in) into its proactive Loop.
+
+> **Run note (real data, not a copy)**: the screenshots for **step 12**
+> and **step 14** were captured in two different sessions. Step 12's
+> probe landed cleanly with all six Composio apps connected. Step 14's
+> probe was taken later, after the local Composio surface had gone
+> unreachable (`composio backend unreachable (DNS / ConnectionRefused)`),
+> so the Loop dashboard flipped every connector back to `needs_setup`.
+> That isn't a regression — it's how the dashboard honestly reports a
+> dead connector backend. The fix path is documented in step 14.
 
 ## 13. `@OpenLoomi memory` — see what's already in your local memory
 
@@ -448,10 +472,12 @@ never silently flips to `done` when nothing actually happened.
 
 The Loop ships with the decision types above out of the box. You can
 register your own — the contract is just a `PUT /api/loop/types`
-against the local runtime. From a Bash block in Codex:
+against the local runtime. From a Bash block in Codex, paste and run:
 
 ```bash
 TOKEN=$(cat ~/.openloomi/token | base64 -d)
+
+# 1) Register the custom type
 curl -s -X PUT -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   http://localhost:3414/api/loop/types \
   -d '{
@@ -460,8 +486,18 @@ curl -s -X PUT -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/j
     "icon": "👩",
     "actionKind": "todo",
     "description": "Triggers when mom sends an iMessage — surfaces as a high-priority todo so you never miss her"
-  }'
+  }' | python3 -m json.tool
+
+# 2) Verify it landed in the type registry
+curl -s -H "Authorization: Bearer $TOKEN" \
+  http://localhost:3414/api/loop/types | python3 -m json.tool
 ```
+
+The runtime echoes the new type back with the icon, label, and
+`actionKind` you registered, and the next `/api/loop/state` tick
+already lists it under `supportedTypes`. (No screenshot for this step —
+the curl output is the receipt; if you want to verify the type landed,
+re-run step 2 above.)
 
 ## 17. The custom type fires on the next signal
 
@@ -469,7 +505,7 @@ When the next matching signal arrives, your custom card appears in
 the desktop app with the icon and label you registered, the
 `iMessage` signal + type metadata, and the standard action row.
 
-![Step 15 — MOM_IMESSAGE_ALERT custom type fires and surfaces a high-priority todo card](../../apps/marketing/public/img/openloomi/plugins/codex/28-loop-mom-imessage-alert.png)
+![Step 17 — MOM_IMESSAGE_ALERT custom type fires and surfaces a high-priority todo card](../../apps/marketing/public/img/openloomi/plugins/codex/28-loop-mom-imessage-alert.png)
 
 ---
 
