@@ -101,5 +101,10 @@ or diagnostics show that the desktop runtime is not using Codex, call:
 node "$SKILL_DIR/../../scripts/loomi-bridge.mjs" codex-runtime-info
 ```
 
-Show the returned platform-specific guidance, then ask the user to restart
-OpenLoomi and verify `/api/native/providers` reports `defaultAgent: "codex"`.
+Show the returned platform-specific guidance. The `/openloomi:setup`
+wizard auto-restarts the desktop app after writing the env var, so if
+setup was used end-to-end the new env is already in effect — just verify
+`/api/native/providers` reports `defaultAgent: "codex"`. If instead the
+env was written via a direct `set-codex-runtime-env` invocation, ask the
+user to Quit+Reopen OpenLoomi Desktop so the freshly forked web server
+inherits the new value, then verify the same endpoint.

@@ -361,10 +361,28 @@ async function buildSetupStatus() {
     apiProbe.reachableUrl,
   );
 
+  // `appRunning` is the gateway the setup state machine uses to decide
+  // whether `set-codex-runtime-env` needs to also restart the GUI. When
+  // the app is NOT running, freshly-written env vars are inherited by
+  // the next launch — no restart required. When the app IS already
+  // running, its forked web server has the OLD env and `launchctl
+  // setenv` cannot reach it, so setup must quit+relaunch the app
+  // automatically instead of asking the user to do it by hand.
+  // The probe is best-effort; on failure we treat "not running" as the
+  // safe default and let the launch path take over.
+  let appRunning = false;
+  try {
+    appRunning = await probeDesktopProcessRunning(discovery.appPath);
+  } catch {
+    appRunning = false;
+  }
+
   const baseStatus = {
     mode: discovery.mode,
     installed: discovery.installed,
     appPath: discovery.appPath,
+    appRunning,
+    appRunningSource: discovery.appPath ? "probeDesktopProcessRunning" : null,
     version: discovery.version,
     tokenPresent: token.present,
     executionProviderReady: nativeProviderStatus.active,
@@ -3150,6 +3168,145 @@ function saveOpenLoomiToken(token) {
   });
 }
 
+// Detect whether the OpenLoomi desktop app process is currently running.
+// Mirrors plugins/claude/scripts/loomi-bridge.mjs:probeDesktopProcessRunning.
+// On darwin we match the distinctive `Contents/MacOS/<binName>` suffix so
+// we don't false-positive on the inner `node server.js` helper; on linux
+// the basename match is enough since there's no .app wrapper; on win32
+// we shell out to `tasklist /FI IMAGENAME eq <binName>`. Returns false on
+// any probe failure — we treat "probe failed" the same as "not running"
+// because the caller's fall-through is always "launch / re-launch".
+async function probeDesktopProcessRunning(appPath) {
+  if (!appPath) return false;
+  const binName = path.basename(appPath.replace(/\.app$/i, ""));
+  if (!binName) return false;
+
+  if (process.platform === "win32") {
+    return await new Promise((resolve) => {
+      const proc = spawn(
+        "tasklist",
+        ["/FI", `IMAGENAME eq ${binName}.exe`],
+        { stdio: ["ignore", "pipe", "ignore"] },
+      );
+      let out = "";
+      proc.stdout?.on("data", (b) => (out += b.toString("utf8")));
+      proc.on("exit", () => resolve(/openloomi/i.test(out)));
+      proc.on("error", () => resolve(false));
+    });
+  }
+
+  // -i makes pgrep case-insensitive so a path like
+  // /Applications/openloomi.app/Contents/MacOS/openloomi still matches the
+  // /Applications/OpenLoomi.app/... installed bundle.
+  const pattern =
+    process.platform === "darwin" ? `Contents/MacOS/${binName}` : binName;
+  return await new Promise((resolve) => {
+    const proc = spawn("pgrep", ["-if", pattern], {
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    let out = "";
+    proc.stdout?.on("data", (b) => (out += b.toString("utf8")));
+    proc.on("exit", (code) => resolve(code === 0 && out.trim().length > 0));
+    proc.on("error", () => resolve(false));
+  });
+}
+
+// Cross-platform quit helper. We use AppleScript first on darwin because
+// `osascript -e 'quit app "X"'` is the supported graceful path — it lets
+// the app run shutdown handlers, flush state, and tell its child web
+// server to exit cleanly. `pkill -f` is the fallback for when AppleScript
+// itself is unavailable (headless / sandboxed Codex CLI) and is also the
+// linux primary. Windows uses `taskkill` without /F first, then /F if the
+// app is still up after the grace window. After the kill attempt we poll
+// probeDesktopProcessRunning until the process actually exits, with a
+// 5-second deadline — anything longer means TCC is blocking the kill and
+// the caller should fall back to manual action.
+//
+// This helper never throws. It returns a structured result the setup
+// state machine can record + act on without unwinding.
+async function quitDesktopApp({ appPath, graceMs = 5000 } = {}) {
+  if (!appPath) {
+    return { ok: false, code: "NO_APP_PATH", message: "No appPath to quit." };
+  }
+  const binName = path.basename(appPath.replace(/\.app$/i, ""));
+  if (!binName) {
+    return { ok: false, code: "BAD_APP_PATH", message: `Cannot derive binName from ${appPath}.` };
+  }
+
+  // Determine the bundle display name (darwin `osascript` needs it). When
+  // appPath ends in `.app`, take the basename without extension; otherwise
+  // fall back to the bin basename — both are accepted by AppleScript's
+  // `quit app` syntax.
+  const bundleName = appPath.endsWith(".app")
+    ? path.basename(appPath).replace(/\.app$/i, "")
+    : binName;
+
+  const attempted = [];
+  let sigSent = false;
+
+  if (process.platform === "darwin") {
+    // Preferred: AppleScript. Skipped gracefully if osascript isn't
+    // available (rare; mostly inside locked-down sandboxes).
+    const r = await runCapture("osascript", ["-e", `tell application "${bundleName}" to quit`]);
+    attempted.push({ via: "osascript", exitCode: r.exitCode, stderr: r.stderr?.slice(0, 200) });
+    if (r.exitCode === 0) sigSent = true;
+  }
+
+  if (!sigSent) {
+    if (process.platform === "win32") {
+      const r = await runCapture("taskkill", ["/IM", `${binName}.exe`]);
+      attempted.push({ via: "taskkill", exitCode: r.exitCode });
+      if (r.exitCode === 0) sigSent = true;
+    } else {
+      const pattern =
+        process.platform === "darwin" ? `Contents/MacOS/${binName}` : binName;
+      const r = await runCapture("pkill", ["-f", pattern]);
+      attempted.push({ via: "pkill", exitCode: r.exitCode });
+      // pkill exits 1 when no processes matched — that's a fine result if
+      // the app already exited between probe and kill.
+      if (r.exitCode === 0 || r.exitCode === 1) sigSent = true;
+    }
+  }
+
+  // Hard fallback: if the soft signal didn't take (rare — usually TCC),
+  // escalate to SIGKILL / taskkill /F. We only do this on a second pass
+  // because we want to give the app one chance to flush state.
+  if (sigSent) {
+    const stillRunning = await probeDesktopProcessRunning(appPath);
+    if (stillRunning) {
+      if (process.platform === "win32") {
+        await runCapture("taskkill", ["/IM", `${binName}.exe`, "/F"]);
+      } else {
+        const pattern =
+          process.platform === "darwin" ? `Contents/MacOS/${binName}` : binName;
+        await runCapture("pkill", ["-9", "-f", pattern]);
+      }
+      attempted.push({ via: "hard-kill", exitCode: 0 });
+    }
+  }
+
+  // Poll until the process is actually gone, up to graceMs.
+  const deadline = Date.now() + graceMs;
+  let finalRunning = true;
+  while (Date.now() < deadline) {
+    finalRunning = await probeDesktopProcessRunning(appPath);
+    if (!finalRunning) break;
+    await sleep(200);
+  }
+
+  return {
+    ok: !finalRunning,
+    exited: !finalRunning,
+    code: finalRunning ? "PROCESS_STILL_RUNNING" : "PROCESS_EXITED",
+    bundleName,
+    binName,
+    attempted,
+    message: finalRunning
+      ? `OpenLoomi did not exit within ${graceMs}ms after quit signal. macOS TCC may be blocking the kill; approve any OpenLoomi permission prompt or quit it manually, then re-run setup.`
+      : `OpenLoomi exited cleanly (${bundleName}).`,
+  };
+}
+
 function launchOpenLoomiForSession(appPath) {
   const resolved = appPath ? normalizePath(appPath) : null;
 
@@ -4209,7 +4366,7 @@ function planRuntimeEnvChange({ platform, key, value, flags }) {
           `write ${plistPath} (RunAtLoad launchctl setenv ${key} ${value})`,
         );
         notes.push(
-          `Installed LaunchAgent ${plistPath} so ${key}=${value} survives logout/reboot. Quit and reopen OpenLoomi.app for the new env to take effect in the running web server.`,
+          `Installed LaunchAgent ${plistPath} so ${key}=${value} survives logout/reboot. Note: the /openloomi:setup wizard auto-restarts the desktop app after writing this; only Quit+Reopen manually if you ran this CLI directly.`,
         );
       }
     } else {
@@ -4441,25 +4598,41 @@ async function setup(args) {
     }
 
     // 2. Set OPENLOOMI_AGENT_PROVIDER=codex in the host GUI launchd /
-    //    environment.d, or return Windows user-env guidance. On macOS the change only affects
-    //    processes started AFTER launchctl setenv, so we additionally
-    //    return runtime_env_set_pending_restart when we know the GUI is
-    //    already running.
+    //    environment.d (or Linux environment.d file). Two sub-cases:
+    //
+    //    2a. App is NOT currently running. The freshly-written env var
+    //        will be inherited by the next `open -a <bundle>` (handled by
+    //        branch 3 below), so we just write + continue. No restart,
+    //        no user prompt.
+    //
+    //    2b. App IS currently running. Its forked web server already
+    //        inherited the OLD env; `launchctl setenv` does not
+    //        retroactively update running processes, so we have to
+    //        restart it. We do this automatically via quitDesktopApp +
+    //        fall-through to branch 3 (which launches + waits for API).
+    //        The user never sees a "Quit and reopen…" message — this
+    //        branch never returns runtime_env_set_pending_restart.
+    //
+    //    Either way, the previous `runtime_env_set_pending_restart` stop
+    //    condition is removed. Per OpenLoomi Setup spec: "不再把
+    //    runtime_env_set_pending_restart 作为正常流程终点".
     if (status.installed && !status.codexRuntimeEnvSet) {
       record("status_check", false, {
         reason: status.reason,
         codexRuntimeEnvSet: false,
+        appRunning: status.appRunning,
       });
       const r = await runBridgeSubcommand(
         ["set-codex-runtime-env", "codex", "--persist"],
         { timeoutMs: 10_000 },
       );
       const ok = r.ok && r.parsed && r.parsed.ok === true;
-      record("runtime_env", ok, {
+      record("runtime_env_write", ok, {
         code: r.code,
         before: r.parsed?.before,
         after: r.parsed?.after,
         platform: r.parsed?.platform,
+        persisted: !!r.parsed?.persisted,
       });
       if (!ok) {
         writeJson({
@@ -4474,19 +4647,36 @@ async function setup(args) {
         });
         return;
       }
-      // Even when the write succeeded, the GUI app already running
-      // didn't inherit the change. Surface that so the caller knows
-      // Quit+Reopen is still required.
-      writeJson({
-        ok: true,
-        setup: "runtime_env_set_pending_restart",
-        steps,
-        status,
-        runtimeEnv: r.parsed,
-        message:
-          "OPENLOOMI_AGENT_PROVIDER=codex is now set in the host environment and a LaunchAgent has been installed so the change survives logout/reboot. Quit and reopen OpenLoomi Desktop for the change to take effect in the running web server.",
-      });
-      return;
+
+      // 2b. App was running → automatically quit it so the next launch
+      //     inherits the new env. We never ask the user to do this.
+      if (status.appRunning && status.appPath) {
+        const quit = await quitDesktopApp({ appPath: status.appPath });
+        record("quit_for_env_reload", !!quit.ok, {
+          code: quit.code,
+          exited: quit.exited,
+          bundleName: quit.bundleName,
+          message: quit.message,
+        });
+        if (!quit.ok) {
+          // TCC may be blocking the kill. Surface a stop condition ONLY
+          // for this case — it's the one path where the user genuinely
+          // has to do something by hand.
+          writeJson({
+            ok: false,
+            setup: "quit_for_env_reload_failed",
+            steps,
+            status,
+            quit,
+            message: quit.message,
+          });
+          return;
+        }
+      }
+      // Continue the loop. Next iteration either:
+      //   - sees env set + app exited (API unreachable) → branch 3 launches + waits
+      //   - sees env set + app running (race: we just launched it?) → READY check
+      continue;
     }
 
     // 3. Installed + runtime env set, but the desktop app is not yet
