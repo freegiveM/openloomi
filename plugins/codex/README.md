@@ -335,7 +335,7 @@ shell `export` won't reach it. Three tiers, each more durable than the last:
 
 > **macOS caveat:** the GUI launchd session is separate from your terminal,
 > so a freshly written `OPENLOOMI_AGENT_PROVIDER` is only inherited by
-> processes spawned *after* the write. The `/openloomi:setup` wizard detects
+> processes spawned _after_ the write. The `/openloomi:setup` wizard detects
 > this and **automatically quits and relaunches** the running desktop app
 > when the env var changes — you do not need to manually Quit+Reopen. The
 > only time you need to do it by hand is if you invoked `set-codex-runtime-env`

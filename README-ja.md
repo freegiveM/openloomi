@@ -72,9 +72,9 @@ OpenLoomiは、オープンソースのAIパートナーです。デスクトッ
 
 OpenLoomi は公式の marketplace プラグインを提供しており、既存のエージェントをローカル OpenLoomi runtime へのフロントエンドにできます。
 
-| Agent       | インストール                                                                                | 初回セットアップ                  |
-| ----------- | ------------------------------------------------------------------------------------------- | --------------------------------- |
-| Claude Code | `/plugin marketplace add melandlabs/plugins`<br>`/plugin install openloomi`              | `/openloomi:setup`                |
+| Agent       | インストール                                                                              | 初回セットアップ                  |
+| ----------- | ----------------------------------------------------------------------------------------- | --------------------------------- |
+| Claude Code | `/plugin marketplace add melandlabs/plugins`<br>`/plugin install openloomi`               | `/openloomi:setup`                |
 | Codex CLI   | `codex plugin marketplace add melandlabs/plugins && codex plugin add openloomi@openloomi` | `@OpenLoomi Run first-use setup.` |
 
 スリム版マーケットプレースは [`melandlabs/plugins`](https://github.com/melandlabs/plugins) にあり、追加時にプラグインパッケージのみを取得します。詳細は各プラグインの README を参照: [`plugins/claude/`](./plugins/claude/README.md) · [`plugins/codex/`](./plugins/codex/README.md)。
