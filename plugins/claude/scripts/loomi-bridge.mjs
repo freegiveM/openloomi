@@ -48,6 +48,11 @@ import { EOL } from "node:os";
 import { homedir, platform, tmpdir } from "node:os";
 import { join, delimiter, sep, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  collectDiagnostics,
+  writeDiagnostics,
+  fileModeOctal,
+} from "../../_shared/setup-diagnostics.mjs";
 
 // ---------------------------------------------------------------------------
 // Constants & state
@@ -68,6 +73,32 @@ const CLAUDE_CLI_PROBE_TIMEOUT_MS = 5000;
 const ARCHIVE_MAX_BYTES = 5 * 1024 * 1024; // 5 MB cap on transcripts
 const ARCHIVE_MAX_TURNS = 6; // 6 user+assistant turns
 const ARCHIVE_MAX_CONTENT_CHARS = 6000; // 6k char summary cap
+
+// ---------------------------------------------------------------------------
+// Per-stage setup timeouts (issue #397)
+//
+// First-run /openloomi:setup chains four different waits behind one command:
+//   1. install  (download + lay down the .app bundle via the platform script)
+//   2. launch   (open -a / gtk-launch / start "" — short)
+//   3. api_ready (poll the local HTTP API until it responds)
+//   4. permission_grace (extra budget on top of api_ready for the first call
+//                        in case macOS is showing a TCC/Accessibility prompt
+//                        that the user has to dismiss by hand)
+//
+// The legacy `--max-wait` flag is kept as a global cap. The per-stage flags
+// below are the new defaults: each is independently tunable so a slow
+// download does not steal budget from the API wait, and vice versa.
+// ---------------------------------------------------------------------------
+const DEFAULT_INSTALL_TIMEOUT_MS = 300_000;    //  5 min — covers slow 50 Mbps
+const DEFAULT_LAUNCH_TIMEOUT_MS = 10_000;      // 10 s
+const DEFAULT_API_TIMEOUT_MS = 120_000;        //  2 min — first-run default
+const DEFAULT_PERMISSION_GRACE_MS = 60_000;    //  1 min extra for TCC prompts
+const SETUP_MAX_WAIT_DEFAULT_MS = 120_000;     // --max-wait legacy default
+
+// Throttle live progress lines to ~1 Hz so we don't spam the terminal.
+// The value is the most-recent full-second tick we already printed for a
+// given stage; same-tick calls are silent.
+const _lastProgressSecond = Object.create(null);
 
 // 9-state capybara sprite set (apps/web/public/loomi-pet/assets/capybara/).
 // The plugin ships fox-sprite branding in `assets/`, but the bridge itself
@@ -166,6 +197,289 @@ function err(code, msg, extra = {}) {
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+// Format a millisecond duration as a compact "Ns" string for status lines.
+// `ms <= 0` returns "0s"; values up to ~540s render as integer seconds; beyond
+// that we fall back to "XmYYs" so the line still fits on a terminal.
+function formatMs(ms) {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  if (total < 60) return `${total}s`;
+  if (total < 600) {
+    const m = Math.floor(total / 60);
+    const s = total % 60;
+    return s ? `${m}m${s}s` : `${m}m`;
+  }
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}m${s.toString().padStart(2, "0")}s`;
+}
+
+// Throttled live-progress writer for the setup wizard. Returns a function
+// the caller invokes periodically (e.g. once per poll iteration). At most
+// one line per stage per second is emitted, on stderr so the JSON payload
+// on stdout stays parseable.
+//
+// `stage`  — short human-readable label, e.g. "wait_api".
+// `startedAt` — Date.now() when the stage began. The returned ticker also
+//               handles a synthetic "0 s / max Z s …" first beat so the
+//               user sees feedback within ~1 s of starting a long stage.
+//
+// The returned function is safe to call from a tight loop; it does its own
+// throttling and never throws.
+function makeStageTicker(stage, budgetMs) {
+  if (!Number.isFinite(budgetMs) || budgetMs <= 0) {
+    return () => {}; // negative budget = no-op ticker
+  }
+  const startedAt = Date.now();
+  // Prime the throttle slot so the first non-zero tick is emitted.
+  _lastProgressSecond[stage] = -1;
+  return function tick({ force = false } = {}) {
+    const elapsedMs = Date.now() - startedAt;
+    const sec = Math.floor(elapsedMs / 1000);
+    if (!force && _lastProgressSecond[stage] === sec) return;
+    _lastProgressSecond[stage] = sec;
+    const label = STAGE_LABELS[stage] || stage;
+    try {
+      process.stderr.write(
+        `  \u00b7 ${label}  (${formatMs(elapsedMs)} / max ${formatMs(budgetMs)}) \u2026\n`,
+      );
+    } catch {
+      /* non-fatal: stderr may be piped */
+    }
+  };
+}
+
+// Stable, safe-to-print human labels for the stages used by the wizard.
+const STAGE_LABELS = Object.freeze({
+  install: "installing OpenLoomi",
+  launch: "launching desktop app",
+  wait_api: "waiting for local API",
+  permission_grace: "waiting on macOS permission prompt",
+});
+
+// ---------------------------------------------------------------------------
+// Network retry helper
+//
+// `fetchWithRetry(url, init, opts)` is a thin wrapper around `fetch` that
+// retries on transient failures:
+//
+//   * network errors (fetch threw, e.g. ECONNRESET / "fetch failed")
+//   * per-attempt timeouts (our AbortController fired)
+//   * HTTP 5xx
+//   * HTTP 429 (honoring Retry-After when present)
+//
+// Non-retryable:
+//   * HTTP 4xx other than 429 — the server actively rejected the request
+//   * AbortError caused by an *external* caller signal (init.signal) — we
+//     don't override the caller's intent to cancel.
+//
+// Backoff is exponential with full jitter, capped at `maxDelayMs`. Defaults
+// give 3 total attempts (initial + 2 retries) with 250 ms / 750 ms sleeps,
+// adding at most ~1 s of latency in the worst case. Each attempt has its
+// own `timeoutMs` budget, so a 5 s timeout means a hard ceiling of ~15 s
+// per call across all attempts.
+//
+// Designed for the local OpenLoomi API (127.0.0.1), where brief hiccups
+// are common during desktop-app launches. The helper is dependency-free
+// and safe to use from any of the existing call sites.
+// ---------------------------------------------------------------------------
+const DEFAULT_RETRY_BASE_DELAY_MS = 250;
+const DEFAULT_RETRY_MAX_DELAY_MS = 2000;
+const DEFAULT_RETRY_ATTEMPTS = 2; // initial + 2 retries = 3 total
+
+function defaultIsRetryable({ status, error }) {
+  if (error) {
+    // External caller-initiated aborts are not transient.
+    if (error.name === "AbortError" && error.__external) return false;
+    return true; // network error / our-internal timeout
+  }
+  if (status === 429) return true;
+  if (status >= 500 && status < 600) return true;
+  return false;
+}
+
+// Pick a Retry-After value from a Response (seconds or HTTP-date), or null.
+// Spec: https://datatracker.ietf.org/doc/html/rfc7231#section-7.1.3
+function readRetryAfterMs(res) {
+  const v = res?.headers?.get?.("retry-after");
+  if (!v) return null;
+  const asNum = Number(v);
+  if (Number.isFinite(asNum)) return Math.max(0, asNum * 1000);
+  const asDate = Date.parse(v);
+  if (Number.isFinite(asDate)) return Math.max(0, asDate - Date.now());
+  return null;
+}
+
+function computeBackoffMs(attempt, baseDelayMs, maxDelayMs) {
+  // attempt is 1-based: 1 -> base, 2 -> 2*base, ...
+  const exp = Math.min(maxDelayMs, baseDelayMs * 2 ** (attempt - 1));
+  // Full jitter: pick a random value in [baseDelayMs, exp] so a thundering
+  // herd of plugins retrying in lockstep doesn't synchronize. Lower bound
+  // stays at baseDelayMs so we still back off meaningfully on attempt 1.
+  const lo = Math.min(baseDelayMs, exp);
+  return lo + Math.floor(Math.random() * Math.max(1, exp - lo));
+}
+
+async function fetchWithRetry(url, init = {}, opts = {}) {
+  const {
+    timeoutMs,
+    retries = DEFAULT_RETRY_ATTEMPTS,
+    baseDelayMs = DEFAULT_RETRY_BASE_DELAY_MS,
+    maxDelayMs = DEFAULT_RETRY_MAX_DELAY_MS,
+    isRetryable = defaultIsRetryable,
+    onRetry,
+    sleepFn = sleep,
+  } = opts;
+
+  const externalSignal = init.signal || null;
+  const maxAttempts = Math.max(1, retries + 1);
+  let lastError = null;
+  let lastStatus = 0;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    // Per-attempt controller. If we time out, the AbortError carries our
+    // internal reason so defaultIsRetryable knows to retry it.
+    const ctrl = new AbortController();
+    const onExternalAbort = () => ctrl.abort();
+    if (externalSignal) {
+      if (externalSignal.aborted) {
+        const e = new Error("aborted");
+        e.name = "AbortError";
+        e.__external = true;
+        throw e;
+      }
+      externalSignal.addEventListener("abort", onExternalAbort, {
+        once: true,
+      });
+    }
+    let timer = null;
+    if (Number.isFinite(timeoutMs) && timeoutMs > 0) {
+      timer = setTimeout(() => {
+        const e = new Error(`request timed out after ${timeoutMs}ms`);
+        e.name = "AbortError";
+        e.__external = false;
+        ctrl.abort();
+      }, timeoutMs);
+    }
+
+    try {
+      const res = await fetch(url, { ...init, signal: ctrl.signal });
+      lastStatus = res.status;
+
+      if (!isRetryable({ status: res.status, error: null }) || attempt === maxAttempts) {
+        return res;
+      }
+
+      // Retryable HTTP status — back off and try again.
+      const retryAfter = readRetryAfterMs(res);
+      const delayMs = retryAfter ?? computeBackoffMs(attempt, baseDelayMs, maxDelayMs);
+      if (typeof onRetry === "function") {
+        try {
+          onRetry({ attempt, delayMs, reason: `http_${res.status}` });
+        } catch {
+          /* non-fatal */
+        }
+      }
+      // Drain the body so the underlying socket can be reused / closed cleanly.
+      try {
+        await res.arrayBuffer();
+      } catch {
+        /* ignore */
+      }
+      await sleepFn(delayMs);
+      continue;
+    } catch (error) {
+      lastError = error;
+      const retryable = isRetryable({ status: 0, error });
+      if (!retryable || attempt === maxAttempts) {
+        throw error;
+      }
+      const delayMs = computeBackoffMs(attempt, baseDelayMs, maxDelayMs);
+      if (typeof onRetry === "function") {
+        try {
+          onRetry({
+            attempt,
+            delayMs,
+            reason: error?.name === "AbortError" ? "timeout" : "network",
+          });
+        } catch {
+          /* non-fatal */
+        }
+      }
+      await sleepFn(delayMs);
+      continue;
+    } finally {
+      if (timer) clearTimeout(timer);
+      if (externalSignal) {
+        externalSignal.removeEventListener("abort", onExternalAbort);
+      }
+    }
+  }
+
+  // Unreachable: the loop above always either returns or throws. Defensive
+  // throw so callers can rely on this function never resolving to undefined.
+  if (lastError) throw lastError;
+  const e = new Error(`fetch failed after ${maxAttempts} attempts (status ${lastStatus})`);
+  e.__lastStatus = lastStatus;
+  throw e;
+}
+
+// Compose the per-stage + global budgets from CLI args. Each per-stage flag
+// wins; otherwise we fall back to the legacy `--max-wait` (so existing
+// callers keep working unchanged), and finally to the documented default.
+//
+// Returns: { installMs, launchMs, apiMs, permissionMs, totalMs }
+//   - totalMs is the global cap; the wizard short-circuits when (sum of
+//     elapsed across all stages) > totalMs.
+function readStageTimeouts(args) {
+  const totalMs = Number(args["max-wait"] || SETUP_MAX_WAIT_DEFAULT_MS);
+  const num = (v, fallback) => {
+    const n = Number(v);
+    return Number.isFinite(n) && n > 0 ? n : fallback;
+  };
+  const apiMs = num(
+    args["api-timeout"] ?? args["api-timeout-ms"],
+    num(args["max-wait"], DEFAULT_API_TIMEOUT_MS),
+  );
+  const installMs = num(
+    args["install-timeout"] ?? args["install-timeout-ms"],
+    num(args["max-wait"], DEFAULT_INSTALL_TIMEOUT_MS),
+  );
+  const launchMs = num(
+    args["launch-timeout"] ?? args["launch-timeout-ms"],
+    DEFAULT_LAUNCH_TIMEOUT_MS,
+  );
+  const permissionMs = num(
+    args["permission-timeout"] ?? args["permission-timeout-ms"],
+    DEFAULT_PERMISSION_GRACE_MS,
+  );
+  return { installMs, launchMs, apiMs, permissionMs, totalMs };
+}
+
+// Build the actionable hints list for an API timeout. Order is deliberate:
+// the most likely cause goes first so it survives any UI truncation.
+// All entries are safe to print verbatim — no secrets, no installation
+// paths the user shouldn't see.
+function apiNotReadyHints({ stage, platformName, canResume }) {
+  const hints = [];
+  if (platformName === "macos" || /darwin/i.test(String(process.platform))) {
+    hints.push(
+      "If macOS is showing a permission prompt for OpenLoomi, approve it and run /openloomi:setup again.",
+    );
+  }
+  hints.push(
+    "Run /openloomi:setup --max-wait 180000 to give it more time.",
+  );
+  hints.push(
+    "If you are offline or behind a corporate proxy, see https://openloomi.ai/docs/install/restricted-network.",
+  );
+  if (canResume) {
+    hints.push(
+      "Re-run /openloomi:setup to keep waiting — already-completed steps will be skipped.",
+    );
+  }
+  return hints;
 }
 
 function detectPlatform() {
@@ -985,10 +1299,14 @@ async function probeOpenLoomiBaseUrl() {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), 1500);
     try {
-      const res = await fetch(`${url}/api/remote-auth/user`, {
-        method: "GET",
-        signal: ctrl.signal,
-      });
+      // 1.5 s per-attempt budget; probe runs once per port (no retry) so a
+      // desktop app still booting doesn't burn the whole 5 s budget on the
+      // first port before falling through to the fallback.
+      const res = await fetchWithRetry(
+        `${url}/api/remote-auth/user`,
+        { method: "GET", signal: ctrl.signal },
+        { timeoutMs: 1500, retries: 0 },
+      );
       if (res.status > 0) {
         _resolvedPort = port;
         return url;
@@ -1006,14 +1324,12 @@ async function apiGET(path, { timeoutMs = 5000 } = {}) {
   const bearer = loadBearerToken();
   const headers = { Accept: "application/json" };
   if (bearer) headers.Authorization = `Bearer ${bearer}`;
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    const res = await fetch(openloomiBaseUrl() + path, {
-      method: "GET",
-      headers,
-      signal: ctrl.signal,
-    });
+    const res = await fetchWithRetry(
+      openloomiBaseUrl() + path,
+      { method: "GET", headers },
+      { timeoutMs },
+    );
     const text = await res.text().catch(() => "");
     let json = null;
     try {
@@ -1028,8 +1344,6 @@ async function apiGET(path, { timeoutMs = 5000 } = {}) {
       status: 0,
       error: { code: "network", message: String(e?.message || e) },
     };
-  } finally {
-    clearTimeout(t);
   }
 }
 
@@ -1040,15 +1354,16 @@ async function apiPOST(path, body, { timeoutMs = 10_000 } = {}) {
     Accept: "application/json",
   };
   if (bearer) headers.Authorization = `Bearer ${bearer}`;
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    const res = await fetch(openloomiBaseUrl() + path, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(body),
-      signal: ctrl.signal,
-    });
+    const res = await fetchWithRetry(
+      openloomiBaseUrl() + path,
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+      },
+      { timeoutMs },
+    );
     const text = await res.text().catch(() => "");
     let json = null;
     try {
@@ -1063,8 +1378,6 @@ async function apiPOST(path, body, { timeoutMs = 10_000 } = {}) {
       status: 0,
       error: { code: "network", message: String(e?.message || e) },
     };
-  } finally {
-    clearTimeout(t);
   }
 }
 
@@ -1078,15 +1391,16 @@ async function apiPUT(path, body, { timeoutMs = 10_000 } = {}) {
     Accept: "application/json",
   };
   if (bearer) headers.Authorization = `Bearer ${bearer}`;
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    const res = await fetch(openloomiBaseUrl() + path, {
-      method: "PUT",
-      headers,
-      body: JSON.stringify(body),
-      signal: ctrl.signal,
-    });
+    const res = await fetchWithRetry(
+      openloomiBaseUrl() + path,
+      {
+        method: "PUT",
+        headers,
+        body: JSON.stringify(body),
+      },
+      { timeoutMs },
+    );
     const text = await res.text().catch(() => "");
     let json = null;
     try {
@@ -1101,8 +1415,6 @@ async function apiPUT(path, body, { timeoutMs = 10_000 } = {}) {
       status: 0,
       error: { code: "network", message: String(e?.message || e) },
     };
-  } finally {
-    clearTimeout(t);
   }
 }
 
@@ -1712,18 +2024,22 @@ async function cmdGuestLogin({ baseUrl = null } = {}) {
   // token, so we deliberately bypass the `Authorization: Bearer` header
   // path here by calling the server directly without a bearer.
   const target = (baseUrl || openloomiBaseUrl()) + "/api/remote-auth/guest";
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), 10_000);
   try {
-    const res = await fetch(target, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
+    // 10 s per-attempt timeout, 2 retries — total budget ~30 s worst case.
+    // POST without a body is safely idempotent in the runtime's eyes: a 5xx
+    // means the token wasn't minted, so a follow-up call mints a fresh one.
+    const res = await fetchWithRetry(
+      target,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({}),
       },
-      body: JSON.stringify({}),
-      signal: ctrl.signal,
-    });
+      { timeoutMs: 10_000 },
+    );
     const text = await res.text().catch(() => "");
     let json = null;
     try {
@@ -1758,8 +2074,6 @@ async function cmdGuestLogin({ baseUrl = null } = {}) {
     };
   } catch (e) {
     return { ok: false, code: "NETWORK", error: String(e?.message || e) };
-  } finally {
-    clearTimeout(t);
   }
 }
 
@@ -2036,7 +2350,12 @@ async function promptYesNo(question) {
   });
 }
 
-async function runInstallScript({ platformName, yes }) {
+async function runInstallScript({
+  platformName,
+  yes,
+  onTick = null,
+  budgetMs = null,
+}) {
   const filename =
     platformName === "macos"
       ? "setup.macos.sh"
@@ -2088,14 +2407,36 @@ async function runInstallScript({ platformName, yes }) {
     cmd = "bash";
     args = [scriptPath];
   }
+  // The install helper reads `OPENLOOMI_VERSION`, `OPENLOOMI_DMG_PATH`,
+  // `OPENLOOMI_REPO`, `OPENLOOMI_DOCS_BASE`, `OPENLOOMI_INSTALL_ROOT`,
+  // `GITHUB_TOKEN` / `GH_TOKEN`, etc. from the parent process env. Those
+  // propagate by default — no explicit `env` override. See issue #401
+  // (restricted-network / corporate proxy install) for the full contract,
+  // and openloomi.ai/docs/install/restricted-network for the user-facing
+  // narrative. The bridge intentionally does NOT strip these here: doing
+  // so would silently break `--offline <path>` and the env-var form of
+  // the same path.
   return await new Promise((resolve) => {
     let stdout = "";
     let stderr = "";
+    let tickHandle = null;
+    let budgetHandle = null;
+    const finalize = (result) => {
+      if (tickHandle) {
+        clearInterval(tickHandle);
+        tickHandle = null;
+      }
+      if (budgetHandle) {
+        clearTimeout(budgetHandle);
+        budgetHandle = null;
+      }
+      resolve(result);
+    };
     const child = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"] });
     child.stdout.on("data", (b) => (stdout += b.toString("utf8")));
     child.stderr.on("data", (b) => (stderr += b.toString("utf8")));
     child.on("error", (e) =>
-      resolve({
+      finalize({
         ok: false,
         code: "SPAWN_FAILED",
         message: String(e?.message || e),
@@ -2116,19 +2457,58 @@ async function runInstallScript({ platformName, yes }) {
           /* ignore malformed */
         }
       }
-      resolve({
+      finalize({
         ok: code === 0,
         code: code === 0 ? "OK" : `EXIT_${code}`,
         stdout,
         stderr,
       });
     });
+    // Drive a 1 Hz heartbeat on stderr so the user sees the install is
+    // still progressing (per issue #397). The interval is best-effort:
+    // we unref() it so it never blocks process exit, and we clear it as
+    // soon as the child exits.
+    if (onTick) {
+      try {
+        onTick();
+      } catch {
+        /* ticker is best-effort */
+      }
+      tickHandle = setInterval(() => {
+        try {
+          onTick();
+        } catch {
+          /* ignore */
+        }
+      }, 1000);
+      if (tickHandle.unref) tickHandle.unref();
+    }
+    // Per-stage budget. SIGKILL on overshoot so a stuck installer never
+    // strands the wizard — the bridge returns INSTALL_TIMEOUT and the
+    // user can retry with --install-timeout <N> or --yes to bypass.
+    if (Number.isFinite(budgetMs) && budgetMs > 0) {
+      budgetHandle = setTimeout(() => {
+        try {
+          child.kill("SIGKILL");
+        } catch {
+          /* already exited */
+        }
+        finalize({
+          ok: false,
+          code: "INSTALL_TIMEOUT",
+          message: `Install exceeded ${budgetMs}ms budget. Re-run with a higher --install-timeout (default ${DEFAULT_INSTALL_TIMEOUT_MS}ms).`,
+          stdout,
+          stderr,
+        });
+      }, budgetMs);
+      if (budgetHandle.unref) budgetHandle.unref();
+    }
   });
 }
 
-async function cmdInstall({ yes = false } = {}) {
+async function cmdInstall({ yes = false, onTick = null, budgetMs = null } = {}) {
   const platformName = detectPlatform();
-  const r = await runInstallScript({ platformName, yes });
+  const r = await runInstallScript({ platformName, yes, onTick, budgetMs });
   // After install, refresh discovery state.
   const status = await buildStatus({ json: true });
   return { install: r, status, installInfo: getInstallInfo() };
@@ -2288,7 +2668,25 @@ async function launchDesktopApp({ desktopMarker, binPath } = {}) {
 // Polls the local OpenLoomi HTTP API until it responds, or the timeout
 // elapses. Used after launching the desktop app to confirm the runtime
 // is up before minting a guest bearer / syncing the AI provider.
-async function waitForApi({ timeoutMs = 30_000, intervalMs = 500 } = {}) {
+//
+// Per-issue #397:
+//   - Accepts an optional `onProgress` ticker (typically built with
+//     makeStageTicker("wait_api", timeoutMs)) so the caller can drive a
+//     1 Hz "waiting for local API (12s / max 90s) …" line on stderr.
+//   - Returns the stable `code: "API_NOT_READY"` on timeout (the older
+//     `code: "TIMEOUT"` is preserved as `legacyCode` so existing callers
+//     that grep for it keep working).
+//   - When the desktop process is confirmed running but the API still
+//     has not woken up, `code` is upgraded to `"PERMISSION_PROMPT_LIKELY"`
+//     so the wizard can surface a TCC-prompt hint instead of a generic
+//     "did not respond" message. `binPath` is forwarded by the caller.
+async function waitForApi({
+  timeoutMs = 30_000,
+  intervalMs = 500,
+  onProgress = null,
+  binPath = null,
+  isPermissionLikely = null, // async () => bool — defaults to probing the bin
+} = {}) {
   const start = Date.now();
   let lastError = null;
   while (Date.now() - start < timeoutMs) {
@@ -2298,14 +2696,203 @@ async function waitForApi({ timeoutMs = 30_000, intervalMs = 500 } = {}) {
     } catch (e) {
       lastError = e;
     }
+    if (onProgress) {
+      try {
+        onProgress({ stage: "wait_api", elapsedMs: Date.now() - start });
+      } catch {
+        /* ticker is best-effort */
+      }
+    }
     await new Promise((r) => setTimeout(r, intervalMs));
+  }
+  const elapsedMs = Date.now() - start;
+  let permissionLikely = false;
+  try {
+    permissionLikely = isPermissionLikely
+      ? await isPermissionLikely()
+      : binPath
+        ? await probeDesktopProcessRunning(binPath)
+        : false;
+  } catch {
+    permissionLikely = false;
   }
   return {
     ok: false,
-    code: "TIMEOUT",
-    elapsedMs: Date.now() - start,
-    message: `OpenLoomi local API did not respond within ${timeoutMs}ms.${lastError ? " last error: " + String(lastError?.message || lastError) : ""}`,
+    legacyCode: "TIMEOUT",
+    code: permissionLikely ? "PERMISSION_PROMPT_LIKELY" : "API_NOT_READY",
+    stage: "wait_api",
+    elapsedMs,
+    permissionLikely,
+    lastError: lastError ? String(lastError?.message || lastError) : null,
+    message: permissionLikely
+      ? `OpenLoomi desktop process is running but the local API did not respond within ${timeoutMs}ms — macOS is likely showing a permission prompt that needs to be approved.`
+      : `OpenLoomi local API did not respond within ${timeoutMs}ms.${lastError ? " last error: " + String(lastError?.message || lastError) : ""}`,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Diagnostics (PR1 — opt-in --diagnostics flag)
+//
+// All subcommands accept `--diagnostics` to dump a redacted JSON snapshot
+// to ~/.openloomi/setup-debug-{ISO}.json and print the path on stderr.
+// The existing flow is unchanged; diagnostics is purely additive.
+// ---------------------------------------------------------------------------
+
+async function buildDiagnosticsProbes() {
+  const disc = discovery({});
+  const desktop = detectDesktopInstalled();
+  // desktopInstall shape matches the schema: { installed, version?, binPath?,
+  //   desktopMarker?, source? }.
+  const desktopInstall = {
+    installed: !!(disc.binPath || desktop.installed),
+    version: getInstallInfo()?.version || null,
+    binPath: disc.binPath || null,
+    desktopMarker:
+      disc.desktopMarker || (desktop.installed ? desktop.marker : null),
+    source: disc.source || null,
+  };
+
+  const matches = [];
+  if (disc.binPath) {
+    try {
+      const running = await probeDesktopProcessRunning(disc.binPath);
+      if (running) matches.push(basename(disc.binPath));
+    } catch {
+      /* noop */
+    }
+  }
+  const desktopProcess = { running: matches.length > 0, matches };
+
+  const baseUrl = openloomiBaseUrl();
+  let localApi = { url: baseUrl, reachable: false };
+  const start = Date.now();
+  try {
+    const res = await fetchWithRetry(
+      `${baseUrl}/api/remote-auth/user`,
+      { method: "GET" },
+      { timeoutMs: 1500, retries: 0 },
+    );
+    localApi = {
+      url: baseUrl,
+      reachable: res.status > 0,
+      status: res.status,
+      latencyMs: Date.now() - start,
+    };
+  } catch (e) {
+    localApi = {
+      url: baseUrl,
+      reachable: false,
+      error: String(e?.message || e),
+    };
+  }
+
+  const tokenPath = readOpenloomiTokenPath();
+  const tokenFile = {
+    present: !!tokenPath,
+    permsOctal: tokenPath ? fileModeOctal(tokenPath) : null,
+  };
+
+  const envShellVarsPresent = [];
+  for (const k of [
+    "ANTHROPIC_API_KEY",
+    "OPENLOOMI_AUTH_TOKEN",
+    "OPENLOOMI_BASE_URL",
+    "OPENLOOMI_BIN",
+    "OPENLOOMI_HOME",
+  ]) {
+    if (process.env[k]) envShellVarsPresent.push(k);
+  }
+  // Code presence of the macOS LaunchAgent plist is enough for the schema
+  // — we don't list persisted env values, only that the persistence layer
+  // exists. PR4 will populate this map for real.
+  const persistedVars = {};
+  if (detectPlatform() === "macos") {
+    const la = join(homedir(), "Library", "LaunchAgents", "com.openloomi.env.plist");
+    if (existsSync(la)) persistedVars["*"] = "launchctl";
+  }
+  const env = {
+    shellVarsPresent: envShellVarsPresent,
+    persistedVars,
+  };
+
+  // CLI probe — Claude only, the bridge does not handle codex auth.
+  const cliProbe = resolveClaudeCliPath();
+  const cli = {
+    claude: {
+      present: !!cliProbe?.path,
+      version: null,
+      authenticated: null,
+    },
+  };
+  if (cliProbe?.path) {
+    const v = await runBin(cliProbe.path, ["--version"], { timeoutMs: 3000 });
+    if (v?.ok && v.stdout) {
+      const m = v.stdout.match(/(\d+\.\d+\.\d+(?:[-+][\w.\-]+)?)/);
+      if (m) cli.claude.version = m[1];
+    }
+  }
+
+  // Provider / guest session — best-effort, never throws.
+  let provider = { active: null, detected: null, match: false };
+  let guestSession = { established: false };
+  try {
+    const ap = await probeAiProvider();
+    const detected = ap?.defaultAgent || null;
+    provider = {
+      active: detected,
+      detected,
+      match: !!ap?.configured,
+    };
+    if (ap?.configured && localApi.reachable) {
+      guestSession = { established: true };
+    }
+  } catch {
+    /* noop */
+  }
+
+  return {
+    desktopInstall,
+    desktopProcess,
+    localApi,
+    tokenFile,
+    env,
+    cli,
+    guestSession,
+    provider,
+  };
+}
+
+async function cmdDiagnostics({ printJson = false } = {}) {
+  const probes = await buildDiagnosticsProbes();
+  const diag = await collectDiagnostics({
+    bridgeVersion: PLUGIN_VERSION,
+    diskPath: join(homedir(), ".openloomi"),
+    probes,
+  });
+  const path = writeDiagnostics(diag, { homeDir: homedir() });
+  if (printJson) {
+    return { ok: true, diagnostics: diag, path };
+  }
+  return { ok: true, path };
+}
+
+// Run diagnostics before the subcommand when --diagnostics is set. Prints
+// the dump path on stderr so it doesn't pollute the JSON on stdout. We
+// return the path so callers can include it in error envelopes if they
+// want (PR2 will plumb this through).
+async function runPreDiagnostics() {
+  try {
+    const r = await cmdDiagnostics({ printJson: false });
+    if (r?.path) {
+      process.stderr.write(`[openloomi:diagnostics] wrote ${r.path}\n`);
+    }
+    return r.path;
+  } catch (e) {
+    process.stderr.write(
+      `[openloomi:diagnostics] failed: ${String(e?.message || e)}\n`,
+    );
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -2316,6 +2903,14 @@ async function main() {
   const argv = process.argv.slice(2);
   const args = parseArgs(argv);
   const sub = args._[0];
+
+  // PR1: opt-in --diagnostics runs before the subcommand so users get a
+  // snapshot even when the subcommand errors out. We never `await` the
+  // subcommand inside the catch — we just print the path on stderr.
+  const wantsDiag = args.diagnostics === true || args.diagnostics === "true";
+  if (wantsDiag) {
+    await runPreDiagnostics();
+  }
 
   switch (sub) {
     case "version": {
@@ -2337,11 +2932,18 @@ async function main() {
       // anything. If a step can't be auto-resolved (e.g. AI provider needed
       // but no env key, or login failed), we return `awaiting_user_action`
       // with a clear `nextAction` and stop.
+      //
+      // Per-issue #397: timeouts are now per-stage (install / launch /
+      // wait_api + permission_grace), each independently configurable
+      // through CLI flags. `--max-wait` is kept as a global cap. Long
+      // stages emit a throttled "stage X (Ys / max Zs) …" heartbeat on
+      // stderr so the user sees progress in their terminal.
       const explicit = args["bin-path"] || null;
       const yesFlag = !!args.yes;
-      const maxWaitMs = Number(args["max-wait"] || 120_000);
+      const stages = readStageTimeouts(args);
       const maxSteps = 8; // hard ceiling on chained transitions
       const steps = [];
+      const stageStartedAt = Date.now();
 
       const record = (name, ok, detail) => {
         steps.push({ step: name, ok, at: Date.now(), ...detail });
@@ -2401,12 +3003,36 @@ async function main() {
 
         // 1. Install.
         if (!status.installed && status.nextAction === "install_openloomi") {
-          const r = await cmdInstall({ yes: yesFlag });
-          record("install", !!r.install?.ok, { code: r.install?.code });
+          const installTicker = makeStageTicker("install", stages.installMs);
+          installTicker();
+          const r = await cmdInstall({
+            yes: yesFlag,
+            onTick: () => installTicker(),
+            budgetMs: stages.installMs,
+          });
+          record("install", !!r.install?.ok, {
+            code: r.install?.code,
+            elapsedMs:
+              r.install && Number.isFinite(r.install.elapsedMs)
+                ? r.install.elapsedMs
+                : null,
+          });
           if (!r.install?.ok) {
+            const elapsedMs = Date.now() - stageStartedAt;
             out({
               ok: false,
               setup: "install_failed",
+              code: r.install?.code || "EXIT_NONZERO",
+              stage: "install",
+              elapsedMs,
+              canResume: r.install?.code === "INSTALL_TIMEOUT",
+              hints:
+                r.install?.code === "INSTALL_TIMEOUT"
+                  ? [
+                      "Re-run /openloomi:setup --yes --install-timeout 600000 to give the download more time.",
+                      "If you are on a slow or metered connection, see https://openloomi.ai/docs/install/restricted-network.",
+                    ]
+                  : undefined,
               steps,
               install: r.install,
               status: r.status,
@@ -2429,13 +3055,79 @@ async function main() {
             out({ ok: false, setup: "launch_failed", steps, launch, status });
             return;
           }
-          const wait = await waitForApi({ timeoutMs: maxWaitMs });
+          const apiTicker = makeStageTicker("wait_api", stages.apiMs);
+          // Prime the ticker so the user sees feedback within ~1 s.
+          apiTicker();
+          const wait = await waitForApi({
+            timeoutMs: stages.apiMs,
+            onProgress: () => apiTicker(),
+            binPath: status.binPath,
+          });
           record("wait_api", wait.ok, {
             elapsedMs: wait.elapsedMs,
             url: wait.url,
+            code: wait.code,
+            permissionLikely: wait.permissionLikely,
           });
           if (!wait.ok) {
-            out({ ok: false, setup: "api_not_ready", steps, wait, status });
+            const elapsedMs = Date.now() - stageStartedAt;
+            // Apply the permission_grace budget on top of apiMs only when
+            // the desktop process is actually running. That way a slow
+            // download does NOT silently extend the wait — permission
+            // grace is exclusively for "process up but TCC blocking".
+            let effectiveBudget = stages.apiMs;
+            if (wait.permissionLikely) {
+              effectiveBudget += stages.permissionMs;
+              // One more bounded wait_for_api cycle for the permission
+              // prompt to be approved by the user.
+              const graceTicker = makeStageTicker(
+                "permission_grace",
+                stages.permissionMs,
+              );
+              graceTicker();
+              const graceWait = await waitForApi({
+                timeoutMs: stages.permissionMs,
+                onProgress: () => graceTicker(),
+                binPath: status.binPath,
+              });
+              if (graceWait.ok) {
+                record("wait_api.grace", true, {
+                  elapsedMs: graceWait.elapsedMs,
+                  url: graceWait.url,
+                });
+                continue;
+              }
+              record("wait_api.grace", false, {
+                elapsedMs: graceWait.elapsedMs,
+                code: graceWait.code,
+              });
+            }
+            // Honor the global cap (--max-wait) once we know the user
+            // asked for a ceiling smaller than what we've already spent.
+            const overCap =
+              elapsedMs > stages.totalMs + stages.permissionMs;
+            const hints = apiNotReadyHints({
+              stage: wait.stage || "wait_api",
+              platformName: detectPlatform(),
+              canResume: true,
+            });
+            out({
+              ok: false,
+              setup: "api_not_ready",
+              code: wait.code,
+              stage: wait.stage || "wait_api",
+              elapsedMs,
+              effectiveBudgetMs: effectiveBudget,
+              overCap,
+              canResume: true,
+              resumeCommand:
+                "/openloomi:setup --yes --max-wait " +
+                Math.max(stages.totalMs, 180_000),
+              hints,
+              steps,
+              wait,
+              status,
+            });
             return;
           }
           continue;
@@ -2456,13 +3148,79 @@ async function main() {
             out({ ok: false, setup: "launch_failed", steps, launch, status });
             return;
           }
-          const wait = await waitForApi({ timeoutMs: maxWaitMs });
+          const apiTicker = makeStageTicker("wait_api", stages.apiMs);
+          // Prime the ticker so the user sees feedback within ~1 s.
+          apiTicker();
+          const wait = await waitForApi({
+            timeoutMs: stages.apiMs,
+            onProgress: () => apiTicker(),
+            binPath: status.binPath,
+          });
           record("wait_api", wait.ok, {
             elapsedMs: wait.elapsedMs,
             url: wait.url,
+            code: wait.code,
+            permissionLikely: wait.permissionLikely,
           });
           if (!wait.ok) {
-            out({ ok: false, setup: "api_not_ready", steps, wait, status });
+            const elapsedMs = Date.now() - stageStartedAt;
+            // Apply the permission_grace budget on top of apiMs only when
+            // the desktop process is actually running. That way a slow
+            // download does NOT silently extend the wait — permission
+            // grace is exclusively for "process up but TCC blocking".
+            let effectiveBudget = stages.apiMs;
+            if (wait.permissionLikely) {
+              effectiveBudget += stages.permissionMs;
+              // One more bounded wait_for_api cycle for the permission
+              // prompt to be approved by the user.
+              const graceTicker = makeStageTicker(
+                "permission_grace",
+                stages.permissionMs,
+              );
+              graceTicker();
+              const graceWait = await waitForApi({
+                timeoutMs: stages.permissionMs,
+                onProgress: () => graceTicker(),
+                binPath: status.binPath,
+              });
+              if (graceWait.ok) {
+                record("wait_api.grace", true, {
+                  elapsedMs: graceWait.elapsedMs,
+                  url: graceWait.url,
+                });
+                continue;
+              }
+              record("wait_api.grace", false, {
+                elapsedMs: graceWait.elapsedMs,
+                code: graceWait.code,
+              });
+            }
+            // Honor the global cap (--max-wait) once we know the user
+            // asked for a ceiling smaller than what we've already spent.
+            const overCap =
+              elapsedMs > stages.totalMs + stages.permissionMs;
+            const hints = apiNotReadyHints({
+              stage: wait.stage || "wait_api",
+              platformName: detectPlatform(),
+              canResume: true,
+            });
+            out({
+              ok: false,
+              setup: "api_not_ready",
+              code: wait.code,
+              stage: wait.stage || "wait_api",
+              elapsedMs,
+              effectiveBudgetMs: effectiveBudget,
+              overCap,
+              canResume: true,
+              resumeCommand:
+                "/openloomi:setup --yes --max-wait " +
+                Math.max(stages.totalMs, 180_000),
+              hints,
+              steps,
+              wait,
+              status,
+            });
             return;
           }
           continue;
@@ -2607,6 +3365,15 @@ async function main() {
       });
       return;
     }
+    case "diagnostics": {
+      // PR1: explicit diagnostics subcommand — emits the full JSON to
+      // stdout (for piping) and ALSO writes the file at
+      // ~/.openloomi/setup-debug-{ISO}.json (matching the --diagnostics
+      // flag behavior on every other subcommand).
+      const r = await cmdDiagnostics({ printJson: true });
+      out(r);
+      return;
+    }
     case "help": {
       process.stdout.write(
         [
@@ -2626,6 +3393,7 @@ async function main() {
           "  install-hooks                    merge into ~/.claude/settings.json",
           "  uninstall-hooks                  strip plugin hook block",
           "  hooks-status                     report merge state",
+          "  diagnostics                      redacted JSON setup snapshot",
           "  help                             this help",
           "",
         ].join("\n"),
@@ -2648,6 +3416,7 @@ async function main() {
           "install-hooks",
           "uninstall-hooks",
           "hooks-status",
+          "diagnostics",
           "help",
         ],
       });

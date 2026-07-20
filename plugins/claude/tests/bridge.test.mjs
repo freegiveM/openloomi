@@ -29,6 +29,7 @@ import {
 import { tmpdir } from "node:os";
 import {
   createFakeOpenLoomiBin,
+  isWindows,
   makeIsolatedEnv,
   makePath,
   mergeEnv,
@@ -783,3 +784,143 @@ test("setup-status exposes canGuestLogin=false when API is unreachable", () => {
     assert.equal(j.apiReachable, false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Issue #397 — per-stage timeouts, live-progress stderr, actionable payload
+// ---------------------------------------------------------------------------
+//
+// The tests below exercise the wizard end-to-end, but stage the box so it
+// lands in the `api_not_ready` branch (desktop installed but local API never
+// responds). They assert:
+//   - the legacy `setup: "api_not_ready"` shape is preserved
+//   - the new stable `code` / `stage` / `elapsedMs` / `hints` /
+//     `canResume` / `resumeCommand` fields are present
+//   - the live-progress stderr heartbeat fires at least once
+//   - `--max-wait` still acts as a global cap (back-compat)
+//
+// Windows runs gtk-launch-style launchers differently; the matching Windows
+// coverage lives in bridge.windows.test.mjs.
+const isUnix = !isWindows;
+
+test(
+  "setup returns API_NOT_READY with stable code + hints when the local API never responds (issue #397)",
+  { skip: !isUnix || existsSync("/Applications/OpenLoomi.app") || existsSync("/opt/openloomi") },
+  async () => {
+    await withClaHomeAsync({}, async (env, { home }) => {
+      // Stage the desktop-installed-but-helper-missing state the wizard
+      // treats as "open the app to finalize". The wizard then launches the
+      // desktop (we fake it via a stub `gtk-launch`) and tries to wait
+      // for the API; the API is forced to a dead port so it never
+      // responds.
+      mkdirSync(join(home, ".local", "share", "openloomi"), {
+        recursive: true,
+      });
+
+      // Fake gtk-launch: spawn-and-exit-0. The bridge on Linux shells out
+      // to `gtk-launch openloomi`; on a CI box without it, the spawn
+      // emits `error` → SPAWN_FAILED → launch_failed (which is a
+      // different stop condition). We don't want that branch here.
+      const fakeBin = mkdtempSync(join(tmpdir(), "openloomi-fakebin-"));
+      try {
+        writeFileSync(
+          join(fakeBin, "gtk-launch"),
+          "#!/bin/sh\nexit 0\n",
+          { mode: 0o755 },
+        );
+        chmodSync(join(fakeBin, "gtk-launch"), 0o755);
+
+        const result = await runAsync(
+          [
+            "setup",
+            "--yes",
+            "--api-timeout",
+            "1500",
+            "--max-wait",
+            "3000",
+          ],
+          {
+            ...env,
+            PATH: makePath([fakeBin]),
+            OPENLOOMI_BASE_URL: "http://127.0.0.1:1",
+          },
+        );
+        assert.equal(result.code, 0);
+        const j = JSON.parse(result.stdout);
+
+        assert.equal(j.setup, "api_not_ready");
+        assert.equal(j.code, "API_NOT_READY");
+        assert.equal(j.stage, "wait_api");
+        assert.equal(j.canResume, true);
+        assert.ok(typeof j.resumeCommand === "string");
+        assert.ok(j.resumeCommand.startsWith("/openloomi:setup"));
+        assert.ok(Array.isArray(j.hints));
+        assert.ok(j.hints.length >= 1);
+        assert.ok(j.hints.every((h) => typeof h === "string"));
+        // elapsedMs must be wall-clock from wizard start. Loose lower-bound.
+        assert.ok(j.elapsedMs >= 1000, `elapsedMs=${j.elapsedMs}`);
+        assert.ok(
+          j.effectiveBudgetMs >= 1500,
+          `effectiveBudgetMs=${j.effectiveBudgetMs}`,
+        );
+        // Live progress heartbeat must have appeared at least once on stderr.
+        assert.ok(
+          result.stderr.includes("waiting for local API"),
+          `stderr should contain the heartbeat. got: ${result.stderr}`,
+        );
+        // Steps trail must include the new fields.
+        const waitApi = (j.steps || []).find((s) => s.step === "wait_api");
+        assert.ok(waitApi, "wait_api step missing");
+        assert.equal(waitApi.code, "API_NOT_READY");
+      } finally {
+        rmSync(fakeBin, { recursive: true, force: true });
+      }
+    });
+  },
+);
+
+test(
+  "setup honors --max-wait as a global cap when --api-timeout is omitted (issue #397 back-compat)",
+  { skip: !isUnix || existsSync("/Applications/OpenLoomi.app") || existsSync("/opt/openloomi") },
+  async () => {
+    await withClaHomeAsync({}, async (env, { home }) => {
+      mkdirSync(join(home, ".local", "share", "openloomi"), {
+        recursive: true,
+      });
+      const fakeBin = mkdtempSync(join(tmpdir(), "openloomi-fakebin-"));
+      try {
+        writeFileSync(
+          join(fakeBin, "gtk-launch"),
+          "#!/bin/sh\nexit 0\n",
+          { mode: 0o755 },
+        );
+        chmodSync(join(fakeBin, "gtk-launch"), 0o755);
+
+        const t0 = Date.now();
+        const result = await runAsync(
+          ["setup", "--yes", "--max-wait", "2000"],
+          {
+            ...env,
+            PATH: makePath([fakeBin]),
+            OPENLOOMI_BASE_URL: "http://127.0.0.1:1",
+          },
+        );
+        const elapsed = Date.now() - t0;
+
+        assert.equal(result.code, 0);
+        const j = JSON.parse(result.stdout);
+        // The failure shape from issue #397 is stable across name-flipping.
+        assert.equal(j.setup, "api_not_ready");
+        assert.ok(["API_NOT_READY", "PERMISSION_PROMPT_LIKELY"].includes(j.code));
+        // --max-wait=2000 should NOT stall the wizard for the full 120 s
+        // default — back-compat callers must still get a prompt fail.
+        assert.ok(
+          elapsed < 60_000,
+          `wizard stalled past the --max-wait cap (took ${elapsed}ms)`,
+        );
+      } finally {
+        rmSync(fakeBin, { recursive: true, force: true });
+      }
+    });
+  },
+);
+
