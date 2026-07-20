@@ -277,8 +277,3 @@ commands.allow = ["get_pet_config"]
 identifier = "allow-set-active-theme"
 description = "Allow the set_active_theme command (right-click theme switcher)"
 commands.allow = ["set_active_theme"]
-
-[[permission]]
-identifier = "allow-get-global-cursor-position"
-description = "Allow the get_global_cursor_position command (Loomi Pet hit-test polling — see issue #392)"
-commands.allow = ["get_global_cursor_position"]

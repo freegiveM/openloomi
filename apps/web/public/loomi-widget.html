@@ -53,15 +53,6 @@
         -webkit-user-select: none;
         user-select: none;
         font-family: system-ui, sans-serif;
-        /* #392 — let clicks on transparent corners of the sprite
-           pass through to the underlying app instead of being eaten
-           by the 168×168 NSPanel frame. Explicit opt-back on `.fox`,
-           `.idle-pill`, `#pet-menu`, and `#pet-menu *` below
-           re-enables pointer events for the bits that need to
-           receive them. The `.pending-badge` block stays
-           `pointer-events: none` because it has no handler and is
-           a 22×22 DOM rect the alpha hit-tester can't see. */
-        pointer-events: none;
       }
       body {
         width: var(--size);
@@ -111,26 +102,9 @@
         transform: translate(-50%, -50%);
         transform-origin: 50% 95%;
         display: block;
-        pointer-events: auto;
         -webkit-user-drag: none;
         user-drag: none;
         animation: pet-bob 3.4s ease-in-out infinite;
-      }
-
-      /* #392 — opt-back group. The body / html rule above sets
-         `pointer-events: none` so transparent corners of the sprite
-         pass clicks through. This rule explicitly re-enables pointer
-         events for the three chrome bits that need to receive them:
-         the status pill (`.idle-pill`), the right-click menu
-         (`#pet-menu`), and every descendant of the menu (`#pet-menu
-         *`, so clicks on nested `<button data-op="…">` elements
-         reach the menu's click handler). `.fox` is opted back in by
-         its own rule above. `.pending-badge` stays opted OUT — it
-         has no handler. */
-      .idle-pill,
-      #pet-menu,
-      #pet-menu * {
-        pointer-events: auto;
       }
 
       .pending-badge {
@@ -152,7 +126,6 @@
         font-size: 12px;
         font-weight: 700;
         line-height: 1;
-        pointer-events: none;
       }
       .pending-badge.visible {
         display: flex;
@@ -498,14 +471,6 @@
       <button type="button" data-op="quit" role="menuitem">Quit</button>
     </div>
 
-    <!-- #392 — alpha-aware hit-test canvas. The 168×168 backing
-         store mirrors PET_W / PET_H from `pet::window::build_pet_window`
-         so screen-to-local CSS conversion doesn't need to scale.
-         `hidden` keeps it out of the accessibility tree and out of
-         the visual layout; the JS reads its 2D context directly in
-         `adoptMaskFromLoadedImage`. -->
-    <canvas id="hit-mask" width="168" height="168" hidden></canvas>
-
     <script>
       (function () {
         "use strict";
@@ -553,285 +518,6 @@
           },
         };
         const FALLBACK = "loomi-pet/assets/fox/loomi-idle.png";
-
-        // ===== #392 — alpha-aware hit-test module =========================
-        // Three layers cooperate so the 168×168 NSPanel only claims
-        // events on opaque pixels of the sprite:
-        //   (1) CSS `pointer-events: none` on html/body + opt-back on
-        //       `.fox`, `.idle-pill`, `#pet-menu`, `#pet-menu *` for
-        //       the chrome bits that need to receive them.
-        //   (2) A cached alpha mask + a JS hit-tester
-        //       (`evaluateHitTest`) that decides "claim or pass through"
-        //       on every `mousemove` / `pointerdown` and pushes the
-        //       verdict to the Tauri window via `setIgnoreCursorEvents`.
-        //   (3) A 4 Hz poll of `get_global_cursor_position` so the
-        //       webview can detect "cursor drifted onto an opaque
-        //       pixel" even while the window is in click-through mode
-        //       (macOS won't deliver `mousemove` in that state).
-        //
-        // Constants — mirror `pet::window::build_pet_window`'s
-        // PET_W / PET_H (logical px). A mismatch would mean the
-        // alpha mask is sampled at a different resolution than the
-        // window, and clicks would be classified against the wrong
-        // pixel. ALPHA_THRESHOLD = 32: 16 flickers on antialiased
-        // limbs; 64 carves out real pixels on thin parts of the
-        // sprite. 32 is the middle ground.
-        const MASK_W = 168;
-        const MASK_H = 168;
-        const ALPHA_THRESHOLD = 32;
-
-        // device_query returns physical px (raw mouse coords). The
-        // WebView's `e.clientX/Y` and the alpha mask index space are
-        // in CSS px. On a retina display the conversion factor is the
-        // window's scale_factor(); `window.devicePixelRatio` is the
-        // webview's mirror of the same value.
-        let petScale = window.devicePixelRatio || 1;
-
-        // Per-URL alpha cache. `Map<url, Uint8ClampedArray>` lets
-        // the JS reuse a single sample per sprite across all
-        // (theme, state) pairs and across all cursor positions.
-        const maskCache = new Map();
-        // Alpha buffer for the sprite currently painted into the
-        // fox <img>, plus its source URL. Both are read by
-        // `isFoxPixelVisible` on every cursor move.
-        let currentMask = null;
-        let currentMaskUrl = null;
-
-        // Transient lock — a counter incremented while a gesture is
-        // mid-flight (drag start, menu open, cross-fade). While the
-        // counter is > 0 the hit-tester returns `true` (claim) so a
-        // gesture that started inside the pet can never silently
-        // escape mid-gesture. The OS-level flag is mirrored in
-        // `lastIgnoreState` so redundant IPC round-trips don't fire
-        // on every mousemove.
-        let transientLock = 0;
-        let lastIgnoreState = null;
-
-        // Last known cursor position in CSS px relative to the pet
-        // window. Updated on every `mousemove` (DOM event while the
-        // window is interactive) and on every 250 ms poll tick
-        // (Tauri IPC while the window is in click-through mode).
-        let lastCursorX = 0,
-          lastCursorY = 0;
-
-        // 4 Hz poller handle. Created/destroyed by `syncPollState`
-        // based on `document.hidden`.
-        let pollCursorInterval = null;
-
-        // Sample the alpha channel of `currentMask` at (x, y) and
-        // return true when the pixel is opaque enough to claim a
-        // click. Bounds-checked so out-of-range CSS px return
-        // `false` instead of reading garbage memory from
-        // `currentMask[(y * MASK_W + x) * 4 + 3]`.
-        function isFoxPixelVisible(x, y) {
-          if (!currentMask) return false;
-          if (x < 0 || y < 0 || x >= MASK_W || y >= MASK_H) return false;
-          return currentMask[(y * MASK_W + x) * 4 + 3] >= ALPHA_THRESHOLD;
-        }
-
-        // Build / fetch the cached alpha buffer for the sprite
-        // currently painted into the fox `<img>`. Called from
-        // `setState()`'s `img.onload` BEFORE `fox.src = src` so the
-        // very first `mousemove` after a cross-fade sees a valid
-        // mask.
-        function adoptMaskFromLoadedImage(img) {
-          const url = img.src;
-          let buf = maskCache.get(url);
-          if (!buf) {
-            const c = document.createElement("canvas");
-            c.width = MASK_W;
-            c.height = MASK_H;
-            const cx = c.getContext("2d");
-            cx.drawImage(img, 0, 0, MASK_W, MASK_H);
-            const data = cx.getImageData(0, 0, MASK_W, MASK_H).data;
-            buf = new Uint8ClampedArray(data.buffer.slice(0));
-            maskCache.set(url, buf);
-          }
-          currentMask = buf;
-          currentMaskUrl = url;
-        }
-
-        // True when the event target sits inside one of the
-        // opt-back selectors (`.fox`, `.idle-pill`, `#pet-menu` and
-        // its descendants). Used by `onPointerDown`'s early-return
-        // branch and by `evaluateHitTest` (implicitly — the
-        // body-class check covers in-progress gestures; the
-        // per-event target check lives in `onPointerDown`).
-        function isCursorOverInteractive(target) {
-          if (!target) return false;
-          // Opt-back selectors: .fox, .idle-pill, #pet-menu and its
-          // descendants. `closest` is null-safe on plain nodes.
-          return !!(
-            target.closest &&
-            (target.closest(".fox") ||
-              target.closest(".idle-pill") ||
-              target.closest("#pet-menu"))
-          );
-        }
-
-        // The single decision point: should the next click be
-        // claimed by the pet, or passed through to the underlying
-        // app? Returning `true` claims; `false` passes through.
-        //
-        // Order matters (and is pinned by the tests):
-        //   (a) the transient lock short-circuits to `true` so a
-        //       gesture that started inside the pet can never
-        //       silently escape mid-gesture;
-        //   (b) body classes indicating an in-progress gesture
-        //       (`dragging`, `longpress`, `petMenuOpen`) similarly
-        //       short-circuit;
-        //   (c) only if neither of those fire does the alpha mask
-        //       get consulted.
-        function evaluateHitTest(x, y) {
-          // (a) transient lock: a gesture that started inside the
-          // pet must never silently escape mid-gesture.
-          if (transientLock > 0) return true;
-          // (b) body classes indicating an in-progress gesture.
-          if (document.body.classList.contains("dragging")) return true;
-          if (document.body.classList.contains("longpress")) return true;
-          if (document.body.classList.contains("petMenuOpen")) return true;
-          // (c) alpha mask fallback.
-          return isFoxPixelVisible(x, y);
-        }
-
-        // Push the JS verdict to the OS. Async because the IPC is
-        // async under the hood, but we don't await at the call site
-        // — the caller's `evaluateAndApply()` is best-effort. The
-        // `lastIgnoreState` mirror short-circuits redundant calls
-        // so a stream of `mousemove` events doesn't generate a
-        // storm of IPC round-trips when the verdict is unchanged.
-        async function setIgnoreCursorEvents(ignore) {
-          if (lastIgnoreState === ignore) return;
-          lastIgnoreState = ignore;
-          try {
-            const w = getCurrentWindow();
-            if (w && typeof w.setIgnoreCursorEvents === "function") {
-              await w.setIgnoreCursorEvents(ignore);
-            }
-          } catch (_) {
-            /* swallow — best-effort */
-          }
-        }
-
-        // Run the hit-tester against the last known cursor position
-        // and push the inverted verdict to the OS (claim = ignore
-        // = false, pass-through = ignore = true).
-        function evaluateAndApply() {
-          const claim = evaluateHitTest(lastCursorX, lastCursorY);
-          setIgnoreCursorEvents(!claim);
-        }
-
-        // Acquire the transient lock and immediately claim at the
-        // OS level so a moment between `pointerdown` and the body
-        // class being committed can't slip into click-through. The
-        // explicit OS-claim is the reason this function exists as
-        // a wrapper around `transientLock++` — `evaluateAndApply`
-        // would defer the flag flip until the next mousemove or
-        // poll tick, which is too late for the first frame.
-        function transientLockActive() {
-          transientLock++;
-          // Always claim immediately so the OS-level flag is
-          // correct from the very first pointerdown tick.
-          setIgnoreCursorEvents(false);
-        }
-
-        // Release one level of the transient lock and re-evaluate
-        // so the OS-level flag is restored to whatever the alpha
-        // mask says once the gesture is over.
-        function releaseTransientLock() {
-          if (transientLock > 0) transientLock--;
-          evaluateAndApply();
-        }
-
-        // Convert a pair of physical-px coordinates (from
-        // `device_query` or `outerPosition`) into window-local CSS
-        // px. Returns `null` when the cursor is outside the
-        // 168×168 frame — the poller fires every 250 ms even when
-        // the user is moving the cursor across the rest of the
-        // desktop, and out-of-range indices into the alpha buffer
-        // would read garbage memory.
-        function screenToLocalCSS(px, py) {
-          // Convert physical px (device_query, mouse coords) to CSS px.
-          // `Math.floor(px) / petScale` (not `Math.floor(px / petScale)`)
-          // so the test can grep for the division by `petScale` and
-          // confirm retina displays convert against `devicePixelRatio`.
-          const cx = Math.floor(px) / petScale;
-          const cy = Math.floor(py) / petScale;
-          if (cx < 0 || cy < 0 || cx >= MASK_W || cy >= MASK_H) return null;
-          return { x: cx, y: cy };
-        }
-
-        // One poll tick: read global cursor, project into window-
-        // local CSS, update `lastCursorX/Y`, re-evaluate. Best-
-        // effort — every failure mode is swallowed because the
-        // poller must not throw into `setInterval`.
-        async function pollCursorOnce() {
-          if (document.hidden) return;
-          try {
-            const t = window.__TAURI__;
-            if (!t || !t.core || !t.core.invoke) return;
-            const pos = await t.core.invoke("get_global_cursor_position");
-            if (!pos) return;
-            // Convert to window-local CSS coords. We need the
-            // window's top-left corner in screen coords; Tauri's
-            // `outerPosition` exposes it.
-            const w = getCurrentWindow();
-            if (!w || typeof w.outerPosition !== "function") return;
-            const outer = await w.outerPosition();
-            const local = screenToLocalCSS(pos.x - outer.x, pos.y - outer.y);
-            if (!local) return;
-            lastCursorX = local.x;
-            lastCursorY = local.y;
-            evaluateAndApply();
-          } catch (_) {
-            /* swallow */
-          }
-        }
-
-        // Start/stop the 4 Hz poller based on document visibility.
-        // Cutting IPC to zero when the document is hidden saves the
-        // host from 4 wake-ups/s and prevents stale `lastCursorX/Y`
-        // from triggering spurious mode flips on the next visible
-        // tick.
-        function syncPollState() {
-          if (document.hidden) {
-            if (pollCursorInterval) {
-              clearInterval(pollCursorInterval);
-              pollCursorInterval = null;
-            }
-          } else {
-            if (!pollCursorInterval)
-              pollCursorInterval = setInterval(pollCursorOnce, 250);
-          }
-        }
-
-        // `mousemove` handler — the fast path while the window is
-        // interactive. Updates `lastCursorX/Y` and re-evaluates so
-        // the OS-level flag matches the JS state within a frame.
-        function onDocMouseMove(e) {
-          lastCursorX = e.clientX;
-          lastCursorY = e.clientY;
-          evaluateAndApply();
-        }
-
-        // `pointerdown` capture handler — the first press of a
-        // session has no preceding `mousemove` to seed the cached
-        // cursor position. Without this capture-phase seed,
-        // `evaluateHitTest` would see `(0, 0)` for the first click
-        // and route it against the top-left corner of the sprite.
-        function onDocPointerDownCapture(e) {
-          lastCursorX = e.clientX;
-          lastCursorY = e.clientY;
-        }
-
-        // Attach doc-level listeners. The poller fires when the
-        // document becomes visible (initial run + every
-        // visibilitychange back to "visible").
-        document.addEventListener("mousemove", onDocMouseMove);
-        document.addEventListener("pointerdown", onDocPointerDownCapture, true);
-        document.addEventListener("visibilitychange", syncPollState);
-        syncPollState();
-        // ===== end #392 — alpha-aware hit-test module ====================
 
         // Runtime overrides — populated from `PetConfigView.overrides`
         // when the host returns the config on boot (and again on every
@@ -993,25 +679,16 @@
           fox.dataset.state = key;
           const src = imageFor(currentTheme, key);
           if (fox.getAttribute("src") !== src) {
-            // #392 — hold the transient lock for the duration of the
-            // cross-fade so clicks mid-fade can't slip into click-through.
-            transientLockActive();
             // Cross-fade the swap so the eye doesn't catch the load flicker.
             fox.style.opacity = "0";
             // Preload the next frame before flipping src, so we paint
             // completed pixels in one step.
             const img = new Image();
             img.onload = function () {
-              // #392 — adopt mask BEFORE flipping src so first mousemove
-              // after a cross-fade sees a valid mask for the new sprite.
-              adoptMaskFromLoadedImage(img);
               fox.src = src;
               // rAF ensures the new src is committed before we re-fade in.
               requestAnimationFrame(() => {
                 fox.style.opacity = "";
-                // #392 — release the lock so OS-level click-through flag
-                // is restored to whatever the new alpha mask says.
-                releaseTransientLock();
               });
             };
             img.onerror = function () {
@@ -1026,9 +703,6 @@
                 fox.src = FALLBACK;
               }
               fox.style.opacity = "";
-              // #392 — release on error so failed load doesn't strand the
-              // window in "always claim" mode.
-              releaseTransientLock();
             };
             img.src = src;
           }
@@ -1129,13 +803,6 @@
           petMenu.style.left = left + "px";
           petMenu.style.top = top + "px";
           petMenuOpen = true;
-          // #392 — acquire the transient lock so the alpha hit-tester
-          // can't flip to click-through while the menu is open. The
-          // menu is a DOM overlay that extends beyond the 168×168
-          // frame; without the lock, a cursor move that lands outside
-          // the new mask bounds would route the next click to the
-          // underlying app instead of to the menu.
-          transientLockActive();
         }
 
         function closePetMenu() {
@@ -1266,22 +933,6 @@
           // own click semantics (Open Loomi / Settings / theme picker
           // / Quit) so we bail before any bookkeeping happens.
           if (petMenu && petMenu.contains(e.target)) return;
-          // #392 — alpha-aware early-return. The NSPanel has
-          // `accept_first_mouse(true)` so the very first click
-          // reaches the webview even while the window is in
-          // click-through mode. If the press lands on a transparent
-          // pixel AND not on an interactive chrome element (`.fox`,
-          // `.idle-pill`, `#pet-menu`), absorb it without starting
-          // the drag — the user has to click twice on a transparent
-          // corner (first to disarm `accept_first_mouse`, second to
-          // pass through). That's the documented tradeoff in the
-          // design comment.
-          if (
-            !isCursorOverInteractive(e.target) &&
-            !isFoxPixelVisible(e.clientX, e.clientY)
-          ) {
-            return;
-          }
           if (e.button !== 0) return; // primary button only
           downX = e.clientX;
           downY = e.clientY;
@@ -1306,14 +957,6 @@
             }
             longpressTimer = null;
           }, LONGPRESS_MS);
-          // #392 — acquire the transient lock so the drag (which
-          // moves the OS cursor outside the 168×168 frame and
-          // therefore outside the alpha mask's index space) is
-          // always claimed. The lock is released on the matching
-          // `pointerup` because `evaluateAndApply` is called from
-          // `onPointerMove` / `setState`'s rAF / `pollCursorOnce`,
-          // none of which fire while a native drag is in progress.
-          transientLockActive();
           // Immediately hand off to Tauri's native drag. The OS will move
           // the window and dispatch the corresponding pointermove/up events
           // on the new position. If the user releases without moving, the

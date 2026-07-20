@@ -433,11 +433,6 @@ fn main() {
             // always has a way to discover its theme on cold boot.
             pet::get_pet_config,
             pet::set_active_theme,
-            // #392 — global cursor position polled by the widget so
-            // the alpha-aware hit-tester can detect cursor drift
-            // while the window is in click-through mode (macOS won't
-            // deliver `mousemove` in that state).
-            pet::get_global_cursor_position,
         ])
         .setup(|app| {
             // Deliver AppHandle to the background server thread immediately
