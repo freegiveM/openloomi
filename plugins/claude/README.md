@@ -85,12 +85,6 @@ edits are picked up live — useful when hacking on the plugin itself.
 
 Inside any session, `/openloomi:help` lists all 8 commands.
 
-> **Restricted networks?** If `github.com` / `api.github.com` /
-> `objects.githubusercontent.com` is blocked by your firewall, see the
-> [Restricted-Network Install guide](/docs/install/restricted-network)
-> for the offline/corporate-proxy path (`OPENLOOMI_VERSION`,
-> `OPENLOOMI_INSTALLER_PATH`, mirror verification, …).
-
 ---
 
 ## First-run setup

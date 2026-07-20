@@ -86,12 +86,6 @@ only picks up the new plugin when a fresh process loads the cache.
   `npm i -g @openai/codex`) if you want OpenLoomi to route through your
   Codex runtime.
 
-> **Restricted networks?** If `github.com` / `api.github.com` /
-> `objects.githubusercontent.com` is blocked by your firewall, see the
-> [Restricted-Network Install guide](/docs/install/restricted-network)
-> for the offline/corporate-proxy path (`OPENLOOMI_VERSION`,
-> `OPENLOOMI_INSTALLER_PATH`, mirror verification, …).
-
 ---
 
 ## Set up OpenLoomi Desktop
