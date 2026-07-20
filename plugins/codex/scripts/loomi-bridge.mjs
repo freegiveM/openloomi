@@ -4551,6 +4551,16 @@ async function setup(args) {
   const flags = parseFlags(args);
   const yesFlag = !!flags.yes || !!flags.confirm;
   const maxWaitMs = Number(flags["max-wait"] || 120_000);
+  // Per-stage budgets, names + defaults aligned with Claude's
+  // `/openloomi:setup` so the two plugins speak the same dial language.
+  const apiTimeoutMs = Number(flags["api-timeout"] || 120_000);
+  const installTimeoutMs = Number(flags["install-timeout"] || 300_000);
+  const permissionTimeoutMs = Number(flags["permission-timeout"] || 60_000);
+  // --launch-timeout is recognized for parity; `open -a` is fire-and-forget
+  // so it currently has no observable wait. Stored for the structured
+  // payloads so it shows up in audit + help output.
+  const launchTimeoutMs = Number(flags["launch-timeout"] || 10_000);
+  const stages = { installMs: installTimeoutMs, apiMs: apiTimeoutMs, permissionMs: permissionTimeoutMs, launchMs: launchTimeoutMs };
   const maxSteps = 8; // hard ceiling on chained transitions
   const steps = [];
 
@@ -4602,7 +4612,7 @@ async function setup(args) {
         return;
       }
       const r = await runBridgeSubcommand(["install-openloomi", "--confirm"], {
-        timeoutMs: 15 * 60 * 1000,
+        timeoutMs: stages.installMs,
       });
       const ok = r.ok && r.parsed && r.parsed.installed !== false;
       record("install", ok, {
@@ -4735,21 +4745,74 @@ async function setup(args) {
         });
         return;
       }
-      const wait = await waitForApi({ timeoutMs: maxWaitMs });
+      const wait = await waitForApi({ timeoutMs: stages.apiMs });
       record("wait_api", !!wait.ok, {
         elapsedMs: wait.elapsedMs,
         url: wait.url,
         code: wait.code,
       });
+
+      // Permission grace: if the main wait exhausts the API budget but the
+      // desktop process is already running, give it one more poll window
+      // (--permission-timeout) to absorb macOS TCC / Accessibility prompts.
+      if (!wait.ok && stages.permissionMs > 0) {
+        const graceWait = await waitForApi({ timeoutMs: stages.permissionMs });
+        record("wait_api_grace", !!graceWait.ok, {
+          elapsedMs: graceWait.elapsedMs,
+          url: graceWait.url,
+          code: graceWait.code,
+        });
+        if (graceWait.ok) {
+          // Promote the grace success: OpenLoomi is up after a TCC prompt.
+          continue;
+        }
+        // Surface the fuller graceWait as part of the payload too.
+        wait.elapsedMs = (wait.elapsedMs || 0) + (graceWait.elapsedMs || 0);
+        wait.permissionLikely = true;
+        wait.graceWait = graceWait;
+      }
+
       if (!wait.ok) {
+        const elapsedMs = wait.elapsedMs || 0;
+        const effectiveBudgetMs = stages.apiMs + stages.permissionMs;
+        const overCap = elapsedMs > maxWaitMs;
+        const raiseBy = 60_000;
+        const resumeBudget = Math.max(stages.apiMs + raiseBy, stages.apiMs * 2);
+        const resumeCommand = [
+          "node",
+          "<plugin>/scripts/loomi-bridge.mjs",
+          "setup",
+          "--yes",
+          "--max-wait",
+          String(resumeBudget + stages.permissionMs),
+        ].join(" ");
+        const hints = wait.permissionLikely
+          ? [
+              "The OpenLoomi desktop process is running but the local API never woke up — this is almost always a macOS TCC prompt (Automation / Accessibility) that needs to be approved once.",
+              "Open System Settings → Privacy & Security → Automation / Accessibility and approve OpenLoomi, then re-run setup.",
+              "Re-running the wizard is the recommended action. The bridge has already prepared a resumeCommand.",
+            ]
+          : [
+              "The local HTTP API did not respond within the wait budget.",
+              "Wait for the OpenLoomi desktop app to finish loading (the first launch can take a moment), then re-run setup.",
+              "Re-running the wizard is the recommended action — already-completed steps will be skipped. The bridge has already prepared a resumeCommand.",
+            ];
         writeJson({
           ok: false,
           setup: "api_not_ready",
+          code: wait.permissionLikely ? "PERMISSION_PROMPT_LIKELY" : "API_NOT_READY",
+          stage: "wait_api",
+          elapsedMs,
+          effectiveBudgetMs,
+          canResume: true,
+          resumeCommand,
+          hints,
+          overCap,
           steps,
           status,
           wait,
           message:
-            "OpenLoomi was launched but the local HTTP API did not become reachable in time. Wait for the desktop app to finish loading, then re-run setup.",
+            "OpenLoomi was launched but the local HTTP API did not become reachable in time.",
         });
         return;
       }

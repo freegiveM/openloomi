@@ -1,6 +1,6 @@
 ---
 name: openloomi
-description: "Use local OpenLoomi from Codex. Triggers: Loomi, OpenLoomi, personal assistant, memory, workspace context, setup."
+description: "Use local OpenLoomi from Codex. Triggers: Loomi, OpenLoomi, personal assistant, memory, workspace context, setup, install openloomi, setup openloomi, 一键装好并跑起来, finalize openloomi, fix openloomi."
 allowed-tools: "Bash(node $SKILL_DIR/../../scripts/loomi-bridge.mjs *)"
 ---
 
@@ -44,11 +44,13 @@ For installation guidance, call:
 node "$SKILL_DIR/../../scripts/loomi-bridge.mjs" install-instructions
 ```
 
-If the user asks to install OpenLoomi or explicitly approves installation, call:
+If the user asks to install OpenLoomi or explicitly approves installation, run the end-to-end wizard in one invocation:
 
 ```bash
-node "$SKILL_DIR/../../scripts/loomi-bridge.mjs" install-openloomi --confirm
+node "$SKILL_DIR/../../scripts/loomi-bridge.mjs" setup --yes
 ```
+
+That walks the whole state machine: resolve the official release → download → install → set `OPENLOOMI_AGENT_PROVIDER=codex` in the GUI launchd / environment.d → launch the OpenLoomi desktop app → wait for the local API on `http://localhost:3414` → mint a guest session token into `~/.openloomi/token`. Invoking this skill (or the user saying "install" / "install and run" / "一键装好并跑起来") counts as explicit approval to pass `--yes`. Sandbox prompts for network / install to `/Applications` / launching the GUI will appear — that's expected; approve them and the wizard continues.
 
 The bridge resolves the official GitHub release artifact for the current
 platform and architecture automatically, downloads it, and installs it with the
