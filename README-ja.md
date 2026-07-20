@@ -18,6 +18,14 @@
 
 </div>
 
+<div align="center">
+
+⭐ **OpenLoomi が役に立ったなら、GitHub で star をいただけると嬉しいです！** より多くの人にプロジェクトを知ってもらい、開発を続ける励みになります。🙏
+
+[![GitHub Repo stars](https://img.shields.io/github/stars/melandlabs/openloomi?style=social&label=Star)](https://github.com/melandlabs/openloomi)
+
+</div>
+
 ---
 
 ## OpenLoomiとは？
