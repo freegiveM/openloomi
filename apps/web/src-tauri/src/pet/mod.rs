@@ -6,6 +6,7 @@
 
 use std::sync::atomic::{AtomicI64, AtomicUsize, Ordering};
 
+use device_query::DeviceQuery;
 use tauri::Emitter;
 use tauri::Manager;
 
