@@ -30,6 +30,11 @@ const SESSION_BOOTSTRAP_POLL_MS = 2000;
 const SESSION_API_TIMEOUT_MS = 5000;
 const API_PROBE_TIMEOUT_MS = 1000;
 const CONNECTOR_STATUS_TIMEOUT_MS = 2500;
+const SETUP_MAX_WAIT_DEFAULT_MS = 120000;
+const SETUP_API_TIMEOUT_DEFAULT_MS = 120000;
+const SETUP_INSTALL_TIMEOUT_DEFAULT_MS = 300000;
+const SETUP_LAUNCH_TIMEOUT_DEFAULT_MS = 10000;
+const SETUP_PERMISSION_TIMEOUT_DEFAULT_MS = 60000;
 const MAX_COMMAND_OUTPUT = 4096;
 const DEBUG_DISCOVERY = process.env.OPENLOOMI_DEBUG_DISCOVERY === "1";
 // Absolute directory of this bridge script. Used to locate
@@ -168,6 +173,8 @@ const COMMANDS = new Set([
 if (process.env.OPENLOOMI_TEST_HOOKS === "1") {
   COMMANDS.add("__test-ensure-runtime-env");
   COMMANDS.add("__test-launch-desktop");
+  COMMANDS.add("__test-setup-flags");
+  COMMANDS.add("__test-wait-for-api");
 }
 
 // Auto-archive limits (Stop hook). Codex's hook payload doesn't expose
@@ -291,8 +298,45 @@ function writeJson(payload, exitCode = 0) {
   process.exitCode = exitCode;
 }
 
-async function setupStatus() {
-  writeJson(await buildSetupStatus());
+const setupProgressSeconds = new Map();
+const setupStageLabels = {
+  install: "installing OpenLoomi",
+  wait_api: "waiting for local API",
+  permission_grace: "waiting on macOS permission prompt",
+};
+
+function formatSetupDuration(ms) {
+  const seconds = Math.max(0, Math.floor(ms / 1000));
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  const remainder = seconds % 60;
+  return remainder ? `${minutes}m${remainder}s` : `${minutes}m`;
+}
+
+function makeSetupStageTicker(stage, budgetMs) {
+  if (!Number.isFinite(budgetMs) || budgetMs <= 0) return () => {};
+  const startedAt = Date.now();
+  setupProgressSeconds.set(stage, -1);
+  return ({ force = false } = {}) => {
+    const elapsedMs = Date.now() - startedAt;
+    const second = Math.floor(elapsedMs / 1000);
+    if (!force && setupProgressSeconds.get(stage) === second) return;
+    setupProgressSeconds.set(stage, second);
+    try {
+      process.stderr.write(
+        `  · ${setupStageLabels[stage] || stage}  (${formatSetupDuration(elapsedMs)} / max ${formatSetupDuration(budgetMs)}) …\n`,
+      );
+    } catch {
+      // Progress output is best-effort; stdout remains reserved for JSON.
+    }
+  };
+}
+
+async function setupStatus(args = []) {
+  const flags = parseFlags(args);
+  writeJson(
+    await buildSetupStatus({ explicitApp: flags["bin-path"] || null }),
+  );
 }
 
 async function getCodexRuntimeEnvStatus() {
@@ -348,8 +392,8 @@ function getLoopbackAccessDiagnostic(apiProbe) {
   };
 }
 
-async function buildSetupStatus() {
-  const discovery = await discoverOpenLoomi();
+async function buildSetupStatus({ explicitApp = null } = {}) {
+  const discovery = await discoverOpenLoomi({ explicitApp });
   const token = getTokenStatus();
   const codexRuntimeEnv = await getCodexRuntimeEnvStatus();
   const apiProbe = await probeLocalApi();
@@ -1497,6 +1541,19 @@ function getInstallPlan() {
   };
 }
 
+const SETUP_VALUE_FLAGS = new Set([
+  "max-wait",
+  "api-timeout",
+  "api-timeout-ms",
+  "install-timeout",
+  "install-timeout-ms",
+  "launch-timeout",
+  "launch-timeout-ms",
+  "permission-timeout",
+  "permission-timeout-ms",
+  "bin-path",
+]);
+
 function parseFlags(args) {
   const flags = {
     artifactUrl: null,
@@ -1513,6 +1570,22 @@ function parseFlags(args) {
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
+    const equalsAt = arg.indexOf("=");
+    const setupFlagName = arg.startsWith("--")
+      ? arg.slice(2, equalsAt >= 0 ? equalsAt : undefined)
+      : null;
+
+    if (setupFlagName && SETUP_VALUE_FLAGS.has(setupFlagName)) {
+      if (equalsAt >= 0) {
+        flags[setupFlagName] = arg.slice(equalsAt + 1) || null;
+      } else {
+        const next = args[index + 1];
+        flags[setupFlagName] =
+          next && !next.startsWith("--") ? next : null;
+        if (flags[setupFlagName] !== null) index += 1;
+      }
+      continue;
+    }
 
     if (arg === "--confirm" || arg === "--yes") {
       flags.confirm = true;
@@ -1597,6 +1670,34 @@ function parseFlags(args) {
   }
 
   return flags;
+}
+
+function readSetupTimeouts(flags) {
+  const positiveMs = (value, fallback) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+  };
+  const configuredMaxWait = positiveMs(flags["max-wait"], null);
+  const totalMs = configuredMaxWait || SETUP_MAX_WAIT_DEFAULT_MS;
+  return {
+    totalMs,
+    apiMs: positiveMs(
+      flags["api-timeout"] ?? flags["api-timeout-ms"],
+      configuredMaxWait || SETUP_API_TIMEOUT_DEFAULT_MS,
+    ),
+    installMs: positiveMs(
+      flags["install-timeout"] ?? flags["install-timeout-ms"],
+      configuredMaxWait || SETUP_INSTALL_TIMEOUT_DEFAULT_MS,
+    ),
+    launchMs: positiveMs(
+      flags["launch-timeout"] ?? flags["launch-timeout-ms"],
+      SETUP_LAUNCH_TIMEOUT_DEFAULT_MS,
+    ),
+    permissionMs: positiveMs(
+      flags["permission-timeout"] ?? flags["permission-timeout-ms"],
+      SETUP_PERMISSION_TIMEOUT_DEFAULT_MS,
+    ),
+  };
 }
 
 function validateArtifactUrl(value) {
@@ -3375,12 +3476,11 @@ function launchOpenLoomiForSession(appPath) {
 //   Linux   -> `gtk-launch <desktopId>` (best-effort), then direct spawn fallback
 //   Windows -> `cmd /c start "" <exe>`
 //
-// Before spawning, we also auto-wire OPENLOOMI_AGENT_PROVIDER=codex so the
-// freshly-launched web server picks up the Codex runtime instead of
-// defaulting back to Claude. We only write when the variable is unset:
-// an existing user-set value (codex, claude, anything else) is left
-// untouched. macOS gets launchctl setenv + LaunchAgent; Linux gets the
-// per-user env file; Windows is a no-op (manual configuration).
+// Before spawning, setup persists OPENLOOMI_AGENT_PROVIDER=codex through its
+// runtime-env step. The launcher also injects the value into its child
+// environment so direct Linux/Windows launches cannot fall back to Claude.
+// macOS still relies on the persisted launchd value because LaunchServices
+// owns the final app process.
 async function launchDesktopApp({ appPath } = {}) {
   // Pre-launch env wiring. `applyRuntimeEnvChange` is async, so we await
   // it here — the launchctl setenv must land before `open -a` hands the
@@ -3433,6 +3533,9 @@ async function launchDesktopApp({ appPath } = {}) {
       child = spawn(cmd, args, {
         stdio: ["ignore", "ignore", "pipe"],
         detached: true,
+        env: envResult.applied
+          ? { ...process.env, [RUNTIME_ENV_KEY]: "codex" }
+          : process.env,
       });
       child.unref();
     } catch (e) {
@@ -3543,7 +3646,12 @@ async function ensureCodexRuntimeEnvForLaunch() {
 // real HTTP response - the route being 404 still means the daemon is up)
 // or the deadline expires. Used by setup() after launching the desktop
 // app to confirm the helper process laid down its listener.
-async function waitForApi({ timeoutMs = 30_000, pollMs = 1000 } = {}) {
+async function waitForApi({
+  timeoutMs = 30_000,
+  pollMs = 1000,
+  onProgress = null,
+  isPermissionLikely = null,
+} = {}) {
   const startedAt = Date.now();
   const urls = getLocalApiBaseUrls();
   const deadline = startedAt + timeoutMs;
@@ -3569,12 +3677,24 @@ async function waitForApi({ timeoutMs = 30_000, pollMs = 1000 } = {}) {
         lastError = e instanceof Error ? e.message : String(e);
       }
     }
-    await sleep(pollMs);
+    if (onProgress) onProgress();
+    await sleep(Math.min(pollMs, Math.max(1, deadline - Date.now())));
+  }
+
+  let permissionLikely = false;
+  if (isPermissionLikely) {
+    try {
+      permissionLikely = Boolean(await isPermissionLikely());
+    } catch {
+      permissionLikely = false;
+    }
   }
 
   return {
     ok: false,
-    code: "API_NOT_READY",
+    code: permissionLikely ? "PERMISSION_PROMPT_LIKELY" : "API_NOT_READY",
+    stage: "wait_api",
+    permissionLikely,
     elapsedMs: Date.now() - startedAt,
     attempted: urls.map((u) => `${u}/api/health`),
     lastError,
@@ -4552,17 +4672,9 @@ async function setup(args) {
   // checks whether the native Codex runtime is active.
   const flags = parseFlags(args);
   const yesFlag = !!flags.yes || !!flags.confirm;
-  const maxWaitMs = Number(flags["max-wait"] || 120_000);
-  // Per-stage budgets, names + defaults aligned with Claude's
-  // `/openloomi:setup` so the two plugins speak the same dial language.
-  const apiTimeoutMs = Number(flags["api-timeout"] || 120_000);
-  const installTimeoutMs = Number(flags["install-timeout"] || 300_000);
-  const permissionTimeoutMs = Number(flags["permission-timeout"] || 60_000);
-  // --launch-timeout is recognized for parity; `open -a` is fire-and-forget
-  // so it currently has no observable wait. Stored for the structured
-  // payloads so it shows up in audit + help output.
-  const launchTimeoutMs = Number(flags["launch-timeout"] || 10_000);
-  const stages = { installMs: installTimeoutMs, apiMs: apiTimeoutMs, permissionMs: permissionTimeoutMs, launchMs: launchTimeoutMs };
+  const stages = readSetupTimeouts(flags);
+  const explicitApp = flags["bin-path"] || null;
+  const setupStartedAt = Date.now();
   const maxSteps = 8; // hard ceiling on chained transitions
   const steps = [];
 
@@ -4571,16 +4683,23 @@ async function setup(args) {
   };
 
   for (let i = 0; i < maxSteps; i += 1) {
-    const status = await buildSetupStatus();
+    const status = await buildSetupStatus({ explicitApp });
 
     // Final-readiness check. We treat BOTH READY and
     // READY_SESSION_BOOTSTRAP_PENDING as success states because step 4
     // (initialize-session) below will mint the token on the next loop
     // iteration when we get there.
-    if (status.reason === "READY" && status.codexRuntimeEnvSet) {
+    if (
+      status.reason === "READY" &&
+      status.codexRuntimeEnvSet &&
+      status.executionProviderReady &&
+      status.appRunning
+    ) {
       record("status_check", true, {
         reason: status.reason,
         codexRuntimeEnvSet: true,
+        executionProviderReady: true,
+        appRunning: true,
       });
       writeJson({
         ok: true,
@@ -4593,8 +4712,8 @@ async function setup(args) {
     }
 
     if (status.reason === "READY" && !status.codexRuntimeEnvSet) {
-      // Runtime is good but the GUI is still on Claude. Fall through to
-      // step 2 to set OPENLOOMI_AGENT_PROVIDER.
+      // Runtime is good but the GUI is still on another provider. Fall
+      // through to step 2 so the next launch inherits Codex explicitly.
     }
 
     // 1. Install (only with explicit user approval via --yes / --confirm).
@@ -4613,9 +4732,18 @@ async function setup(args) {
         });
         return;
       }
-      const r = await runBridgeSubcommand(["install-openloomi", "--confirm"], {
-        timeoutMs: stages.installMs,
-      });
+      const installTicker = makeSetupStageTicker("install", stages.installMs);
+      installTicker({ force: true });
+      const installProgress = setInterval(() => installTicker(), 1000);
+      installProgress.unref?.();
+      let r;
+      try {
+        r = await runBridgeSubcommand(["install-openloomi", "--confirm"], {
+          timeoutMs: stages.installMs,
+        });
+      } finally {
+        clearInterval(installProgress);
+      }
       const ok = r.ok && r.parsed && r.parsed.installed !== false;
       record("install", ok, {
         code: r.code,
@@ -4723,16 +4851,24 @@ async function setup(args) {
     // 3. Installed + runtime env set, but the desktop app is not yet
     //    running (or the API isn't reachable). Launch the app and wait
     //    for the local HTTP API to come up.
-    if (status.installed && !status.apiReachable) {
+    if (status.installed && (!status.appRunning || !status.apiReachable)) {
       record("status_check", false, {
         reason: status.reason,
-        apiReachable: false,
+        appRunning: status.appRunning,
+        apiReachable: status.apiReachable,
       });
       const launch = await launchDesktopApp({ appPath: status.appPath });
       record("launch", !!launch.ok, {
         code: launch.code,
         via: launch.via,
         appPath: launch.appPath,
+        providerEnv: launch.env
+          ? {
+              key: launch.env.key,
+              after: launch.env.after,
+              reason: launch.env.reason,
+            }
+          : null,
       });
       if (!launch.ok) {
         writeJson({
@@ -4747,63 +4883,76 @@ async function setup(args) {
         });
         return;
       }
-      const wait = await waitForApi({ timeoutMs: stages.apiMs });
+      const apiTicker = makeSetupStageTicker("wait_api", stages.apiMs);
+      apiTicker({ force: true });
+      const permissionProbe = () =>
+        probeDesktopProcessRunning(status.appPath);
+      const wait = await waitForApi({
+        timeoutMs: stages.apiMs,
+        onProgress: apiTicker,
+        isPermissionLikely: permissionProbe,
+      });
       record("wait_api", !!wait.ok, {
         elapsedMs: wait.elapsedMs,
         url: wait.url,
         code: wait.code,
+        permissionLikely: wait.permissionLikely,
       });
 
-      // Permission grace: if the main wait exhausts the API budget but the
-      // desktop process is already running, give it one more poll window
-      // (--permission-timeout) to absorb macOS TCC / Accessibility prompts.
-      if (!wait.ok && stages.permissionMs > 0) {
-        const graceWait = await waitForApi({ timeoutMs: stages.permissionMs });
+      // Permission grace is only valid when the desktop process is actually
+      // running. A generic closed port or failed launch must stay
+      // API_NOT_READY rather than being mislabeled as a macOS TCC prompt.
+      let effectiveBudgetMs = stages.apiMs;
+      if (!wait.ok && wait.permissionLikely && stages.permissionMs > 0) {
+        effectiveBudgetMs += stages.permissionMs;
+        const permissionTicker = makeSetupStageTicker(
+          "permission_grace",
+          stages.permissionMs,
+        );
+        permissionTicker({ force: true });
+        const graceWait = await waitForApi({
+          timeoutMs: stages.permissionMs,
+          onProgress: permissionTicker,
+          isPermissionLikely: permissionProbe,
+        });
         record("wait_api_grace", !!graceWait.ok, {
           elapsedMs: graceWait.elapsedMs,
           url: graceWait.url,
           code: graceWait.code,
         });
-        if (graceWait.ok) {
-          // Promote the grace success: OpenLoomi is up after a TCC prompt.
-          continue;
-        }
-        // Surface the fuller graceWait as part of the payload too.
-        wait.elapsedMs = (wait.elapsedMs || 0) + (graceWait.elapsedMs || 0);
-        wait.permissionLikely = true;
+        if (graceWait.ok) continue;
         wait.graceWait = graceWait;
       }
 
       if (!wait.ok) {
-        const elapsedMs = wait.elapsedMs || 0;
-        const effectiveBudgetMs = stages.apiMs + stages.permissionMs;
-        const overCap = elapsedMs > maxWaitMs;
-        const raiseBy = 60_000;
-        const resumeBudget = Math.max(stages.apiMs + raiseBy, stages.apiMs * 2);
+        const elapsedMs = Date.now() - setupStartedAt;
+        const overCap = elapsedMs > stages.totalMs +
+          (wait.permissionLikely ? stages.permissionMs : 0);
+        const resumeBudget = Math.max(stages.totalMs, 180_000);
         const resumeCommand = [
           "node",
           "<plugin>/scripts/loomi-bridge.mjs",
           "setup",
           "--yes",
           "--max-wait",
-          String(resumeBudget + stages.permissionMs),
+          String(resumeBudget),
         ].join(" ");
         const hints = wait.permissionLikely
           ? [
-              "The OpenLoomi desktop process is running but the local API never woke up — this is almost always a macOS TCC prompt (Automation / Accessibility) that needs to be approved once.",
-              "Open System Settings → Privacy & Security → Automation / Accessibility and approve OpenLoomi, then re-run setup.",
-              "Re-running the wizard is the recommended action. The bridge has already prepared a resumeCommand.",
+              "The OpenLoomi desktop process is running but the local API never woke up — macOS may be showing an Automation or Accessibility permission prompt.",
+              "Approve the OpenLoomi prompt in System Settings → Privacy & Security, then re-run setup outside the Codex sandbox.",
+              "Re-running the wizard is safe because already-completed steps are skipped.",
             ]
           : [
               "The local HTTP API did not respond within the wait budget.",
-              "Wait for the OpenLoomi desktop app to finish loading (the first launch can take a moment), then re-run setup.",
-              "Re-running the wizard is the recommended action — already-completed steps will be skipped. The bridge has already prepared a resumeCommand.",
+              "Run setup outside the Codex sandbox so it can reach loopback and launch OpenLoomi Desktop.",
+              "Re-running the wizard is safe because already-completed steps are skipped.",
             ];
         writeJson({
           ok: false,
           setup: "api_not_ready",
-          code: wait.permissionLikely ? "PERMISSION_PROMPT_LIKELY" : "API_NOT_READY",
-          stage: "wait_api",
+          code: wait.code || "API_NOT_READY",
+          stage: wait.stage || "wait_api",
           elapsedMs,
           effectiveBudgetMs,
           canResume: true,
@@ -4826,29 +4975,57 @@ async function setup(args) {
     if (status.installed && status.apiReachable && !status.tokenPresent) {
       record("status_check", false, { reason: status.reason });
       const r = await runBridgeSubcommand(["initialize-session"], {
-        timeoutMs: maxWaitMs + 10_000,
+        timeoutMs: stages.totalMs + 10_000,
       });
       const ok = r.ok && r.parsed && r.parsed.ready === true;
-      record("initialize_session", ok, {
+      record("guest_login", ok, {
         code: r.code,
         exitCode: r.exitCode,
         reason: r.parsed?.reason,
       });
       if (!ok) {
         writeJson({
-          ok: true,
-          setup: "awaiting_user_action",
+          ok: false,
+          setup: "guest_login_failed",
+          code: r.parsed?.reason || r.code,
           steps,
           status,
-          session: r.parsed,
-          nextAction: "open_openloomi",
-          reason: "SESSION_INITIALIZATION_REQUIRED",
+          guest: r.parsed,
           message:
-            "Open OpenLoomi once so it can create a guest session, then re-run setup.",
+            r.parsed?.message ||
+            "Guest login failed. Open OpenLoomi Desktop and sign in, then re-run setup outside the Codex sandbox.",
         });
         return;
       }
       continue;
+    }
+
+    // The Codex wizard is only ready when the running desktop process has
+    // actually selected the native Codex provider. Writing the launch env is
+    // necessary but not sufficient if an old process or runtime is still
+    // reporting another default agent.
+    if (
+      status.installed &&
+      status.apiReachable &&
+      status.tokenPresent &&
+      status.codexRuntimeEnvSet &&
+      !status.executionProviderReady
+    ) {
+      record("status_check", false, {
+        reason: status.nativeRuntimeStatus || "CODEX_RUNTIME_INACTIVE",
+        executionProviderReady: false,
+      });
+      writeJson({
+        ok: true,
+        setup: "awaiting_user_action",
+        steps,
+        status,
+        nextAction: "inspect_codex_runtime",
+        reason: status.nativeRuntimeStatus || "CODEX_RUNTIME_INACTIVE",
+        message:
+          "OpenLoomi is running, but the native Codex provider is not active. Confirm the Codex CLI is available, then re-run setup outside the Codex sandbox.",
+      });
+      return;
     }
 
     // 5. No automatic transition matches. Surface a clear next step.
@@ -4868,7 +5045,7 @@ async function setup(args) {
     return;
   }
 
-  const final = await buildSetupStatus();
+  const final = await buildSetupStatus({ explicitApp });
   writeJson({
     ok: false,
     setup: "step_limit_reached",
@@ -4885,14 +5062,21 @@ function help() {
   });
 }
 
-async function discoverOpenLoomi() {
-  const checked = [];
-  const explicitApp = process.env.OPENLOOMI_APP;
+function normalizeExplicitAppPath(value) {
+  const normalized = normalizePath(expandHome(value));
+  if (process.platform !== "darwin" || !normalized) return normalized;
+  const marker = normalized.toLowerCase().indexOf(".app/");
+  return marker >= 0 ? normalized.slice(0, marker + 4) : normalized;
+}
 
-  if (explicitApp) {
-    const result = await validateAppPath(expandHome(explicitApp), {
+async function discoverOpenLoomi({ explicitApp = null } = {}) {
+  const checked = [];
+  const configuredApp = explicitApp || process.env.OPENLOOMI_APP;
+
+  if (configuredApp) {
+    const result = await validateAppPath(normalizeExplicitAppPath(configuredApp), {
       mode: "packaged",
-      source: "OPENLOOMI_APP",
+      source: explicitApp ? "--bin-path" : "OPENLOOMI_APP",
       checked,
     });
 
@@ -6032,7 +6216,7 @@ async function main() {
       await setup(process.argv.slice(3));
       break;
     case "setup-status":
-      await setupStatus();
+      await setupStatus(process.argv.slice(3));
       break;
     case "state":
       await stateCommand(process.argv.slice(3));
@@ -6042,6 +6226,37 @@ async function main() {
       break;
     case "workflow-guidance":
       workflowGuidance(process.argv.slice(3));
+      break;
+    case "__test-setup-flags":
+      if (process.env.OPENLOOMI_TEST_HOOKS === "1") {
+        const testFlags = parseFlags(process.argv.slice(3));
+        writeJson({
+          flags: testFlags,
+          stages: readSetupTimeouts(testFlags),
+          explicitApp: testFlags["bin-path"] || null,
+        });
+      } else {
+        writeJson({ error: "TEST_HOOKS_DISABLED" }, 1);
+      }
+      break;
+    case "__test-wait-for-api":
+      if (process.env.OPENLOOMI_TEST_HOOKS === "1") {
+        const testFlags = parseFlags(process.argv.slice(3));
+        const timeoutMs = Number(testFlags["api-timeout"] || 100);
+        const ticker = makeSetupStageTicker("wait_api", timeoutMs);
+        ticker({ force: true });
+        writeJson(
+          await waitForApi({
+            timeoutMs,
+            pollMs: 25,
+            onProgress: ticker,
+            isPermissionLikely: async () =>
+              process.argv.slice(3).includes("--permission-likely"),
+          }),
+        );
+      } else {
+        writeJson({ error: "TEST_HOOKS_DISABLED" }, 1);
+      }
       break;
     case "__test-ensure-runtime-env":
       if (process.env.OPENLOOMI_TEST_HOOKS === "1") {

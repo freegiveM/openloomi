@@ -31,25 +31,37 @@ on the other.
 
 ## Quick workflow
 
-1. If the bridge returns `setup: install_attempted` (only happens on the
+1. Make sure the **Codex sandbox is set to a mode that allows the wizard
+   to actually run**. `setup` needs to write to `/Applications` (macOS) or
+   `~/.config/environment.d/` (Linux), install/launch the desktop helper,
+   and reach `http://localhost:3414`. `workspace-write` is the minimum
+   that usually works; `danger-full-access` is the safe choice for the
+   first run. If you do not have approval, ask the user before invoking
+   the bridge.
+2. If the bridge returns `setup: install_attempted` (only happens on the
    very first invocation when `--yes` is required), this is informational
    — `--yes` is already passed through and the wizard proceeds.
-2. Run:
+3. Run:
 
    ```bash
    node "$SKILL_DIR/../../scripts/loomi-bridge.mjs" setup --yes [--max-wait <ms>] [--api-timeout <ms>] [--install-timeout <ms>] [--launch-timeout <ms>] [--permission-timeout <ms>] [--bin-path <path>]
    ```
-3. Read the JSON. The bridge writes an audit trail of what it did into
+4. Read the JSON. The bridge writes an audit trail of what it did into
    `steps[]`. Surface that to the user so they can see which transitions
    fired (`status_check` → `install` → `runtime_env_write` →
    `quit_for_env_reload` (only when needed) → `launch` → `wait_api` →
-   `initialize_session`).
-4. If `setup: ready` → done.
-5. If `setup: awaiting_user_action` → the chain hit a step that genuinely
-   needs the user (e.g. `nextAction: configure_ai_provider` because no
-   AI provider is configured, or `nextAction: open_openloomi` because the
+   `guest_login`).
+5. If `setup: ready` → done.
+6. If `setup: awaiting_user_action` → the chain hit a step that genuinely
+   needs the user (e.g. `nextAction: install_openloomi` because `--yes`
+   wasn't passed, `nextAction: configure_ai_provider` because no AI
+   provider is configured, or `nextAction: open_openloomi` because the
    desktop process won't auto-launch). Explain what the user needs to do
    and stop — do **not** auto-retry.
+7. If `setup: api_not_ready` → show the bridge's `hints[]` and the
+   pre-built `resumeCommand`. Re-running the wizard is always safe; the
+   state machine is idempotent. Re-approval may be needed to leave the
+   sandbox.
 
 ## Flags
 
@@ -64,8 +76,8 @@ dial language.
 | `--api-timeout`        | 120000  | Per-stage budget for "waiting for local API". Independent of `--max-wait`.                                                                                       |
 | `--install-timeout`    | 300000  | Per-stage budget for "installing OpenLoomi". Covers download + copy on a 50 Mbps link.                                                                           |
 | `--launch-timeout`     | 10000   | Per-stage budget for `open -a <bundle>` (and platform equivalents). Almost never actually hit; included for parity with the Claude side.                       |
-| `--permission-timeout` | 60000   | Extra grace wait after `--api-timeout` when the desktop process is up but the API never woke up — typical macOS TCC / Accessibility prompt path.                 |
-| `--bin-path`           | _auto_  | Reserved for parity. Currently the bridge resolves the helper binary via `buildSetupStatus`; the flag is parsed but does not override the discovery path yet. |
+| `--permission-timeout` | 60000   | Extra grace wait after `--api-timeout` when the desktop process is up but the API never woke up — only fires when the bridge can confirm the process is alive.   |
+| `--bin-path`           | _auto_  | Explicit path to the OpenLoomi desktop bundle (e.g. `/Applications/OpenLoomi.app`). Mirrors Claude's flag and overrides the usual discovery order.                |
 
 ## Live status
 
@@ -75,6 +87,7 @@ While the wizard is inside a long stage, the bridge writes a throttled
 ```
   · installing OpenLoomi  (12s / max 5m) …
   · waiting for local API  (4s / max 2m) …
+  · waiting on macOS permission prompt  (3s / max 1m) …
 ```
 
 Stdout is reserved for the final JSON result — do not mix it.
@@ -106,13 +119,14 @@ backwards compatibility; new fields are added alongside it.
 
 | `setup`                        | When it fires                                                                                                                                                                                                                                                                                                |
 | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `ready`                        | All transitions completed. Surface `mode` and `version` from `status`.                                                                                                                                                                                                                                       |
-| `awaiting_user_action`         | A transition that needs the user ran without a programmatic path. Most commonly: `nextAction: install_openloomi` because `--yes` wasn't passed (re-run with `--yes` to actually proceed), `configure_ai_provider` because no provider is configured, or `open_openloomi` because the desktop process didn't wake. Walk the user through what they need to do and stop. |
+| `ready`                        | All transitions completed. The desktop app is running, the API is reachable, the guest session token is minted, **and** the native Codex provider is the active agent. Surface `mode`, `version`, and `executionProviderSource` from `status`. |
+| `awaiting_user_action`         | A transition that needs the user ran without a programmatic path. Most commonly: `nextAction: install_openloomi` because `--yes` wasn't passed, `nextAction: configure_ai_provider` because no provider is configured, `nextAction: open_openloomi` because the desktop process didn't wake, or `nextAction: inspect_codex_runtime` because the native Codex agent is not active. Walk the user through what they need to do and stop. |
+| `install_attempted`            | (Informational.) The first `setup` invocation in a fresh environment must install before it can confirm READY. `--yes` already authorised the install; treat this as a normal await. |
 | `install_failed`               | The platform install script exited non-zero (or hit `--install-timeout`). Show `install.code` / `install.message`.                                                                                                                                                                                            |
 | `runtime_env_failed`           | The `set-codex-runtime-env` step failed (rare; usually a TCC prompt on macOS, or a write-permission error on Linux). Follow `runtimeEnv.message`.                                                                                                                                                            |
 | `quit_for_env_reload_failed`   | The desktop app was running, the env var was written, but `quitDesktopApp` couldn't bring it down (TCC prompt blocking the kill). The only stop condition that **truly** needs the user to Quit+Reopen by hand. Surface `quit.message`.                                                                       |
 | `launch_failed`                | `open -a <desktopMarker>` (or platform equivalent) returned a non-zero exit. On macOS this almost never happens for a signed .app; if it does, fall back to manual launch instructions.                                                                                                                       |
-| `api_not_ready`                | The desktop app was launched but the local HTTP API didn't respond within `--api-timeout` (+ `--permission-timeout` grace). `code` distinguishes network/slow vs TCC prompt; `hints[]` and `resumeCommand` are pre-built; `canResume: true` makes re-running the wizard the recommended action.                    |
+| `api_not_ready`                | The desktop app was launched but the local HTTP API didn't respond within `--api-timeout`. The bridge only adds `--permission-timeout` grace when it can confirm the desktop process is alive. `code` distinguishes network/slow (`API_NOT_READY`) vs TCC prompt (`PERMISSION_PROMPT_LIKELY`); `hints[]` and `resumeCommand` are pre-built; `canResume: true` makes re-running the wizard the recommended action. |
 | `guest_login_failed`           | API is up but the one-tap guest login was rejected by `/api/auth/guest`. Show `session.code` / `session.error`. The user can sign in via the GUI and re-run setup.                                                                                                                                         |
 | `step_limit_reached`           | Hit the internal step ceiling without reaching READY (default 8 transitions). Almost certainly a state-machine bug; show `steps[]`.                                                                                                                                                                          |
 
@@ -120,6 +134,15 @@ The bridge's stdout output is authoritative. Never invoke the platform
 install script (`setup.{macos,linux,windows}.*`) directly — only the
 bridge may run it, and only after explicit user consent (which is what
 `--yes` records).
+
+## Codex provider wiring
+
+Before any launch, the bridge writes `OPENLOOMI_AGENT_PROVIDER=codex` so
+the freshly-started desktop server picks up the Codex runtime. On macOS
+this is done via `launchctl setenv` plus a LaunchAgent so the variable
+survives reboot; on Linux the bridge edits `~/.config/environment.d/`; on
+Windows the user must set the variable manually. `codex-runtime-info`
+always reports the current effective value.
 
 ## Post-`ready` guidance
 
@@ -152,10 +175,14 @@ flow is:
 
 ## Sandbox notes
 
-Codex sandboxing can block: GitHub release lookup (network), the install
-path write (`/Applications`), and the desktop GUI launch. The bridge
-detects and asks for the corresponding approval — `install-openloomi` is
-the gate for the first two, the wizard's launch step is the gate for the
-third. If the wizard returns `awaiting_user_action` with a sandbox-y
-reason, ask the user to retry outside the sandbox (e.g. drop
-`sandbox=workspace-write` for the relevant Bash call).
+The `setup` wizard **must be run outside the Codex sandbox** (or with
+`danger-full-access`) — it needs to write to system application
+directories (`/Applications` on macOS, `~/.config/environment.d/` on
+Linux), launch a signed GUI helper, and reach the local HTTP API at
+`http://localhost:3414`. None of those survive `read-only` or default
+`workspace-write` mode in a fresh environment. If you are still inside a
+sandbox when the user asks for setup, request approval and re-run
+outside the sandbox before invoking the bridge. The bridge surfaces a
+sandbox-y reason in `awaiting_user_action`, `launch_failed`, or
+`api_not_ready`; the `hints[]` payload calls out the next concrete step
+(approve the request and retry).

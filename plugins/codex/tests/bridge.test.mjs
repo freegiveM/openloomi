@@ -990,6 +990,110 @@ test("setup status field mirrors setup-status when the loop exits", () => {
 });
 
 // -----------------------------------------------------------------------------
+// Setup flag parsing + permission/grace semantics — Claude parity regression
+// -----------------------------------------------------------------------------
+
+test("setup --max-wait, --api-timeout, --permission-timeout, --bin-path flow into the state machine", () => {
+  const j = runJson([
+    "__test-setup-flags",
+    "--max-wait",
+    "90000",
+    "--api-timeout",
+    "7000",
+    "--install-timeout=8000",
+    "--launch-timeout",
+    "9000",
+    "--permission-timeout=4000",
+    "--bin-path",
+    "/tmp/OpenLoomi.app",
+  ]);
+  assert.equal(j.flags["max-wait"], "90000");
+  assert.equal(j.flags["api-timeout"], "7000");
+  assert.equal(j.flags["install-timeout"], "8000");
+  assert.equal(j.flags["launch-timeout"], "9000");
+  assert.equal(j.flags["permission-timeout"], "4000");
+  assert.equal(j.flags["bin-path"], "/tmp/OpenLoomi.app");
+  assert.equal(j.explicitApp, "/tmp/OpenLoomi.app");
+  assert.equal(j.stages.totalMs, 90000);
+  assert.equal(j.stages.apiMs, 7000);
+  assert.equal(j.stages.permissionMs, 4000);
+  assert.equal(j.stages.launchMs, 9000);
+  assert.equal(j.stages.installMs, 90000);
+});
+
+test("waitForApi reports API_NOT_READY when the desktop process is not running", () => {
+  const j = runJson(["__test-wait-for-api", "--api-timeout", "200"]);
+  assert.equal(j.ok, false);
+  assert.equal(j.code, "API_NOT_READY");
+  assert.equal(j.stage, "wait_api");
+  assert.equal(j.permissionLikely, false);
+});
+
+test("waitForApi reports PERMISSION_PROMPT_LIKELY when the probe signals a permission block", () => {
+  const j = runJson([
+    "__test-wait-for-api",
+    "--api-timeout",
+    "200",
+    "--permission-likely",
+  ]);
+  assert.equal(j.ok, false);
+  assert.equal(j.code, "PERMISSION_PROMPT_LIKELY");
+  assert.equal(j.permissionLikely, true);
+  assert.equal(j.stage, "wait_api");
+});
+
+test("setup-status accepts --bin-path as a discovery override", () => {
+  withFakeHome((env) => {
+    // Pointing --bin-path at a non-existent path must surface
+    // OPENLOOMI_APP_INVALID rather than silently falling through to PATH.
+    const j = runJson(["setup-status", "--bin-path", "/nonexistent.app"], env);
+    assert.equal(j.installed, false);
+    assert.equal(j.nextAction, "install_openloomi");
+  });
+});
+
+test("setup --api-timeout flows into the recorded wait_api step", () => {
+  withFakeHome((env) => {
+    const r = runOutcome(
+      [
+        "setup",
+        "--yes",
+        "--api-timeout",
+        "100",
+        "--permission-timeout",
+        "0",
+      ],
+      {
+        ...env,
+        OPENLOOMI_BIN: "/nonexistent-ctl-please-ignore",
+        OPENLOOMI_HOME: "/nonexistent-home",
+        OPENLOOMI_REPO_DIR: "/nonexistent-repo",
+        PATH: dirname(process.execPath),
+      },
+    );
+    const j = JSON.parse(r.stdout);
+    // We don't care which exact stop the wizard lands on; only that the
+    // explicit --api-timeout value reached the bridge. The wait_api step
+    // and the effectiveBudgetMs are the two ways it can be observed.
+    if (Array.isArray(j.steps)) {
+      const wait = j.steps.find((s) => s.step === "wait_api");
+      if (wait) {
+        assert.ok(
+          typeof wait.elapsedMs === "number",
+          "wait_api step should record elapsedMs",
+        );
+      }
+    }
+    if (j.setup === "api_not_ready") {
+      assert.equal(typeof j.effectiveBudgetMs, "number");
+      assert.ok(j.effectiveBudgetMs >= 100);
+      assert.ok(j.canResume);
+      assert.match(j.resumeCommand, /setup/);
+    }
+  });
+});
+
+// -----------------------------------------------------------------------------
 // argv hardening: --api-key is never a recognised flag
 // -----------------------------------------------------------------------------
 

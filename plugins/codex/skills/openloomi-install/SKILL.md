@@ -12,14 +12,21 @@ or executes anything outside the plugin's own scripts.
 
 ## Quick workflow
 
-1. `node "$SKILL_DIR/../../scripts/loomi-bridge.mjs" setup-status`
-2. Based on `nextAction` / `reason`:
+1. **Always run `setup` (and the loopback checks below) outside the Codex
+   sandbox** — the install + launch path needs writes to `/Applications`,
+   desktop GUI launch, and `http://localhost:3414`. Default `read-only` /
+   `workspace-write` modes will silently fail. Ask the user to drop
+   `sandbox=workspace-write` (or move to `danger-full-access`) before
+   invoking the bridge.
+2. `node "$SKILL_DIR/../../scripts/loomi-bridge.mjs" setup-status`
+3. Based on `nextAction` / `reason`:
 
 | Reason / nextAction | Action |
 |---|---|
 | `install_openloomi` / `INSTALL_REQUIRED` | OpenLoomi Desktop is not on this machine. **Call `setup --yes` to run the end-to-end wizard in one invocation**: resolve → download → install → set `OPENLOOMI_AGENT_PROVIDER=codex` → launch the desktop app → wait for the local API → mint a guest session token. Invoking this skill counts as explicit approval to pass `--yes`. For offline / corporate-proxy installs, point the user at the restricted-network guide (link below) and call `install-instructions` first. |
 | `SOURCE_FOUND_APP_NOT_BUILT` | A source checkout is present but the OpenLoomi Desktop GUI app has not been built yet. Recommend either building the source per the OpenLoomi repo's `apps/web/src-tauri/README.md` or installing the packaged Desktop release. |
 | `open_openloomi` / `OPENLOOMI_API_UNREACHABLE` / `SESSION_INITIALIZATION_REQUIRED` | OpenLoomi is installed but the local API or guest/session token is not ready. Ask the user to open OpenLoomi Desktop once, or run `setup` so the bridge can launch/init through OpenLoomi-owned surfaces. |
+| `inspect_codex_runtime` | OpenLoomi is up but the native Codex provider is not the active default agent. Have the user confirm the Codex CLI is installed (`codex --version`) and rerun `setup` so the runtime env + LaunchAgent get re-applied. |
 
 Before applying the API-unreachable row, inspect `loopbackAccessAmbiguous`.
 When it is `true`, the result is inconclusive because the current Codex sandbox
