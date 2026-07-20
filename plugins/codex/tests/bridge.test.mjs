@@ -918,6 +918,43 @@ test("setup without --yes returns awaiting_user_action when install is required"
   });
 });
 
+test("setup with --yes proceeds past the install step (not INSTALL_CONFIRMATION_REQUIRED)", () => {
+  withFakeHome((env) => {
+    // Same "not installed" forcing as the previous test — but with --yes,
+    // the bridge must NOT return INSTALL_CONFIRMATION_REQUIRED.
+    const r = runOutcome(["setup", "--yes"], {
+      ...env,
+      OPENLOOMI_BIN: "/nonexistent-ctl-please-ignore",
+      OPENLOOMI_HOME: "/nonexistent-home",
+      OPENLOOMI_REPO_DIR: "/nonexistent-repo",
+      PATH: dirname(process.execPath),
+    });
+    const j = JSON.parse(r.stdout);
+    // Either the setup wizard went past install and recorded an attempt,
+    // OR it surfaced a different error (e.g. install_failed because the
+    // forced-not-installed env can't actually resolve a real release).
+    // What matters: it MUST NOT be the awaiting_user_action gate.
+    assert.notEqual(
+      j.reason,
+      "INSTALL_CONFIRMATION_REQUIRED",
+      "setup --yes must bypass the awaiting_user_action confirmation gate",
+    );
+    assert.notEqual(
+      j.nextAction,
+      "confirm_install_openloomi",
+      "setup --yes must not stop at the confirm-install gate",
+    );
+    // When steps[] is present (install got far enough to record an entry),
+    // it should contain an install attempt.
+    if (Array.isArray(j.steps)) {
+      assert.ok(
+        j.steps.some((s) => s.step === "status_check" || s.step === "install"),
+        "setup --yes should record either a status_check or an install step",
+      );
+    }
+  });
+});
+
 test("setup records steps in chronological order and timestamps are monotonic", () => {
   withFakeHome((env) => {
     const r = runOutcome(["setup"], env);

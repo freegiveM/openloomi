@@ -1502,6 +1502,7 @@ function parseFlags(args) {
     artifactUrl: null,
     baseUrl: null,
     confirm: false,
+    yes: false,
     downloadOnly: false,
     launch: false,
     model: null,
@@ -1513,8 +1514,9 @@ function parseFlags(args) {
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
 
-    if (arg === "--confirm") {
+    if (arg === "--confirm" || arg === "--yes") {
       flags.confirm = true;
+      flags.yes = true;
       continue;
     }
 
