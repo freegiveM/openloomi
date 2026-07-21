@@ -28,9 +28,13 @@ If the day is busy, this gets pushed to the next day. Sometimes the lead skips s
 
 The realization: this kind of work is exactly what AI should be doing. The actual time sink isn't the technical judgement — it's collecting scattered records and reorganizing them into something a human can read.
 
-So the lead creates their first scenario in OpenLoomi.
+To make this routine disappear, the lead sets up a scheduled scenario in OpenLoomi — see the next section.
 
-Every night at 10 PM, OpenLoomi automatically pulls the day's commits, identifies the major code changes, and generates a structured engineering report. It helps answer the most basic but also most important questions:
+---
+
+## In OpenLoomi: A scheduled daily report
+
+`PD Daily Sync` is the first scenario the lead creates. Every night at 10 PM, OpenLoomi automatically pulls the day's commits, identifies the major code changes, and generates a structured engineering report. It helps answer the most basic but also most important questions:
 
 - What did the team actually move forward today?
 - Which modules changed?
@@ -43,6 +47,36 @@ A few minutes later, two artifacts land — ready to read, share, or archive:
 - The issue sync summary
 
 After the report is generated, it also gets sent to the team email automatically. There's no longer a need to remind anyone to fill in their daily report, and no need to scroll through commits manually. Before the next workday starts, the team already has a structured, complete progress record waiting.
+
+The lead wires up the daily digest as a runnable task in OpenLoomi Desktop — `PD Daily Track`, instruction `Output what OpenLoomi released today and send it to my email.`, Plan = Daily at 21:00. Execution history records every run, so any drift shows up immediately.
+
+<p align="center">
+  <img
+    src="/img/use-cases/engineering-daily-sync/loomi-task-pd-daily-track.png"
+    alt="PD Daily Track task detail: instruction pulls today's OpenLoomi release and emails it, Plan = Daily at 21:00, execution history shows the latest run"
+    width="90%"
+  />
+</p>
+
+When the run finishes, OpenLoomi writes the markdown brief and renders it right next to the task. The lead can scan the Overview, Highlights, and the commit list in one pass:
+
+<p align="center">
+  <img
+    src="/img/use-cases/engineering-daily-sync/loomi-task-pd-daily-track-preview-result.png"
+    alt="OpenLoomi Desktop auto-writing the openLoomi-release markdown brief — rendered report with Overview, Highlights, Recent commits, and Markdown docs sections"
+    width="90%"
+  />
+</p>
+
+The same brief is dispatched to the team inbox a moment later. No separate reminder, no manual copy-paste — Loomi sends through the `Gmail` connector, so the message lands under the team's own account with the same Highlights and commit list rendered into the body. The next workday starts with a structured, complete progress record waiting:
+
+<p align="center">
+  <img
+    src="/img/use-cases/engineering-daily-sync/loomi-task-pd-daily-track-email-result.png"
+    alt="openLoomi daily release — 2026-07-21 email landing in the inbox with Highlights, Marketing copy work breakdown, and the full commit list"
+    width="90%"
+  />
+</p>
 
 ---
 
@@ -60,9 +94,13 @@ In practice, there's a clear gap between them. When a new Issue lands in GitHub,
 
 If only the title and body get copied, the Linear ticket becomes a "task shell" without background. The next person who picks it up still has to go back to GitHub to understand what was reported.
 
-So **Issue Sync** is added in OpenLoomi.
+A continuous sync in OpenLoomi addresses all of this — see the next section.
 
-This task runs every hour, continuously checking for new GitHub Issues from the day. But it doesn't just copy content — it understands the issue and adds context first, then writes to Linear.
+---
+
+## In OpenLoomi: A scheduled issue sync
+
+`PD Issue Sync` is the scenario that handles this. It runs every hour, continuously checking for new GitHub Issues from the day. But it doesn't just copy content — it understands the issue and adds context first, then writes to Linear.
 
 | What Loop pulls from GitHub           | What Loop writes into Linear                                                                       |
 | ------------------------------------- | -------------------------------------------------------------------------------------------------- |
@@ -72,7 +110,31 @@ This task runs every hour, continuously checking for new GitHub Issues from the 
 | Top 10 comments (by reactions)        | Threaded as a `Context` section so the triage discussion isn't lost                                |
 | Reproduction info from issue template | Pulled out into a separate `Steps to reproduce` block in the Linear description                    |
 
-Now when the lead opens Linear, they don't see a title waiting to be filled in — they see a complete ticket that can be directly prioritized and assigned.
+A few guardrails keep the sync from drifting off:
+
+- **Source-URL dedup** — when Loop sees an issue whose source URL already maps to a Linear ticket, it updates the existing ticket in place instead of creating a duplicate. The next morning, Linear stays one-to-one with GitHub.
+- **Per-repo overrides** — different repositories can map labels, milestones, and project fields onto Linear's priority / project fields their own way. New labels still need explicit approval before they're created.
+- **Tracked every run** — each sync cycle records which repos were processed, which issues were enriched, and which were already up to date. Any drift between the two systems shows up in the next day's Tracking panel, not in the user's inbox.
+
+The sync is wired up the same way as the daily digest — `Issues Sync` lives in OpenLoomi Desktop with the instruction `Sync melandlabs/openloomi github issues to linear`, Plan = Daily at 21:00, plus the hourly cron Loomi runs against fresh issues. Execution history records every pass.
+
+<p align="center">
+  <img
+    src="/img/use-cases/engineering-daily-sync/loomi-issue-sync-task.png"
+    alt="Issues Sync task detail: instruction syncs melandlabs/openloomi GitHub issues to Linear, Plan = Daily at 21:00, execution history shows the latest run"
+    width="90%"
+  />
+</p>
+
+When the cycle finishes, Linear stops looking like a task shell. GitHub on the left, Linear on the right — every ticket already tagged with the originating `[GH #xxx]` reference, and the Linked PR / comments / repro context Loomi pre-threaded. The lead can prioritize and assign straight from Linear:
+
+<p align="center">
+  <img
+    src="/img/use-cases/engineering-daily-sync/loomi-issue-sync-result.png"
+    alt="GitHub All issues panel on the left next to Linear Backlog on the right, every Linear issue prefixed with [GH #xxx] and synced with original title, labels, and related PR context"
+    width="90%"
+  />
+</p>
 
 ---
 
@@ -91,7 +153,7 @@ That meant spending significant time gathering context before any reviewing coul
 
 Worse — the lead either keeps interrupting other work to check GitHub, or misses important PRs because they didn't check notifications.
 
-### In OpenLoomi: An event-driven trigger
+## In OpenLoomi: An event-driven trigger
 
 So PR review isn't designed as a scheduled task. It's made an **event-driven scenario inside OpenLoomi Loop**. OpenLoomi only finds the user when one of these happens:
 
@@ -103,8 +165,8 @@ When that happens, a `review_pr` decision card arrives.
 
 <p align="center">
   <img
-    src="/img/use-cases/loomi-review-pr.gif"
-    alt="Loomi review_pr card — PR #482 in acme/api with AI diff summary, CI status, linked issue, risky-area flags, and inline draft comments"
+    src="/img/use-cases/engineering-daily-sync/loomi-review-pr-card.png"
+    alt="Loomi review_pr decision card — Review PR #482 feat(loop) pin GitHub PR review signals, with Signal / Type / Received / Confidence header, pull-request body, From Loomi context block listing the reasons Loomi surfaced it"
     width="90%"
   />
 </p>
@@ -117,6 +179,8 @@ The card offers one of four mutually exclusive actions, and **the choice determi
 - **EDIT** — jump into chat, refine the comments ("drop the third one, shorten the first, emphasize the concurrency risk here"), and post them to GitHub when they look right
 - **LATER** — park the review for the next focus block; no comments are posted yet
 - **SKIP** — dismiss this review with an audit entry; no comments are posted
+
+When **EDIT** is picked, Loop opens a chat thread with the drafts already loaded. The reviewer can ask for targeted revisions — _"drop the third one, shorten the first, emphasize the concurrency risk here"_ — and Loomi regenerates the drafts in place, again waiting for `APPROVE` before anything reaches GitHub. Every round is recorded, so the assistant gradually learns which drafts the user tends to keep, drop, or rephrase.
 
 The system doesn't replace technical decisions. It handles the most time-consuming part of pre-review: gathering context and doing the first round of analysis.
 
@@ -192,13 +256,21 @@ What OpenLoomi saves isn't just the two hours a week. More importantly, there's 
 
 ## How to set this up
 
-The whole configuration isn't complicated. GitHub and Linear are connected in OpenLoomi Desktop, the Claude plugin, or the Codex plugin:
+The whole configuration isn't complicated. Three connectors cover everything this workflow needs — GitHub for code and reviews, Linear for sprint planning, and Gmail for the daily-digest dispatch. Wire them up from OpenLoomi Desktop, the Claude plugin, or the Codex plugin:
 
 ```
-use openloomi-connectors to connect GitHub and Linear
+use openloomi-connectors to connect GitHub, Linear and Gmail
 ```
 
-Once connected, verification runs via `list-accounts`. When GitHub and Linear both show `active`, OpenLoomi picks them up on the next tick and starts the matching scenarios:
+Once connected, verification runs via `list-accounts`. When GitHub, Linear, and Gmail all show `active`, OpenLoomi picks them up on the next tick and starts the matching scenarios. The Loop status card surfaces reachability right in the chat — every endpoint green means OpenLoomi is ready to drive the scenarios above:
+
+<p align="center">
+  <img
+    src="/img/use-cases/engineering-daily-sync/loomi-connectors-reachable.png"
+    alt="OpenLoomi Loop status card titled 'All endpoints reachable' with GitHub and Linear both showing Reachable OK, PENDING QUEUE empty — Loomi is idling"
+    width="90%"
+  />
+</p>
 
 - Every night at 10 PM, the daily report is generated
 - Every hour, new Issues are synced to Linear
