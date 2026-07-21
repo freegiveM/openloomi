@@ -30,7 +30,7 @@ If the day was busy, this got pushed to the next day. Sometimes I'd skip several
 
 I realized this kind of work is exactly what AI should be doing. The actual time sink isn't the technical judgement — it's collecting scattered records and reorganizing them into something a human can read.
 
-So I created my first scenario in OpenLoomi: **PD Daily Sync**.
+So I created my first scenario in OpenLoomi.
 
 Every night at 10 PM, OpenLoomi automatically pulls the day's commits, identifies the major code changes, and generates a structured engineering report. It helps me answer the most basic but also most important questions:
 
@@ -62,7 +62,7 @@ In practice, there's a clear gap between them. When a new Issue lands in GitHub,
 
 If you only copy the title and body, the Linear ticket becomes a "task shell" without background. The next person who picks it up still has to go back to GitHub to understand what was reported.
 
-So I added **PD Issue Sync** in OpenLoomi.
+So I added **Issue Sync** in OpenLoomi.
 
 This task runs every hour, continuously checking for new GitHub Issues from the day. But it doesn't just copy content — it understands the issue and adds context first, then writes to Linear.
 
@@ -75,8 +75,6 @@ This task runs every hour, continuously checking for new GitHub Issues from the 
 | Reproduction info from issue template | Pulled out into a separate `Steps to reproduce` block in the Linear description                    |
 
 Now when I open Linear, I don't see a title waiting for me to fill in details — I see a complete ticket I can directly prioritize and assign.
-
-OpenLoomi also uses the source URL to check whether an Issue has already been synced. If the Linear ticket already exists, it updates the existing one instead of creating a duplicate. If a specific repo needs different field mapping, I can pin a per-repo override at `~/.openloomi/loop/issue-sync-overrides.json`.
 
 ---
 
@@ -109,16 +107,16 @@ When that happens, I get a `review_pr` decision card.
   />
 </p>
 
-Before I open the PR, OpenLoomi has already done the first round of prep work. It doesn't post comments on my behalf — it lays out the judgement basis and the draft comments, then hands me the decision. I can pick:
+Before I open the PR, OpenLoomi has already done the first round of prep work. It doesn't post comments on my behalf — it lays out the judgement basis and the draft comments, then hands me the decision.
 
-- **APPROVE** — confirm the drafts and post the comments to GitHub
-- **EDIT** — jump into chat, refine the comments ("drop the third one, shorten the first, emphasize the concurrency risk here"), and confirm when it looks right
-- **LATER** — park it for the next focus block
-- **SKIP** — dismiss this review with an audit entry
+The card gives me one of four mutually exclusive actions, and **which one I pick decides whether — and how — those draft comments end up on GitHub**:
+
+- **APPROVE** — accept the drafts as-is and post the comments to GitHub
+- **EDIT** — jump into chat, refine the comments ("drop the third one, shorten the first, emphasize the concurrency risk here"), and post them to GitHub when they look right
+- **LATER** — park the review for the next focus block; no comments are posted yet
+- **SKIP** — dismiss this review with an audit entry; no comments are posted
 
 It doesn't replace my technical decisions. It handles the most time-consuming part of pre-review: gathering context and doing the first round of analysis.
-
-For any repo I've starred or been active on in the last 30 days, PR review is on by default. I can tune which repos / authors / labels qualify in **Settings → Loop → Sources** — the same panel that controls email and calendar sources.
 
 ---
 
@@ -203,12 +201,6 @@ Once connected, I verify with `list-accounts`. When GitHub and Linear both show 
 - Every night at 10 PM, the daily report is generated
 - Every hour, new Issues are synced to Linear
 - Whenever a PR is assigned to me, @-mentions me, or has a CI failure, the `review_pr` card surfaces
-
-For repos I've starred or been active on in the last 30 days, PR review is on by default. I can tune which repos / authors / labels qualify at:
-
-```
-Settings → Loop → Sources
-```
 
 OpenLoomi's Tracking panel records every execution:
 
