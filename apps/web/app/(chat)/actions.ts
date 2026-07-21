@@ -51,9 +51,15 @@ const generateTitleCached = cache(
           ? JSON.stringify(msg.content)
           : "";
 
+    // Title generation is plain text; it doesn't care about the on-the-wire
+    // format. Prefer `anthropic_messages` so a user who has only saved an
+    // `anthropic_compatible` row (no `openai_compatible`) still gets a working
+    // title. The OpenAI Chat Completions API endpoint keeps its strict
+    // OpenAI-shape contract — only the resolver's per-call-site `prefer` here
+    // changes.
     const provider = await resolveLlmProvider({
       userId,
-      prefer: "chat_completions",
+      prefer: "anthropic_messages",
     });
 
     if (!provider) {
