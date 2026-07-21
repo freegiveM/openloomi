@@ -395,7 +395,7 @@ function buildEntries(
         undefined,
       healthy: r.status === "ACTIVE",
     };
-    buckets.get(id)!.push(acc);
+    buckets.get(id)?.push(acc);
   }
 
   const stamp = new Date().toISOString();
