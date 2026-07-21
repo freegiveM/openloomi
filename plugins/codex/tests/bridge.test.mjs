@@ -894,7 +894,7 @@ test("install-instructions returns a supported install plan on darwin", () => {
   );
 });
 
-test("workflow-guidance lists the four openloomi workflows", () => {
+test("workflow-guidance lists the three openloomi workflows", () => {
   const j = runJson(["workflow-guidance"]);
   assert.ok(j.ready);
   const ids = (j.workflows || []).map((w) => w.id);
@@ -902,7 +902,6 @@ test("workflow-guidance lists the four openloomi workflows", () => {
     "openloomi-loop",
     "openloomi-memory",
     "openloomi-connectors",
-    "openloomi-handoff",
   ]) {
     assert.ok(ids.includes(id), `workflow-guidance missing ${id}`);
   }

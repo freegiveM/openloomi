@@ -21,10 +21,10 @@ Steps:
    `nextAction`, and `reason`.
 4. If `nextAction` is `open_openloomi`, open OpenLoomi Desktop and ask again.
 5. Ask: `@OpenLoomi Show the OpenLoomi workflows available from Codex.`
-6. Expected: Codex lists `openloomi-loop`, `openloomi-memory`,
-   `openloomi-connectors`, and `openloomi-handoff`.
-7. Ask a minimal handoff prompt: `@OpenLoomi Reply with exactly: OpenLoomi ready.`
-8. Expected: Codex routes through the OpenLoomi handoff skill and the local
+6. Expected: Codex lists `openloomi-loop`, `openloomi-memory`, and
+   `openloomi-connectors`.
+7. Ask a minimal memory prompt: `@OpenLoomi Reply with exactly: OpenLoomi ready.`
+8. Expected: Codex routes through the OpenLoomi memory skill and the local
    runtime returns a structured result or runtime error. It must not ask the
    user to paste API keys or tokens into Codex chat.
 
@@ -66,7 +66,7 @@ Expected:
 - `initialize-session` reports `SESSION_READY`.
 - `setup-status` reports `apiReachable: true` and `apiBaseUrl:
 "http://localhost:3515"` when the dev API is up.
-- `workflow-guidance` returns the local-API-aware handoff recipes when the
+- `workflow-guidance` returns the local-API-aware workflow recipes when the
   API is reachable.
 - The local API URL is consumed by the OpenLoomi Desktop runtime without
   requiring the user to set it manually in Codex.

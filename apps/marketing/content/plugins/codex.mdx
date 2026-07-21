@@ -15,7 +15,7 @@ You keep using Codex the way you already do. OpenLoomi runs next to it, on your 
 - **Ask Codex about your work.** "What did I work on last Tuesday?" — Codex pulls the answer from OpenLoomi's local memory instead of guessing.
 - **Hand tasks off for follow-up.** "Send this to Loomi so it reminds me about it tomorrow" — the task goes into OpenLoomi's loop and pings you when it's ready.
 - **Route Codex through OpenLoomi.** When OpenLoomi answers, it can use your Codex CLI runtime under the hood, so you only configure one runtime.
-- **Trigger OpenLoomi workflows from chat.** Memory, loop, connectors, and handoff are all exposed as Codex skills — type `@OpenLoomi …` and go.
+- **Trigger OpenLoomi workflows from chat.** Memory, loop, and connectors are all exposed as Codex skills — type `@OpenLoomi …` and go.
 
 OpenLoomi still owns the heavy lifting: local memory storage, connector credentials, scheduled tasks, the desktop UI, secrets. Codex just gets a doorway into all of it.
 
@@ -52,7 +52,7 @@ codex plugin marketplace remove openloomi && codex plugin marketplace add . && c
 - Codex CLI 0.144+ (anything that supports `codex plugin marketplace`).
 - For GitHub install: network access to `github.com`.
 - For local install: a writable checkout of the OpenLoomi repository.
-- **OpenLoomi Desktop installed** — or a source build that produces the OpenLoomi Desktop app — for anything beyond setup guidance and workflow discovery. Without it, the plugin can still report readiness and walk you through installation, but handoff, loop, memory, and connector tasks can't actually run.
+- **OpenLoomi Desktop installed** — or a source build that produces the OpenLoomi Desktop app — for anything beyond setup guidance and workflow discovery. Without it, the plugin can still report readiness and walk you through installation, but loop, memory, and connector tasks can't actually run.
 - Codex CLI on your `PATH` (e.g. `brew install --cask codex` or `npm i -g @openai/codex`) if you want OpenLoomi to route through your Codex runtime.
 
 ---
@@ -85,7 +85,7 @@ If you're hacking on the plugin (or running from source), point Codex at the dir
 
 ### 4. Discover the skills
 
-Type `@OpenLoomi` — Codex surfaces the skill namespace. The thin `openloomi` skill is the entry point, with sub-skills for `openloomi-install` (install / configure the desktop), `openloomi-pet` (pet state & themes), `openloomi-memory` (memory), `openloomi-loop` (loop dashboard), `openloomi-connectors` (native connectors), and `openloomi-handoff` (hand work off to the loop).
+Type `@OpenLoomi` — Codex surfaces the skill namespace. The thin `openloomi` skill is the entry point, with sub-skills for `openloomi-install` (install / configure the desktop), `openloomi-pet` (pet state & themes), `openloomi-memory` (memory), `openloomi-loop` (loop dashboard), and `openloomi-connectors` (native connectors).
 
 - `@OpenLoomi` — read-only doorway into the local runtime
 - `@OpenLoomi setup` — install / launch / configure the desktop app
@@ -93,7 +93,6 @@ Type `@OpenLoomi` — Codex surfaces the skill namespace. The thin `openloomi` s
 - `@OpenLoomi pet <state>` — set the Loomi Pet state
 - `@OpenLoomi memory` / `@OpenLoomi memory <query>` — local memory
 - `@OpenLoomi loop` — Loop dashboard snapshot
-- `@OpenLoomi handoff` — send a task to Loomi for follow-up
 
 ### 5. Run `@OpenLoomi setup` — readiness table lands in READY and the Loomi Pet appears
 
@@ -162,7 +161,7 @@ You should see:
 
 If `hooksInstalled` is `false`, check that you launched Codex with `--plugin-dir plugins/codex` (or that the marketplace-installed copy shipped the `hooks/` directory).
 
-### 11. Connect your apps with `@OpenLoomi handoff`
+### 11. Connect your apps with `@OpenLoomi connectors`
 
 The wizard walks you through three independent y/N choices: install the `composio` skill, enable Screen Memory (`Preferences → Chronicle → Screen Memory` in the desktop app), and connect a messaging connector (native 7 platforms via `openloomi-connectors`, or 1000+ via composio).
 
@@ -213,7 +212,7 @@ Reading is half the story — you can also write. From any Codex turn, invoke `o
 > @OpenLoomi loop
 ```
 
-The command hits `GET /api/loop/state` and returns the Loop dashboard: enabled status + last tick, counts (pending decisions / done / dismissed / signals seen), per-connector health (`needs_setup` / `local-only` / linked), prefs in effect (tick frequency, brief time, quiet-when-empty, desktop notifications, …), and actionable notes (e.g. "all 5 Composio-backed connectors share one failure: the local Composio surface isn't reachable — Loop can't pull signals until `@OpenLoomi handoff` walks the Composio install").
+The command hits `GET /api/loop/state` and returns the Loop dashboard: enabled status + last tick, counts (pending decisions / done / dismissed / signals seen), per-connector health (`needs_setup` / `local-only` / linked), prefs in effect (tick frequency, brief time, quiet-when-empty, desktop notifications, …), and actionable notes (e.g. "all 5 Composio-backed connectors share one failure: the local Composio surface isn't reachable — Loop can't pull signals until you bring the Composio backend back online").
 
 ![Step 14 — `Loop Dashboard`: `0 of 6 connected`, Composio backend unreachable (5/6), Obsidian `local-only`, stale `last tick ~24h ago`; prefs `briefTime 09:00 / wrapTime 21:00 / intervalSec 600`; implication = unblock the Composio backend first](/img/openloomi/plugins/codex/14-loop-dashboard.png)
 
@@ -441,7 +440,7 @@ node plugins/codex/scripts/loomi-bridge.mjs help
 | `pet <state>`           | Sets the Pet to a state (`happy`, `thinking`, …); see [Pet mirror](#pet-mirror-hooks)                     | `INVALID_STATE`, `ENDPOINT_MISSING`             |
 | `state`                 | Stop-hook helper that archives session context into OpenLoomi memory                                      | always exits 0                                  |
 | `archive`               | Stop-hook payload reader that POSTs `{type: "note", groups: ["codex"]}` to `/api/insights`                | always exits 0                                  |
-| `workflow-guidance`     | Returns structured guidance for the workflow skills (`loop`, `memory`, `connectors`, `handoff`, …)        | —                                               |
+| `workflow-guidance`     | Returns structured guidance for the workflow skills (`loop`, `memory`, `connectors`, …)        | —                                               |
 
 ---
 
@@ -511,12 +510,11 @@ The plugin ships these sub-skills under `plugins/codex/skills/`:
 | `openloomi-loop`          | Run attention-loop and follow-up workflows.                                                                                                           |
 | `openloomi-connectors`    | Check whether Slack, GitHub, Gmail, Calendar, and other sources are configured before acting. Reports status only.                                    |
 | `openloomi-memory`        | Search or write memory through OpenLoomi-owned runtime surfaces. Thin wrapper — does not implement memory storage.                                    |
-| `openloomi-handoff`       | Send the current Codex task to Loomi for follow-up. The Claude Code plugin exposes the same capability through `/openloomi:*` slash commands instead. |
 | `openloomi-api`           | OpenLoomi HTTP API reference (auth, chat, RAG, workspace, integrations, feedback). Triggered by API/backend questions.                                |
 | `openloomi-feature-guide` | Product overview, capabilities, and how-tos for non-developer questions like "what can openloomi do".                                                 |
 | `composio`                | Third-party 1000+ app integration router (Gmail, Slack, GitHub, etc.) via the Composio CLI. Platform-agnostic; not OpenLoomi business logic.          |
 
-The `workflow-guidance` bridge command returns structured guidance for the four workflow skills (`openloomi-loop`, `openloomi-memory`, `openloomi-connectors`, `openloomi-handoff`). All other skills are documentation or routing helpers. The plugin must not copy OpenLoomi connector, memory, loop, scheduling, or handoff persistence logic into Codex — runtime implementations stay inside the OpenLoomi desktop runtime.
+The `workflow-guidance` bridge command returns structured guidance for the three workflow skills (`openloomi-loop`, `openloomi-memory`, `openloomi-connectors`). All other skills are documentation or routing helpers. The plugin must not copy OpenLoomi connector, memory, or loop logic into Codex — runtime implementations stay inside the OpenLoomi desktop runtime.
 
 Useful workflow prompts from a Codex thread:
 

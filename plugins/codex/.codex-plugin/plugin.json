@@ -29,7 +29,6 @@
     "defaultPrompt": [
       "Check whether OpenLoomi is ready",
       "Show OpenLoomi setup next steps",
-      "Send this task to Loomi for follow-up",
       "Switch the OpenLoomi desktop app to the Codex runtime",
       "Show how to verify the desktop app is using Codex as its agent runtime",
       "Recover from Codex sandbox loopback false negatives",
