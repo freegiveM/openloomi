@@ -304,7 +304,7 @@ if [[ -n "${offline_dmg}" ]]; then
   cp "${offline_dmg}" "${dmg}"
   asset_url="file://${offline_dmg}"
   # Best-effort: derive tag/version from a filename like
-  # `OpenLoomi-0.8.4.dmg` (or `OpenLoomi_1.2.3-rc.1.dmg`) so downstream
+  # `OpenLoomi-0.8.5.dmg` (or `OpenLoomi_1.2.3-rc.1.dmg`) so downstream
   # consumers still see a version. Strip the `.dmg` suffix first so the
   # dot inside pre-release identifiers (e.g. `1.2.3-rc.1`) doesn't
   # terminate the match.
@@ -373,7 +373,7 @@ else
       ' || true)
 
   # Strip a leading "v" / "V" from tag_name so downstream consumers get a
-  # clean semver-ish version (e.g. "v0.8.4" → "0.8.4"). Fall back to ""
+  # clean semver-ish version (e.g. "v0.8.5" → "0.8.5"). Fall back to ""
   # if the API didn't return a tag_name.
   version=$(printf '%s' "${tag_name}" | sed -E 's/^[vV]//')
 

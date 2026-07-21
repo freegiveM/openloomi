@@ -1,6 +1,6 @@
 {
   "name": "@openloomi/integrations",
-  "version": "0.8.4",
+  "version": "0.8.5",
   "private": true,
   "type": "module",
   "description": "Unified package for alloo mi integration packages",
