@@ -452,8 +452,12 @@ test("setup-status reports OPENLOOMI_API_UNREACHABLE when API down and no token"
     assert.equal(j.apiReachable, false);
     if (!j.tokenPresent) {
       assert.equal(j.ready, false);
-      assert.equal(j.nextAction, "open_openloomi");
-      assert.equal(j.reason, "OPENLOOMI_API_UNREACHABLE");
+      // When the Codex sandbox blocks the bridge's own loopback probe, the
+      // bridge now points the caller at the host probe (run-host-probe)
+      // instead of asking the user to relaunch the app. Old behavior of
+      // open_openloomi is preserved only when the API was truly down.
+      assert.equal(j.nextAction, "run_host_probe");
+      assert.equal(j.reason, "OPENLOOMI_API_AMBIGUOUS_HOST_PROBE_STALE");
       assert.equal(j.loopbackAccessAmbiguous, true);
       assert.equal(j.loopbackAccess.ambiguous, true);
       assert.equal(j.loopbackAccess.reason, "LOOPBACK_NETWORK_ACCESS_BLOCKED");
@@ -464,7 +468,88 @@ test("setup-status reports OPENLOOMI_API_UNREACHABLE when API down and no token"
         ),
       );
       assert.deepEqual(j.checks.loopbackAccess, j.loopbackAccess);
+      assert.ok(Array.isArray(j.autoFixCommands));
+      assert.ok(
+        j.autoFixCommands.some((c) => c.includes("run-host-probe")),
+        "autoFixCommands must include run-host-probe",
+      );
+      assert.equal(j.hostProbeCachePath, join(env.HOME, ".openloomi", "codex-host-probe-cache.json"));
     }
+  });
+});
+
+test("setup-status --emit-host-probe returns host probe payload without writing cache", () => {
+  withFakeHome((env) => {
+    const ctl = writeFakeApp(env.HOME);
+    const j = runJson(["setup-status", "--emit-host-probe"], {
+      ...env,
+      OPENLOOMI_APP: ctl,
+    });
+    assert.equal(typeof j.hostProbeScript, "string");
+    assert.ok(j.hostProbeScript.includes("codex-host-probe-cache.json"));
+    assert.ok(j.hostProbeScript.includes("/api/native/providers"));
+    assert.equal(j.hostProbeCachePath, join(env.HOME, ".openloomi", "codex-host-probe-cache.json"));
+    assert.equal(j.hostProbeCacheMaxAgeMs, 5 * 60 * 1000);
+    assert.ok(j.hostProbe);
+    assert.equal(j.hostProbe.recommendedNextAction, "run-host-probe");
+    // Cache file must NOT have been written just by reading setup-status.
+    const cachePath = join(env.HOME, ".openloomi", "codex-host-probe-cache.json");
+    assert.equal(existsSync(cachePath), false);
+  });
+});
+
+test("run-host-probe command is registered and returns ok:false when API unreachable", () => {
+  withFakeHome((env) => {
+    const ctl = writeFakeApp(env.HOME);
+    const j = runJson(["run-host-probe", "--base-url", "http://127.0.0.1:1"], {
+      ...env,
+      OPENLOOMI_APP: ctl,
+    });
+    // Point the probe at a closed port so the host fetch fails. The bridge
+    // should still respond with a structured JSON and persist an empty cache.
+    // `ok` here means the cache file was written, not that the API is
+    // reachable. Use `reachable` to assert the API was actually down.
+    assert.equal(j.reachable, false);
+    assert.equal(j.baseUrl, null);
+    assert.ok(Array.isArray(j.attempts));
+    assert.ok(j.attempts.length > 0, "must record at least one probe attempt");
+    // Cache file should still be written (the cache record is best-effort).
+    const cachePath = join(env.HOME, ".openloomi", "codex-host-probe-cache.json");
+    assert.equal(existsSync(cachePath), true);
+    const cached = JSON.parse(readFileSync(cachePath, "utf8"));
+    assert.equal(cached.schemaVersion, 1);
+    assert.ok(Array.isArray(cached.providers));
+  });
+});
+
+test("setup-status honors a fresh host probe cache and reports READY_VIA_HOST_PROBE_CACHE", () => {
+  withFakeHome((env) => {
+    const ctl = writeFakeApp(env.HOME);
+    writeFakeToken(env.HOME);
+    // Pre-write a fresh host probe cache so the sandbox-blocked fetch is
+    // overridden.
+    const cachePath = join(env.HOME, ".openloomi", "codex-host-probe-cache.json");
+    mkdirSync(join(env.HOME, ".openloomi"), { recursive: true });
+    writeFileSync(
+      cachePath,
+      JSON.stringify({
+        baseUrl: "http://127.0.0.1:3414",
+        providers: [{ type: "codex", name: "Codex CLI", builtin: true }],
+        defaultAgent: "codex",
+        capturedAt: Date.now(),
+        schemaVersion: 1,
+      }),
+    );
+    const j = runJson(["setup-status"], {
+      ...env,
+      OPENLOOMI_APP: ctl,
+    });
+    assert.equal(j.ready, true);
+    assert.equal(j.reason, "READY_VIA_HOST_PROBE_CACHE");
+    assert.equal(j.readinessSource, "host-probe-cache");
+    assert.equal(j.apiReachable, true);
+    assert.equal(j.executionProviderReady, true);
+    assert.equal(j.nativeRuntimeProvider, "codex");
   });
 });
 

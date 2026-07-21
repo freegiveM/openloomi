@@ -159,6 +159,7 @@ const COMMANDS = new Set([
   "install-instructions",
   "pet",
   "set-codex-runtime-env",
+  "run-host-probe",
   "setup",
   "setup-status",
   "state",
@@ -217,6 +218,7 @@ const WORKFLOW_GUIDANCE = [
       "install_openloomi",
       "initialize_openloomi_session",
       "configure_connectors",
+      "run_host_probe",
     ],
     safety: [
       "Do not implement loop scheduling or decision storage in the Codex plugin.",
@@ -236,6 +238,7 @@ const WORKFLOW_GUIDANCE = [
       "install_openloomi",
       "initialize_openloomi_session",
       "configure_connectors",
+      "run_host_probe",
     ],
     safety: [
       "Do not read or write OpenLoomi memory files directly from the Codex plugin.",
@@ -257,6 +260,7 @@ const WORKFLOW_GUIDANCE = [
       "install_openloomi",
       "initialize_openloomi_session",
       "configure_connectors",
+      "run_host_probe",
     ],
     safety: [
       "Do not ask the user to paste connector OAuth tokens or API secrets into Codex.",
@@ -276,6 +280,7 @@ const WORKFLOW_GUIDANCE = [
       "install_openloomi",
       "initialize_openloomi_session",
       "configure_connectors",
+      "run_host_probe",
     ],
     safety: [
       "Do not build an independent task queue in the Codex plugin.",
@@ -334,10 +339,98 @@ function makeSetupStageTicker(stage, budgetMs) {
 
 async function setupStatus(args = []) {
   const flags = parseFlags(args);
-  writeJson(
-    await buildSetupStatus({ explicitApp: flags["bin-path"] || null }),
-  );
+  const status = await buildSetupStatus({ explicitApp: flags["bin-path"] || null });
+  if (flags.emitHostProbe) {
+    status.hostProbe = buildHostProbePayload(status);
+    status.hostProbeScript = HOST_PROBE_SNIPPET;
+    status.hostProbeCachePath = getHostProbeCachePath();
+    status.hostProbeCacheMaxAgeMs = HOST_PROBE_CACHE_MAX_AGE_MS;
+  }
+  writeJson(status);
 }
+
+async function runHostProbeCommand(args = []) {
+  // parseFlags does not register `base-url` (it is consumed only by the
+  // setup wizard), so walk argv manually for this command.
+  let explicitBaseUrl = null;
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    if (arg === "--base-url" && i + 1 < args.length) {
+      explicitBaseUrl = args[i + 1];
+      i += 1;
+    } else if (typeof arg === "string" && arg.startsWith("--base-url=")) {
+      explicitBaseUrl = arg.slice("--base-url=".length);
+    }
+  }
+  const baseUrls = (explicitBaseUrl || "http://127.0.0.1:3414,http://127.0.0.1:3515").split(",").map((s) => s.trim()).filter(Boolean);
+  const result = await probeHostsForProviders(baseUrls);
+  const writeOutcome = writeHostProbeCache({
+    baseUrl: result.baseUrl,
+    providers: result.providers,
+    defaultAgent: result.defaultAgent,
+    probedAt: Date.now(),
+    source: "run-host-probe",
+    attempts: result.attempts,
+  });
+  writeJson({
+    ok: writeOutcome.ok,
+    baseUrl: result.baseUrl,
+    reachable: Boolean(result.baseUrl),
+    providers: result.providers,
+    defaultAgent: result.defaultAgent,
+    attempts: result.attempts,
+    cachePath: writeOutcome.path,
+    cachedAt: Date.now(),
+    note: "If the bridge reported OPENLOOMI_API_UNREACHABLE before, re-run setup-status now to merge the cached probe into the readiness decision.",
+  });
+}
+
+async function probeHostsForProviders(baseUrls) {
+  const attempts = [];
+  for (const baseUrl of baseUrls) {
+    const endpoint = baseUrl.replace(/\/$/, "") + "/api/native/providers";
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 4000);
+      const response = await fetch(endpoint, { signal: controller.signal });
+      clearTimeout(timer);
+      if (!response.ok) {
+        attempts.push({ baseUrl, status: response.status, error: "HTTP_" + response.status });
+        continue;
+      }
+      const body = await response.json();
+      const agents = Array.isArray(body && body.agents) ? body.agents : [];
+      if (agents.length === 0) {
+        attempts.push({ baseUrl, status: 200, error: "EMPTY_AGENTS" });
+        continue;
+      }
+      return {
+        baseUrl,
+        providers: agents,
+        defaultAgent: body.defaultAgent || null,
+        attempts,
+      };
+    } catch (error) {
+      attempts.push({ baseUrl, error: error && error.message ? error.message : String(error) });
+    }
+  }
+  return { baseUrl: null, providers: [], defaultAgent: null, attempts };
+}
+
+function buildHostProbePayload(status) {
+  return {
+    recommendedNextAction: "run-host-probe",
+    message: "Codex sandbox blocked the bridge's loopback probe. Run `node ${PLUGIN_ROOT}/scripts/loomi-bridge.mjs run-host-probe` from a Codex shell with prefix-allowed host access; this writes /api/native/providers results to ~/.openloomi/codex-host-probe-cache.json so the next setup-status can see the real runtime.",
+    script: HOST_PROBE_SNIPPET,
+    cachePath: getHostProbeCachePath(),
+    maxAgeMs: HOST_PROBE_CACHE_MAX_AGE_MS,
+    currentReady: Boolean(status && status.ready),
+    currentReason: status && status.reason,
+  };
+}
+
+const HOST_PROBE_SNIPPET = "#!/usr/bin/env bash\n# Refresh ~/.openloomi/codex-host-probe-cache.json so the bridge's next\n# setup-status can recover from a Codex sandbox loopback false negative.\nset -e\nCACHE_PATH=\"$HOME/.openloomi/codex-host-probe-cache.json\"\nmkdir -p \"$(dirname \"$CACHE_PATH\")\"\nBASE_URL=\"${OPENLOOMI_BASE_URL:-http://127.0.0.1:3414}\"\nnode - <<'NODE_PROBE'\nconst fs = require('node:fs');\nconst os = require('node:os');\nconst path = require('node:path');\nconst cachePath = path.join(os.homedir(), '.openloomi', 'codex-host-probe-cache.json');\nconst baseUrl = process.env.OPENLOOMI_BASE_URL || 'http://127.0.0.1:3414';\n(async () => {\n  try {\n    const r = await fetch(baseUrl.replace(/\\/$/, '') + '/api/native/providers');\n    if (!r.ok) throw new Error('HTTP_' + r.status);\n    const body = await r.json();\n    fs.mkdirSync(path.dirname(cachePath), { recursive: true });\n    fs.writeFileSync(cachePath, JSON.stringify({\n      baseUrl,\n      providers: Array.isArray(body.agents) ? body.agents : [],\n      defaultAgent: body.defaultAgent || null,\n      capturedAt: Date.now(),\n      schemaVersion: 1,\n    }, null, 2));\n    process.stdout.write('host-probe ok ' + cachePath + '\\n');\n  } catch (e) {\n    process.stderr.write('host-probe failed: ' + (e && e.message) + '\\n');\n    process.exit(1);\n  }\n})();\nNODE_PROBE";
+
 
 async function getCodexRuntimeEnvStatus() {
   const probe = await probeRuntimeEnvValue(RUNTIME_ENV_KEY);
@@ -399,13 +492,43 @@ async function buildSetupStatus({ explicitApp = null } = {}) {
   const apiProbe = await probeLocalApi();
   const loopbackAccess = getLoopbackAccessDiagnostic(apiProbe);
 
+  // When the Codex sandbox blocks our own loopback probe, fall back to a
+  // recent host-side probe cached at ~/.openloomi/codex-host-probe-cache.json.
+  // The host shell writes that file (see run-host-probe) so we can recover a
+  // truthful native-runtime picture without forcing the user to paste shell
+  // snippets into Terminal.
+  let hostProbeCache = null;
+  if (loopbackAccess.ambiguous) {
+    hostProbeCache = readHostProbeCache();
+  }
+  const effectiveApiProbe = hostProbeCache
+    ? mapHostProbeToApiProbe(hostProbeCache)
+    : apiProbe;
+  const effectiveLoopbackAccess = hostProbeCache
+    ? {
+        ambiguous: false,
+        reason: null,
+        message: null,
+        verification: null,
+        resolvedFromHostProbeCache: true,
+      }
+    : loopbackAccess;
+
   const connectorStatus = await getConnectorStatus(
-    apiProbe.reachableUrl,
+    effectiveApiProbe.reachableUrl,
     token,
   );
-  const nativeProviderStatus = await getNativeProviderStatus(
-    apiProbe.reachableUrl,
+  const rawNativeProviderStatus = await getNativeProviderStatus(
+    effectiveApiProbe.reachableUrl,
   );
+  // When we recovered from a stale host probe by reading a fresh cache, the
+  // sandbox-blocked fetch is no longer the source of truth — promote the
+  // cached payload so downstream fields (nativeRuntimeProvider, agents,
+  // executionProviderReady, etc.) reflect what we actually know.
+  const nativeProviderStatus =
+    hostProbeCache && hostProbeCache.payload && hostProbeCache.payload.providers
+      ? mapHostProbeToNativeProviderStatus(hostProbeCache)
+      : rawNativeProviderStatus;
 
   // `appRunning` is the gateway the setup state machine uses to decide
   // whether `set-codex-runtime-env` needs to also restart the GUI. When
@@ -465,14 +588,14 @@ async function buildSetupStatus({ explicitApp = null } = {}) {
       monitoringConnected: connectorStatus.monitoringConnected,
       monitoringConnectorIds: [...MONITORING_CONNECTOR_IDS],
     },
-    apiReachable: Boolean(apiProbe.reachableUrl),
-    apiBaseUrl: apiProbe.reachableUrl,
+    apiReachable: Boolean(effectiveApiProbe.reachableUrl),
+    apiBaseUrl: effectiveApiProbe.reachableUrl,
     apiProbe: {
-      reachableUrl: apiProbe.reachableUrl,
-      attempts: apiProbe.attempts,
-      source: apiProbe.source,
+      reachableUrl: effectiveApiProbe.reachableUrl,
+      attempts: effectiveApiProbe.attempts,
+      source: effectiveApiProbe.source,
     },
-    loopbackAccessAmbiguous: loopbackAccess.ambiguous,
+    loopbackAccessAmbiguous: effectiveLoopbackAccess.ambiguous,
     loopbackAccess,
     codexRuntimeEnvSet: codexRuntimeEnv.set,
     codexRuntimeEnv: {
@@ -498,8 +621,8 @@ async function buildSetupStatus({ explicitApp = null } = {}) {
     checks: {
       auth: token.checked,
       nativeProvider: nativeProviderStatus,
-      apiProbe: apiProbe.attempts,
-      loopbackAccess,
+      apiProbe: effectiveApiProbe.attempts,
+      loopbackAccess: effectiveLoopbackAccess,
       connectors: connectorStatus.check,
       discovery: discovery.checked,
       codexRuntimeEnv: {
@@ -517,8 +640,9 @@ async function buildSetupStatus({ explicitApp = null } = {}) {
       discovery,
       token,
       codexRuntimeEnv,
-      apiProbe,
+      effectiveApiProbe,
       nativeProviderStatus,
+      { hostProbeCache, loopbackAccess: effectiveLoopbackAccess },
     ),
   };
 }
@@ -1561,6 +1685,7 @@ function parseFlags(args) {
     confirm: false,
     yes: false,
     downloadOnly: false,
+    emitHostProbe: false,
     launch: false,
     model: null,
     provider: null,
@@ -1600,6 +1725,11 @@ function parseFlags(args) {
 
     if (arg === "--download-only") {
       flags.downloadOnly = true;
+      continue;
+    }
+
+    if (arg === "--emit-host-probe") {
+      flags.emitHostProbe = true;
       continue;
     }
 
@@ -5361,7 +5491,23 @@ function getReadinessDecision(
   codexRuntimeEnv,
   apiProbe,
   nativeProviderStatus,
+  options = {},
 ) {
+  // options.hostProbeCache (optional) carries the cached host-side probe
+  // payload that buildSetupStatus pulled from
+  // ~/.openloomi/codex-host-probe-cache.json. When the Codex sandbox
+  // blocks our own loopback fetch but a fresh host probe says the API is
+  // alive, we treat the bridge as ready and skip the misleading
+  // open_openloomi suggestion.
+  const hostProbeCache = options.hostProbeCache || null;
+  const loopbackAccess = options.loopbackAccess || null;
+  const hostProbeSaysReady = Boolean(
+    hostProbeCache &&
+      hostProbeCache.payload &&
+      Array.isArray(hostProbeCache.payload.providers) &&
+      hostProbeCache.payload.providers.length > 0 &&
+      hostProbeCache.payload.baseUrl,
+  );
   // codexRuntimeEnv is intentionally NOT a gate here: a missing
   // OPENLOOMI_AGENT_PROVIDER only blocks the OpenLoomi GUI desktop from
   // routing through Codex; the bridge itself can still drive readiness
@@ -5370,6 +5516,31 @@ function getReadinessDecision(
   void codexRuntimeEnv;
   const nativeCodexRuntimeReady = Boolean(nativeProviderStatus?.active);
 
+  if (hostProbeSaysReady) {
+    return {
+      ready: true,
+      nextAction: token.present ? null : "initialize_openloomi_session",
+      reason: "READY_VIA_HOST_PROBE_CACHE",
+      readinessSource: "host-probe-cache",
+      message: token.present
+        ? "OpenLoomi is ready; the Codex sandbox blocked the bridge's own loopback probe, but a fresh host-side probe (~/.openloomi/codex-host-probe-cache.json) confirms the local API is reachable."
+        : "OpenLoomi is ready via host probe cache. Initialize a local guest/session token before calling authenticated OpenLoomi APIs."
+    };
+  }
+
+  if (loopbackAccess && loopbackAccess.ambiguous) {
+    return {
+      ready: false,
+      nextAction: "run_host_probe",
+      reason: "OPENLOOMI_API_AMBIGUOUS_HOST_PROBE_STALE",
+      message:
+        "Codex sandbox blocked the bridge's loopback probe, and no fresh host probe cache is available. Run \`bridge run-host-probe\` - the bridge ships a one-shot host probe that writes its result to ~/.openloomi/codex-host-probe-cache.json so the next setup-status can see the real runtime.",
+      autoFixCommands: [
+        "node ${PLUGIN_ROOT}/scripts/loomi-bridge.mjs run-host-probe",
+      ],
+      hostProbeCachePath: getHostProbeCachePath(),
+    };
+  }
   if (discovery.status === "invalid") {
     return {
       ready: false,
@@ -5401,11 +5572,18 @@ function getReadinessDecision(
   if (!token.present && apiProbe && !apiProbe.reachableUrl) {
     return {
       ready: false,
-      nextAction: "open_openloomi",
-      reason: "OPENLOOMI_API_UNREACHABLE",
+      nextAction: loopbackAccess && loopbackAccess.ambiguous ? "run_host_probe" : "open_openloomi",
+      reason: loopbackAccess && loopbackAccess.ambiguous
+        ? "OPENLOOMI_API_AMBIGUOUS_HOST_PROBE_STALE"
+        : "OPENLOOMI_API_UNREACHABLE",
       sessionInitializationRequired: true,
-      message:
-        "OpenLoomi is installed but the local API is not reachable. Open OpenLoomi Desktop, or run `setup --yes` to install + launch + mint a guest session automatically.",
+      message: loopbackAccess && loopbackAccess.ambiguous
+        ? "Codex sandbox blocked the bridge's loopback probe. Run `bridge run-host-probe` to refresh the host probe cache; the next setup-status will see the real runtime."
+        : "OpenLoomi is installed but the local API is not reachable. Open OpenLoomi Desktop, or run `setup --yes` to install + launch + mint a guest session automatically.",
+      autoFixCommands: [
+        "node ${PLUGIN_ROOT}/scripts/loomi-bridge.mjs run-host-probe",
+      ],
+      hostProbeCachePath: getHostProbeCachePath(),
     };
   }
 
@@ -5435,10 +5613,17 @@ function getReadinessDecision(
   if (!apiProbe?.reachableUrl) {
     return {
       ready: false,
-      nextAction: "open_openloomi",
-      reason: "OPENLOOMI_API_UNREACHABLE",
-      message:
-        "OpenLoomi is installed but the local API is not reachable. Open OpenLoomi, then retry setup-status.",
+      nextAction: loopbackAccess && loopbackAccess.ambiguous ? "run_host_probe" : "open_openloomi",
+      reason: loopbackAccess && loopbackAccess.ambiguous
+        ? "OPENLOOMI_API_AMBIGUOUS_HOST_PROBE_STALE"
+        : "OPENLOOMI_API_UNREACHABLE",
+      message: loopbackAccess && loopbackAccess.ambiguous
+        ? "Codex sandbox blocked the bridge`s loopback probe. Run `bridge run-host-probe` to refresh the host probe cache; the next setup-status will see the real runtime."
+        : "OpenLoomi is installed but the local API is not reachable. Open OpenLoomi, then retry setup-status.",
+      autoFixCommands: [
+        "node ${PLUGIN_ROOT}/scripts/loomi-bridge.mjs run-host-probe",
+      ],
+      hostProbeCachePath: getHostProbeCachePath(),
     };
   }
 
@@ -5475,6 +5660,111 @@ function getTokenStatus() {
 function getOpenLoomiTokenPath() {
   return path.join(os.homedir(), ".openloomi", "token");
 }
+
+// Host-side probe cache. When Codex runs the bridge inside its macOS
+// seatbelt sandbox, Node's fetch() cannot reach the OpenLoomi local API
+// on 127.0.0.1 (the sandbox denies loopback outbound). setup-status then
+// reports a misleading OPENLOOMI_API_UNREACHABLE even though the
+// desktop app is healthy. To avoid forcing the user to translate
+// verification.commands into a manual Terminal paste, the plugin can:
+//   1. ask Codex to run a short shell snippet on the host (write a
+//      probe result to the cache file)
+//   2. read the cache on the next setup-status call and merge the
+//      real /api/native/providers payload into the readiness decision.
+//
+// The cache lives in the user's home (NOT the Codex workspace) so it is
+// writable from both inside the Codex sandbox and from a host shell.
+const HOST_PROBE_CACHE_FILENAME = "codex-host-probe-cache.json";
+const HOST_PROBE_CACHE_MAX_AGE_MS = 5 * 60 * 1000;
+
+function getHostProbeCachePath() {
+  return path.join(os.homedir(), ".openloomi", HOST_PROBE_CACHE_FILENAME);
+}
+
+function readHostProbeCache({ maxAgeMs = HOST_PROBE_CACHE_MAX_AGE_MS } = {}) {
+  const cachePath = getHostProbeCachePath();
+  if (!isFile(cachePath)) return null;
+  let parsed;
+  try {
+    parsed = JSON.parse(readFileSync(cachePath, "utf8"));
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== "object") return null;
+  const capturedAt = Number(parsed.capturedAt);
+  if (!Number.isFinite(capturedAt)) return null;
+  if (Date.now() - capturedAt > maxAgeMs) return null;
+  return { path: cachePath, capturedAt, payload: parsed };
+}
+
+function writeHostProbeCache(payload) {
+  const cachePath = getHostProbeCachePath();
+  const dir = path.dirname(cachePath);
+  try {
+    mkdirSync(dir, { recursive: true });
+  } catch {
+    // Best effort: cache is a convenience, not a correctness requirement.
+  }
+  const enriched = {
+    ...payload,
+    capturedAt: payload && payload.capturedAt ? payload.capturedAt : Date.now(),
+    schemaVersion: 1,
+  };
+  const partialPath = cachePath + ".partial";
+  try {
+    writeFileSync(partialPath, JSON.stringify(enriched, null, 2), "utf8");
+    renameSync(partialPath, cachePath);
+    return { ok: true, path: cachePath };
+  } catch {
+    safeUnlink(partialPath);
+    return { ok: false, path: cachePath };
+  }
+}
+
+function mapHostProbeToApiProbe(cache) {
+  const payload = cache && cache.payload;
+  const baseUrl = (payload && payload.baseUrl) || null;
+  const providers = payload && Array.isArray(payload.providers) ? payload.providers : [];
+  const attemptBaseUrl = baseUrl || "http://127.0.0.1:3414";
+  return {
+    reachableUrl: providers.length > 0 && baseUrl ? baseUrl : null,
+    attempts: [
+      {
+        baseUrl: attemptBaseUrl,
+        reason: providers.length > 0 ? "OK" : "NETWORK_ERROR",
+        reachable: providers.length > 0,
+        source: "host-probe-cache",
+      },
+    ],
+    source: "host-probe-cache",
+    cachedAt: cache ? cache.capturedAt : null,
+  };
+}
+
+function mapHostProbeToNativeProviderStatus(cache) {
+  const payload = cache && cache.payload;
+  const baseUrl = (payload && payload.baseUrl) || null;
+  const providers = payload && Array.isArray(payload.providers) ? payload.providers : [];
+  const defaultAgent = (payload && payload.defaultAgent) || null;
+  const active = providers.length > 0 && Boolean(baseUrl);
+  return {
+    checked: true,
+    available: active,
+    active,
+    reason: active ? "OK" : "OPENLOOMI_API_UNREACHABLE",
+    baseUrl,
+    endpoint: "/api/native/providers",
+    status: active ? 200 : null,
+    defaultAgent,
+    codexAgentAvailable: defaultAgent === "codex",
+    agents: providers,
+    source: "host-probe-cache",
+    cachedAt: cache ? cache.capturedAt : null,
+  };
+}
+
+
+
 
 function readOpenLoomiAuthToken(tokenStatus = getTokenStatus()) {
   if (hasValue(process.env.OPENLOOMI_AUTH_TOKEN)) {
@@ -6217,6 +6507,9 @@ async function main() {
       break;
     case "setup-status":
       await setupStatus(process.argv.slice(3));
+      break;
+    case "run-host-probe":
+      await runHostProbeCommand(process.argv.slice(3));
       break;
     case "state":
       await stateCommand(process.argv.slice(3));

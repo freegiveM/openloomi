@@ -1,20 +1,25 @@
 ---
 title: "Claude Code Plugin"
-description: "Wire Claude Code into the local OpenLoomi runtime — /openloomi:* slash commands, a first-run setup wizard, and opt-in Pet mirror + Stop-archive hooks"
+description: "Connect Claude Code to your local OpenLoomi runtime. One-command install, mirror Claude's lifecycle onto the Loomi Pet, and auto-archive every Stop into your OpenLoomi memory."
 icon: "FaRobot"
 ---
 
 # Claude Code Plugin
 
-The Claude Code plugin bridges **Claude Code** and your local **OpenLoomi** runtime. It adds `/openloomi:*` slash commands, a one-command setup wizard, and optional hooks that mirror your Claude Code session onto the [Pet](/docs/attention-agent) and archive transcripts into OpenLoomi.
+Run OpenLoomi from inside Claude Code. [OpenLoomi](https://github.com/melandlabs/openloomi) is a local-first desktop app that holds your memory, runs background tasks, and talks to your connected apps (Gmail, Slack, GitHub, Calendar, Linear, …). This plugin turns Claude Code into a front-end for that local runtime — Claude Code stays your coding surface, OpenLoomi does the long-running and cross-app work in the background.
+
+You keep using Claude Code the way you already do. OpenLoomi runs next to it, on your machine.
+
+## What you can do with it
+
+- **Run first-use setup in one command.** `/openloomi:setup` discovers your OpenLoomi install, downloads it if missing, launches the desktop app, waits for the local API, and mints a guest session token. Nothing GUI is required.
+- **Drive the Loomi Pet.** `/openloomi:pet happy` flips the pet sprite from your terminal — useful as a heartbeat signal while Claude Code is grinding on a long task.
+- **See today's LLM cost.** `/openloomi:usage` summarizes token usage and spend without leaving the session.
+- **Mirror Claude Code's lifecycle onto OpenLoomi (opt-in).** With hooks installed, every Claude Code turn gets archived into OpenLoomi's memory, and every lifecycle event flips the pet sprite accordingly. You keep full control — install/uninstall with one command, and `~/.claude/settings.json` is never modified unless you ask.
+
+OpenLoomi still owns the heavy lifting: local memory storage, connector credentials, scheduled tasks, the desktop UI, secrets. Claude Code just gets a doorway into all of it.
 
 > Runtime implementation details (how OpenLoomi drives a Claude subprocess internally) live in [Claude Agent Runtime](/docs/reference/agent-runtimes/claude). This page is about the **external** integration — how a Claude Code user drives OpenLoomi.
-
----
-
-## Overview
-
-The plugin is a thin bridge. It never reimplements OpenLoomi business logic — every side effect lands on the local runtime over HTTP (`127.0.0.1:3414`, falling back to `127.0.0.1:3515`). Commands are dependency-free Node wrappers around `scripts/loomi-bridge.mjs`. AI provider configuration is owned by the OpenLoomi runtime itself: the runtime probes the user's local `claude auth status` and surfaces that through `/api/preferences/ai`, so the plugin never reads or pushes AI provider env vars into per-user settings.
 
 ---
 
