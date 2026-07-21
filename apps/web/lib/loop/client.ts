@@ -26,6 +26,7 @@ export {
   deriveConnectorCapability,
   withConnectorCapability,
   summarizeConnectorCapability,
+  filterComposioOnlyEntries,
 } from "./connectors-pure";
 export {
   deriveReadiness,

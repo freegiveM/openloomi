@@ -155,6 +155,41 @@ export function summarizeConnectorCapability(
 }
 
 /**
+ * #413 — keep only Composio-managed entries that have NOT been rendered
+ * elsewhere. Three exclusions, each for a distinct reason:
+ *
+ *   1. `connected === false` → the user never authorized this platform
+ *      (or it lapsed). The "Not authorized" affordance is the
+ *      "Connect more via Composio" button on the parent dialog; we
+ *      deliberately do NOT render an unconnected row here, neither as
+ *      a red dot nor as a neutral pill, since either would imply the
+ *      user already has it.
+ *   2. `probed === false` → the agent hasn't actually confirmed the
+ *      connector's state yet (typical for a freshly-appended custom
+ *      channel from `appendCustomChannels`). Without `probed`, a
+ *      capability badge can't be derived either, so the row would only
+ *      ever be a stub.
+ *   3. id present in `nativePlatforms` → a native OAuth account already
+ *      owns this id; rendering twice confuses users.
+ *
+ * Pure function over the seed list. Lives in `connectors-pure` so the
+ * React component (`composio-connector-list.tsx`) and the unit test
+ * (`composio-connector-list-filter.test.ts`) can import it without
+ * pulling `node:fs` or the UI package into the node-test bundle.
+ */
+export function filterComposioOnlyEntries(
+  items: ConnectorEntry[],
+  nativePlatforms: ReadonlySet<string>,
+): ConnectorEntry[] {
+  return items.filter(
+    (e) =>
+      e.connected &&
+      e.probed !== false &&
+      !nativePlatforms.has(e.id),
+  );
+}
+
+/**
  * All-offline fallback used whenever the on-disk snapshot is missing or
  * stale. Re-exported so the server-side connector cache can hand the same
  * shape back without going through `node:fs`.

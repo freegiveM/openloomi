@@ -15,12 +15,34 @@
  * controls; the Composio row is suppressed to avoid two entries for the
  * same platform).
  *
- * Health rendering:
- *   - account-level `healthy === false` (or `lastError`) → red dot
- *   - entry-level `lastError` only                       → amber dot
- *     (partial degradation — entry has an issue but every account is
- *     healthy)
- *   - otherwise                                          → green dot
+ * State separation (#413): two orthogonal signals are rendered for each
+ * row — never collapsed into a single red/green pill:
+ *
+ *   - **Health dot**  — is the connection itself working?
+ *       red    = at least one account reports `healthy === false`
+ *                (or an entry-level `lastError`);
+ *       amber  = degraded (entry-level `lastError` only);
+ *       green  = all healthy.
+ *
+ *   - **Capability badge** — what is Loop doing with this source? See
+ *     `ConnectorCapabilityBadge` for the palette.
+ *       decision_capable → green, "Decision capable" (canonical toolkit
+ *                          with a known classifier mapping);
+ *       loop_monitored   → blue,  "Loop monitored" (canonical toolkit,
+ *                          signals pulled but no decision mapping yet,
+ *                          e.g. obsidian);
+ *       needs_setup      → amber, "Needs setup" (connected for
+ *                          chat/memory but not wired into Loop);
+ *       unsupported      → muted, "Unsupported mapping" (no classifier);
+ *       (absent)         → the agent hasn't probed yet; render nothing
+ *                          so we don't lie about monitoring coverage.
+ *
+ * Entries with `connected: false` are deliberately not rendered here:
+ * the issue's "Not authorized — user never set it up" case is hidden,
+ * since rendering it as anything (neutral, amber, or red) would imply
+ * the user asked for it. Authorizing a new platform goes through the
+ * "Connect more via Composio" affordance on the parent dialog, not
+ * this list.
  *
  * Multi-account toolkits (e.g. two GitHub accounts) get one row per
  * account. Toolkits with `accounts` missing but `connected:true` fall
@@ -32,7 +54,9 @@ import { useTranslation } from "react-i18next";
 import Image from "next/image";
 import { RemixIcon } from "@/components/remix-icon";
 import { ComposioIcon } from "@/components/composio-icon";
+import { ConnectorCapabilityBadge } from "@/components/loop/connector-capability-badge";
 import { resolvePlatformLogo } from "@/components/integration-platform-card";
+import { filterComposioOnlyEntries } from "@/lib/loop/connectors-pure";
 import type { IntegrationAccountClient } from "@/hooks/use-integrations";
 import type { IntegrationId } from "@/hooks/use-integrations";
 import type { ConnectorAccount, ConnectorEntry } from "@/lib/loop/types";
@@ -134,12 +158,7 @@ export function ComposioConnectorList({ nativeAccounts, items }: Props) {
    */
   const composioOnly = useMemo(() => {
     const nativePlatforms = new Set(nativeAccounts.map((a) => a.platform));
-    return items.filter(
-      (e) =>
-        e.connected &&
-        e.probed !== false &&
-        !nativePlatforms.has(e.id as IntegrationId),
-    );
+    return filterComposioOnlyEntries(items, nativePlatforms);
   }, [items, nativeAccounts]);
 
   if (composioOnly.length === 0) return null;
@@ -190,6 +209,16 @@ export function ComposioConnectorList({ nativeAccounts, items }: Props) {
                     {entry.label}
                   </span>
                   <SourceBadge />
+                  {/*
+                   * #413 — render the Loop capability next to the source
+                   * badge so the user can tell at a glance whether an
+                   * authorized Composio integration participates in Loop
+                   * (green/blue), is chat/memory only (amber), or is
+                   * unsupported (muted). The health dot on the right
+                   * keeps its existing "is the connection working"
+                   * semantic — the two signals are deliberately orthogonal.
+                   */}
+                  <ConnectorCapabilityBadge capability={entry.capability} />
                 </div>
                 {entry.lastError && accounts.length === 0 ? (
                   <p className="text-xs text-amber-600 mt-0.5 truncate">
