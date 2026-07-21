@@ -25,6 +25,7 @@
 
 import { invokeAgentPrompt } from "./runner";
 import { writeConnectorSnapshot, writeProbeError } from "./connectors";
+import { probeViaCli } from "./composio-cli";
 import { log } from "./store";
 import type { ConnectorAccount, ConnectorEntry } from "./types";
 
@@ -39,6 +40,13 @@ import type { ConnectorAccount, ConnectorEntry } from "./types";
  * so `refreshConnectors` can persist a `lastProbeError` and the API /
  * card can surface an actionable hint. Mirrors the `LoopDecisionExecution`
  * tagged-union precedent in `outcomes.ts`.
+ *
+ * CLI-direct fast-path: when the user's local `composio` CLI can answer
+ * the connector question (~200ms), `kind: "ok"` lands with the entries
+ * directly — the agent runtime is never started. The CLI failure kinds
+ * (`cli_not_found`, `cli_unauthorized`, `cli_malformed`) are surfaced as
+ * `lastProbeError` so the UI can show "CLI missing — falling back to
+ * agent" instead of "no sources connected".
  */
 export type ProbeOutcome =
   | { kind: "ok"; entries: ConnectorEntry[]; surfaces: string[] }
@@ -46,7 +54,11 @@ export type ProbeOutcome =
   | { kind: "agent_http_error"; status?: number; error: string }
   | { kind: "empty_response" }
   | { kind: "malformed_response"; diagnostic: string }
-  | { kind: "timeout"; durationMs: number };
+  | { kind: "timeout"; durationMs: number }
+  | { kind: "cli_not_found"; error: string }
+  | { kind: "cli_unauthorized"; error: string }
+  | { kind: "cli_no_dev_project"; error: string }
+  | { kind: "cli_malformed"; diagnostic: string };
 
 interface ProbeConnectorPromptOptions {
   /**
@@ -398,6 +410,42 @@ export async function probeConnectorState(
   opts: ProbeConnectorPromptOptions = {},
 ): Promise<ProbeOutcome> {
   const toolkits = opts.toolkits ?? DEFAULT_TOOLKITS;
+
+  // CLI fast-path — if the user's local `composio` CLI is installed AND
+  // can enumerate accounts, we skip the agentic prompt entirely. This is
+  // ~200ms vs. the agentic path's 60–120s (up to 10 min on cold first
+  // probe). Every CLI failure (`cli_not_found`, `cli_unauthorized`,
+  // `cli_no_dev_project`, `cli_malformed`) falls through to the agentic
+  // path below — the agent can still answer via its own composio skill
+  // surface when the local CLI is broken or missing. Diagnostic persistence
+  // is already handled inside `probeViaCli` for the diagnostic kinds
+  // that benefit from being sticky on the cache; `cli_not_found` is a
+  // clean "no CLI" signal that doesn't need a sticky diagnostic.
+  const cliOutcome = await probeViaCli({ toolkits });
+  if (cliOutcome.kind === "ok") {
+    log(
+      `composio-bridge: CLI fast-path succeeded — ${cliOutcome.entries.length} connector entries, surfaces=${cliOutcome.surfaces.join(",")}`,
+    );
+    return {
+      kind: "ok",
+      entries: cliOutcome.entries,
+      surfaces: cliOutcome.surfaces,
+    };
+  }
+  if (cliOutcome.kind === "cli_not_found") {
+    log(
+      "composio-bridge: CLI fast-path unavailable (composio binary not on $PATH) — falling through to agentic probe",
+    );
+    // Don't write a sticky diagnostic for `cli_not_found` — the CLI
+    // install state is unlikely to flip mid-session, but the user
+    // can re-run refresh and we'll try again. Fall through to
+    // agentic.
+  } else {
+    log(
+      `composio-bridge: CLI fast-path outcome=${cliOutcome.kind} — falling through to agentic probe`,
+    );
+  }
+
   const prompt = buildProbePrompt(toolkits);
 
   log(

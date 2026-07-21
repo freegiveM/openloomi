@@ -55,13 +55,23 @@ const CACHE_TTL_MS = 1 * 60 * 60 * 1000;
  * failure arms of `ProbeOutcome` in `composio-bridge.ts` (timeout is
  * observed here in `refreshConnectors`'s silent race, the rest come
  * from the probe itself).
+ *
+ * The `cli_*` kinds are emitted by the CLI-direct fast-path
+ * (`composio-cli.ts`) when the user's local `composio` binary is
+ * installed but can't answer the probe (auth broken, dev project not
+ * initialized, output unparseable). They map 1:1 onto the agentic
+ * failure arms so the UI can render one unified `lastProbeError`
+ * affordance regardless of which surface attempted the probe.
  */
 export type ProbeErrorKind =
   | "transport_error"
   | "agent_http_error"
   | "empty_response"
   | "malformed_response"
-  | "timeout";
+  | "timeout"
+  | "cli_not_found"
+  | "cli_unauthorized"
+  | "cli_malformed";
 
 /**
  * #391 — persisted diagnostic for the last failed probe. Lives on the
@@ -156,6 +166,9 @@ const PROBE_ERROR_KINDS: ReadonlySet<string> = new Set<ProbeErrorKind>([
   "empty_response",
   "malformed_response",
   "timeout",
+  "cli_not_found",
+  "cli_unauthorized",
+  "cli_malformed",
 ]);
 
 /**
