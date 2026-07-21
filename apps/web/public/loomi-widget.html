@@ -1040,14 +1040,26 @@
             // that's the case, route the click straight to AI settings
             // — opening the dashboard would just land the user on the
             // guest-login redirect with no immediate path forward.
+            // The needs-setup override must run BEFORE the
+            // plugin-mode shortcut so a plugin-launched session on a
+            // fresh install can still reach AI settings.
             if (currentState === "needs-setup") {
               t.event.emit("pet:open-ai-settings");
-            } else if (isIdle()) {
+            } else if (isIdle() || launchMode === "plugin") {
               // #365 — idle pet click now opens the compact status
               // card instead of dumping the user onto the dashboard.
               // The right-click menu still offers "Open Loomi" as the
               // escape hatch to the main app for users who want to
               // land on /loop directly.
+              //
+              // Plugin-launched sessions short-circuit here too: when a
+              // Claude/Codex plugin already owns the chat
+              // conversation, opening the main window alongside the
+              // pet creates two dialogs for the same chat. The pet
+              // becomes a launcher for the compact status card; the
+              // user can still reach the main window via the
+              // right-click menu or the card's "Open in dashboard"
+              // CTA — both unchanged.
               t.event.emit("pet:open-status");
             } else {
               t.event.emit("pet:open-dashboard");
@@ -1065,6 +1077,31 @@
         // widget is opened standalone in a browser tab for preview, the
         // `__TAURI__` global is undefined and we silently no-op.
         const t = window.__TAURI__;
+        // Launch mode handshake. Default `standalone` so the click
+        // routing above (`onPointerUp`) keeps its long-standing
+        // behaviour on hosts that don't speak the new events yet.
+        // When a plugin launched the desktop (env var
+        // `OPENLOOMI_LAUNCH_MODE=plugin`), the host's reply flips this
+        // to `"plugin"` and the click short-circuits to
+        // `pet:open-status` (compact card) instead of
+        // `pet:open-dashboard`.
+        //
+        // We pull the value (`emit("pet:request-launch-mode")` →
+        // host emits `pet:launch-mode` back) rather than waiting for
+        // an unsolicited push. The push variant can drop the first
+        // message if the host's `listen()` registers after our
+        // `event.listen()` is already in place; the pull is a single
+        // round-trip and resolves deterministically.
+        let launchMode = "standalone";
+        if (t && t.event && t.event.listen) {
+          t.event.listen("pet:launch-mode", (e) => {
+            launchMode =
+              (e && e.payload) === "plugin" ? "plugin" : "standalone";
+          });
+          if (t.event.emit) {
+            t.event.emit("pet:request-launch-mode");
+          }
+        }
         if (t && t.event && t.event.listen) {
           t.event.listen("loop:state", (e) => {
             const p = (e && e.payload) || {};

@@ -2778,6 +2778,55 @@ async function probeDesktopProcessRunning(binPath) {
   });
 }
 
+// Marks the next desktop launch as plugin-initiated by setting
+// OPENLOOMI_LAUNCH_MODE=plugin in the environment the desktop
+// process will see. The Codex plugin's `applyRuntimeEnvChange` is
+// not reused here because it brings in a LaunchAgent plist /
+// environment.d / dry-run pipeline that's overkill for this
+// single-use side-band. We just want to leave a flag in the right
+// spot, no rollback semantics, no persistence guarantees.
+//
+// Per-platform notes:
+//
+// * macOS — `open -a` hands off to LaunchServices; the new app
+//   process inherits from launchd, not from this Node process.
+//   Set via `launchctl setenv` so the freshly-spawned Tauri process
+//   sees it.
+//
+// * Windows — `cmd /c start "" <exe>` forks without inheriting the
+//   parent env in the same reliable way as Mac/Linux. The
+//   `launchDesktopApp` spawn site below passes the env explicitly
+//   via the `env` option, so this helper is a no-op on Windows.
+//
+// * Linux — gtk-launch / direct fork inherit `process.env`
+//   automatically. We still inject the env into the spawn call
+//   below as belt-and-braces in case a hook scrubbed it.
+async function ensureLaunchModeEnvForLaunch() {
+  if (process.env.OPENLOOMI_LAUNCH_MODE === "plugin") {
+    return { ok: true, platform: process.platform, method: "already-set" };
+  }
+  const platform = process.platform;
+  if (platform === "darwin") {
+    const r = await runBin(
+      "launchctl",
+      ["setenv", "OPENLOOMI_LAUNCH_MODE", "plugin"],
+      { timeoutMs: 5000 },
+    );
+    if (r.ok) {
+      return { ok: true, platform, method: "launchctl setenv" };
+    }
+    return {
+      ok: false,
+      platform,
+      method: "launchctl setenv",
+      error: r.error?.message || r.stderr || "unknown",
+    };
+  }
+  // Non-darwin: the spawn site in launchDesktopApp passes the env
+  // explicitly. Mark success so the caller doesn't log a warning.
+  return { ok: true, platform, method: "spawn-env" };
+}
+
 // Programmatically launches the OpenLoomi desktop app so the helper binary
 // gets laid down and the local HTTP API comes up. This is what unblocks
 // `canGuestLogin: true` and the auto-login step in the setup state
@@ -2799,8 +2848,29 @@ async function launchDesktopApp({ desktopMarker, binPath } = {}) {
       message: "No OpenLoomi app path or binary to launch.",
     };
   }
+  // Mark this launch as plugin-initiated. The freshly-spawned desktop
+  // reads OPENLOOMI_LAUNCH_MODE from its environment and uses the
+  // value to route pet left-clicks to the compact status card
+  // instead of the main dashboard — surfacing two dialogs for the
+  // same chat (plugin + main) would be confusing. The user can
+  // still reach the main window via the pet right-click "Open
+  // Loomi" or the card's "Open in dashboard" CTA.
+  //
+  // Non-fatal on purpose: a failure here means the desktop falls
+  // back to standalone behaviour (pet click → main window), which is
+  // the same UX the user had before this code existed. We don't
+  // promote the failure to a launch-blocker.
+  const launchModeEnvResult = await ensureLaunchModeEnvForLaunch();
+  if (!launchModeEnvResult.ok) {
+    console.warn(
+      "[loomi-bridge] failed to set OPENLOOMI_LAUNCH_MODE=plugin; " +
+        "pet click will fall back to standalone behaviour",
+      launchModeEnvResult,
+    );
+  }
   let cmd;
   let args;
+  let spawnEnv = process.env;
   if (platformName === "macos") {
     cmd = "open";
     args = ["-a", desktopMarker || target];
@@ -2813,6 +2883,11 @@ async function launchDesktopApp({ desktopMarker, binPath } = {}) {
     // plugin, so gtk-launch is best-effort.
     cmd = "gtk-launch";
     args = ["openloomi"];
+    // On Linux, gtk-launch / direct fork inherit `process.env` from the
+    // plugin's Node process. Inject OPENLOOMI_LAUNCH_MODE explicitly so
+    // the desktop sees it even if the parent process was started
+    // without it (e.g. by a hook that scrubbed the env).
+    spawnEnv = { ...process.env, OPENLOOMI_LAUNCH_MODE: "plugin" };
   }
   return await new Promise((resolve) => {
     let stderr = "";
@@ -2822,6 +2897,7 @@ async function launchDesktopApp({ desktopMarker, binPath } = {}) {
       child = spawn(cmd, args, {
         stdio: ["ignore", "pipe", "pipe"],
         detached: true,
+        env: spawnEnv,
       });
     } catch (e) {
       resolve({
@@ -2850,7 +2926,14 @@ async function launchDesktopApp({ desktopMarker, binPath } = {}) {
       } else {
         // Try the binary directly as a Linux fallback before giving up.
         if (platformName === "linux" && binPath) {
-          spawn(binPath, [], { stdio: "ignore", detached: true }).unref();
+          spawn(binPath, [], {
+            stdio: "ignore",
+            detached: true,
+            // Mirror the gtk-launch branch above: inject the launch
+            // mode so the desktop sees OPENLOOMI_LAUNCH_MODE=plugin
+            // even on the direct-spawn fallback path.
+            env: { ...process.env, OPENLOOMI_LAUNCH_MODE: "plugin" },
+          }).unref();
           resolve({ ok: true, code: "OK_FALLBACK_DIRECT", via: binPath });
           return;
         }
@@ -2943,6 +3026,51 @@ async function main() {
   switch (sub) {
     case "version": {
       out({ ok: true, plugin: "openloomi", version: PLUGIN_VERSION });
+      return;
+    }
+    case "launch-mode-info": {
+      // Diagnostic surface for OPENLOOMI_LAUNCH_MODE. The desktop
+      // app reads this env var to route pet left-clicks: plugin
+      // sessions default to the compact status card instead of the
+      // main dashboard, so the user doesn't see "two dialogs" for
+      // the same chat. Mirrors `codex-runtime-info` on the Codex
+      // plugin side — same shape so tests can grep for the key.
+      const platformName = detectPlatform();
+      out({
+        ok: true,
+        purpose:
+          "Mark the next OpenLoomi desktop launch as plugin-initiated " +
+          "so the pet left-click defaults to the compact status card.",
+        envKey: "OPENLOOMI_LAUNCH_MODE",
+        envValue: "plugin",
+        platform: platformName,
+        perPlatform: {
+          darwin:
+            "Sets the env var via `launchctl setenv` before `open -a`. " +
+            "The freshly-spawned Tauri process inherits from launchd.",
+          linux:
+            "Spawns gtk-launch / fallback binary with `env` containing " +
+            "OPENLOOMI_LAUNCH_MODE=plugin (parent process.env is also " +
+            "inherited by default).",
+          win32:
+            "Passes `env` containing OPENLOOMI_LAUNCH_MODE=plugin to the " +
+            "`cmd /c start \"\" <exe>` spawn site.",
+        },
+        // The same helper that `launchDesktopApp` invokes. Surfaced
+        // here so tests can grep for it and operators can confirm the
+        // key matches what the desktop reads in `launch_mode.rs`.
+        helper: "ensureLaunchModeEnvForLaunch",
+        consumerFile: "apps/web/src-tauri/src/launch_mode.rs",
+      });
+      return;
+    }
+    case "launch-mode-apply": {
+      // Test-only entry point. Invokes the same helper that
+      // `launchDesktopApp` calls before spawning the desktop
+      // process, so tests can mock `launchctl` on PATH and assert
+      // the right env var key + value land in the mock's argv.
+      const result = await ensureLaunchModeEnvForLaunch();
+      out(result);
       return;
     }
     case "setup-status": {

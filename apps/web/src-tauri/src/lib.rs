@@ -6,6 +6,7 @@ pub mod audio_capture;
 pub mod cli;
 pub mod constants;
 pub mod js_scheduler;
+pub mod launch_mode;
 pub mod menu;
 pub mod node;
 pub mod notify;

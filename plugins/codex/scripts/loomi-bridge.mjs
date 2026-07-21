@@ -3749,6 +3749,38 @@ async function ensureCodexRuntimeEnvForLaunch() {
     persist: true,
   });
 
+  // Side-band: also write OPENLOOMI_LAUNCH_MODE=plugin so the freshly-
+  // spawned desktop app routes pet left-clicks to the compact status
+  // card instead of the main dashboard. Without this, a Codex-initiated
+  // launch would surface two dialogs (pet + main) for the same chat
+  // because the plugin already owns the chat conversation in the
+  // terminal. `applyRuntimeEnvChange` is key-agnostic so we just call
+  // it again with the new key — no helper-level refactor needed.
+  //
+  // This is non-fatal on purpose: the desktop still works without it
+  // (it just falls back to the existing standalone behaviour). We log
+  // a warning but don't promote the failure to a launch-blocker.
+  try {
+    const launchModeResult = await applyRuntimeEnvChange({
+      key: "OPENLOOMI_LAUNCH_MODE",
+      value: "plugin",
+      persist: false,
+    });
+    if (!launchModeResult.ok) {
+      console.warn(
+        "[loomi-bridge] failed to set OPENLOOMI_LAUNCH_MODE=plugin; " +
+          "pet click will fall back to standalone behaviour",
+        launchModeResult,
+      );
+    }
+  } catch (launchModeError) {
+    console.warn(
+      "[loomi-bridge] threw while setting OPENLOOMI_LAUNCH_MODE=plugin; " +
+        "pet click will fall back to standalone behaviour",
+      launchModeError,
+    );
+  }
+
   return { ...result, reason: result.ok ? "applied" : "failed" };
 }
 

@@ -16,6 +16,7 @@ mod audio_capture;
 mod close_behavior;
 mod constants;
 mod js_scheduler;
+mod launch_mode;
 mod lifecycle;
 mod menu;
 mod node;
@@ -649,6 +650,30 @@ fn main() {
                         pet::sync_dock_policy(&app_for_main);
                     });
                 });
+            });
+
+            // Pet asks the host for the current launch mode. We answer
+            // synchronously with the value resolved at setup() time from
+            // `OPENLOOMI_LAUNCH_MODE`. A pull (webview asks, host
+            // answers) rather than push (host emits on listen()) because
+            // there is a real race between the webview reaching "ready"
+            // and our `listen()` being registered — a push can silently
+            // drop the first message if the webview's listener fires
+            // before we have a subscriber. The pull is cheap (one
+            // round-trip) and reliable across both cold boots and
+            // webview rebuilds.
+            //
+            // `plugin` → the pet left-click short-circuits to
+            // `pet:open-status` (the compact card) instead of opening the
+            // main dashboard, so a plugin-launched session doesn't
+            // surface "two dialogs" of the same conversation. The user
+            // can still reach the main window via the pet right-click
+            // menu ("Open Loomi") or the card's "Open in dashboard"
+            // CTA — those are unchanged.
+            let launch_mode_value = launch_mode::as_wire_value(launch_mode::detect());
+            let launch_mode_app = app_handle.clone();
+            app_handle.listen("pet:request-launch-mode", move |_event| {
+                let _ = launch_mode_app.emit("pet:launch-mode", launch_mode_value);
             });
 
             // Pet right-click "Settings" → show the main window and ask

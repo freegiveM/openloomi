@@ -303,6 +303,19 @@ This is the recommended path for first-time Codex-plugin users.
 > when you want to change or persist the value independently of a launch,
 > or on Windows where auto-wiring isn't supported.
 
+> The same launch path also sets `OPENLOOMI_LAUNCH_MODE=plugin` (via
+> `launchctl setenv` on macOS, injected into the spawn `env` block on
+> Linux/Windows). The desktop reads this to route pet left-clicks to
+> the compact status card instead of the main dashboard — the plugin
+> already owns the chat conversation in your terminal, so opening the
+> main window alongside the pet would surface "two dialogs" for the
+> same chat. The pet right-click menu and the card's "Open in
+> dashboard" CTA remain as explicit escape hatches to the main
+> window. Standalone sessions (icon double-click) leave the env
+> unset, so the pet click continues to open the dashboard directly.
+> This flag is intentionally separate from `OPENLOOMI_AGENT_PROVIDER`
+> so it cannot clobber a user-set provider choice.
+
 ### How to make the env switch stick
 
 The desktop app's web server runs inside the GUI launchd session on macOS (a

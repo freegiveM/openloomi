@@ -103,6 +103,21 @@ ready**. Nothing GUI is required. The bridge:
   runtime's local DB and mint a bearer token (saved to
   `~/.openloomi/token`).
 
+Before the launch step the bridge also writes
+`OPENLOOMI_LAUNCH_MODE=plugin` into the environment the desktop
+process will inherit. On macOS that's `launchctl setenv` so the value
+survives the `open -a` hand-off through LaunchServices; on Linux the
+spawn site injects the value into the `env` block as a belt-and-braces
+guard against a hook scrubbing the parent env. The desktop reads this
+to route pet left-clicks to the compact status card instead of the
+main dashboard — surfacing two windows for the same chat would be
+confusing because the plugin already owns the conversation in your
+terminal. The pet right-click menu and the card's "Open in
+dashboard" CTA remain as explicit escape hatches to the main window
+if you want to land on `/loop` directly. The flag is unset if you
+double-click the desktop icon, so standalone sessions keep their
+long-standing one-click-to-dashboard behaviour.
+
 The only thing it ever prompts for is the install y/N — and only if the
 shell has a TTY. From Claude Code's Bash tool you pass `--yes`.
 
