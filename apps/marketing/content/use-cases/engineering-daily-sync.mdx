@@ -1,70 +1,72 @@
 ---
 title: "Engineering Daily Sync"
-description: "Automated dev reports and issue sync to Linear — every night at 10 PM"
+description: "How an engineering lead stopped rewriting dev reports every night and let OpenLoomi keep the Loop running"
 icon: "FaLightbulb"
 ---
 
 # Engineering Daily Sync
 
-## Automated Dev Reports + Issue Sync to Linear — Every Night
+As an engineering lead, I switch between GitHub, Linear, email, and a stack of project docs all day. By day I'm handling requirements, technical specs, and the incident that just landed. By night I'm catching up on what the team shipped today, where the project stands, what new Issues came in, and which PRs are waiting on review.
 
-Engineering teams waste hours every week pulling commit logs, writing status reports, and triaging GitHub issues. What if every night at 10 PM, AI automatically fetched all commits, compiled a dev report, emailed it to the team, and synced new issues directly to Linear?
+These tasks aren't hard. They're just tedious. And they get interrupted by more urgent work — the daily report doesn't get written, GitHub Issues don't get synced to Linear, important PRs get buried in notifications, and by the time I notice, the problem has been sitting for a day or two.
 
-**What it does:**
+Then I tried OpenLoomi.
 
-| Step           | Action                                                                                       |
-| -------------- | -------------------------------------------------------------------------------------------- |
-| 🌙 Every 10 PM | Pull all commits from your GitHub repo                                                       |
-| 📝 Compile     | Generate a structured daily dev report                                                       |
-| 📧 Email       | Send the report to the engineering team                                                      |
-| 🐛 New Issues  | Fetch all issues created that day, rewrite with full detail                                  |
-| 🔄 Linear Sync | Sync rewritten issues to Linear for prioritization                                           |
-| 🔍 PR Review   | Surface a `review_pr` decision card when a PR is assigned, @-mentions you, or has failing CI |
+I didn't want another chatbot that waits for me to ask it something. I wanted an AI assistant that genuinely fits into the engineering workflow: it watches the project's progress continuously, handles the information organization and system syncing on its own, and only finds me when there's something I need to judge.
 
 ---
 
-## The Setup
+## Problem 1: Re-organizing the same dev progress every day
 
-### Configure the PD Prompt
+When I wanted to know what the team shipped today, I used to open GitHub first:
 
-Paste the automation prompt into OpenLoomi. It defines the nightly workflow: commit fetching, report compilation, email delivery, and Linear sync.
+- Pull the day's commits
+- Judge which feature each commit belongs to
+- Find which core modules were touched
+- Check whether there's any risk or leftover concern
+- Then stitch it all into a daily report
 
----
+If the day was busy, this got pushed to the next day. Sometimes I'd skip several days running and end up reconstructing from memory and scattered chat history.
 
-### Create the Automation Tasks
+I realized this kind of work is exactly what AI should be doing. The actual time sink isn't the technical judgement — it's collecting scattered records and reorganizing them into something a human can read.
 
-Two scheduled tasks handle the full workflow:
+So I created my first scenario in OpenLoomi: **PD Daily Sync**.
 
-| Task              | Schedule           | Purpose                                      |
-| ----------------- | ------------------ | -------------------------------------------- |
-| **PD Daily Sync** | Every day at 10 PM | Fetch commits, compile report, email to team |
-| **PD Issue Sync** | Every 1 hour       | Monitor new issues, rewrite, sync to Linear  |
+Every night at 10 PM, OpenLoomi automatically pulls the day's commits, identifies the major code changes, and generates a structured engineering report. It helps me answer the most basic but also most important questions:
 
-Both tasks are created with tracking enabled for full observability.
+- What did the team actually move forward today?
+- Which modules changed?
+- What issues or risks came up?
+- What's still pending follow-up?
 
-> 💡 **PR review isn't in this table** because it's not a scheduled task — it's an event-driven flow inside Loop's tick. The moment a PR is assigned to you or @-mentions you, Loop surfaces a `review_pr` decision card with the AI summary, CI status, and inline comment drafts. No separate task to wire up; just enable the GitHub source in Loop's settings.
+A few minutes later, I get two artifacts I can read, share, or archive:
 
----
+- The daily engineering report
+- The issue sync summary
 
-## The Operation
-
-### Every 10 PM: PD Daily Sync Runs
-
-OpenLoomi executes the full pipeline — fetching commits, compiling the report, and syncing issues — then generates structured artifacts for each output.
-
-### Execution Complete
-
-After a few minutes, the task finishes with two artifacts: the daily dev report and the issue sync summary.
-
-The sync produces two structured artifacts — the daily dev report and the issue migration summary — each ready to share or archive.
+After the report is generated, it also gets sent to the team email automatically. Now I don't need to remind anyone to fill in their daily report, and I don't need to scroll through commits myself. Before the next workday starts, the team already has a structured, complete progress record waiting.
 
 ---
 
-### Every Hour: PD Issue Sync Runs
+## Problem 2: GitHub Issues and Linear are always out of sync
 
-PD Issue Sync doesn't just copy raw issues into Linear — each issue is rewritten with the context the team needs to triage, so the next person who opens the Linear ticket doesn't have to bounce back to GitHub to understand what was reported.
+We use GitHub for code and technical issues, and Linear for task scheduling and sprint management. In theory, each system has its own job.
 
-| What Loop pulls                       | What Loop writes into Linear                                                                       |
+In practice, there's a clear gap between them. When a new Issue lands in GitHub, someone has to manually copy it into Linear. This isn't just an extra copy-paste — the bigger problem is that context gets lost in transit:
+
+- Which PRs and commits are linked to this Issue?
+- What has the comment thread already discussed?
+- How do you reproduce the bug?
+- Which project does it belong to?
+- What priority should it have?
+
+If you only copy the title and body, the Linear ticket becomes a "task shell" without background. The next person who picks it up still has to go back to GitHub to understand what was reported.
+
+So I added **PD Issue Sync** in OpenLoomi.
+
+This task runs every hour, continuously checking for new GitHub Issues from the day. But it doesn't just copy content — it understands the issue and adds context first, then writes to Linear.
+
+| What Loop pulls from GitHub           | What Loop writes into Linear                                                                       |
 | ------------------------------------- | -------------------------------------------------------------------------------------------------- |
 | Issue title + body                    | Verbatim, prefixed with a `Reported via GitHub on YYYY-MM-DD by @user` header                      |
 | Linked PRs / referenced commits       | Auto-resolved and appended as a `Related code` section — the ticket is no longer a black box       |
@@ -72,11 +74,32 @@ PD Issue Sync doesn't just copy raw issues into Linear — each issue is rewritt
 | Top 10 comments (by reactions)        | Threaded as a `Context` section so the triage discussion isn't lost                                |
 | Reproduction info from issue template | Pulled out into a separate `Steps to reproduce` block in the Linear description                    |
 
-Sync runs are idempotent — if Loop already created a Linear ticket for that GitHub issue (matched by source URL), it updates the existing one instead of duplicating. You can pin a per-repo override list in `~/.openloomi/loop/issue-sync-overrides.json` if a specific repo needs different field mapping.
+Now when I open Linear, I don't see a title waiting for me to fill in details — I see a complete ticket I can directly prioritize and assign.
 
-### When a PR Lands: PD PR Review
+OpenLoomi also uses the source URL to check whether an Issue has already been synced. If the Linear ticket already exists, it updates the existing one instead of creating a duplicate. If a specific repo needs different field mapping, I can pin a per-repo override at `~/.openloomi/loop/issue-sync-overrides.json`.
 
-PR review isn't a scheduled task — it's an event-driven flow inside Loop's tick. The moment a PR is assigned to you, @-mentions you, or has a CI failure you should look at, Loop surfaces a **`review_pr`** decision card. Same Loop engine, same human-in-the-loop gate, just tuned for code review.
+---
+
+## Problem 3: I always find PRs at the wrong time
+
+One thing in particular keeps breaking my focus: PR review. I used to keep opening GitHub to check for new review requests. When multiple PRs landed at once, I'd go through each one:
+
+- What actually changed this time?
+- Did CI pass?
+- Which requirement or issue is it linked to?
+- Which files are risky?
+- Were tests added?
+- Has something similar been discussed in the past?
+
+That meant spending significant time gathering context before I could even start reviewing.
+
+Worse — I'd either keep interrupting other work to check GitHub, or I'd miss important PRs because I didn't check notifications. So I didn't design PR review as a scheduled task. I made it an **event-driven scenario inside OpenLoomi Loop**. OpenLoomi only finds me when one of these happens:
+
+- A PR is assigned to me
+- I'm @-mentioned in a PR
+- A PR has a CI failure that needs attention
+
+When that happens, I get a `review_pr` decision card.
 
 <p align="center">
   <img
@@ -86,73 +109,130 @@ PR review isn't a scheduled task — it's an event-driven flow inside Loop's tic
   />
 </p>
 
-What the card surfaces before you tap **APPROVE**:
+Before I open the PR, OpenLoomi has already done the first round of prep work. It doesn't post comments on my behalf — it lays out the judgement basis and the draft comments, then hands me the decision. I can pick:
 
-| Field on the card        | Source                                                                               |
-| ------------------------ | ------------------------------------------------------------------------------------ |
-| 🟢 / 🔴 CI status        | GitHub Checks API — lint, typecheck, tests, build                                    |
-| 📐 Diff summary          | Loop reads the diff and writes a 3-bullet "what changed" — never the raw patch       |
-| 🔗 Linked issue          | `Closes` / `Fixes` / `Refs` parsed from the PR body                                  |
-| ⚠️ Risky areas           | Files > 400 lines changed, missing tests, new dependencies → flagged with ⚠          |
-| 💬 Inline draft comments | Per-file drafts (style / bug / suggestion); you approve before any comment is posted |
-| 🧠 Memory hooks          | Loomi pulls related Obsidian notes / past PRs / RFCs and attaches them as evidence   |
+- **APPROVE** — confirm the drafts and post the comments to GitHub
+- **EDIT** — jump into chat, refine the comments ("drop the third one, shorten the first, emphasize the concurrency risk here"), and confirm when it looks right
+- **LATER** — park it for the next focus block
+- **SKIP** — dismiss this review with an audit entry
 
-**APPROVE** → comments are posted to GitHub and the PR is left in `Awaiting review` state. **EDIT** → jumps into the chat with the draft loaded; say "drop comment 3, shorten comment 1" and Loop redrafts. **LATER** → parked for your next focus block. **SKIP** → dismissed with a `skippedByUser` audit entry.
+It doesn't replace my technical decisions. It handles the most time-consuming part of pre-review: gathering context and doing the first round of analysis.
 
-PR review is on by default for any repo you've starred or been active on in the last 30 days. To tune which repos / authors / labels qualify, open **Settings → Loop → Sources** — the same panel that controls your email and calendar sources.
+For any repo I've starred or been active on in the last 30 days, PR review is on by default. I can tune which repos / authors / labels qualify in **Settings → Loop → Sources** — the same panel that controls email and calendar sources.
 
 ---
 
-## Tracking Every Execution
+## What I really wanted to solve isn't a few automation tasks
 
-OpenLoomi's tracking panel shows exactly how many times each task has run, against which repositories:
+At first I just wanted to save the time I spent writing daily reports and syncing issues. But after using it for a while, I realized the real problem isn't that I'm missing a few automation scripts — it's that engineering information is always scattered across different systems:
+
+- Code and PRs in GitHub
+- Tasks and scheduling in Linear
+- Notifications and reports in email
+- Technical specs in RFCs
+- Historical experience and personal judgement possibly in Obsidian notes
+
+In the past, all this information had to be found and pieced together by me actively searching. The change OpenLoomi brings is inverting that relationship: instead of me constantly searching for information, AI keeps watching the engineering process and comes to me with the full context at the right moment.
+
+- If it's routine progress, it writes the daily report automatically.
+- If a new issue appears, it enriches the info and syncs it to Linear.
+- If a PR needs my judgement, it generates a decision card with the CI results, code summary, risk flags, and draft comments ready.
+
+I only need to focus on the parts that genuinely need experience and judgement.
 
 ---
 
-## What Changed
+## From "scheduled automation" to a continuously running Loop
 
-| Aspect                 | Before                                    | After                                          |
-| ---------------------- | ----------------------------------------- | ---------------------------------------------- |
-| Dev report compilation | Manual, weekly or never                   | Automated, every night                         |
-| Commit review          | Developer pulls logs manually             | AI fetches and summarizes                      |
-| Issue triaging         | Often delayed or missed                   | Real-time, every hour                          |
-| Linear sync            | Manual copy-paste                         | Fully automated rewrite & sync                 |
-| PR review              | Context-switch to GitHub, read every file | AI summary + inline drafts, approve in one tap |
-| Issue context          | GitHub only, comments get buried          | Auto-threaded into Linear description          |
-| Engineering time saved | ~2 hrs/week                               | Near-zero, review only                         |
+To make this work, I configured two kinds of working patterns in OpenLoomi.
+
+**One is scheduled execution:**
+
+| Task              | Schedule           | Purpose                                                  |
+| ----------------- | ------------------ | -------------------------------------------------------- |
+| **PD Daily Sync** | Every day at 10 PM | Pull commits, compile report, email to team              |
+| **PD Issue Sync** | Every 1 hour       | Monitor new issues, rewrite with context, sync to Linear |
+
+Both tasks run with full tracking enabled, so I can see exactly what they did and when.
+
+**The other is event-driven:**
+
+| Trigger           | What happens                                                                         |
+| ----------------- | ------------------------------------------------------------------------------------ |
+| PR assigned to me | `review_pr` card surfaces with diff summary, CI status, linked issue, draft comments |
+| PR @-mentions me  | Same `review_pr` flow, with the mention thread attached                              |
+| PR has failing CI | Same `review_pr` flow, with the failing check highlighted at the top of the card     |
+
+Scheduled tasks fit stable, repeatable work. Event-driven fits work that needs to respond to environmental change on the fly. Together they form an engineering Loop that runs continuously:
+
+```
+Continuously watch → Understand change → Organize context → Propose action → Human confirms → Execute and record
+```
+
+Compared to configuring an isolated workflow, I'd rather have OpenLoomi keep understanding _"what's happening with the project right now and what should happen next."_
+
+> 💡 **PR review isn't in this table** because it isn't a scheduled task — it's an event-driven flow inside Loop's tick. No separate task to wire up; just enable the GitHub source in Loop's settings.
 
 ---
 
-## How to Set Up
+## What changed for me
 
-Two connector calls. The same commands work in OpenLoomi Desktop, the Claude plugin, or the Codex plugin — invoke `openloomi-connectors` in chat:
+| Aspect                  | Before                                                         | After                                                                      |
+| ----------------------- | -------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| Dev report compilation  | Manual, weekly or never                                        | Automated every night at 10 PM, lands in team inbox before anyone wakes up |
+| Commit review           | Developer pulls logs manually                                  | AI fetches and summarizes in one pass                                      |
+| Issue triaging          | Often delayed or missed                                        | Real-time, every hour, with reproduction steps pre-threaded                |
+| Linear sync             | Manual copy-paste; comments get buried                         | Fully automated rewrite with related code, context, comments               |
+| PR review               | Context-switch to GitHub, read every file, draft every comment | AI summary + inline drafts, approve in one tap                             |
+| Engineering time on ops | ~2 hrs/week on status updates and copy-paste                   | Near-zero — review only                                                    |
+
+What OpenLoomi saves me isn't just the two hours a week. More importantly, I don't have to keep switching systems, checking notifications, and worrying about what I've missed.
+
+---
+
+## How to set this up
+
+The whole configuration isn't complicated. I just connect GitHub and Linear in OpenLoomi Desktop, the Claude plugin, or the Codex plugin:
 
 ```
 use openloomi-connectors to connect GitHub and Linear
 ```
 
-GitHub and Linear live in Composio's app catalog, so the skill installs Composio on the fly if you don't have it yet. Verify with `list-accounts` — once both show `active`, Loop picks them up on the next tick and **PD Daily Sync** (10 PM nightly report) + **PD Issue Sync** (hourly issue migration) start firing on their own schedules. No automation tasks to wire up by hand.
+Once connected, I verify with `list-accounts`. When GitHub and Linear both show `active`, OpenLoomi picks them up on the next tick and starts the matching scenarios:
 
-> 💡 The flow also lights up the **PR review** path automatically — any repo you've starred or been active on in the last 30 days will surface `review_pr` cards the moment a PR is assigned to you or @-mentions you. Tune the list in **Settings → Loop → Sources**.
+- Every night at 10 PM, the daily report is generated
+- Every hour, new Issues are synced to Linear
+- Whenever a PR is assigned to me, @-mentions me, or has a CI failure, the `review_pr` card surfaces
+
+For repos I've starred or been active on in the last 30 days, PR review is on by default. I can tune which repos / authors / labels qualify at:
+
+```
+Settings → Loop → Sources
+```
+
+OpenLoomi's Tracking panel records every execution:
+
+- How many times each task has run
+- Which repositories were processed this run
+- What reports and tickets were generated
+- What actions are still waiting for my confirmation
+- Whether anything failed or was missed
+
+This way I can hand the repetitive work off to AI and still see exactly what it did.
 
 ---
 
-## Why This Works
+## What I need isn't another chatbot
 
-**📊 Reporting Without the Effort**
+This experience reinforced something for me: an AI engineering assistant shouldn't be a chat window waiting for me to ask.
 
-- Every night at 10 PM, a full dev report lands in the team's inbox
-- No developer time spent on status updates
-- Reports are structured, consistent, and always on time
+If every interaction still requires me to open a tool, type a question, and supply the context, then the responsibility for gathering information and pushing work forward still sits on my shoulders.
 
-**🔄 Linear Stays in Sync**
+What I actually need is an AI that can keep working around the engineering goals:
 
-- New GitHub issues are automatically rewritten with full context
-- Linear is always up to date, ready for sprint planning
-- No manual issue copy-pasting between platforms
-
-**⏱️ Tracking Shows the Truth**
-
-- See exactly how many syncs have run
-- Know which repositories are being tracked
-- Identify gaps in the engineering workflow at a glance
+- It knows which repos to watch
+- It keeps spotting project changes
+- It proactively organizes scattered context
+- It handles low-risk, repetitive work automatically
+- It hands decision-making back to me when judgement is needed
+- It remembers my edits and choices, gradually learning how I work

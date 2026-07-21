@@ -250,7 +250,7 @@ const WORKFLOW_GUIDANCE = [
     aliases: ["connectors", "connector", "integrations", "slack", "gmail"],
     title: "OpenLoomi Connectors",
     description:
-      "Guide connector readiness checks and setup handoffs for Slack, Gmail, Calendar, GitHub, and other OpenLoomi integrations.",
+      "Guide connector readiness checks for Slack, Gmail, Calendar, GitHub, and other OpenLoomi integrations.",
     wrapperSkill: "openloomi-connectors",
     readyRequired: false,
     bridgeCommand: "setup-status",
@@ -265,26 +265,6 @@ const WORKFLOW_GUIDANCE = [
     safety: [
       "Do not ask the user to paste connector OAuth tokens or API secrets into Codex.",
       "Report connector readiness as status and next action only.",
-    ],
-  },
-  {
-    id: "openloomi-handoff",
-    aliases: ["handoff", "followup", "delegate", "send-to-loomi"],
-    title: "OpenLoomi Handoff",
-    description:
-      "Guide handoff workflows that send the current Codex task to OpenLoomi for follow-up, reminders, or later attention.",
-    wrapperSkill: "openloomi-handoff",
-    readyRequired: true,
-    bridgeCommand: "workflow-guidance",
-    nextActionsWhenBlocked: [
-      "install_openloomi",
-      "initialize_openloomi_session",
-      "configure_connectors",
-      "run_host_probe",
-    ],
-    safety: [
-      "Do not build an independent task queue in the Codex plugin.",
-      "Keep handoff persistence inside OpenLoomi runtime.",
     ],
   },
 ];
@@ -420,7 +400,7 @@ async function probeHostsForProviders(baseUrls) {
 function buildHostProbePayload(status) {
   return {
     recommendedNextAction: "run-host-probe",
-    message: "Codex sandbox blocked the bridge's loopback probe. Run `node ${PLUGIN_ROOT}/scripts/loomi-bridge.mjs run-host-probe` from a Codex shell with prefix-allowed host access; this writes /api/native/providers results to ~/.openloomi/codex-host-probe-cache.json so the next setup-status can see the real runtime.",
+    message: `Codex sandbox blocked the bridge's loopback probe. Run \`node "${BRIDGE_SCRIPT_DIR}/loomi-bridge.mjs" run-host-probe\` from a Codex shell with prefix-allowed host access; this writes /api/native/providers results to ~/.openloomi/codex-host-probe-cache.json so the next setup-status can see the real runtime.`,
     script: HOST_PROBE_SNIPPET,
     cachePath: getHostProbeCachePath(),
     maxAgeMs: HOST_PROBE_CACHE_MAX_AGE_MS,
@@ -1583,7 +1563,7 @@ function workflowGuidance(args) {
       reason: "WORKFLOW_GUIDANCE_AVAILABLE",
       workflows: WORKFLOW_GUIDANCE.map(summarizeWorkflowGuidance),
       safety:
-        "These are thin Codex plugin entrypoints. Runtime logic, memory, connectors, handoff persistence, and secrets stay inside OpenLoomi.",
+        "These are thin Codex plugin entrypoints. Runtime logic, memory, connectors, and secrets stay inside OpenLoomi.",
     });
     return;
   }
@@ -4145,6 +4125,16 @@ function codexRuntimeInfo() {
   // callers can copy-paste a single ready-to-run snippet. The full
   // breakdown stays available under `switch.perPlatform` for callers
   // that need to render a multi-platform table.
+  //
+  // The bridge command below uses BRIDGE_SCRIPT_DIR (resolved from
+  // `import.meta.url` at startup) so the snippet always points at the
+  // script the bridge is actually running from — regardless of whether
+  // the plugin was installed via the Codex marketplace
+  // (`~/.codex/plugins/cache/openloomi/openloomi/<version>/scripts/...`)
+  // or loaded from a local contributor checkout (`./openloomi/codex/...`).
+  // This used to be a hardcoded `node plugins/codex/scripts/...` literal,
+  // which only worked from inside the repo root.
+  const bridgeInvocation = `node "${BRIDGE_SCRIPT_DIR}/loomi-bridge.mjs" set-codex-runtime-env codex --persist`;
   const oneOffByPlatform = {
     darwin: [
       // `export OPENLOOMI_AGENT_PROVIDER=codex` reaches the shell but
@@ -4153,7 +4143,7 @@ function codexRuntimeInfo() {
       // so callers can grep for `OPENLOOMI_AGENT_PROVIDER=codex` to
       // confirm the env name + value pair is documented.
       "export OPENLOOMI_AGENT_PROVIDER=codex",
-      "node plugins/codex/scripts/loomi-bridge.mjs set-codex-runtime-env codex --persist",
+      bridgeInvocation,
       "# then Quit + reopen OpenLoomi.app",
     ].join("\n"),
     linux: [
@@ -4166,7 +4156,7 @@ function codexRuntimeInfo() {
   const permanentByPlatform = {
     darwin: [
       "echo 'export OPENLOOMI_AGENT_PROVIDER=codex' >> ~/.zshrc",
-      "node plugins/codex/scripts/loomi-bridge.mjs set-codex-runtime-env codex --persist",
+      bridgeInvocation,
       "# (or) install a LaunchAgent plist manually that re-applies launchctl setenv on every login",
     ].join("\n"),
     linux: [
@@ -5536,7 +5526,7 @@ function getReadinessDecision(
       message:
         "Codex sandbox blocked the bridge's loopback probe, and no fresh host probe cache is available. Run \`bridge run-host-probe\` - the bridge ships a one-shot host probe that writes its result to ~/.openloomi/codex-host-probe-cache.json so the next setup-status can see the real runtime.",
       autoFixCommands: [
-        "node ${PLUGIN_ROOT}/scripts/loomi-bridge.mjs run-host-probe",
+        `node "${BRIDGE_SCRIPT_DIR}/loomi-bridge.mjs" run-host-probe`,
       ],
       hostProbeCachePath: getHostProbeCachePath(),
     };
@@ -5581,7 +5571,7 @@ function getReadinessDecision(
         ? "Codex sandbox blocked the bridge's loopback probe. Run `bridge run-host-probe` to refresh the host probe cache; the next setup-status will see the real runtime."
         : "OpenLoomi is installed but the local API is not reachable. Open OpenLoomi Desktop, or run `setup --yes` to install + launch + mint a guest session automatically.",
       autoFixCommands: [
-        "node ${PLUGIN_ROOT}/scripts/loomi-bridge.mjs run-host-probe",
+        `node "${BRIDGE_SCRIPT_DIR}/loomi-bridge.mjs" run-host-probe`,
       ],
       hostProbeCachePath: getHostProbeCachePath(),
     };
@@ -5621,7 +5611,7 @@ function getReadinessDecision(
         ? "Codex sandbox blocked the bridge`s loopback probe. Run `bridge run-host-probe` to refresh the host probe cache; the next setup-status will see the real runtime."
         : "OpenLoomi is installed but the local API is not reachable. Open OpenLoomi, then retry setup-status.",
       autoFixCommands: [
-        "node ${PLUGIN_ROOT}/scripts/loomi-bridge.mjs run-host-probe",
+        `node "${BRIDGE_SCRIPT_DIR}/loomi-bridge.mjs" run-host-probe`,
       ],
       hostProbeCachePath: getHostProbeCachePath(),
     };

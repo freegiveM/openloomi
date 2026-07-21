@@ -22,8 +22,8 @@ your machine.
   ready.
 - **Route Codex through OpenLoomi.** When OpenLoomi answers, it can use your
   Codex CLI runtime under the hood, so you only configure one runtime.
-- **Trigger OpenLoomi workflows from chat.** Memory, loop, connectors, and
-  handoff are all exposed as Codex skills — type `@OpenLoomi …` and go.
+- **Trigger OpenLoomi workflows from chat.** Memory, loop, and connectors
+  are all exposed as Codex skills — type `@OpenLoomi …` and go.
 
 OpenLoomi still owns the heavy lifting: local memory storage, connector
 credentials, scheduled tasks, the desktop UI, secrets. Codex just gets a
@@ -47,8 +47,10 @@ Paste the whole line into a Codex shell — it adds the slim
 (only the plugin payloads) and installs the `openloomi` plugin in one go.
 Then **restart Codex** and start a new thread so the cache is refreshed,
 and ask `@OpenLoomi Run first-use setup.` (or
-`node plugins/codex/scripts/loomi-bridge.mjs setup --yes`) to wire up the
-desktop app.
+`node ~/.codex/plugins/cache/openloomi/openloomi/<version>/scripts/loomi-bridge.mjs setup --yes`
+— find the installed `<version>` with
+`ls ~/.codex/plugins/cache/openloomi/openloomi/`) to wire up the desktop
+app.
 
 Codex installs the plugin into
 `~/.codex/plugins/cache/openloomi/openloomi/<version>`.
@@ -60,7 +62,8 @@ git clone https://github.com/melandlabs/plugins.git && cd plugins && codex plugi
 ```
 
 The `.` argument tells Codex to use the repo root as a local marketplace;
-plugin resolution lands on `./openloomi/codex`.
+plugin resolution lands on `./openloomi/codex`. From a contributor checkout,
+the bridge script lives at `./openloomi/codex/scripts/loomi-bridge.mjs`.
 
 When you change files under `openloomi/codex/` and want to pick up your edits,
 force a re-snapshot:
@@ -80,7 +83,7 @@ only picks up the new plugin when a fresh process loads the cache.
 - **OpenLoomi Desktop installed** — or a source build that produces the
   OpenLoomi Desktop app — for anything beyond setup guidance and workflow
   discovery. Without it, the plugin can still report readiness and walk you
-  through installation, but handoff, loop, memory, and connector tasks can't
+  through installation, but loop, memory, and connector tasks can't
   actually run.
 - Codex CLI on your `PATH` (e.g. `brew install --cask codex` or
   `npm i -g @openai/codex`) if you want OpenLoomi to route through your
@@ -127,10 +130,15 @@ approval and retry the same bridge command outside the sandbox before treating
 the release URL as unavailable or the installer as broken. Keep the retry on
 `loomi-bridge`; do not bypass its official-artifact allowlist and verification.
 
-You can run the same wizard from a terminal:
+You can run the same wizard from a terminal. After the GitHub install the
+bridge lives at the marketplace cache path; for a local contributor checkout
+it lives at `./openloomi/codex/scripts/loomi-bridge.mjs`.
 
 ```bash
-node plugins/codex/scripts/loomi-bridge.mjs setup --yes
+# GitHub install:
+node ~/.codex/plugins/cache/openloomi/openloomi/<version>/scripts/loomi-bridge.mjs setup --yes
+# Local contributor checkout:
+node ./openloomi/codex/scripts/loomi-bridge.mjs setup --yes
 ```
 
 `setup` is **idempotent** — run it again any time to recover from a dropped
@@ -183,7 +191,7 @@ The TL;DR of the full path: **install the plugin → launch Codex with
 (fox theme) → flip the theme to capybara via the right-click menu →
 call `@OpenLoomi status` for the canonical JSON → the bundled Codex
 hooks drive the pet through every event automatically → connect
-external apps via `@OpenLoomi handoff` → and finally watch OpenLoomi's
+external apps via `@OpenLoomi connectors` → and finally watch OpenLoomi's
 Loop surface decision cards in the desktop app** — all driven by
 prompts you typed in Codex.
 
@@ -202,7 +210,6 @@ front door into the local runtime. A few patterns that usually work:
 @OpenLoomi Use the memory workflow to recall relevant context.
 @OpenLoomi Use the loop workflow to plan the next step.
 @OpenLoomi Check connector readiness for this task.
-@OpenLoomi Hand this task to Loomi for follow-up.
 ```
 
 The workflow skills are intentionally thin — they route your request into the
@@ -236,7 +243,10 @@ OpenLoomi is installed but the local guest/session token is missing. Open
 OpenLoomi Desktop once so it can mint a guest session, then re-run:
 
 ```bash
-node plugins/codex/scripts/loomi-bridge.mjs setup
+# GitHub install:
+node ~/.codex/plugins/cache/openloomi/openloomi/<version>/scripts/loomi-bridge.mjs setup
+# Local contributor checkout:
+node ./openloomi/codex/scripts/loomi-bridge.mjs setup
 ```
 
 The token lives at `~/.openloomi/token`. Delete it to force a re-mint.
@@ -286,12 +296,12 @@ inherits.
 This is the recommended path for first-time Codex-plugin users.
 
 > **You usually don't need to do this by hand.** Whenever the bridge
-> launches the OpenLoomi Desktop app (during `setup`, `initialize-session`,
-> or a handoff), it already wires `OPENLOOMI_AGENT_PROVIDER=codex` into the
-> launchd environment _before_ the app starts, so a clean install picks up
-> the Codex runtime on first open. The manual tiers below are for when you
-> want to change or persist the value independently of a launch, or on
-> Windows where auto-wiring isn't supported.
+> launches the OpenLoomi Desktop app (during `setup` or
+> `initialize-session`), it already wires `OPENLOOMI_AGENT_PROVIDER=codex`
+> into the launchd environment _before_ the app starts, so a clean install
+> picks up the Codex runtime on first open. The manual tiers below are for
+> when you want to change or persist the value independently of a launch,
+> or on Windows where auto-wiring isn't supported.
 
 ### How to make the env switch stick
 
@@ -305,7 +315,10 @@ shell `export` won't reach it. Three tiers, each more durable than the last:
 2. **This session only (transient)** —
 
    ```bash
-   node plugins/codex/scripts/loomi-bridge.mjs set-codex-runtime-env codex
+   # GitHub install:
+   node ~/.codex/plugins/cache/openloomi/openloomi/<version>/scripts/loomi-bridge.mjs set-codex-runtime-env codex
+   # Local contributor checkout:
+   node ./openloomi/codex/scripts/loomi-bridge.mjs set-codex-runtime-env codex
    ```
 
    Writes `launchctl setenv OPENLOOMI_AGENT_PROVIDER codex` in the GUI
@@ -316,7 +329,10 @@ shell `export` won't reach it. Three tiers, each more durable than the last:
 3. **Persistent (recommended)** —
 
    ```bash
-   node plugins/codex/scripts/loomi-bridge.mjs set-codex-runtime-env codex --persist
+   # GitHub install:
+   node ~/.codex/plugins/cache/openloomi/openloomi/<version>/scripts/loomi-bridge.mjs set-codex-runtime-env codex --persist
+   # Local contributor checkout:
+   node ./openloomi/codex/scripts/loomi-bridge.mjs set-codex-runtime-env codex --persist
    ```
 
    Does everything tier 2 does, **plus** installs
@@ -416,7 +432,6 @@ plugins/codex/
     openloomi-loop/SKILL.md
     openloomi-memory/SKILL.md
     openloomi-connectors/SKILL.md
-    openloomi-handoff/SKILL.md
     openloomi-pet/SKILL.md
     openloomi-api/SKILL.md
     openloomi-feature-guide/SKILL.md
@@ -486,9 +501,9 @@ used from Codex, this is the recommended first-use path: it lets OpenLoomi
 reuse the user's existing Codex runtime to complete the first Codex plugin
 workflow.
 
-Whenever the bridge launches the OpenLoomi Desktop app (during `setup`,
-`initialize-session`, or any handoff that has to start OpenLoomi), it first
-wires `OPENLOOMI_AGENT_PROVIDER=codex` into the environment the GUI launchd
+Whenever the bridge launches the OpenLoomi Desktop app (during `setup`
+or `initialize-session`), it first wires
+`OPENLOOMI_AGENT_PROVIDER=codex` into the environment the GUI launchd
 session will hand to the new process — `launchctl setenv` plus a persisted
 LaunchAgent on macOS, `~/.config/environment.d/openloomi-codex.conf` on
 Linux. Because the value lands _before_ the app is handed to launchd, the
@@ -753,18 +768,17 @@ runtime, no business logic is duplicated.
 | `openloomi-loop`          | `skills/openloomi-loop/SKILL.md`          | loop tick, loop schedule, loop inbox, register loop type, add loop rule | The proactive execution brain — pull signals, classify into decisions, schedule actions, register custom decision types / signal channels / classifier rules. Thin wrapper around `/api/loop/*`.                                                                                                                                                             |
 | `openloomi-memory`        | `skills/openloomi-memory/SKILL.md`        | memory search, knowledge base, documents, insights                      | Search or write memory through OpenLoomi-owned runtime surfaces. Thin wrapper — does **not** implement memory storage.                                                                                                                                                                                                                                       |
 | `openloomi-connectors`    | `skills/openloomi-connectors/SKILL.md`    | connect platform, integration status, list accounts, disconnect         | Check whether Slack, GitHub, Gmail, Calendar, and other sources are configured before acting. Reports status only; pair with `composio` for non-native accounts.                                                                                                                                                                                             |
-| `openloomi-handoff`       | `skills/openloomi-handoff/SKILL.md`       | hand off, delegate, queue, remind, follow up                            | **Codex-only.** Send the current Codex task to Loomi for follow-up. The Claude Code plugin exposes the same capability through its own `/openloomi:*` slash-command surface instead — see [Handoff parity note](#handoff-parity-note) below.                                                                                                                 |
 | `openloomi-pet`           | `skills/openloomi-pet/SKILL.md`           | pet state, set pet, fox sprite, capybara sprite, custom pet theme       | The 9-state Loomi Pet vocabulary (`happy`/`idle`/`juggling`/`needsinput`/`presenting`/`sleeping`/`sweeping`/`thinking`/`working`). Mirrors the Claude plugin's `openloomi-pet` skill with Codex-specific deltas (no slash command, `codex-plugin` source tag). For custom themes & sprite overrides see the [Customize your Loomi Pet](/docs/pet) user docs. |
 | `openloomi-api`           | `skills/openloomi-api/SKILL.md`           | API endpoints, backend routes, auth, local API, integrations            | Reference for the 131 OpenLoomi HTTP routes (auth, AI, RAG, Loop, Pet, workspace, integrations). Triggered on API / backend questions.                                                                                                                                                                                                                       |
 | `openloomi-feature-guide` | `skills/openloomi-feature-guide/SKILL.md` | "what can openloomi do", "怎么用", "how does openloomi work"            | Product overview, capability tour, and how-tos for non-developer questions.                                                                                                                                                                                                                                                                                  |
 | `composio`                | `skills/composio/SKILL.md`                | composio, 1000+ apps, external integrations                             | Third-party 1000+ app integration router (Gmail, Slack, GitHub, Linear, Jira, Notion, etc.) via the Composio CLI. Platform-agnostic; not OpenLoomi business logic.                                                                                                                                                                                           |
 
 The `workflow-guidance` bridge command exposes structured guidance for the
-four workflow skills (`openloomi-loop`, `openloomi-memory`,
-`openloomi-connectors`, `openloomi-handoff`). All other skills are
-documentation or routing helpers. The plugin must not copy OpenLoomi
-connector, memory, loop, scheduling, or handoff persistence logic into
-Codex — runtime implementations stay inside the OpenLoomi desktop runtime.
+three workflow skills (`openloomi-loop`, `openloomi-memory`,
+`openloomi-connectors`). All other skills are documentation or routing
+helpers. The plugin must not copy OpenLoomi connector, memory, or loop
+logic into Codex — runtime implementations stay inside the OpenLoomi
+desktop runtime.
 
 **Pairing notes:**
 
@@ -778,23 +792,6 @@ Codex — runtime implementations stay inside the OpenLoomi desktop runtime.
   via `/api/loop/action/schedule`. It is read/derive, never destructive.
 - `openloomi-memory` is the canonical store. `openloomi-loop` deliberately
   delegates persistence to memory instead of duplicating it.
-
-#### Handoff parity note
-
-Codex and Claude Code expose the same "send current task to Loomi for
-follow-up" capability through **different surfaces**:
-
-- **Codex** (`@OpenLoomi …`): the `openloomi-handoff` skill above — wraps
-  the request with the `taskPromptPrefix` returned by `workflow-guidance`
-  and sends it through the workflow's dedicated bridge command or API route.
-- **Claude Code** (`/openloomi:*`): the slash-command surface. There is no
-  dedicated `openloomi-handoff` skill because `/openloomi:setup` /
-  `/openloomi:status` already cover the same user need through the
-  plugin's own commands.
-
-Both surfaces route to the same OpenLoomi runtime — the plugin stays a
-thin wrapper; persistence and notification routing live inside the
-OpenLoomi desktop runtime.
 
 ### Pet state control
 
@@ -835,8 +832,12 @@ two states. See [`openloomi-pet/SKILL.md`](./skills/openloomi-pet/SKILL.md)
 for the full vocabulary and bridge failure-mode table.
 
 ```bash
-node plugins/codex/scripts/loomi-bridge.mjs pet happy
-node plugins/codex/scripts/loomi-bridge.mjs pet working
+# GitHub install:
+node ~/.codex/plugins/cache/openloomi/openloomi/<version>/scripts/loomi-bridge.mjs pet happy
+node ~/.codex/plugins/cache/openloomi/openloomi/<version>/scripts/loomi-bridge.mjs pet working
+# Local contributor checkout:
+node ./openloomi/codex/scripts/loomi-bridge.mjs pet happy
+node ./openloomi/codex/scripts/loomi-bridge.mjs pet working
 ```
 
 Valid states:
