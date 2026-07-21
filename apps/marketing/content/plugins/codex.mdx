@@ -88,14 +88,14 @@ If you're hacking on the plugin (or running from source), point Codex at the dir
 Type `@OpenLoomi` — Codex surfaces the skill namespace. The thin `openloomi` skill is the entry point, with sub-skills for `openloomi-install` (install / configure the desktop), `openloomi-pet` (pet state & themes), `openloomi-memory` (memory), `openloomi-loop` (loop dashboard), `openloomi-connectors` (native connectors), and `openloomi-handoff` (hand work off to the loop).
 
 - `@OpenLoomi` — read-only doorway into the local runtime
-- `@OpenLoomi install` — install / launch / configure the desktop app
+- `@OpenLoomi setup` — install / launch / configure the desktop app
 - `@OpenLoomi status` — stable JSON status
 - `@OpenLoomi pet <state>` — set the Loomi Pet state
 - `@OpenLoomi memory` / `@OpenLoomi memory <query>` — local memory
 - `@OpenLoomi loop` — Loop dashboard snapshot
 - `@OpenLoomi handoff` — send a task to Loomi for follow-up
 
-### 5. Run `@OpenLoomi install` — readiness table lands in READY and the Loomi Pet appears
+### 5. Run `@OpenLoomi setup` — readiness table lands in READY and the Loomi Pet appears
 
 The install skill auto-chains install → launch → wait API → guest login. When it finishes, the bridge prints a small readiness table on the left and the Loomi Pet pops onto your desktop on the right in the **fox** theme with a `Loomi is on watch` badge. The pet is the file-watcher-driven widget — it doesn't talk to the bridge; it watches `~/.openloomi/pet-config.json` and the `assets/{fox,capybara}/` folders.
 
@@ -480,16 +480,16 @@ The shell export helps the bridge itself; the `set-codex-runtime-env` step is wh
 
 All read by `apps/web`'s native-agent env resolver at startup:
 
-| Variable                                    | Default           | Purpose                                                   |
-| ------------------------------------------- | ----------------- | --------------------------------------------------------- |
-| `OPENLOOMI_AGENT_CODEX_COMMAND`             | `codex`           | Binary to invoke (overrides `PATH` lookup)                |
-| `OPENLOOMI_AGENT_CODEX_MODEL`               | (none)            | Optional model override                                   |
-| `OPENLOOMI_AGENT_CODEX_PROFILE`             | (none)            | Optional `-p <name>`                                      |
-| `OPENLOOMI_AGENT_CODEX_SANDBOX`             | `workspace-write` | `read-only` \| `workspace-write` \| `danger-full-access`  |
-| `OPENLOOMI_AGENT_CODEX_ASK_FOR_APPROVAL`    | `on-request`      | `untrusted` \| `on-failure` \| `on-request` \| `never`    |
-| `OPENLOOMI_AGENT_CODEX_SKIP_GIT_REPO_CHECK` | `true`            | Toggle Codex's working-directory git check                |
-| `OPENLOOMI_AGENT_CODEX_FULL_AUTO`           | `false`           | Set `true` to allow `--full-auto` under bypassPermissions |
-| `OPENLOOMI_AGENT_CODEX_TIMEOUT_MS`          | `120000`          | CLI runtime budget in ms                                  |
+| Variable                                    | Default           | Purpose                                                                                                                                                                                                                                                                                                                                |
+| ------------------------------------------- | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `OPENLOOMI_AGENT_CODEX_COMMAND`             | `codex`           | Binary to invoke (overrides `PATH` lookup)                                                                                                                                                                                                                                                                                             |
+| `OPENLOOMI_AGENT_CODEX_MODEL`               | (none)            | Optional model override                                                                                                                                                                                                                                                                                                                |
+| `OPENLOOMI_AGENT_CODEX_PROFILE`             | (none)            | Optional `-p <name>`. Point this at a Codex profile that allows outbound network when connectors (Composio, Gmail, Slack, Linear, …) need to reach their backends. The runtime persists the choice in `openloomi.config.toml`; per-profile env vars live in `codex-profile-env.plist` (macOS) so the GUI launchd domain inherits them. |
+| `OPENLOOMI_AGENT_CODEX_SANDBOX`             | `workspace-write` | `read-only` \| `workspace-write` \| `danger-full-access`. Both `read-only` and `workspace-write` deny outbound network by default. Use `OPENLOOMI_AGENT_CODEX_PROFILE` to carve out a network-allowed profile instead of widening this to `danger-full-access`.                                                                        |
+| `OPENLOOMI_AGENT_CODEX_ASK_FOR_APPROVAL`    | `on-request`      | `untrusted` \| `on-failure` \| `on-request` \| `never`                                                                                                                                                                                                                                                                                 |
+| `OPENLOOMI_AGENT_CODEX_SKIP_GIT_REPO_CHECK` | `true`            | Toggle Codex's working-directory git check                                                                                                                                                                                                                                                                                             |
+| `OPENLOOMI_AGENT_CODEX_FULL_AUTO`           | `false`           | Set `true` to allow `--full-auto` under bypassPermissions                                                                                                                                                                                                                                                                              |
+| `OPENLOOMI_AGENT_CODEX_TIMEOUT_MS`          | `120000`          | CLI runtime budget in ms                                                                                                                                                                                                                                                                                                               |
 
 Prerequisites that must hold before the desktop app will actually drive Codex:
 
@@ -702,6 +702,7 @@ The plugin stays thin. It calls OpenLoomi-owned runtime surfaces instead of copy
 - **`Codex still shows an old plugin version`** — remove and re-add the marketplace, restart Codex, and start a new thread. The cached plugin lives at `~/.codex/plugins/cache/openloomi/openloomi/<version>`.
 - **Pet control returns `ENDPOINT_MISSING`** — non-blocking. The bridge returns a polite notice that the route is pending; Pet control resumes automatically once OpenLoomi ships it.
 - **Pet control returns `API_UNREACHABLE`** — no local API responded on `3414`/`3515`. Start OpenLoomi Desktop and retry.
+- **`composio surface reachable` reports unreachable from a Codex-driven session** — Codex's `workspace-write` (and `read-only`) sandboxes deny outbound network by default, so the Codex subprocess that OpenLoomi spawns cannot reach Composio / Gmail / Linear / Slack and the connectors flip back to `needs_setup`. Fix it by giving OpenLoomi a **dedicated Codex profile** that allows outbound network while keeping file permissions at `workspace-write`, then set `OPENLOOMI_AGENT_CODEX_PROFILE=<name>`. The runtime persists the choice in `openloomi.config.toml`; per-profile env vars land in `codex-profile-env.plist` (macOS). Restart OpenLoomi Desktop so the next Codex spawn picks up the new profile. Do **not** widen `OPENLOOMI_AGENT_CODEX_SANDBOX` to `danger-full-access` for this — the profile carve-out is the supported path.
 
 ---
 
