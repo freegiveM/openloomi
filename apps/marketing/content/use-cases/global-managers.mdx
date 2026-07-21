@@ -1,22 +1,22 @@
 ---
 title: "Global Managers"
-description: "How a manager across three time zones stopped waking up to a 500-item inbox and let the Brief triage the night — Loop polls while I sleep, Wrap tells me what shipped"
+description: "How a manager across three time zones stops waking up to a 500-item inbox and lets the Brief triage the night — Loop polls while they sleep, Wrap tells them what shipped"
 icon: "FaLightbulb"
 ---
 
 # Global Managers
 
-I'm a manager running a team that lives in three time zones — Singapore, Berlin, San Francisco. By the time I open Slack at 9 AM in San Francisco, my Singapore teammates have already finished their day, my Berlin team is two hours from lunch, and overnight pings from Tokyo are piled in three different inboxes.
+A manager running a team that lives in three time zones — Singapore, Berlin, San Francisco — opens Slack at 9 AM in San Francisco to find that the Singapore teammates have already finished their day, the Berlin team is two hours from lunch, and the overnight pings from Tokyo are piled in three different inboxes.
 
-I used to start every morning the same way: open Gmail, open Slack, open Lark, scroll for 30 minutes trying to figure out what I missed, and only then start the actual work. By the time I caught up, half the morning was gone. And worse — the act of catching up generated more messages ("sorry, just saw this"), which the team then had to triage on top of their own work.
+Every morning used to start the same way: Gmail is opened, Slack is opened, Lark is opened, scrolling continues for 30 minutes trying to figure out what was missed, and only then does the actual work begin. By the time catch-up is complete, half the morning is gone. And worse — the act of catching up generates more messages ("sorry, just saw this"), which the team then has to triage on top of their own work.
 
-I wasn't short on discipline. I was short on a way to hold three time zones in my head at the same time.
+The shortfall isn't discipline. It's the cognitive load of holding three time zones in mind at the same time.
 
-I didn't want another chatbot that waits for me to ask it something. I wanted an AI assistant that genuinely fits a manager's day across time zones: it polls every channel continuously, organizes the overnight signal for me, and only finds me when there's a decision I genuinely need to make.
+The user doesn't want another chatbot that waits to be asked. They want an AI assistant that genuinely fits a manager's day across time zones: it polls every channel continuously, organizes the overnight signal, and only finds them when there's a decision that genuinely needs to be made.
 
 ---
 
-## Problem 1: The APAC / EMEA gap ate my mornings
+## Problem 1: The APAC / EMEA gap eats mornings
 
 The painful part of being a global manager isn't the late-night Slack pings — it's the morning archaeology to figure out which of them actually matter. The exchange used to go like this:
 
@@ -26,11 +26,11 @@ The painful part of being a global manager isn't the late-night Slack pings — 
 - Open Lark and check if the Berlin team left decisions in threads
 - Stitch the morning's mental picture together from memory
 
-If the night was busy, this got pushed to 10 AM, sometimes 11. By the time I was caught up, the Singapore team was already past lunch and Berlin was on their way out.
+If the night was busy, this got pushed to 10 AM, sometimes 11. By the time catch-up is complete, the Singapore team is already past lunch and Berlin is on their way out.
 
-I realized this is exactly what AI should be doing. The actual hard part of the morning routine isn't the decisions — it's gathering the scattered overnight signal and reorganizing it into something a manager can act on.
+This is exactly what AI should be doing. The actual hard part of the morning routine isn't the decisions — it's gathering the scattered overnight signal and reorganizing it into something a manager can act on.
 
-So I connected my three primary channels in OpenLoomi:
+So the three primary channels are connected in OpenLoomi:
 
 ```
 use openloomi-connectors to connect Gmail
@@ -38,15 +38,15 @@ use openloomi-connectors to connect Slack
 use openloomi-connectors to connect Lark
 ```
 
-Gmail and Slack live in Composio's app catalog; the seven native Loomi connectors (Telegram / WhatsApp / iMessage / Feishu / DingTalk / QQ / WeChat) don't need Composio at all. You can mix native and Composio-managed accounts freely.
+Gmail and Slack live in Composio's app catalog; the seven native Loomi connectors (Telegram / WhatsApp / iMessage / Feishu / DingTalk / QQ / WeChat) don't need Composio at all. Native and Composio-managed accounts can be mixed freely.
 
-Verify with `list-accounts` — once every platform shows `active`, Loop picks them up on the next tick.
+Verification runs with `list-accounts` — once every platform shows `active`, Loop picks them up on the next tick.
 
 ---
 
-## Problem 2: 9 AM was a triage ritual, not a start of day
+## Problem 2: 9 AM becomes a triage ritual, not a start of day
 
-Once the connectors were in, the next thing I configured was the **Brief**. Every day at 9 AM (configurable in **Settings → Loop**), Loop gathers my open decision cards, today's calendar, and the contacts Loop knows I'll interact with today, and lays them out as a single page.
+Once the connectors are in, the next thing configured is the **Brief**. Every day at 9 AM (configurable in **Settings → Loop**), Loop gathers the open decision cards, today's calendar, and the contacts Loop expects an interaction with today, and lays them out as a single page.
 
 <p align="center">
   <img
@@ -56,25 +56,25 @@ Once the connectors were in, the next thing I configured was the **Brief**. Ever
   />
 </p>
 
-What lands in the Brief isn't a hardcoded count of "3 items" — it's everything Loop judged the previous day and overnight that genuinely needs my attention. If nothing needs me, the Brief says so.
+What lands in the Brief isn't a hardcoded count of "3 items" — it's everything Loop judged the previous day and overnight that genuinely needs attention. If nothing needs the manager, the Brief says so.
 
-The Brief isn't the only thing that runs on a schedule. **Throughout the day**, Loop ticks every 10 minutes and surfaces typed decision cards as new signals clear my gates:
+The Brief isn't the only thing that runs on a schedule. **Throughout the day**, Loop ticks every 10 minutes and surfaces typed decision cards as new signals clear the gates:
 
-- ✉️ **`email_reply`** — inbound from a contact on my important list with an action word, past my reply window
+- ✉️ **`email_reply`** — inbound from a contact on the important list with an action word, past the reply window
 - 💬 **`im_reply`** — DM from a connected messaging app not yet responded to
 - 📅 **`rsvp`** — calendar invite past 24 hours unanswered
 
 Each card carries the draft, a reasoning trace, the confidence score, and the four-gesture flow — **Approve / Edit Draft / Later / Skip**. The dry-run is always shown before any outbound action — Loop never auto-sends.
 
-By the time I open my laptop, the overnight queue is already filtered. I read the Brief, tap **Approve** on the two or three things that genuinely need me, and start the day in 5 minutes instead of 45.
+By the time the laptop is opened, the overnight queue is already filtered. The Brief is read, **Approve** is tapped on the two or three things that genuinely need attention, and the day starts in 5 minutes instead of 45.
 
 ---
 
-## Problem 3: 6 PM was a guilt trip
+## Problem 3: 6 PM becomes a guilt trip
 
-The mirror problem to the morning Brief was the evening Wrap. Used to be: I'd log off, lie in bed, and think _"did I reply to that Singapore thread? Did I confirm the Berlin call? Did I acknowledge the partner's note?"_ If I was tired, I'd open Slack one more time to check, and that one more time would turn into 30 minutes of "while I'm here..."
+The mirror problem to the morning Brief was the evening Wrap. Used to be: logging off, lying in bed, and thinking _"did I reply to that Singapore thread? Did I confirm the Berlin call? Did I acknowledge the partner's note?"_ If tired, Slack would be opened one more time to check, and that one more time would turn into 30 minutes of "while I'm here..."
 
-Loop's **Wrap** at 6 PM (configurable in **Settings → Loop**) lists what Loop actually handled during the day — emails sent, RSVPs logged, replies posted — and what got parked for tomorrow. The goal is a clean mental inbox before I log off.
+Loop's **Wrap** at 6 PM (configurable in **Settings → Loop**) lists what Loop actually handled during the day — emails sent, RSVPs logged, replies posted — and what got parked for tomorrow. The goal is a clean mental inbox before logging off.
 
 <p align="center">
   <img
@@ -84,33 +84,33 @@ Loop's **Wrap** at 6 PM (configurable in **Settings → Loop**) lists what Loop 
   />
 </p>
 
-Loomi bubbles the high-confidence cards in the corner of my screen during the day. Pause it during deep-work blocks with a right-click → "Pause reminders for 1 hour". The Brief and Wrap are the bookends; the queue runs in between.
+Loomi bubbles the high-confidence cards in the corner of the screen during the day. They can be paused during deep-work blocks with a right-click → "Pause reminders for 1 hour". The Brief and Wrap are the bookends; the queue runs in between.
 
 ---
 
-## What I really wanted to solve isn't a few automation tasks
+## What this workflow really solves isn't a few automation tasks
 
-At first I just wanted to save the 45 minutes every morning I was spending on overnight archaeology. But after a few weeks, I realized the real problem isn't that I'm missing a few automation scripts — it's that global-team work is fundamentally a time-zone information problem:
+At first the goal was just to save the 45 minutes every morning being spent on overnight archaeology. But after a few weeks, the realization hit: the real problem isn't a few missing automation scripts — it's that global-team work is fundamentally a time-zone information problem:
 
-- The team lives in three time zones; my working day only covers one of them
-- Async handoffs mean yesterday's decisions are buried in threads I haven't seen
+- The team lives in three time zones; the working day only covers one of them
+- Async handoffs mean yesterday's decisions are buried in threads that haven't been seen
 - The cost of context-loading a 200-message overnight Slack scroll is real
-- By the time I notice something, it's already 4–6 hours old in the other time zone
+- By the time something is noticed, it's already 4–6 hours old in the other time zone
 
-In the past, all this information had to be found and pieced together by me actively searching. The change OpenLoomi brings is inverting that relationship: instead of me waking up and trying to catch up, AI keeps watching every channel continuously and comes to me with the filtered list at the right moment.
+In the past, all this information had to be found and pieced together by actively searching. The change OpenLoomi brings is inverting that relationship: instead of waking up and trying to catch up, AI keeps watching every channel continuously and comes back with the filtered list at the right moment.
 
-- If a Tokyo teammate DMs at 11 PM their time, the `im_reply` card lands in my Brief already knowing who they are.
-- If a partner emails overnight, the `email_reply` card surfaces with the draft grounded in our last conversation.
+- If a Tokyo teammate DMs at 11 PM their time, the `im_reply` card lands in the Brief already knowing who they are.
+- If a partner emails overnight, the `email_reply` card surfaces with the draft grounded in the last conversation.
 - If a calendar invite sits unanswered past 24 hours, the `rsvp` card waits in the morning's queue.
 - If a public signal changes a contact's context, the `contact_update` card refreshes memory overnight.
 
-I only need to focus on the parts that genuinely need my judgement — the actual reply, the RSVP, the decision.
+All that's needed is to focus on the parts that genuinely need judgement — the actual reply, the RSVP, the decision.
 
 ---
 
 ## From "morning triage" to a continuously running manager loop
 
-To make this work, I configured two kinds of working patterns in OpenLoomi.
+To make this work, two kinds of working patterns are configured in OpenLoomi.
 
 **One is event-driven:**
 
@@ -133,13 +133,13 @@ Together they form a loop that runs continuously across every time zone:
 Continuously watch → Organize contact context → Propose action or draft → Human decides → Send and remember
 ```
 
-Loop never sleeps. Brief and Wrap are the bookends; the queue runs in between. Compared to configuring an isolated per-channel workflow, I'd rather have OpenLoomi keep understanding _"what landed across all my time zones since I last looked."_
+Loop never sleeps. Brief and Wrap are the bookends; the queue runs in between. Compared to configuring an isolated per-channel workflow, the preference is to have OpenLoomi keep understanding _"what landed across all the time zones since last looked."_
 
 > 💡 **Tune what surfaces.** Global managers often have more signals than time. Three dials help: **Trusted contacts** (the auto-promote list, default ≥ 3 appearances in memory), **Sources** (toggle Email / Calendar / GitHub / Slack / Linear individually in **Settings → Loop → Sources**), and **Quiet hours** (pause windows around deep-work blocks in **Settings → Attention Agent**).
 
 ---
 
-## What changed for me
+## What changed
 
 | Aspect             | Before                                               | After                                                                             |
 | ------------------ | ---------------------------------------------------- | --------------------------------------------------------------------------------- |
@@ -149,13 +149,13 @@ Loop never sleeps. Brief and Wrap are the bookends; the queue runs in between. C
 | Time zone coverage | Gaps overnight                                       | Loop never sleeps — Brief and Wrap are the bookends, the queue runs in between    |
 | Decision tracing   | "Why did I send that?"                               | Audit logs every Loop judgement and execution — see exactly what shipped and when |
 
-What OpenLoomi saves me isn't just the 45 minutes every morning. More importantly, I don't have to keep scrolling three inboxes, missing what landed overnight, and worrying about which thread I dropped.
+What OpenLoomi saves isn't just the 45 minutes every morning. More importantly, there's no need to keep scrolling three inboxes, missing what landed overnight, and worrying about which thread was dropped.
 
 ---
 
 ## How to set this up
 
-Three connector calls is all it takes. The same commands work in OpenLoomi Desktop, the Claude plugin, or the Codex plugin — invoke `openloomi-connectors` in chat, once per channel:
+Three connector calls is all it takes. The same commands work in OpenLoomi Desktop, the Claude plugin, or the Codex plugin — `openloomi-connectors` is invoked in chat, once per channel:
 
 ```
 use openloomi-connectors to connect Gmail
@@ -163,32 +163,15 @@ use openloomi-connectors to connect Slack
 use openloomi-connectors to connect Lark
 ```
 
-Verify with `list-accounts` — once every platform shows `active`, Loop picks them up on the next tick.
+Verification runs with `list-accounts` — once every platform shows `active`, Loop picks them up on the next tick.
 
 From that moment on:
 
-- Every 10 min Loop polls all your channels and surfaces typed cards as signals clear your gates
-- The Brief lands at 9 AM (or your configured time); the Wrap lands at 6 PM
-- Memory auto-promotes frequent contacts into your trusted list
-- Loomi bubbles the high-confidence cards in the corner of your screen during the day
+- Every 10 min Loop polls all the channels and surfaces typed cards as signals clear the gates
+- The Brief lands at 9 AM (or the configured time); the Wrap lands at 6 PM
+- Memory auto-promotes frequent contacts into the trusted list
+- Loomi bubbles the high-confidence cards in the corner of the screen during the day
 
-Tune trusted contacts, source toggles, and brief/wrap times in **Settings → Loop**. Loomi's bubble cadence, quiet hours, and theme are in **Settings → Attention Agent**. Want the Brief in a different time zone or only in certain languages? Set the time in **Settings → Loop → Morning briefing time**; signal prioritisation respects the Interests panel in **Settings → Personalization**.
+Trusted contacts, source toggles, and brief/wrap times are tuned in **Settings → Loop**. Loomi's bubble cadence, quiet hours, and theme are in **Settings → Attention Agent**. If the Brief is wanted in a different time zone or only in certain languages, the time is set in **Settings → Loop → Morning briefing time**; signal prioritisation respects the Interests panel in **Settings → Personalization**.
 
-OpenLoomi's audit log records every execution — how many times Loop has polled, which cards surfaced, which Approves I tapped, which drafts I edited. This way I can hand the overnight triage off to AI and still see exactly what it did.
-
----
-
-## What I need isn't another chatbot
-
-This experience reinforced something for me: an AI assistant for a global manager shouldn't be a chat window waiting for me to ask.
-
-If every interaction still requires me to open a tool, type a question, and supply the context, then the responsibility for gathering information and pushing work forward still sits on my shoulders.
-
-What I actually need is an AI that can keep working around the time-zone gap:
-
-- It watches the channels that matter — Gmail, Slack, Lark, the rest of my stack
-- It keeps spotting the inbound that needs a reply, even when I'm asleep
-- It proactively organizes the contact context across time zones
-- It drafts the reply grounded in what I and the contact have already discussed
-- It hands the send button back to me when judgement is needed
-- It remembers my edits and choices, gradually learning how I prioritize across regions
+OpenLoomi's audit log records every execution — how many times Loop has polled, which cards surfaced, which Approves were tapped, which drafts were edited. This way the overnight triage can be handed off to AI while every action it took remains visible.

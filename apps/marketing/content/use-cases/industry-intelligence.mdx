@@ -1,18 +1,18 @@
 ---
 title: "Industry Intelligence"
-description: "How an analyst stopped re-researching last week's launches and let Memory carry the research — Brief rolls up the channels you wired, agent does the reading in chat"
+description: "How an analyst stops re-researching last week's launches and lets Memory carry the research — Brief rolls up the channels that were wired, agent does the reading in chat"
 icon: "FaLightbulb"
 ---
 
 # Industry Intelligence
 
-I track AI product launches for a living — by which I mean I used to spend my Friday morning skimming 30 X threads, 4 Product Hunt pages, a handful of Reddit threads, and 2 RSS feeds, then trying to remember on Monday which ones actually mattered. Most of the time, I couldn't.
+An analyst tracking AI product launches for a living used to spend Friday mornings skimming 30 X threads, 4 Product Hunt pages, a handful of Reddit threads, and 2 RSS feeds, then trying to remember on Monday which ones actually mattered. Most of the time, they couldn't.
 
 The painful part wasn't the reading. It was the memory. _"I read something about an Anthropic competitor two weeks ago — what was the name?"_ _"There was a Product Hunt launch last Tuesday that I wanted to follow up on, but I've already lost the thread."_ The research happened; the retention didn't.
 
-I wasn't short on discipline. I was short on a way to hold 50 launches across 4 sources in my head at the same time.
+The shortfall isn't discipline. It's the cognitive load of holding 50 launches across 4 sources at the same time.
 
-I didn't want another chatbot that waits for me to ask it something. I wanted an AI assistant that genuinely fits an analyst's week: it does the reading in chat, writes what I confirm into Memory, and only finds me when there's a decision I genuinely need to make.
+The user doesn't want another chatbot that waits to be asked. They want an AI assistant that genuinely fits an analyst's week: it does the reading in chat, writes what gets confirmed into Memory, and only finds them when there's a decision that genuinely needs to be made.
 
 > **Honest about what Loop ships built-in:** Email / Calendar / GitHub / Slack / Linear are the five built-in sources. X, Reddit, RSS, and Product Hunt aren't in that list — but they can be registered as **custom channels** via the `openloomi-loop` skill, and once registered Loop reads them the same way it reads Linear.
 
@@ -26,48 +26,48 @@ The exchange used to go like this:
 - Open Product Hunt, filter to AI-tagged launches, read the top 10
 - Open Reddit, check r/MachineLearning and r/LocalLLaMA for the threads that bubbled up
 - Open 2 RSS feeds, skim the Hacker News front page and a research-blogs aggregator
-- Try to remember which of these I'd already seen
+- Try to remember which of these had already been seen
 - Stitch the "5 things worth tracking this week" together from memory
 
-If the week was busy, this got pushed to the next Monday. By then, half of what I wanted to track had already been overtaken by the news cycle.
+If the week was busy, this got pushed to the next Monday. By then, half of what was wanted to track had already been overtaken by the news cycle.
 
-I realized this is exactly what AI should be doing. The actual hard part of industry intelligence isn't the prioritization — it's the reading and the synthesis across sources, plus the retention so the next week builds on the last.
+This is exactly what AI should be doing. The actual hard part of industry intelligence isn't the prioritization — it's the reading and the synthesis across sources, plus the retention so the next week builds on the last.
 
-So I started asking the agent in **Chat**. The agent has read access to my memory and can call any registered custom channel. I open the main OpenLoomi window → Chat and ask:
+So the agent is asked in **Chat**. The agent has read access to memory and can call any registered custom channel. The main OpenLoomi window → Chat is opened and asked:
 
 - _"Pull this week's top AI product launches from X and Product Hunt. Save the three most relevant to memory under `insights/ai-launches/`."_
 - _"What did I save about Anthropic's roadmap two weeks ago? Has anything shifted?"_
 - _"Add a daily 9 AM digest that polls Product Hunt for AI-tagged launches and posts the top 3 to my Brief."_
 
-Each insight the agent writes to `~/.openloomi/data/memory/insights/` is timestamped and tagged. A daily analytics refresh surfaces the entries I actually engaged with; a weekly compaction archives stale ones instead of deleting them — so context never silently disappears.
+Each insight the agent writes to `~/.openloomi/data/memory/insights/` is timestamped and tagged. A daily analytics refresh surfaces the entries actually engaged with; a weekly compaction archives stale ones instead of deleting them — so context never silently disappears.
 
-The **`x-twitter-api`** skill is the public packaging for the X side of this; the **composio-cli** skill covers Product Hunt and Reddit. Both install on the fly the first time you ask for them.
+The **`x-twitter-api`** skill is the public packaging for the X side of this; the **composio-cli** skill covers Product Hunt and Reddit. Both install on the fly the first time they're asked for.
 
 ---
 
 ## Problem 2: "I read it last week but forgot the name"
 
-The mirror problem to the reading was the retention. I read something, I meant to track it, and by next week I'd already lost the thread. Notes in Notion never quite worked — the friction of opening Notion, finding the right page, and pasting the link was higher than the impulse to track it.
+The mirror problem to the reading was the retention. Something gets read, it's meant to be tracked, and by next week the thread is already lost. Notes in Notion never quite worked — the friction of opening Notion, finding the right page, and pasting the link was higher than the impulse to track it.
 
-OpenLoomi Memory made the retention implicit. Every insight the agent writes to `~/.openloomi/data/memory/insights/` is timestamped and tagged. The next week, I don't have to remember "what was the Anthropic competitor" — I just ask:
+OpenLoomi Memory made the retention implicit. Every insight the agent writes to `~/.openloomi/data/memory/insights/` is timestamped and tagged. The next week, there's no need to remember "what was the Anthropic competitor" — it's just asked:
 
 > _"What did I save about Anthropic's roadmap two weeks ago? Has anything shifted?"_
 
-The agent reads the relevant slice of memory and returns the entries I had confirmed. The longer I use it, the sharper the research gets, because every confirmed insight becomes a node in the same memory graph.
+The agent reads the relevant slice of memory and returns the entries that were confirmed. The longer it's used, the sharper the research gets, because every confirmed insight becomes a node in the same memory graph.
 
-This is the inversion that made the workflow stick: instead of me writing notes to remember things, the agent writes notes that I can ask about later. The note-writing and the asking are the same operation, and the same memory layer serves both.
+This is the inversion that made the workflow stick: instead of writing notes to remember things, the agent writes notes that can be asked about later. The note-writing and the asking are the same operation, and the same memory layer serves both.
 
 ---
 
 ## Problem 3: Sources Loop doesn't ship built-in
 
-The other friction was source coverage. X, Reddit, RSS, and Product Hunt are the four sources I actually need to watch, and none of them is in Loop's five built-in sources (Email / Calendar / GitHub / Slack / Linear). I had three options:
+The other friction was source coverage. X, Reddit, RSS, and Product Hunt are the four sources actually needed to watch, and none of them is in Loop's five built-in sources (Email / Calendar / GitHub / Slack / Linear). Three options were on the table:
 
-1. Build a custom scraper for each one (no — I tried this, it dies after 3 weeks when one of the APIs changes)
+1. Build a custom scraper for each one (no — this was tried, it dies after 3 weeks when one of the APIs changes)
 2. Skip the sources and accept the gap (no — the gap is the whole point)
 3. Register them as custom channels once and let Loop poll them the same way it polls Linear (yes)
 
-I went with option 3. The registration is one-time per source, in chat:
+Option 3 was chosen. The registration is one-time per source, in chat:
 
 ```
 Register a custom channel called "x_mentions" that polls my X mentions every 15 minutes.
@@ -77,7 +77,7 @@ Register a custom channel called "rss_ai_news" that polls the Hacker News front 
 
 Each registration writes a small JSON record to `~/.openloomi/loop/custom-channels.json` and applies on the very next Loop tick. State is per-user, local, human-readable.
 
-X lives in Composio's app catalog, so the skill installs Composio on the fly if I don't have it yet. The custom-channel interface wraps any Composio `toolkit` + `toolSlug` combination with a `pollIntervalSec ≥ 60`. The minimum registration record contains:
+X lives in Composio's app catalog, so the skill installs Composio on the fly if not already installed. The custom-channel interface wraps any Composio `toolkit` + `toolSlug` combination with a `pollIntervalSec ≥ 60`. The minimum registration record contains:
 
 | Field             | Example           | What it does                                         |
 | ----------------- | ----------------- | ---------------------------------------------------- |
@@ -86,35 +86,35 @@ X lives in Composio's app catalog, so the skill installs Composio on the fly if 
 | `toolSlug`        | `X_LIST_MENTIONS` | The specific tool inside the toolkit                 |
 | `pollIntervalSec` | `900`             | How often Loop polls this source (≥ 60s)             |
 
-To share a configuration with a teammate, copy the JSON file — that's it. The same interface is also used to register RSS feeds (wrap a small local filesystem watcher), Reddit threads (Composio's `reddit` toolkit), or anything else that lives in a system Loop can poll.
+To share a configuration with a teammate, the JSON file is copied — that's it. The same interface is also used to register RSS feeds (wrap a small local filesystem watcher), Reddit threads (Composio's `reddit` toolkit), or anything else that lives in a system Loop can poll.
 
-> 💡 **Custom channels are scoped to your local `~/.openloomi/loop/` directory.** They're per-user, human-readable, and you can edit them by hand if a source changes shape. The Brief and Wrap rollups respect custom channels the same way they respect built-ins — your 9 AM Brief will include the AI-tagged Product Hunt launches from your custom channel without any extra wiring.
+> 💡 **Custom channels are scoped to your local `~/.openloomi/loop/` directory.** They're per-user, human-readable, and can be edited by hand if a source changes shape. The Brief and Wrap rollups respect custom channels the same way they respect built-ins — the 9 AM Brief includes the AI-tagged Product Hunt launches from the custom channel without any extra wiring.
 
 ---
 
-## What I really wanted to solve isn't a few automation scripts
+## What this workflow really solves isn't a few automation scripts
 
-At first I just wanted to save the 2 hours every Friday I was spending skimming sources. But after a few weeks, I realized the real problem isn't that I'm missing a few automation scripts — it's that industry intelligence is fundamentally a memory + synthesis problem:
+At first the goal was just to save the 2 hours every Friday being spent skimming sources. But after a few weeks, the realization hit: the real problem isn't a few missing automation scripts — it's that industry intelligence is fundamentally a memory + synthesis problem:
 
-- The reading happens across 4 sources, none of which has my full context
-- The retention has to span weeks, but my notes don't carry forward
+- The reading happens across 4 sources, none of which has the full context
+- The retention has to span weeks, but notes don't carry forward
 - The synthesis has to be cross-source, but each source only knows itself
-- The morning brief has to roll up everything I confirmed, but the sources don't know what's "confirmed"
+- The morning brief has to roll up everything confirmed, but the sources don't know what's "confirmed"
 
-In the past, all this had to be done by me actively searching and re-reading. The change OpenLoomi brings is inverting that relationship: instead of me constantly re-skimming, the agent reads in chat, Memory carries the research across weeks, and Loop rolls the signals up at the right moment.
+In the past, all this had to be done by actively searching and re-reading. The change OpenLoomi brings is inverting that relationship: instead of constantly re-skimming, the agent reads in chat, Memory carries the research across weeks, and Loop rolls the signals up at the right moment.
 
 - If a launch is worth tracking, the agent writes it to `insights/ai-launches/` with a timestamp and a tag.
-- If a topic I asked about last week has shifted, the next chat query returns the updated picture.
+- If a topic asked about last week has shifted, the next chat query returns the updated picture.
 - If a custom channel surfaces a new launch, the Brief at 9 AM includes it alongside everything else.
 - If an insight goes stale, the weekly compaction archives it instead of deleting it — so the research history never silently disappears.
 
-I only need to focus on the parts that genuinely need my judgement — which launches are actually worth tracking, which shifts in the market actually matter.
+All that's needed is to focus on the parts that genuinely need judgement — which launches are actually worth tracking, which shifts in the market actually matter.
 
 ---
 
 ## From "Friday morning skim" to a continuously running intelligence loop
 
-To make this work, I configured two kinds of working patterns in OpenLoomi.
+To make this work, two kinds of working patterns are configured in OpenLoomi.
 
 **One is event-driven:**
 
@@ -136,13 +136,13 @@ Together they form a loop that runs continuously across the four sources:
 Continuously watch → Read and synthesize in chat → Write confirmed insight to memory → Roll up in Brief → Human asks, agent answers
 ```
 
-Compared to configuring an isolated scraper per source, I'd rather have OpenLoomi keep understanding _"what's the picture of the AI market this week, and how does it connect to what I tracked last week."_
+Compared to configuring an isolated scraper per source, the preference is to have OpenLoomi keep understanding _"what's the picture of the AI market this week, and how does it connect to what was tracked last week."_
 
-> 💡 **The reading happens in chat; the polling happens in Loop.** Loop's job is to watch the channels you wired and surface signals. The agent's job in chat is to read those signals, write the ones that matter into memory, and answer the queries you ask. The Brief is the daily rollup. None of it requires a scheduled task you wire up by hand.
+> 💡 **The reading happens in chat; the polling happens in Loop.** Loop's job is to watch the channels that were wired and surface signals. The agent's job in chat is to read those signals, write the ones that matter into memory, and answer the queries asked. The Brief is the daily rollup. None of it requires a scheduled task wired up by hand.
 
 ---
 
-## What changed for me
+## What changed
 
 | Aspect               | Before                                              | After                                                                                |
 | -------------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------ |
@@ -152,7 +152,7 @@ Compared to configuring an isolated scraper per source, I'd rather have OpenLoom
 | Morning routine      | 1–2 hrs of scanning                                 | Open Brief, see what Loop judged overnight, ask the agent to expand on what matters  |
 | Context across weeks | Each Monday starts from scratch                     | Memory carries the narrative — "what was the top launch two weeks ago?" is one query |
 
-What OpenLoomi saves me isn't just the 2 hours every Friday. More importantly, I don't have to keep re-skimming the same sources, re-finding the same launches, and worrying about which insight I dropped.
+What OpenLoomi saves isn't just the 2 hours every Friday. More importantly, there's no need to keep re-skimming the same sources, re-finding the same launches, and worrying about which insight was dropped.
 
 ---
 
@@ -167,7 +167,7 @@ use openloomi-connectors to connect GitHub
 use openloomi-connectors to connect Slack
 ```
 
-Watch a few public competitor repos on GitHub, add a Slack channel where peers discuss launches. Loop picks them up on the next tick — no prompt to paste, no scheduled task to wire up. Tune trusted contacts and source toggles in **Settings → Loop**.
+A few public competitor repos on GitHub are watched, and a Slack channel where peers discuss launches is added. Loop picks them up on the next tick — no prompt to paste, no scheduled task to wire up. Trusted contacts and source toggles are tuned in **Settings → Loop**.
 
 Then in Chat:
 
@@ -180,7 +180,7 @@ The agent pulls, summarizes, writes to memory. Next morning's Brief references t
 
 ### Path B: Add X / RSS / Product Hunt as custom channels
 
-For sources Loop doesn't ship built-in, register them in chat:
+For sources Loop doesn't ship built-in, registration happens in chat:
 
 ```
 Register a custom channel called "x_mentions" that polls my X mentions every 15 minutes.
@@ -190,32 +190,15 @@ Register a custom channel called "rss_ai_news" that polls the Hacker News front 
 
 Each registration writes to `~/.openloomi/loop/custom-channels.json` and applies on the very next Loop tick. State is per-user, local, human-readable.
 
-To add a skill for the agent to call directly in chat (e.g. for full X search beyond mentions, or for Product Hunt's comments), install the matching public skill:
+To add a skill for the agent to call directly in chat (e.g. for full X search beyond mentions, or for Product Hunt's comments), the matching public skill is installed:
 
 ```
 Add the x-twitter-api skill so I can search and post in chat.
 Add the composio-cli skill so I can call any Composio toolkit from chat.
 ```
 
-Each skill installs on the fly the first time you ask for it.
+Each skill installs on the fly the first time it's asked for.
 
-> 💡 The Brief and Wrap rollups respect custom channels the same way they respect built-ins — your 9 AM Brief will include the AI-tagged Product Hunt launches from your custom channel without any extra wiring.
+> 💡 The Brief and Wrap rollups respect custom channels the same way they respect built-ins — the 9 AM Brief includes the AI-tagged Product Hunt launches from the custom channel without any extra wiring.
 
-OpenLoomi's audit log records every execution — which custom channels fired, which insights the agent wrote to memory, which queries I asked in chat, which signals the Brief rolled up. This way I can hand the source-watching off to AI and still see exactly what it did.
-
----
-
-## What I need isn't another chatbot
-
-This experience reinforced something for me: an AI industry-intelligence assistant shouldn't be a chat window waiting for me to ask.
-
-If every interaction still requires me to open a tool, type a query, and supply the context, then the responsibility for reading sources and retaining insights still sits on my shoulders.
-
-What I actually need is an AI that can keep working around the market questions:
-
-- It watches the channels that matter — X, Product Hunt, Reddit, RSS, my GitHub, my Slack
-- It keeps spotting the signals tied to the topics I track
-- It proactively organizes the cross-source evidence into a single memory layer
-- It drafts the weekly digest in chat, grounded in what I've already confirmed
-- It hands the "is this worth tracking" decision back to me when judgement is needed
-- It remembers my edits and choices, gradually learning which signals I care about
+OpenLoomi's audit log records every execution — which custom channels fired, which insights the agent wrote to memory, which queries were asked in chat, which signals the Brief rolled up. This way the source-watching can be handed off to AI while every action it took remains visible.

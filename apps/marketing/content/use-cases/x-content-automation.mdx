@@ -1,20 +1,20 @@
 ---
 title: "X Content Drafting"
-description: "How I stopped typing drafts from scratch every Sunday night — Loop watches X signals, agent drafts in my voice grounded in Memory, I tap Approve before anything sends"
+description: "How a content creator stops typing drafts from scratch every Sunday night — Loop watches X signals, agent drafts in their voice grounded in Memory, an explicit Approve is required before anything sends"
 icon: "FaLightbulb"
 ---
 
 # X Content Drafting
 
-I'm a content creator / community manager who runs an AI-focused X account. By Sunday night, I had to draft 5 posts for the week, reply to whatever came up over the weekend, and somehow do it in a voice that sounded like me and not like an LLM. Most weeks, I ran out of time and the drafts were shorter, more generic, more obviously "a thing a content person wrote on a deadline."
+A content creator / community manager who runs an AI-focused X account used to find, by Sunday night, that 5 posts for the week needed drafting, weekend inbounds needed replying to, and all of it had to happen in a voice that sounded like them and not like an LLM. Most weeks, time ran out and the drafts were shorter, more generic, more obviously "a thing a content person wrote on a deadline."
 
-The painful part wasn't the writing — it was the consistency. _"Did I already write a thread about Claude's memory layer? Did I already take a hot take on the latest model release? Is the phrasing I'm using this week the same as the phrasing I used in March?"_ The voice is in my head; it just doesn't transfer to a blank X compose box at 11 PM on a Sunday.
+The painful part wasn't the writing — it was the consistency. _"Did I already write a thread about Claude's memory layer? Did I already take a hot take on the latest model release? Is the phrasing I'm using this week the same as the phrasing used in March?"_ The voice is in the head; it just doesn't transfer to a blank X compose box at 11 PM on a Sunday.
 
-I wasn't short on discipline. I was short on a way to hold my own voice + the topics I've covered + the inbound that needs a reply in my head at the same time.
+The shortfall isn't discipline. It's the cognitive load of holding their own voice + the topics they've covered + the inbound that needs a reply at the same time.
 
-I didn't want another chatbot that waits for me to ask it something. I wanted an AI assistant that genuinely fits a creator's week: it watches X for the signals, drafts in my voice grounded in what I've already posted, and only finds me when there's a decision I genuinely need to make.
+The user doesn't want another chatbot that waits to be asked. They want an AI assistant that genuinely fits a creator's week: it watches X for the signals, drafts in their voice grounded in what's already been posted, and only finds them when there's a decision that genuinely needs to be made.
 
-> **One rule that doesn't bend:** Loop never auto-sends. That applies to email, to Slack, to Linear, and to X. So an "X automation" use case is really two workflows stitched together: **Loop watches X for signals** (mentions, replies, DMs that need a reply) and surfaces typed decision cards; the **agent + OpenLoomi Memory** draft posts and replies grounded in your past phrasing and what you've already said on the platform. You tap **Approve** on the card, or refine in Chat, then send via the X connector. The whole loop is human-in-the-loop — no autonomous likes, retweets, or replies, ever.
+> **One rule that doesn't bend:** Loop never auto-sends. That applies to email, to Slack, to Linear, and to X. So an "X automation" use case is really two workflows stitched together: **Loop watches X for signals** (mentions, replies, DMs that need a reply) and surfaces typed decision cards; the **agent + OpenLoomi Memory** draft posts and replies grounded in past phrasing and what's already been said on the platform. **Approve** is tapped on the card (or it's refined in Chat), then send happens via the X connector. The whole loop is human-in-the-loop — no autonomous likes, retweets, or replies, ever.
 
 ---
 
@@ -23,17 +23,17 @@ I didn't want another chatbot that waits for me to ask it something. I wanted an
 The exchange used to go like this:
 
 - Open X compose, stare at the blank box
-- Open my own profile, scroll the last 10 posts, try to remember the phrasing I used
-- Open Notion, find my "drafts" doc, see if anything half-finished is still relevant
+- Open the own profile, scroll the last 10 posts, try to remember the phrasing used
+- Open Notion, find the "drafts" doc, see if anything half-finished is still relevant
 - Open the model's release notes, summarize a few bullet points
-- Try to write a thread that sounds like me and not like a content farm
+- Try to write a thread that sounds like them and not like a content farm
 - Repeat 5 times
 
-By post 4, the voice was usually gone. By post 5, the deadline was past midnight and I was posting things I wasn't proud of.
+By post 4, the voice was usually gone. By post 5, the deadline was past midnight and things were getting posted that weren't proud of.
 
-I realized this is exactly what AI should be doing. The actual hard part of content drafting isn't the writing — it's gathering the context (what I've already said, the voice I've used, the topics I've covered) and reorganizing it into something I can refine in my own phrasing.
+This is exactly what AI should be doing. The actual hard part of content drafting isn't the writing — it's gathering the context (what's already been said, the voice used, the topics covered) and reorganizing it into something that can be refined in their own phrasing.
 
-So I opened **Chat** with the agent. The agent reads my past posts and replies from `~/.openloomi/data/memory/`, so the draft matches how I actually write. The **`x-twitter-api`** skill is the public packaging for drafting, posting, and scheduling via the X connector.
+So **Chat** is opened with the agent. The agent reads past posts and replies from `~/.openloomi/data/memory/`, so the draft matches how the user actually writes. The **`x-twitter-api`** skill is the public packaging for drafting, posting, and scheduling via the X connector.
 
 Try:
 
@@ -41,31 +41,31 @@ Try:
 - _"Pull my last 10 posts about AI agent memory, write a follow-up that goes deeper on the forgetting engine."_
 - _"Draft a hot take on the latest Claude release in my voice — punchy, not snarky."_
 
-The agent drafts in my voice; I refine, tap **Approve & Post**, and the X connector publishes. For a 5-post week that used to take me 3 hours of blank-page staring, it's now 1 hour of editing.
+The agent drafts in the user's voice; it's refined, **Approve & Post** is tapped, and the X connector publishes. For a 5-post week that used to take 3 hours of blank-page staring, it's now 1 hour of editing.
 
-> 💡 Your past X posts are not in OpenLoomi Memory by default — they live on X. The first time you ask the agent to draft, it may ask you to point it at past posts (paste a few, or share a thread URL). Once it has a sample, Memory carries the voice across sessions.
+> 💡 Past X posts are not in OpenLoomi Memory by default — they live on X. The first time the agent is asked to draft, it may ask to be pointed at past posts (paste a few, or share a thread URL). Once it has a sample, Memory carries the voice across sessions.
 
 ---
 
-## Problem 2: Drafts didn't sound like me
+## Problem 2: Drafts don't sound like the user
 
-The first few times I tried AI drafting tools, the output was technically competent but unmistakably AI. The phrases were too symmetric, the metaphors were too clean, the humor was too safe. The drafts read like drafts; the engagement reflected it.
+The first few times AI drafting tools were tried, the output was technically competent but unmistakably AI. The phrases were too symmetric, the metaphors were too clean, the humor was too safe. The drafts read like drafts; the engagement reflected it.
 
-Loop handles this through the memory layer. The first time I asked the agent to draft, it asked for samples — I pasted 8 past posts, and the agent wrote a voice profile into `~/.openloomi/data/memory/`. From that point on, every new draft reads the profile before it writes, and the voice gets sharper the more I edit and Approve. The **`x-twitter-api`** skill is just the public packaging for the X connector; the voice work happens in the memory layer.
+Loop handles this through the memory layer. The first time the agent was asked to draft, it asked for samples — 8 past posts were pasted, and the agent wrote a voice profile into `~/.openloomi/data/memory/`. From that point on, every new draft reads the profile before it writes, and the voice gets sharper the more edits and Approves happen. The **`x-twitter-api`** skill is just the public packaging for the X connector; the voice work happens in the memory layer.
 
 Per [Loop's memory contract](/docs/loop#how-loop-reads-and-writes-memory):
 
-| Loop reads from memory                             | Loop writes after Approve                      |
-| -------------------------------------------------- | ---------------------------------------------- |
-| Past posts, prior replies, the topics I've covered | Updated thread cluster, refreshed contact note |
+| Loop reads from memory                        | Loop writes after Approve                      |
+| --------------------------------------------- | ---------------------------------------------- |
+| Past posts, prior replies, the topics covered | Updated thread cluster, refreshed contact note |
 
-I don't curate any of this. A daily analytics refresh surfaces the contacts and topics I actually engage with; a weekly compaction archives stale entries instead of deleting them. The longer I use it, the sharper the voice match gets — and it works the same way across every card type.
+None of this needs to be curated. A daily analytics refresh surfaces the contacts and topics actually engaged with; a weekly compaction archives stale entries instead of deleting them. The longer it's used, the sharper the voice match gets — and it works the same way across every card type.
 
 ---
 
-## Problem 3: The inbound that needed a reply
+## Problem 3: The inbound that needs a reply
 
-The other category that used to eat my day was the inbound. A peer DMs me about a launch I'm working on. A reader mentions me in a thread about a topic I've written about. A potential customer asks a question that's actually a buying signal buried in a public mention. All of these needed a reply; all of them were easy to miss in the X notification firehose.
+The other category that used to eat the day was the inbound. A peer DMs about a launch being worked on. A reader mentions in a thread about a topic that's been written about. A potential customer asks a question that's actually a buying signal buried in a public mention. All of these needed a reply; all of them were easy to miss in the X notification firehose.
 
 Loop handles this through the `x_mentions` custom channel and typed decision cards. The first step is registering the channel once:
 
@@ -74,43 +74,43 @@ Register a custom channel called "x_mentions" that polls my X mentions every 15 
 Wrap the Composio X toolkit's "list mentions" tool.
 ```
 
-The skill writes the record to `~/.openloomi/loop/custom-channels.json` and the next Loop tick picks it up. From that moment on, every mention that clears my gates surfaces as a typed card in my queue.
+The skill writes the record to `~/.openloomi/loop/custom-channels.json` and the next Loop tick picks it up. From that moment on, every mention that clears the gates surfaces as a typed card in the queue.
 
 For DMs that need a reply, Loop surfaces an **`im_reply`** card when the message meets all three gates (per [Attention Agent](/docs/attention-agent)):
 
-- The sender is on your **important contacts** list — anyone appearing ≥ 3 times in OpenLoomi Memory is auto-promoted
+- The sender is on the **important contacts** list — anyone appearing ≥ 3 times in OpenLoomi Memory is auto-promoted
 - The message contains an action word — _"reply"_, _"DM me"_, _"circle back"_
-- The message has passed your usual reply window (default 4 hours) and is still unanswered
+- The message has passed the usual reply window (default 4 hours) and is still unanswered
 
-The card carries the draft reply (grounded in what I and the sender have discussed before, per memory), a reasoning trace, the confidence score, and the four-gesture flow — **Approve / Edit Draft / Later / Skip**. Loomi bubbles the high-confidence ones in the corner of my screen.
+The card carries the draft reply (grounded in what the user and the sender have discussed before, per memory), a reasoning trace, the confidence score, and the four-gesture flow — **Approve / Edit Draft / Later / Skip**. Loomi bubbles the high-confidence ones in the corner of the screen.
 
-For public mentions — `@OpenLoomi your thing is interesting, how does X work?` — Loop surfaces a **`todo`** card with the mention attached. I tap, the agent reads the mention and my prior X voice from memory, drafts a reply in my phrasing, and I send it via the X connector with one tap.
+For public mentions — `@OpenLoomi your thing is interesting, how does X work?` — Loop surfaces a **`todo`** card with the mention attached. The card is tapped, the agent reads the mention and the prior X voice from memory, drafts a reply in the user's phrasing, and it gets sent via the X connector with one tap.
 
 ---
 
-## What I really wanted to solve isn't a few automation scripts
+## What this workflow really solves isn't a few automation scripts
 
-At first I just wanted to save the 3 hours every Sunday I was spending on drafting. But after a few weeks, I realized the real problem isn't that I'm missing a few automation scripts — it's that content work is fundamentally a memory + voice problem:
+At first the goal was just to save the 3 hours every Sunday being spent on drafting. But after a few weeks, the realization hit: the real problem isn't a few missing automation scripts — it's that content work is fundamentally a memory + voice problem:
 
-- My voice lives in 500 past posts, none of which I can re-read before every new draft
-- The topics I've covered live in the same posts, distributed across 18 months
+- The voice lives in 500 past posts, none of which can be re-read before every new draft
+- The topics covered live in the same posts, distributed across 18 months
 - The inbound that needs a reply lives in the X notification firehose
-- The voice consistency I'm trying to maintain lives in my head, not in the tools
+- The voice consistency being maintained lives in the head, not in the tools
 
-In the past, all this had to be carried by me actively re-reading. The change OpenLoomi brings is inverting that relationship: instead of me re-reading my own posts to remember the voice, Memory carries it across weeks, and the agent drafts in it.
+In the past, all this had to be carried by actively re-reading. The change OpenLoomi brings is inverting that relationship: instead of re-reading their own posts to remember the voice, Memory carries it across weeks, and the agent drafts in it.
 
-- If a thread needs writing, the agent reads the prior posts in my voice and drafts the new one.
+- If a thread needs writing, the agent reads the prior posts in the user's voice and drafts the new one.
 - If a DM needs a reply, the `im_reply` card lands with the channel context and a grounded draft.
 - If a public mention deserves a reply, the `todo` card surfaces with the mention attached.
-- If my voice shifts over time, the memory profile shifts with it — the longer I use it, the sharper the match gets.
+- If the voice shifts over time, the memory profile shifts with it — the longer it's used, the sharper the match gets.
 
-I only need to focus on the parts that genuinely need my judgement — the actual take, the actual phrasing, the actual judgment about whether to engage.
+All that's needed is to focus on the parts that genuinely need judgement — the actual take, the actual phrasing, the actual judgment about whether to engage.
 
 ---
 
 ## From "Sunday night panic" to a continuously running X loop
 
-To make this work, I configured two kinds of working patterns in OpenLoomi.
+To make this work, two kinds of working patterns are configured in OpenLoomi.
 
 **One is event-driven:**
 
@@ -132,36 +132,36 @@ Together they form a loop that runs continuously across X and the connected chan
 Continuously watch X → Read memory-grounded voice → Propose draft or reply → Human decides → Send via X connector
 ```
 
-Compared to configuring an isolated per-channel workflow, I'd rather have OpenLoomi keep understanding _"what's the voice I've been writing in, and what does the week need from it."_
+Compared to configuring an isolated per-channel workflow, the preference is to have OpenLoomi keep understanding _"what's the voice that's been writing in, and what does the week need from it."_
 
-> 💡 **Outbound posts aren't in this table** because there's no incoming signal yet. They live in Chat. Open the main OpenLoomi window, ask the agent to draft, refine, then send via the X connector.
+> 💡 **Outbound posts aren't in this table** because there's no incoming signal yet. They live in Chat. The main OpenLoomi window is opened, the agent is asked to draft, then it's refined and sent via the X connector.
 
 ---
 
 ## What This Workflow Doesn't Do
 
-Honesty about what Loop isn't, so you set the right expectations:
+Honesty about what Loop isn't, so the right expectations are set:
 
-- ❌ **No autonomous posting.** Loop never publishes on its own. Every post and reply waits for your tap.
+- ❌ **No autonomous posting.** Loop never publishes on its own. Every post and reply waits for an explicit tap.
 - ❌ **No autonomous likes, retweets, or follows.** These aren't supported. Engagement that grows an account has to come from a human (or be planned explicitly in Chat and approved one-by-one).
-- ❌ **No "post on a schedule" runner.** If you want to publish at a specific time, you Approve the draft and use the X connector's schedule feature, or set up a manual reminder.
+- ❌ **No "post on a schedule" runner.** If publishing at a specific time is wanted, the draft is Approved and the X connector's schedule feature is used, or a manual reminder is set up.
 - ❌ **No X growth-hacking automation.** Follow-back loops, auto-DM funnels, engagement pods — these aren't Loop features and run counter to its human-in-the-loop design.
 
-What Loop **does** give you: a watched inbox for X signals, drafts grounded in your voice, and a single tap to publish.
+What Loop **does** give: a watched inbox for X signals, drafts grounded in voice, and a single tap to publish.
 
 ---
 
-## What changed for me
+## What changed
 
 | Aspect                     | Before                                          | After                                                                                  |
 | -------------------------- | ----------------------------------------------- | -------------------------------------------------------------------------------------- |
-| Inbox triage               | Scroll X notifications manually                 | Loop surfaces typed cards as mentions and DMs clear your gates                         |
-| Draft voice                | Generic AI drafts that don't sound like you     | Memory-grounded drafts in your past phrasing, refined in chat, approved by you         |
+| Inbox triage               | Scroll X notifications manually                 | Loop surfaces typed cards as mentions and DMs clear the gates                          |
+| Draft voice                | Generic AI drafts that don't sound like you     | Memory-grounded drafts in past phrasing, refined in chat, approved by you              |
 | Cross-platform consistency | X drafts unrelated to your email / Slack voice  | One memory layer — the same `people/<name>.md` and project notes feed every draft      |
 | Posting                    | Compose in X client, lose your train of thought | Compose in Chat with the agent, Approve, post via the X connector                      |
 | Audit trail                | No record of why you said what                  | Loop audit log + memory history — see every judgement, every approval, every writeback |
 
-What OpenLoomi saves me isn't just the 3 hours every Sunday. More importantly, I don't have to keep re-reading my own posts to find the voice, and I don't have to scroll the X notification firehose hoping I didn't miss the reply that mattered.
+What OpenLoomi saves isn't just the 3 hours every Sunday. More importantly, there's no need to keep re-reading your own posts to find the voice, and there's no need to scroll the X notification firehose hoping the reply that mattered wasn't missed.
 
 ---
 
@@ -177,7 +177,7 @@ Register a custom channel called "x_mentions" that polls my X mentions every 15 
 Wrap the Composio X toolkit's "list mentions" tool.
 ```
 
-X lives in Composio's app catalog; the `connect` skill installs Composio on the fly if I don't have it yet. Verify with `list-accounts` — once X shows `active` and the `x_mentions` channel appears in chat, Loop picks them up on the next tick.
+X lives in Composio's app catalog; the `connect` skill installs Composio on the fly if not already installed. Verification runs with `list-accounts` — once X shows `active` and the `x_mentions` channel appears in chat, Loop picks them up on the next tick.
 
 ### Path B: Add the `x-twitter-api` skill for drafting and posting
 
@@ -189,25 +189,8 @@ This installs the public skill that wraps the X connector for drafting, posting,
 
 ### Tune Loop
 
-Loop is on by default at a 10-minute scan. To tune trusted contacts, source toggles, and brief/wrap times, open **Settings → Loop**. To tune when Loomi bubbles appear, open **Settings → Attention Agent**.
+Loop is on by default at a 10-minute scan. To tune trusted contacts, source toggles, and brief/wrap times, **Settings → Loop** is opened. To tune when Loomi bubbles appear, **Settings → Attention Agent** is opened.
 
-> 💡 Your past X posts are not in OpenLoomi Memory by default — they live on X. The first time you ask the agent to draft, it may ask you to point it at past posts (paste a few, or share a thread URL). Once it has a sample, Memory carries the voice across sessions.
+> 💡 Past X posts are not in OpenLoomi Memory by default — they live on X. The first time the agent is asked to draft, it may ask to be pointed at past posts (paste a few, or share a thread URL). Once it has a sample, Memory carries the voice across sessions.
 
-OpenLoomi's audit log records every execution — which mentions Loop flagged, which drafts the agent wrote, which Approves I tapped, which posts went out. This way I can hand the voice work off to AI and still see exactly what it did.
-
----
-
-## What I need isn't another chatbot
-
-This experience reinforced something for me: an AI content assistant shouldn't be a chat window waiting for me to ask.
-
-If every interaction still requires me to open a tool, type a question, and supply the context, then the responsibility for carrying the voice and watching the inbox still sits on my shoulders.
-
-What I actually need is an AI that can keep working around the content cycle:
-
-- It watches the channels that matter — X, email, Slack, the rest of my stack
-- It keeps spotting the inbound that needs a reply
-- It proactively organizes the voice and topic context that's scattered across 500 past posts
-- It drafts the new post grounded in what I've already written
-- It hands the publish button back to me when judgement is needed
-- It remembers my edits and choices, gradually learning the voice I actually want
+OpenLoomi's audit log records every execution — which mentions Loop flagged, which drafts the agent wrote, which Approves were tapped, which posts went out. This way the voice work can be handed off to AI while every action it took remains visible.

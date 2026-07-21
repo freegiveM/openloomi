@@ -1,103 +1,103 @@
 ---
 title: "Founders & Business Development"
-description: "How a founder stopped losing follow-ups across hundreds of contacts and let Loop carry the relationships — drafts grounded, approval still mine"
+description: "How a founder stops losing follow-ups across hundreds of contacts and lets Loop carry the relationships — drafts grounded, approval still yours"
 icon: "FaRocket"
 ---
 
 # Founders & Business Development
 
-I'm a founder doing BD in a seed-stage company. Half my day is conversations — investor intros, partner pitches, customer follow-ups, advisor catch-ups. The other half of my day is supposed to be product, hiring, and runway. But by 6 PM, all I can remember is that I owe Sarah a reply, the partner from Helsinki never got the deck, and I was supposed to loop in my advisor three days ago.
+A founder doing BD at a seed-stage company spends half the day in conversations — investor intros, partner pitches, customer follow-ups, advisor catch-ups. The other half of the day is supposed to be product, hiring, and runway. But by 6 PM, all that's remembered is that Sarah is owed a reply, the partner from Helsinki never got the deck, and the advisor should have been looped in three days ago.
 
-I wasn't short on discipline. I was short on a way to hold 500 relationships in my head at the same time.
+The shortfall isn't discipline. It's the cognitive load of holding 500 relationships in mind at the same time.
 
-I didn't want another chatbot that waits for me to ask it something. I wanted an AI assistant that actually fits the founder's day: it watches the inbound continuously, organizes the context for me, and only finds me when there's a decision I genuinely need to make.
+The user doesn't want another chatbot that waits to be asked. They want an AI assistant that actually fits the founder's day: it watches the inbound continuously, organizes the context, and only finds them when there's a decision that genuinely needs to be made.
 
 ---
 
-## Problem 1: I keep re-reading the same thread before every reply
+## Problem 1: The same thread gets re-read before every reply
 
-When an investor I haven't talked to in three months writes back, the exchange used to go like this:
+When an investor they haven't talked to in three months writes back, the exchange used to go like this:
 
-- Scroll back through our last 6 emails to remember what we discussed
-- Check my notes for "what was the term sheet condition I said yes to"
-- Re-read the reply twice because I don't want to contradict something I said in March
+- Scroll back through the last 6 emails to remember what was discussed
+- Check notes for "what was the term sheet condition that was agreed to"
+- Re-read the reply twice because contradicting something said in March is unacceptable
 - Then write the reply
 
-If I had three of these in a day, the half-hour tax on each one added up. If I had seven, I started dropping threads — not on purpose, just because the context-loading cost was higher than the embarrassment of missing the reply.
+If three of these stack up in a day, the half-hour tax on each one adds up. If seven stack up, threads start getting dropped — not on purpose, but because the context-loading cost exceeds the embarrassment of missing the reply.
 
-I realized this is exactly what AI should be doing. The actual hard part of replying to a past contact isn't the writing — it's gathering the scattered context and reorganizing it into something I can answer from.
+This is exactly what AI should be doing. The actual hard part of replying to a past contact isn't the writing — it's gathering the scattered context and reorganizing it into something that can be answered from.
 
-So I connected Gmail and Slack in OpenLoomi:
+So Gmail and Slack are connected in OpenLoomi:
 
 ```
 use openloomi-connectors to connect Gmail
 use openloomi-connectors to connect Slack
 ```
 
-Verify with `list-accounts` — once both show `active`, Loop picks them up on the next tick.
+Verification runs via `list-accounts` — once both show `active`, Loop picks them up on the next tick.
 
-Every 10 minutes, Loop polls both inboxes. When an inbound from a contact on my important list arrives with an action word — _"intro"_, _"follow-up"_, _"circle back"_, _"RSVP"_ — past my default 4-hour reply window, Loop surfaces an `email_reply` or `im_reply` decision card. The card carries:
+Every 10 minutes, Loop polls both inboxes. When an inbound from a contact on the important list arrives with an action word — _"intro"_, _"follow-up"_, _"circle back"_, _"RSVP"_ — past the default 4-hour reply window, Loop surfaces an `email_reply` or `im_reply` decision card. The card carries:
 
-- The **draft reply** — pre-written by the agent, grounded in what Sarah and I discussed last quarter
+- The **draft reply** — pre-written by the agent, grounded in what Sarah and the user discussed last quarter
 - The **reasoning trace** — _"Sarah is the investor who passed on Q1; she's circling back with new terms"_
 - The **confidence score** (default range 0.60–0.85)
 - The four-gesture flow: **Approve / Edit Draft / Later / Skip**
 
-For Sarah's email about the Q3 deck, the card already had the draft referencing what I said in March. I glanced at the memory trace, tapped **Approve**, and moved on. Total time: 10 seconds.
+For Sarah's email about the Q3 deck, the card already carried the draft referencing what was said in March. The user glanced at the memory trace, tapped **Approve**, and moved on. Total time: 10 seconds.
 
 ---
 
-## Problem 2: Cold outreach never sounds like me
+## Problem 2: Cold outreach never sounds like the founder
 
-For warm replies I had Loop. For cold outreach — first touch, follow-ups, re-engagements with contacts who went quiet three months ago — there was no incoming signal yet for Loop to surface.
+For warm replies the founder had Loop. For cold outreach — first touch, follow-ups, re-engagements with contacts who went quiet three months ago — there was no incoming signal yet for Loop to surface.
 
-The old approach was even worse. I'd open a doc of "templates" I'd collected from other founders, copy one, fill in the blanks, and send. The result always read like a template because it was a template. Replies came back at maybe 5%, and most of those were polite declines.
+The old approach was even worse. A doc of "templates" collected from other founders would be opened, one copied, the blanks filled in, and sent. The result always read like a template because it was a template. Replies came back at maybe 5%, and most of those were polite declines.
 
-I started drafting first-touch in **Chat** with the agent. The agent reads my past messages and the relevant contact notes from `~/.openloomi/data/memory/people/`, so the draft sounds like the way I actually write, not like a Mad Libs form. The **`cold-email`** skill is the public packaging for this workflow; the **`revops`** skill helps me track lifecycle stages.
+First-touch drafts are now started in **Chat** with the agent. The agent reads past messages and the relevant contact notes from `~/.openloomi/data/memory/people/`, so the draft sounds like the way the user actually writes, not like a Mad Libs form. The **`cold-email`** skill is the public packaging for this workflow; the **`revops`** skill helps track lifecycle stages.
 
 Try:
 
 - _"Draft a follow-up to Sarah Chen based on our last conversation in March about Q3 terms."_
 - _"Write a 5-touch follow-up sequence for the Acme intro — each touch should add new value, not just 'checking in.'"_
-- _"Pull everything I know about Marcus from memory and draft a re-engagement email that references his move to Singapore."_
+- _"Pull everything we know about Marcus from memory and draft a re-engagement email that references his move to Singapore."_
 
-The agent reads the right slice of memory before it writes, drafts in my voice, and waits for me to refine and send. For a 5-touch sequence that used to take me 90 minutes of blank-page staring, it's now 20 minutes of editing.
-
----
-
-## Problem 3: I find out about quiet contacts too late
-
-The other category that fell through the cracks was re-engagement. A lead that went warm in January, an advisor I haven't looped in since Q1, a customer I promised to circle back to "after the launch" — all the relationships that should keep being touched but don't generate any signal in the inbox.
-
-Loop handles this through `contact_update` cards. When a public signal lands — a promotion in their bio, a new role in their link-in-bio, a podcast they were just on — Loop surfaces a card with the proposed update to `people/<name>.md` in memory. I tap **Approve** and the contact profile gets refreshed; next time they email, the `email_reply` card carries the new context.
-
-There's also a `digest` card Loop surfaces weekly with the contacts I've been quiet with for over 30 days. I open it, the agent drafts a one-line re-engagement in my voice for each, and I send the ones I want to keep warm. No "I forgot to reach out for half a year" anymore.
+The agent reads the right slice of memory before writing, drafts in the founder's voice, and waits for refinement and send. For a 5-touch sequence that used to take 90 minutes of blank-page staring, it's now 20 minutes of editing.
 
 ---
 
-## What I really wanted to solve isn't a few automation tasks
+## Problem 3: Quiet contacts are found too late
 
-At first I just wanted to save the half-hour per reply I was spending re-reading threads. But after a few weeks, I realized the real problem isn't that I'm missing a few automation scripts — it's that relationship work is fundamentally an information organization problem:
+The other category that fell through the cracks was re-engagement. A lead that went warm in January, an advisor who hasn't been looped in since Q1, a customer that was promised a circle back "after the launch" — all the relationships that should keep being touched but don't generate any signal in the inbox.
 
-- Context lives in Gmail, Slack, Telegram, LinkedIn, Notion, my head
+Loop handles this through `contact_update` cards. When a public signal lands — a promotion in the bio, a new role in the link-in-bio, a podcast appearance — Loop surfaces a card with the proposed update to `people/<name>.md` in memory. **Approve** is tapped and the contact profile gets refreshed; next time they email, the `email_reply` card carries the new context.
+
+There's also a `digest` card Loop surfaces weekly with the contacts that have been quiet for over 30 days. The user opens it, the agent drafts a one-line re-engagement in their voice for each, and the founder sends the ones they want to keep warm. No more "I forgot to reach out for half a year."
+
+---
+
+## What this workflow really solves isn't a few automation tasks
+
+At first the goal was just to save the half-hour per reply being spent re-reading threads. But after a few weeks, the realization hit: the real problem isn't a few missing automation scripts — it's that relationship work is fundamentally an information organization problem:
+
+- Context lives in Gmail, Slack, Telegram, LinkedIn, Notion, and the founder's head
 - The same person appears in five of those tools with five slightly different stories
 - Follow-up signals are buried under 200 other messages
 - Time-zone gaps and async work mean half of "yesterday" actually happened overnight
 
-In the past, all this information had to be found and pieced together by me actively searching. The change OpenLoomi brings is inverting that relationship: instead of me constantly searching for context, AI keeps watching the conversations and comes to me with the full memory slice at the right moment.
+In the past, all this information had to be found and pieced together by actively searching. The change OpenLoomi brings is inverting that relationship: instead of constantly searching for context, AI keeps watching the conversations and comes back with the full memory slice at the right moment.
 
 - If an important contact writes back, the `email_reply` card lands with the draft and the memory trace ready.
 - If a DM needs a reply, the `im_reply` card carries the channel context and a grounded draft.
 - If a contact has been quiet, the weekly `digest` card surfaces them with a re-engagement draft waiting.
 - If a public signal changes someone's context, the `contact_update` card proposes the memory refresh.
 
-I only need to focus on the parts that genuinely need my judgement — the actual message content, the terms, the personal relationship.
+All that's needed is to focus on the parts that genuinely need judgement — the actual message content, the terms, the personal relationship.
 
 ---
 
 ## From "email triage" to a continuously running founder loop
 
-To make this work, I configured two kinds of working patterns in OpenLoomi.
+To make this work, two kinds of working patterns are configured in OpenLoomi.
 
 **One is event-driven:**
 
@@ -121,29 +121,29 @@ Together they form a loop that runs continuously:
 Continuously watch → Organize contact context → Propose draft or update → Human decides → Send and remember
 ```
 
-Compared to configuring an isolated CRM workflow, I'd rather have OpenLoomi keep understanding _"who's in my network right now and which of them needs a touch today."_
+Compared to configuring an isolated CRM workflow, the preference is to have OpenLoomi keep understanding _"who's in the network right now and which of them needs a touch today."_
 
-> 💡 **Cold outreach isn't in this table** because it isn't a scheduled task and there's no incoming signal yet — it lives in Chat. Open the main OpenLoomi window, ask the agent to draft, refine, then send via the matching connector.
+> 💡 **Cold outreach isn't in this table** because it isn't a scheduled task and there's no incoming signal yet — it lives in Chat. The main OpenLoomi window is opened, the agent is asked to draft, then it's refined and sent via the matching connector.
 
 ---
 
-## What changed for me
+## What changed
 
 | Aspect                | Before                                      | After                                                                                 |
 | --------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------- |
 | Reply review time     | 10–15 min per thread re-reading context     | Tap a bubble, read the memory trace, approve the grounded draft                       |
 | Follow-up cadence     | Drop after one touch, feel guilty later     | `email_reply` card for each inbound from important contacts — never silent            |
 | Cross-channel context | Email and IM treated as separate worlds     | One memory, one queue — Sarah's Slack DM has the same memory slice as her email       |
-| Cold outreach quality | Generic templates, ~5% reply rate           | Drafted in chat with the agent, grounded in my past phrasing and contact notes        |
+| Cold outreach quality | Generic templates, ~5% reply rate           | Drafted in chat with the agent, grounded in past phrasing and contact notes           |
 | Network maintenance   | Manually track 50 contacts in a spreadsheet | Memory layer auto-promotes frequent contacts; weekly digest surfaces who's been quiet |
 
-What OpenLoomi saves me isn't just the half-hour per reply. More importantly, I don't have to keep switching between Gmail and Slack, re-reading threads, and worrying about which contact I've dropped.
+What OpenLoomi saves isn't just the half-hour per reply. More importantly, there's no need to keep switching between Gmail and Slack, re-reading threads, and worrying about which contact was dropped.
 
 ---
 
 ## How to set this up
 
-The whole configuration isn't complicated. I just connect Gmail, Slack, and the messaging apps I actually use, in OpenLoomi Desktop, the Claude plugin, or the Codex plugin:
+The whole configuration isn't complicated. Gmail, Slack, and the messaging apps actually used are connected in OpenLoomi Desktop, the Claude plugin, or the Codex plugin:
 
 ```
 use openloomi-connectors to connect Gmail
@@ -151,31 +151,14 @@ use openloomi-connectors to connect Slack
 use openloomi-connectors to connect Telegram
 ```
 
-Gmail and Slack live in Composio's app catalog; the seven native Loomi connectors (Telegram / WhatsApp / iMessage / Feishu / DingTalk / QQ / WeChat) don't need Composio at all. You can mix native and Composio-managed accounts freely.
+Gmail and Slack live in Composio's app catalog; the seven native Loomi connectors (Telegram / WhatsApp / iMessage / Feishu / DingTalk / QQ / WeChat) don't need Composio at all. Native and Composio-managed accounts can be mixed freely.
 
-Once connected, I verify with `list-accounts`. When Gmail, Slack, and Telegram all show `active`, OpenLoomi picks them up on the next tick and starts the matching flows:
+Once connected, verification runs with `list-accounts`. When Gmail, Slack, and Telegram all show `active`, OpenLoomi picks them up on the next tick and starts the matching flows:
 
 - Every 10 min, Loop polls each inbox and surfaces typed cards as signals clear the gates
 - The Brief at 9 AM rolls up today's needs; the Wrap at 6 PM recaps what Loop handled
-- Weekly digest surfaces the contacts I've been quiet with, with re-engagement drafts ready
+- Weekly digest surfaces the contacts quiet for too long, with re-engagement drafts ready
 
-For cold outreach (no incoming signal), I open **Chat** and ask the agent to draft. For per-source trust settings and brief/wrap times, I tune in **Settings → Loop**. Loomi's bubble cadence is tunable in **Settings → Attention Agent**.
+For cold outreach (no incoming signal), **Chat** is opened and the agent is asked to draft. For per-source trust settings and brief/wrap times, tuning happens in **Settings → Loop**. Loomi's bubble cadence is tunable in **Settings → Attention Agent**.
 
-OpenLoomi's audit log records every execution — how many times Loop has polled, which cards surfaced, which Approves I tapped, which drafts I edited. This way I can hand the repetitive triage off to AI and still see exactly what it did.
-
----
-
-## What I need isn't another chatbot
-
-This experience reinforced something for me: an AI assistant for a founder shouldn't be a chat window waiting for me to ask.
-
-If every interaction still requires me to open a tool, type a question, and supply the context, then the responsibility for gathering information and pushing work forward still sits on my shoulders.
-
-What I actually need is an AI that can keep working around my network:
-
-- It watches the inboxes that matter — Gmail, Slack, Telegram, LinkedIn
-- It keeps spotting the inbound that needs a reply
-- It proactively organizes the contact context that's scattered across five tools
-- It drafts the reply grounded in what I and the contact have already discussed
-- It hands the send button back to me when judgement is needed
-- It remembers my edits and choices, gradually learning how I write to different audiences
+OpenLoomi's audit log records every execution — how many times Loop has polled, which cards surfaced, which Approves were tapped, which drafts were edited. This way repetitive triage can be handed off to AI while every action it took remains visible.

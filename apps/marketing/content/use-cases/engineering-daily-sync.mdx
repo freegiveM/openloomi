@@ -1,22 +1,22 @@
 ---
 title: "Engineering Daily Sync"
-description: "How an engineering lead stopped rewriting dev reports every night and let OpenLoomi keep the Loop running"
+description: "How an engineering lead stops rewriting dev reports every night and lets OpenLoomi keep the Loop running"
 icon: "FaLightbulb"
 ---
 
 # Engineering Daily Sync
 
-As an engineering lead, I switch between GitHub, Linear, email, and a stack of project docs all day. By day I'm handling requirements, technical specs, and the incident that just landed. By night I'm catching up on what the team shipped today, where the project stands, what new Issues came in, and which PRs are waiting on review.
+As an engineering lead, the user switches between GitHub, Linear, email, and a stack of project docs all day. By day they handle requirements, technical specs, and the incident that just landed. By night they catch up on what the team shipped today, where the project stands, what new Issues came in, and which PRs are waiting on review.
 
-These tasks aren't hard. They're just tedious. And they get interrupted by more urgent work — the daily report doesn't get written, GitHub Issues don't get synced to Linear, important PRs get buried in notifications, and by the time I notice, the problem has been sitting for a day or two.
+These tasks aren't hard. They're just tedious. And they get interrupted by more urgent work — the daily report doesn't get written, GitHub Issues don't get synced to Linear, important PRs get buried in notifications, and by the time the lead notices, the problem has been sitting for a day or two.
 
-I didn't want another chatbot that waits for me to ask it something. I wanted an AI assistant that genuinely fits into the engineering workflow: it watches the project's progress continuously, handles the information organization and system syncing on its own, and only finds me when there's something I need to judge.
+The user doesn't want another chatbot that waits for them to ask it something. They want an AI assistant that genuinely fits into the engineering workflow: it watches the project's progress continuously, handles the information organization and system syncing on its own, and only finds them when there's something they need to judge.
 
 ---
 
 ## Problem 1: Re-organizing the same dev progress every day
 
-When I wanted to know what the team shipped today, I used to open GitHub first:
+When the lead wants to know what the team shipped today, they used to open GitHub first:
 
 - Pull the day's commits
 - Judge which feature each commit belongs to
@@ -24,31 +24,31 @@ When I wanted to know what the team shipped today, I used to open GitHub first:
 - Check whether there's any risk or leftover concern
 - Then stitch it all into a daily report
 
-If the day was busy, this got pushed to the next day. Sometimes I'd skip several days running and end up reconstructing from memory and scattered chat history.
+If the day is busy, this gets pushed to the next day. Sometimes the lead skips several days running and ends up reconstructing from memory and scattered chat history.
 
-I realized this kind of work is exactly what AI should be doing. The actual time sink isn't the technical judgement — it's collecting scattered records and reorganizing them into something a human can read.
+The realization: this kind of work is exactly what AI should be doing. The actual time sink isn't the technical judgement — it's collecting scattered records and reorganizing them into something a human can read.
 
-So I created my first scenario in OpenLoomi.
+So the lead creates their first scenario in OpenLoomi.
 
-Every night at 10 PM, OpenLoomi automatically pulls the day's commits, identifies the major code changes, and generates a structured engineering report. It helps me answer the most basic but also most important questions:
+Every night at 10 PM, OpenLoomi automatically pulls the day's commits, identifies the major code changes, and generates a structured engineering report. It helps answer the most basic but also most important questions:
 
 - What did the team actually move forward today?
 - Which modules changed?
 - What issues or risks came up?
 - What's still pending follow-up?
 
-A few minutes later, I get two artifacts I can read, share, or archive:
+A few minutes later, two artifacts land — ready to read, share, or archive:
 
 - The daily engineering report
 - The issue sync summary
 
-After the report is generated, it also gets sent to the team email automatically. Now I don't need to remind anyone to fill in their daily report, and I don't need to scroll through commits myself. Before the next workday starts, the team already has a structured, complete progress record waiting.
+After the report is generated, it also gets sent to the team email automatically. There's no longer a need to remind anyone to fill in their daily report, and no need to scroll through commits manually. Before the next workday starts, the team already has a structured, complete progress record waiting.
 
 ---
 
 ## Problem 2: GitHub Issues and Linear are always out of sync
 
-We use GitHub for code and technical issues, and Linear for task scheduling and sprint management. In theory, each system has its own job.
+The codebase uses GitHub for code and technical issues, and Linear for task scheduling and sprint management. In theory, each system has its own job.
 
 In practice, there's a clear gap between them. When a new Issue lands in GitHub, someone has to manually copy it into Linear. This isn't just an extra copy-paste — the bigger problem is that context gets lost in transit:
 
@@ -58,9 +58,9 @@ In practice, there's a clear gap between them. When a new Issue lands in GitHub,
 - Which project does it belong to?
 - What priority should it have?
 
-If you only copy the title and body, the Linear ticket becomes a "task shell" without background. The next person who picks it up still has to go back to GitHub to understand what was reported.
+If only the title and body get copied, the Linear ticket becomes a "task shell" without background. The next person who picks it up still has to go back to GitHub to understand what was reported.
 
-So I added **Issue Sync** in OpenLoomi.
+So **Issue Sync** is added in OpenLoomi.
 
 This task runs every hour, continuously checking for new GitHub Issues from the day. But it doesn't just copy content — it understands the issue and adds context first, then writes to Linear.
 
@@ -72,13 +72,13 @@ This task runs every hour, continuously checking for new GitHub Issues from the 
 | Top 10 comments (by reactions)        | Threaded as a `Context` section so the triage discussion isn't lost                                |
 | Reproduction info from issue template | Pulled out into a separate `Steps to reproduce` block in the Linear description                    |
 
-Now when I open Linear, I don't see a title waiting for me to fill in details — I see a complete ticket I can directly prioritize and assign.
+Now when the lead opens Linear, they don't see a title waiting to be filled in — they see a complete ticket that can be directly prioritized and assigned.
 
 ---
 
-## Problem 3: I always find PRs at the wrong time
+## Problem 3: PRs are found at the wrong time
 
-One thing in particular keeps breaking my focus: PR review. I used to keep opening GitHub to check for new review requests. When multiple PRs landed at once, I'd go through each one:
+One thing in particular keeps breaking focus: PR review. Keeping GitHub open to check for new review requests used to be standard practice. When multiple PRs landed at once, going through each one meant:
 
 - What actually changed this time?
 - Did CI pass?
@@ -87,15 +87,15 @@ One thing in particular keeps breaking my focus: PR review. I used to keep openi
 - Were tests added?
 - Has something similar been discussed in the past?
 
-That meant spending significant time gathering context before I could even start reviewing.
+That meant spending significant time gathering context before any reviewing could begin.
 
-Worse — I'd either keep interrupting other work to check GitHub, or I'd miss important PRs because I didn't check notifications. So I didn't design PR review as a scheduled task. I made it an **event-driven scenario inside OpenLoomi Loop**. OpenLoomi only finds me when one of these happens:
+Worse — the lead either keeps interrupting other work to check GitHub, or misses important PRs because they didn't check notifications. So PR review isn't designed as a scheduled task. It's made an **event-driven scenario inside OpenLoomi Loop**. OpenLoomi only finds the user when one of these happens:
 
-- A PR is assigned to me
-- I'm @-mentioned in a PR
+- A PR is assigned to the user
+- They're @-mentioned in a PR
 - A PR has a CI failure that needs attention
 
-When that happens, I get a `review_pr` decision card.
+When that happens, a `review_pr` decision card arrives.
 
 <p align="center">
   <img
@@ -105,22 +105,22 @@ When that happens, I get a `review_pr` decision card.
   />
 </p>
 
-Before I open the PR, OpenLoomi has already done the first round of prep work. It doesn't post comments on my behalf — it lays out the judgement basis and the draft comments, then hands me the decision.
+Before the PR is opened, OpenLoomi has already done the first round of prep work. It doesn't post comments on the user's behalf — it lays out the judgement basis and the draft comments, then hands over the decision.
 
-The card gives me one of four mutually exclusive actions, and **which one I pick decides whether — and how — those draft comments end up on GitHub**:
+The card offers one of four mutually exclusive actions, and **the choice determines whether — and how — those draft comments end up on GitHub**:
 
 - **APPROVE** — accept the drafts as-is and post the comments to GitHub
 - **EDIT** — jump into chat, refine the comments ("drop the third one, shorten the first, emphasize the concurrency risk here"), and post them to GitHub when they look right
 - **LATER** — park the review for the next focus block; no comments are posted yet
 - **SKIP** — dismiss this review with an audit entry; no comments are posted
 
-It doesn't replace my technical decisions. It handles the most time-consuming part of pre-review: gathering context and doing the first round of analysis.
+The system doesn't replace technical decisions. It handles the most time-consuming part of pre-review: gathering context and doing the first round of analysis.
 
 ---
 
-## What I really wanted to solve isn't a few automation tasks
+## What this workflow really solves isn't a few automation tasks
 
-At first I just wanted to save the time I spent writing daily reports and syncing issues. But after using it for a while, I realized the real problem isn't that I'm missing a few automation scripts — it's that engineering information is always scattered across different systems:
+At first the goal was simply to save the time spent writing daily reports and syncing issues. But after using it for a while, the realization hits: the real problem isn't that a few automation scripts are missing — it's that engineering information is always scattered across different systems:
 
 - Code and PRs in GitHub
 - Tasks and scheduling in Linear
@@ -128,19 +128,19 @@ At first I just wanted to save the time I spent writing daily reports and syncin
 - Technical specs in RFCs
 - Historical experience and personal judgement possibly in Obsidian notes
 
-In the past, all this information had to be found and pieced together by me actively searching. The change OpenLoomi brings is inverting that relationship: instead of me constantly searching for information, AI keeps watching the engineering process and comes to me with the full context at the right moment.
+In the past, all this information had to be found and pieced together by actively searching. The change OpenLoomi brings is inverting that relationship: instead of constantly searching for information, AI keeps watching the engineering process and comes back with the full context at the right moment.
 
-- If it's routine progress, it writes the daily report automatically.
-- If a new issue appears, it enriches the info and syncs it to Linear.
-- If a PR needs my judgement, it generates a decision card with the CI results, code summary, risk flags, and draft comments ready.
+- If it's routine progress, the daily report gets written automatically.
+- If a new issue appears, the info gets enriched and synced to Linear.
+- If a PR needs judgement, a decision card arrives with CI results, code summary, risk flags, and draft comments ready.
 
-I only need to focus on the parts that genuinely need experience and judgement.
+All that's needed is to focus on the parts that genuinely need experience and judgement.
 
 ---
 
 ## From "scheduled automation" to a continuously running Loop
 
-To make this work, I configured two kinds of working patterns in OpenLoomi.
+To make this work, two kinds of working patterns are configured in OpenLoomi.
 
 **One is scheduled execution:**
 
@@ -149,7 +149,7 @@ To make this work, I configured two kinds of working patterns in OpenLoomi.
 | **PD Daily Sync** | Every day at 10 PM | Pull commits, compile report, email to team              |
 | **PD Issue Sync** | Every 1 hour       | Monitor new issues, rewrite with context, sync to Linear |
 
-Both tasks run with full tracking enabled, so I can see exactly what they did and when.
+Both tasks run with full tracking enabled, so every action they take and when it happened is visible.
 
 **The other is event-driven:**
 
@@ -165,13 +165,13 @@ Scheduled tasks fit stable, repeatable work. Event-driven fits work that needs t
 Continuously watch → Understand change → Organize context → Propose action → Human confirms → Execute and record
 ```
 
-Compared to configuring an isolated workflow, I'd rather have OpenLoomi keep understanding _"what's happening with the project right now and what should happen next."_
+Compared to configuring an isolated workflow, the preference is to have OpenLoomi keep understanding _"what's happening with the project right now and what should happen next."_
 
 > 💡 **PR review isn't in this table** because it isn't a scheduled task — it's an event-driven flow inside Loop's tick. No separate task to wire up; just enable the GitHub source in Loop's settings.
 
 ---
 
-## What changed for me
+## What changed
 
 | Aspect                  | Before                                                         | After                                                                      |
 | ----------------------- | -------------------------------------------------------------- | -------------------------------------------------------------------------- |
@@ -182,47 +182,30 @@ Compared to configuring an isolated workflow, I'd rather have OpenLoomi keep und
 | PR review               | Context-switch to GitHub, read every file, draft every comment | AI summary + inline drafts, approve in one tap                             |
 | Engineering time on ops | ~2 hrs/week on status updates and copy-paste                   | Near-zero — review only                                                    |
 
-What OpenLoomi saves me isn't just the two hours a week. More importantly, I don't have to keep switching systems, checking notifications, and worrying about what I've missed.
+What OpenLoomi saves isn't just the two hours a week. More importantly, there's no need to keep switching systems, checking notifications, and worrying about what was missed.
 
 ---
 
 ## How to set this up
 
-The whole configuration isn't complicated. I just connect GitHub and Linear in OpenLoomi Desktop, the Claude plugin, or the Codex plugin:
+The whole configuration isn't complicated. GitHub and Linear are connected in OpenLoomi Desktop, the Claude plugin, or the Codex plugin:
 
 ```
 use openloomi-connectors to connect GitHub and Linear
 ```
 
-Once connected, I verify with `list-accounts`. When GitHub and Linear both show `active`, OpenLoomi picks them up on the next tick and starts the matching scenarios:
+Once connected, verification runs via `list-accounts`. When GitHub and Linear both show `active`, OpenLoomi picks them up on the next tick and starts the matching scenarios:
 
 - Every night at 10 PM, the daily report is generated
 - Every hour, new Issues are synced to Linear
-- Whenever a PR is assigned to me, @-mentions me, or has a CI failure, the `review_pr` card surfaces
+- Whenever a PR is assigned to the user, @-mentions them, or has a CI failure, the `review_pr` card surfaces
 
 OpenLoomi's Tracking panel records every execution:
 
 - How many times each task has run
 - Which repositories were processed this run
 - What reports and tickets were generated
-- What actions are still waiting for my confirmation
+- What actions are still waiting for confirmation
 - Whether anything failed or was missed
 
-This way I can hand the repetitive work off to AI and still see exactly what it did.
-
----
-
-## What I need isn't another chatbot
-
-This experience reinforced something for me: an AI engineering assistant shouldn't be a chat window waiting for me to ask.
-
-If every interaction still requires me to open a tool, type a question, and supply the context, then the responsibility for gathering information and pushing work forward still sits on my shoulders.
-
-What I actually need is an AI that can keep working around the engineering goals:
-
-- It knows which repos to watch
-- It keeps spotting project changes
-- It proactively organizes scattered context
-- It handles low-risk, repetitive work automatically
-- It hands decision-making back to me when judgement is needed
-- It remembers my edits and choices, gradually learning how I work
+This way the repetitive work can be handed off to AI while every action it took remains visible.

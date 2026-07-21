@@ -1,18 +1,16 @@
 ---
 title: "Unified Inbox — Auto-Fetch + Context-Aware Draft Generation"
-description: "How I stopped re-reading 40-message threads before every reply — Loop drafts grounded in memory, I approve, I move on"
+description: "How a high-volume inbox worker stops re-reading 40-message threads before every reply — Loop drafts grounded in memory, approval required, they move on"
 icon: "FaInbox"
 ---
 
 # Unified Inbox — Auto-Fetch + Context-Aware Draft Generation
 
-I'm a knowledge worker with too many inboxes. By mid-morning, I've already had 60 emails, 25 Slack DMs, 14 Telegram messages, and a few iMessage threads. Every reply used to start the same way: scroll back to "where did I last leave this thread," re-read 20–40 messages to remember the context, and only then write a response that didn't contradict what I said last week.
+A knowledge worker with too many inboxes has 60 emails, 25 Slack DMs, 14 Telegram messages, and a few iMessage threads stacked up by mid-morning. If three of these stack up in an hour, the context-loading cost exceeds the embarrassment of missing the reply, and shorter, more generic replies start going out just to be done with it. The replies are sent, the relationships thin, and they tell themselves it was fine.
 
-If I had three of these in an hour, the context-loading cost was higher than the embarrassment of missing the reply. So I started drafting shorter, more generic replies, just to be done with it. The replies went out, the relationships thinned, and I told myself it was fine.
+The shortfall isn't discipline. It's the cognitive load of holding 200 ongoing conversations at the same time.
 
-I wasn't short on discipline. I was short on a way to hold 200 ongoing conversations in my head at the same time.
-
-I didn't want another chatbot that waits for me to ask it something. I wanted an AI assistant that genuinely fits a high-volume inbox day: it watches every channel continuously, organizes the thread context for me, and only finds me when there's a decision I genuinely need to make.
+The user doesn't want another chatbot that waits to be asked. They want an AI assistant that genuinely fits a high-volume inbox day: it watches every channel continuously, organizes the thread context, and only finds them when there's a decision that genuinely needs to be made.
 
 <p align="center">
   <img
@@ -28,18 +26,30 @@ I didn't want another chatbot that waits for me to ask it something. I wanted an
 
 The painful part of high-volume inbox work isn't the writing — it's the context-loading. The exchange used to go like this:
 
-- Sarah emails me about the Q3 OKR status
-- I open Slack to check what we discussed Tuesday
-- I scroll back through 40 messages to remember what we decided
-- I check my notes for "was the Q3 deadline Thursday or Friday?"
-- I re-read Sarah's email twice because I don't want to contradict something I said last week
-- Then I write the reply
+- Sarah emails about the Q3 OKR status
+- Slack is opened to check what was discussed Tuesday
+- 40 messages are scrolled back through to remember what was decided
+- Notes are checked for "was the Q3 deadline Thursday or Friday?"
+- Sarah's email is re-read twice because contradicting something said last week is unacceptable
+- Only then is the reply written
 
-If I had three of these in an hour, my morning was gone. If I had seven, I started dropping threads — not on purpose, just because the context-loading cost was higher than the embarrassment of missing the reply.
+If three of these stack up in an hour, the morning is gone. If seven stack up, threads start getting dropped — not on purpose, but because the context-loading cost exceeds the embarrassment of missing the reply.
 
-I realized this is exactly what AI should be doing. The actual hard part of replying to an active thread isn't the writing — it's gathering the scattered context and reorganizing it into something I can answer from.
+The reuse cost is real: every reply re-loads the same thread, the same notes, the same prior decisions, before a single new sentence can be written.
 
-So I connected the four channels I actually read in OpenLoomi:
+## Problem 2: Email and Slack are two different worlds
+
+The same person shows up on every channel, but each channel treats them as its own conversation. Sarah who emails Monday is treated as one contact in Gmail; Sarah who DMs on Slack Thursday is a separate thread in another tool. Each reply requires re-establishing who the person is, what project the message is about, what was already decided last time, and what action is expected now.
+
+Action signals — _"RSVP"_, _"please confirm"_, _"reply"_, _"get back to me"_ — are buried under 200 other messages. By the time "the one that mattered" is reached, half the attention has already been spent on the rest, and the reply either gets rushed or never lands.
+
+---
+
+## What Loop does
+
+Once the connectors are in and the inbox is wired in OpenLoomi, Loop does three things at once:
+
+**1. Connects every channel into one inbox.** The four (or more) channels actually read get wired up:
 
 ```
 use openloomi-connectors to connect Gmail
@@ -48,26 +58,20 @@ use openloomi-connectors to connect Telegram
 use openloomi-connectors to connect iMessage
 ```
 
-(Use `connect Outlook` or `connect IMAP` if your inbox is on a non-Gmail provider; `connect WeChat`, `connect WhatsApp`, `connect Feishu`, `connect DingTalk`, `connect QQ` for the other native channels.)
+Gmail and Slack live in Composio's app catalog; the seven native Loomi connectors (Telegram / WhatsApp / iMessage / Feishu / DingTalk / QQ / WeChat) don't need Composio at all. Native and Composio-managed accounts can be mixed freely.
 
-Gmail and Slack live in Composio's app catalog; the seven native Loomi connectors (Telegram / WhatsApp / iMessage / Feishu / DingTalk / QQ / WeChat) don't need Composio at all. You can mix native and Composio-managed accounts freely.
+Verification runs with `list-accounts` — once every platform shows `active`, Loop picks them up on the next tick.
 
-Verify with `list-accounts` — once every platform shows `active`, Loop picks them up on the next tick.
+**2. Unifies the same contact across channels.** Sarah who emails Monday is the same Sarah who DMs on Slack Thursday — the same `people/sarah_chen.md` profile, the same project note, the same thread cluster. One memory, every card. There's no re-learning her per channel.
 
----
+**3. Surfaces typed decision cards with grounded drafts.** When an inbound from a contact on the important list arrives with an action word, past the default 4-hour reply window, Loop surfaces a typed decision card. The card carries:
 
-## Problem 2: Email and Slack were two different worlds
-
-Once the connectors were in, the next thing Loop did was treat the same contact across channels as the same person. Sarah who emails me Monday is the same Sarah who DMs me on Slack Thursday. The same `people/sarah_chen.md` profile, the same project note, the same thread cluster — one memory, every card.
-
-When an inbound from a contact on my important list arrives with an action word — _"RSVP"_, _"please confirm"_, _"reply"_, _"get back to me"_ — past my default 4-hour reply window, Loop surfaces a typed decision card. The card carries:
-
-- The **draft reply** — pre-written by the agent, grounded in what Sarah and I have already discussed
-- The **reasoning trace** at the bottom — _"Sarah is bumping the Q3 deck timeline — Thursday is close, she wants it locked today"_ — so I see Loop's read before I commit
+- The **draft reply** — pre-written by the agent, grounded in what Sarah and the user have already discussed
+- The **reasoning trace** at the bottom — _"Sarah is bumping the Q3 deck timeline — Thursday is close, she wants it locked today"_ — so Loop's read is visible before commitment
 - The **confidence score** (default range 0.60–0.85)
 - The four-button tray: **Approve** / **Edit Draft** / **Later** / **Skip**
 
-For email, the card type is **`email_reply`** — signal (gmail), type (email), received time, and the full reasoning trace from the **From Loomi** panel — _why_ Loop thinks this needs your attention.
+For email, the card type is **`email_reply`** — signal (gmail), type (email), received time, and the full reasoning trace from the **From Loomi** panel — _why_ Loop thinks this needs attention.
 
 <p align="center">
   <img
@@ -77,7 +81,7 @@ For email, the card type is **`email_reply`** — signal (gmail), type (email), 
   />
 </p>
 
-Tap **Edit Draft** and the card opens into a full reply composer with **Subject** and **Body** fields pre-filled with Loop's draft. You can rewrite, save, or hit **Approve & Send** — Loop never sends without you.
+**Edit Draft** is tapped and the card opens into a full reply composer with **Subject** and **Body** fields pre-filled with Loop's draft. It can be rewritten, saved, or **Approve & Send** hit — Loop never sends without explicit approval.
 
 <p align="center">
   <img
@@ -97,7 +101,7 @@ For Slack / Telegram / Lark / iMessage, Loop surfaces **`im_reply`** cards. Same
   />
 </p>
 
-Tap **Edit Draft** and the `im_reply` card opens into the channel-aware reply composer:
+**Edit Draft** is tapped and the `im_reply` card opens into the channel-aware reply composer:
 
 <p align="center">
   <img
@@ -107,53 +111,22 @@ Tap **Edit Draft** and the `im_reply` card opens into the channel-aware reply co
   />
 </p>
 
-Approve executes through the matching connector and writes the outcome back into memory. Later parks the card for your next focus block (nothing falls through the cracks). Skip dismisses it with a `skippedByUser` provenance field, so Loop doesn't re-surface the same kind of decision for the next 3 ticks.
+Approve executes through the matching connector and writes the outcome back into memory. Later parks the card for the next focus block (nothing falls through the cracks). Skip dismisses it with a `skippedByUser` provenance field, so Loop doesn't re-surface the same kind of decision for the next 3 ticks.
 
 ---
 
-## Problem 3: 6 PM was a guilt trip about "did I reply to that?"
+## Loop architecture
 
-The mirror problem to the morning inbox load was the evening mental load. Used to be: I'd log off, lie in bed, and think _"did I reply to that Slack thread? Did I confirm the dinner? Did I acknowledge the partner's note?"_ If I was tired, I'd open Slack one more time to check, and that one more time would turn into 30 minutes of "while I'm here..."
+To make this work, two kinds of working patterns are configured in OpenLoomi.
 
-Loop's **Wrap** at 6 PM (configurable in **Settings → Loop**) lists what Loop actually handled during the day — emails sent, IMs posted, RSVPs logged — and what got parked for tomorrow. The goal is a clean mental inbox before I log off.
-
-The mirror of Wrap is the **Brief** at 9 AM (configurable in **Settings → Loop**). It rolls up the day's calendar + open `email_reply` / `im_reply` cards + the contacts Loop knows I'll interact with today, and lays them out as a single page. If nothing needs me, the Brief says so.
-
-Loomi pushes both to your desktop as part of the [Attention Agent](/docs/attention-agent) flow. For high-confidence cards during the day, Loomi pops a bubble in the corner of the screen; tap to expand into the full card.
-
----
-
-## What I really wanted to solve isn't a few automation tasks
-
-At first I just wanted to save the 20 minutes per reply I was spending re-reading threads. But after a few weeks, I realized the real problem isn't that I'm missing a few automation scripts — it's that inbox work is fundamentally a context-organization problem:
-
-- Threads live in four different tools with four different IDs
-- The same person appears in all of them with the same context I have to reload each time
-- Action signals are buried under 200 other messages
-- By the time I get to "the one that mattered," I've already spent half my attention on the rest
-
-In the past, all this context had to be found and pieced together by me actively scrolling. The change OpenLoomi brings is inverting that relationship: instead of me constantly re-reading threads, AI keeps watching the conversations and comes to me with the memory-grounded draft at the right moment.
-
-- If a contact on my important list writes back, the `email_reply` card lands with the draft and the memory trace ready.
-- If a DM needs a reply, the `im_reply` card carries the channel context and a grounded draft.
-- If nothing needs me overnight, the Brief at 9 AM says so and I start work instead of triaging.
-
-I only need to focus on the parts that genuinely need my judgement — the actual message content, the personal voice, the right tone for the audience.
-
----
-
-## From "email triage" to a continuously running inbox loop
-
-To make this work, I configured two kinds of working patterns in OpenLoomi.
-
-**One is event-driven:**
+**Event-driven:**
 
 | Trigger                                                                | What happens                                                                     |
 | ---------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
 | Inbound email from important contact + action word + past reply window | `email_reply` card surfaces with the draft grounded in memory; four-gesture flow |
 | Inbound DM (Slack / Telegram / Lark / iMessage) needing reply          | `im_reply` card with the channel context and the draft                           |
 
-**The other is scheduled:**
+**Scheduled:**
 
 | Task                      | Schedule          | Purpose                                                          |
 | ------------------------- | ----------------- | ---------------------------------------------------------------- |
@@ -166,29 +139,29 @@ Together they form a loop that runs continuously across every channel:
 Continuously watch → Organize thread context → Propose grounded draft → Human decides → Send and remember
 ```
 
-Loop never sleeps. Brief and Wrap are the bookends; the queue runs in between. Compared to configuring an isolated per-channel workflow, I'd rather have OpenLoomi keep understanding _"which of my conversations actually needs a reply right now."_
+Loop never sleeps. Brief and Wrap are the bookends; the queue runs in between. Compared to configuring an isolated per-channel workflow, the preference is to have OpenLoomi keep understanding _"which of the conversations actually needs a reply right now."_
 
-> 💡 **Auto-send is not in this loop.** Every `email_reply` and `im_reply` card waits for an explicit **Approve**. Loop never sends without your tap; the dry-run is always shown before the outbound action is taken.
+> 💡 **Auto-send is not in this loop.** Every `email_reply` and `im_reply` card waits for an explicit **Approve**. Loop never sends without a tap; the dry-run is always shown before the outbound action is taken.
 
 ---
 
-## What changed for me
+## What changed
 
 | Aspect                 | Before                                                                    | After                                                                          |
 | ---------------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
 | Reply review time      | 10–15 min per thread re-reading to recall context                         | Tap a bubble, read the card with reasoning trace, Approve                      |
 | Cross-channel context  | Switch tools for Slack vs email vs iMessage; lose context each time       | One unified queue — same `email_reply` / `im_reply` card flow, every channel   |
-| Sender awareness       | Re-explain who Sarah is, what project this is, what you decided last time | Memory hooks carry sender profile, project note, prior decisions into the card |
+| Sender awareness       | Re-explain who Sarah is, what project this is, what was decided last time | Memory hooks carry sender profile, project note, prior decisions into the card |
 | Control                | Full auto-send (risky) or no AI at all (manual only)                      | Human-in-the-loop dry-run, Approve gate, every single time                     |
 | End-of-day mental load | Sift through "did I reply to that?" at 6 PM                               | Wrap recap shows what Loop handled for you today                               |
 
-What OpenLoomi saves me isn't just the 20 minutes per reply. More importantly, I don't have to keep switching inboxes, re-reading threads, and worrying about which contact I dropped.
+What OpenLoomi saves isn't just the 20 minutes per reply. More importantly, there's no need to keep switching inboxes, re-reading threads, and worrying about which contact was dropped.
 
 ---
 
 ## How to set this up
 
-The "unified inbox" is just **multiple connectors, one per platform**. Works in OpenLoomi Desktop, the Claude plugin, or the Codex plugin — invoke the `openloomi-connectors` skill in chat, once per account:
+The "unified inbox" is just **multiple connectors, one per platform**. It works in OpenLoomi Desktop, the Claude plugin, or the Codex plugin — the `openloomi-connectors` skill is invoked in chat, once per account:
 
 ```
 use openloomi-connectors to connect Gmail
@@ -196,31 +169,12 @@ use openloomi-connectors to connect Slack
 use openloomi-connectors to connect iMessage
 ```
 
-(Use `connect Outlook` or `connect IMAP` if your inbox is on a non-Gmail provider; `connect WeChat`, `connect WhatsApp`, `connect Feishu`, `connect DingTalk`, `connect QQ` for the other native channels.)
+The skill installs Composio on the fly the first time a platform that lives in its app catalog is asked for — Gmail and Slack do; the seven **native Loomi connectors** (Telegram / WhatsApp / iMessage / Feishu / DingTalk / QQ / WeChat) don't need Composio at all. Native and Composio-managed accounts can be mixed freely — Loop treats them identically.
 
-The skill installs Composio on the fly the first time you ask for a platform that lives in its app catalog — Gmail and Slack do; the seven **native Loomi connectors** (Telegram / WhatsApp / iMessage / Feishu / DingTalk / QQ / WeChat) don't need Composio at all. You can mix native and Composio-managed accounts freely — Loop treats them identically.
+Not every platform needs to be connected — only the ones actually read. Toggling a connector off stops the Attention Agent from seeing those signals. Accounts can always be added or removed later with the same `connect` / `disconnect` verbs.
 
-You don't have to connect every platform — only the ones you actually read. Toggle a connector off and the Attention Agent stops seeing those signals. You can always add or remove accounts later with the same `connect` / `disconnect` verbs.
+Verification runs with `list-accounts` — once every platform shows `active`, Loop picks them up on the next tick. Loop is on by default at a 10-minute scan; tuning happens in **Settings → Loop → Scan frequency** (5 min for sharper signal, 30 min for a calmer desk). Loomi's bubble cadence is tunable separately in **Settings → Attention Agent**.
 
-Verify with `list-accounts` — once every platform shows `active`, Loop picks them up on the next tick. Loop is on by default at a 10-minute scan; tune it in **Settings → Loop → Scan frequency** (5 min for sharper signal, 30 min for a calmer desk). Loomi's bubble cadence is tunable separately in **Settings → Attention Agent**.
+> 💡 Once connected, **Loomi can also be chatted with about any message** — a specific thread can be asked about, a long back-and-forth summarized, or details from any message in the unified inbox pulled. Loomi reads from the same memory layer, so the answer is grounded in prior context.
 
-> 💡 Once connected, you can also **chat with Loomi about any message** — ask about a specific thread, summarize a long back-and-forth, or pull details from any message in your unified inbox. Loomi reads from the same memory layer, so the answer is grounded in your prior context.
-
-OpenLoomi's audit log records every execution — how many times Loop has polled, which cards surfaced, which Approves I tapped, which drafts I edited. This way I can hand the inbox triage off to AI and still see exactly what it did.
-
----
-
-## What I need isn't another chatbot
-
-This experience reinforced something for me: an AI inbox assistant shouldn't be a chat window waiting for me to ask.
-
-If every interaction still requires me to open a tool, type a question, and supply the context, then the responsibility for gathering information and pushing work forward still sits on my shoulders.
-
-What I actually need is an AI that can keep working around my conversations:
-
-- It watches the channels that matter — Gmail, Slack, Telegram, iMessage, the rest of my stack
-- It keeps spotting the inbound that needs a reply
-- It proactively organizes the thread context that's scattered across four tools
-- It drafts the reply grounded in what I and the contact have already discussed
-- It hands the send button back to me when judgement is needed
-- It remembers my edits and choices, gradually learning how I write to different audiences
+OpenLoomi's audit log records every execution — how many times Loop has polled, which cards surfaced, which Approves were tapped, which drafts were edited. This way inbox triage can be handed off to AI while every action it took remains visible.
