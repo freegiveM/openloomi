@@ -314,6 +314,11 @@ Yes. Loomi ships with two built-in themes (`fox` and `capybara`) and a fully fil
 
 - **Switch theme** — right-click Loomi → `Theme → Capybara` (or `Fox`).
 - **Custom themes** — drop a folder at `~/.openloomi/pet-custom/<name>/` with PNGs named `idle.png`, `thinking.png`, `presenting.png`, etc. Loomi auto-discovers them and they appear in the theme picker.
+
+  ![OpenLoomi main window running a custom kawaii pet theme — sidebar avatar and the inline `thinking` sprite are both a tabby cat, drawn from `~/.openloomi/pet-custom/kawaii/`](/img/openloomi/pet/loomi-pet-kawaii.png)
+
+  > The kawaii theme above was registered by dropping three PNGs (`idle.png`, `thinking.png`, `presenting.png`) at `~/.openloomi/pet-custom/kawaii/`. Both the sidebar avatar **and** the chat-side `thinking` sprite repainted in under 250 ms with no app restart — that's the config watcher doing its job.
+
 - **Per-state overrides** — edit `~/.openloomi/pet-config.json` to point individual states at any PNG on disk:
 
   ```json

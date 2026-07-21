@@ -1,0 +1,159 @@
+---
+title: "Unified Inbox Auto-Fetch + Context-Aware Draft Generation"
+description: "Loomi watches your unified inbox across email and IM, drafts replies from full-thread context, and nudges you with a bubble when one is ready — no more re-reading threads"
+icon: "FaInbox"
+---
+
+# Unified Inbox Auto-Fetch + Context-Aware Draft Generation
+
+## Loomi Sits on Your Desktop, Watches the Unified Inbox, Hands You Replies
+
+Professionals lose 2–3 hours a day to email and IM — most of it spent re-reading threads to remember what's been decided before typing a reply. Most AI inbox tools either auto-send blindly (low accuracy) or ask you to paste context every time (high friction). Loomi — your **attention agent** — does neither. It lives on your desktop, fetches your **unified inbox** — Gmail, Slack, Telegram, Lark, iMessage, the lot — on a quiet schedule, builds a compact context map of each thread, and drafts only the replies that actually need one. When a draft is ready, a small bubble appears at the corner of your screen — tap to review, edit if you like, send when you're ready.
+
+<p align="center">
+  <img
+    src="/img/use-cases/loomi-pet.gif"
+    alt="Loomi pet — the attention agent"
+    width="80%"
+  />
+</p>
+
+## How Loomi Handles a New Thread
+
+Loomi treats every incoming message as a decision that may need your attention. It only surfaces the ones that match what you've taught it to watch for.
+
+| Step            | What Loomi does                                                                                                             |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| 👀 Watches      | Every 30 min, Loomi fetches new mail from your Gmail + new DMs from Slack / Telegram / Lark / iMessage, all on your desktop |
+| 🧠 Maps context | Loomi reads the whole thread — topics, past decisions, pending items, sender's actual question                              |
+| ✍️ Drafts       | Generates a reply in your voice, grounded in the context map (not the raw thread)                                           |
+| 💬 Nudges       | Pops a small bubble: _"Reply ready for Sarah — Q3 OKR status"_                                                              |
+| ✅ You decide   | Tap to review, edit if needed, send with one click — Loomi never auto-sends                                                 |
+
+---
+
+## Loomi Remembers — openloomi-memory Powers Every Draft
+
+Every draft Loomi produces is grounded in your **global memory**, not just the thread in front of it. Loomi runs the `openloomi-memory` skill on every pass — it pulls context **before** drafting, then writes back what it learned **after** you send. Two directions, one memory layer.
+
+| Direction          | What Loomi does                                                                                                                                                                                                             |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 🔍 **Read first**  | Before drafting, Loomi queries your `~/.openloomi/data/memory/` for this sender's profile, the project this thread belongs to, and any past decision you've made with them. Only the relevant slice — never the whole graph |
+| 💾 **Write after** | After you tap Send, Loomi records the sender, the project association, the decision you just made, and any new entity surfaced in the reply — so the next email lands with sharper context                                  |
+
+What lives in memory under `~/.openloomi/data/memory/`:
+
+| Subdirectory | What Loomi stores here                                                                |
+| ------------ | ------------------------------------------------------------------------------------- |
+| `people/`    | One profile per frequent contact — name, role, project ties, last interaction summary |
+| `projects/`  | One note per active project — owner, status, the open thread cluster around it        |
+| `insights/`  | Auto-extracted entities, decisions, and events distilled from past chats and emails   |
+
+You don't have to curate any of this. A daily analytics refresh surfaces the contacts and projects you actually engage with; a weekly compaction archives stale entries instead of deleting them, so context never silently disappears. Loomi's draft for Sarah Chen — whether it's an email reply or an IM reply — knows who Sarah is, what Q3 OKR thread belongs to, and which open items you've discussed with her across every channel. Without you ever typing a note.
+
+> 💡 The same memory layer is what `IM_REPLY`, `review_pr`, and the rest of the Loop card family read from. When Sarah emails you about Q3 OKR, the IM_REPLY draft to her on Slack already knows it's the same Sarah. One memory, every channel.
+
+---
+
+## Setting Up Loomi for Your Unified Inbox
+
+### Connect Your Accounts
+
+One connector call. Works in OpenLoomi Desktop, the Claude plugin, or the Codex plugin — invoke the `openloomi-connectors` skill in chat:
+
+```
+use openloomi-connectors to connect Gmail
+```
+
+Once connected, you can also **chat with Loomi about any message** — ask about a specific thread, summarize a long back-and-forth, or pull details from any message in your unified inbox. Loomi remembers it all.
+
+---
+
+## The Loop Decision Card: DRAFT_REPLY
+
+When Loomi notices a thread that genuinely needs your reply, it surfaces a typed decision card — not a raw blob of generated text. For email, the card type is **`DRAFT_REPLY`**: signal (gmail), type (email), received time, and Loomi's confidence score, plus the full reasoning trace from the **From Loomi** panel — _why_ Loomi thinks this needs your attention.
+
+<p align="center">
+  <img
+    src="/img/use-cases/loop-email-draft-card.png"
+    alt="Loop card — DRAFT_REPLY for the Q3 OKR status email to Sarah Chen"
+    width="100%"
+  />
+</p>
+
+Tap **Edit** and the card opens into a full reply composer with **Subject** and **Body** fields pre-filled with Loomi's draft. You can rewrite, save, or hit **Save & Send** — Loomi never sends without you.
+
+<p align="center">
+  <img
+    src="/img/use-cases/loop-email-draft-editor.png"
+    alt="Loop card — DRAFT_REPLY expanded with Subject and Body reply editor"
+    width="100%"
+  />
+</p>
+
+The `Discard` / `Edit` / `Send` triad is the whole workflow: read the reasoning, adjust the wording, send when ready. Three taps, zero context-switching.
+
+---
+
+## Loomi Replies Where You Already Chat
+
+Email isn't the only inbox Loomi watches. Loomi also surfaces **`IM_REPLY`** cards when a Slack DM, Telegram chat, Lark thread, or iMessage conversation needs your attention. Same decision-card flow, channel-specific fields — **To:** (the user/channel ID) and **Reply** (the message body).
+
+<p align="center">
+  <img
+    src="/img/use-cases/loop-im-reply-card.png"
+    alt="Loop card — IM_REPLY for an Alice Slack follow-up with the From Loomi reasoning trace"
+    width="100%"
+  />
+</p>
+
+Tap **Edit** and the IM_REPLY card opens into the channel-aware reply composer:
+
+<p align="center">
+  <img
+    src="/img/use-cases/loop-im-reply-editor.png"
+    alt="Loop card — IM_REPLY expanded with To: and Reply fields"
+    width="100%"
+  />
+</p>
+
+The reasoning trace at the bottom of the card tells you **why** Loomi thinks this conversation needs a reply — for example, _"Alice is bumping the Q3 deck timeline — Thursday is close, she wants it locked today"_. You see Loomi's read before you commit.
+
+| Where Loomi replies                     | What the card looks like                                                              |
+| --------------------------------------- | ------------------------------------------------------------------------------------- |
+| 💬 **Slack / Telegram / Lark / Feishu** | `IM_REPLY` card with `To:` (user or channel) + `Reply` (body) fields, reasoning trace |
+| 📨 **iMessage / WhatsApp / QQ**         | Same `IM_REPLY` card flow, on macOS desktop                                           |
+| 📧 **Gmail / IMAP / Outlook**           | `DRAFT_REPLY` card with `Subject` + `Body` fields                                     |
+
+The setup is identical to email — connect the messaging connector, tell Loomi what to watch for, and approve each send. Loomi never auto-messages; every reply waits for your tap.
+
+---
+
+## Why Loomi Beats Brute-Force AI Inbox Tools
+
+Most AI inbox tools dump the entire thread into the model — expensive, slow, and often counterproductive. Loomi works differently: it builds a **compact context map** first (what was decided, what's still open, what the sender actually needs) and drafts from that map, not from raw text.
+
+| Aspect            | Before                                | With Loomi                                        |
+| ----------------- | ------------------------------------- | ------------------------------------------------- |
+| Reply review time | 10–15 min/thread to recall context    | Tap a bubble, read a card, send                   |
+| Draft accuracy    | Generic auto-replies miss context     | Thread-aware drafts that read like you wrote them |
+| Token usage       | Full thread pasted every time         | Compact context summary, ~40–60% fewer tokens     |
+| Setup friction    | Manual copy-paste every time          | One-time connect, then Loomi runs                 |
+| Cross-channel     | Switch tools to reply on each channel | One unified queue — same card flow, every channel |
+| Control           | Full auto-send (risky) or manual only | Human-in-the-loop approval, every single time     |
+
+---
+
+## How to Set Up
+
+See [Setting Up Loomi for Your Unified Inbox](#setting-up-loomi-for-your-unified-inbox) above — one `openloomi-connectors` call per account and Loop takes over. The default cadence is every 30 minutes; tune it in **Settings → Loop → Scan frequency**.
+
+---
+
+## Why This Works with Loomi
+
+**🐾 Loomi watches, you don't have to.** Loomi lives on your desktop, peeks at your unified inbox on a quiet schedule, and only nudges you when there's actually a decision to make — never spammy, never greedy for attention.
+
+**🧠 Context, not just content.** Loomi drafts from a structured context map (what was decided, what's still open, what the sender needs), not from the raw thread. Less noise, faster drafts, replies that sound like you.
+
+**✅ You stay in control, every send.** Loomi never auto-sends. Every reply — email or IM — waits for your tap on the typed decision card. You see Loomi's reasoning, the draft, and the channel-specific editor, all in one card. You set the bar — Loomi just makes it effortless to clear.

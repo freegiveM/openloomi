@@ -33,6 +33,61 @@ The default is one tick every 10 minutes — quiet and out of your way. Bump it 
 
 ---
 
+## How Loop Reads and Writes Memory
+
+Every judgement Loop makes has two sides: a **memory read** before, and a **memory write** after. This is the core loop, and it runs through the `openloomi-memory` skill on every tick. The 🧠 **Understand** verb from the Overview isn't magic — it's this contract, executed deterministically.
+
+### The Read → Judge → Write contract
+
+| When                             | Direction    | What Loop does                                                                                                                                                    |
+| -------------------------------- | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| At tick start (per signal)       | 🔍 **Read**  | Queries the relevant slice of your `~/.openloomi/data/memory/` for the sender's profile, project ties, past decisions, and similar signals Loop has judged before |
+| At judge time                    | 🪪 **Judge** | Combines the signal + the memory slice + any registered classifier rules to assign a typed action and a confidence score                                          |
+| After you tap **Approve / Send** | 💾 **Write** | Records the outcome — sender, project, decision you made, any new entities surfaced — so the next tick to this contact / project has sharper context              |
+| On **Dismiss / Skip**            | 💾 **Write** | Records the dismissal with a `skippedByUser` provenance field, so Loop doesn't re-surface the same kind of decision the next 3 ticks                              |
+
+### What lives in memory
+
+Under `~/.openloomi/data/memory/`:
+
+| Subdirectory | Loop reads                                                                   | Loop writes                                                                        |
+| ------------ | ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `people/`    | Sender profile — name, role, project ties, last interaction summary          | New contact after the first interaction; profile update after every send           |
+| `projects/`  | Project note for the thread / PR / ticket at hand                            | New project note after the first signal of a project; thread-cluster updates       |
+| `insights/`  | Past decisions, similar signals, conflict patterns                           | Auto-extracted entities / decisions / events distilled from each executed card     |
+| `channels/`  | Per-platform state — last sync time, missed signals, conversation state      | Updated after each tick so the next poll doesn't re-fetch what just arrived        |
+| `strategy/`  | Long-term preferences — trusted contacts, risky-area thresholds, voice style | One-time write at onboarding; periodic updates when you change **Settings → Loop** |
+
+You don't curate any of this. The memory layer runs a **daily analytics refresh** (surfaces the contacts and projects you actually engage with) and a **weekly compaction** (archives stale entries, never deletes — so context never silently disappears). What Loop reads at tick time is always the relevant slice, **never the whole graph** — so it stays fast even after years of accumulation.
+
+### Per-card-type memory hooks
+
+Each card type has a specific memory contract. Loop picks these automatically based on the `ActionKind`:
+
+| Card type                  | Reads from memory                                                            | Writes to memory                                         |
+| -------------------------- | ---------------------------------------------------------------------------- | -------------------------------------------------------- |
+| `email_reply`              | Sender profile, related project note, prior decisions in this thread cluster | Updated thread cluster, project association, sender note |
+| `im_reply`                 | Sender profile, channel state, last 3 context messages                       | Channel state, conversation summary                      |
+| `rsvp`                     | Calendar attendee profile, prior RSVP patterns                               | RSVP decision with reason                                |
+| `review_pr`                | PR author's profile, file history, related issues                            | PR review summary, risky-area flags                      |
+| `todo`                     | Project state, prior similar tasks                                           | Task addition with project context                       |
+| `brief` / `wrap`           | Open decisions, today's contacts, project rollups                            | Daily-recap entries to `insights/`                       |
+| `birthday_wish` _(custom)_ | Contact birthday date, gift preferences, prior birthday interactions         | Birthday interaction log                                 |
+
+> 💡 When you register a custom decision type via `PUT /api/loop/types`, Loop **auto-derives** sensible memory hooks from the `actionKind` and signal shape. If your type reads but doesn't write, Loop warns at registration time ("this type will leak context"); if it writes but doesn't read, Loop warns at first tick ("you're writing to memory without grounding — was that intentional?"). The full registry contract is in [Extending Loop](#extending-loop-custom-types--channels) below.
+
+### One memory, every surface
+
+The same memory layer feeds all three Loop surfaces — they're different lenses on the same underlying state:
+
+- **Daily Brief** (9 AM, `/brief`) — pulls today's calendar + open decision cards + contacts Loop knows you'll be interacting with today
+- **Evening Wrap** (6 PM, `/wrap`) — reads what was executed today, writes a recap of the day's decisions back to `insights/` so next week's "this week vs last week" rollup is just a query
+- **Insight Box** (`/inbox`) — streams every signal Loop has judged, each enriched with the memory slice that informed the judgement
+
+> 💡 Memory is **per-user, stored locally** in `~/.openloomi/data/memory/`. There's no central registry, no sync, no RBAC. To seed memory on a new machine, copy the directory over SSH — that's it.
+
+---
+
 ## Typical Scenarios
 
 ### An email that needs a reply
@@ -168,6 +223,59 @@ Loop exposes three extension points, both per-user and persisted in your local O
 | Add a new **kind of decision card** with a custom label and icon (e.g. `birthday_wish`, `pr_followup`)                                        | **Custom decision type** | `~/.openloomi/loop/custom-types.json`     |
 | Pull signals from a **new data source** Loop doesn't ship with (e.g. Stripe charges, Linear reviews)                                          | **Custom channel**       | `~/.openloomi/loop/custom-channels.json`  |
 | **Pin routing** for specific signal patterns so the LLM's classification can't drift (e.g. "any same-day birthday is always `birthday_wish`") | **Classifier rule**      | `~/.openloomi/loop/classifier-rules.json` |
+
+### What you can extend (without touching the source)
+
+| ✅ Extensible                                                      | How                                                                                   |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------- |
+| **Card label, icon, description** on a decision                    | `PUT /api/loop/types` — your custom `label` and `icon` flow into the UI automatically |
+| **Mapping a new card type to an existing action**                  | Set `actionKind` to any of the 14 built-in runners (see list below)                   |
+| **New signal sources**, as long as Composio has a toolkit for them | `PUT /api/loop/channels` — wrap any existing Composio `toolkit` + `toolSlug`          |
+| **Per-channel poll cadence**                                       | `pollIntervalSec` on each channel (≥ 60 s; throttled independently per channel)       |
+| **Deterministic routing overrides**                                | `PUT /api/loop/classifier-rules` — pin `type` / `actionKind` / a confidence floor     |
+| **Per-channel signal shape hints** so the LLM classifies correctly | `payloadShape` and `eventFilter` on the channel record                                |
+| **Storage location and sharing**                                   | JSON files live under `~/.openloomi/loop/` — copy to another machine to share         |
+| **Runtime tuning**                                                 | Scan frequency, sources on/off, briefing times, trusted contacts (Settings → Loop)    |
+
+### What you cannot extend (these need a code change)
+
+| ❌ Not extensible via the registry                        | Why                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **The action runner itself**                              | The executor is a `switch` over a **closed set of 14 `ActionKind` literals** (`email_reply`, `im_reply`, `calendar_rsvp`, `github_review`, `linear_review`, `todo`, `deadline_notify`, `release_plan`, `requirement_synthesis`, `contact_update`, `doc_update`, `brief`, `wrap`, `quiet_digest`). Adding a new runner — e.g. one that opens a Postgres connection or runs a shell command — requires shipping a new branch of that switch and a release. |
+| **A new polling runtime that isn't Composio**             | Custom channels **must** wrap a Composio `toolkit` + `toolSlug`. There's no plugin slot for "bring your own HTTP poller", "watch a local file", "tail a webhook", or "subscribe to a websocket" — those require code changes to the watcher in `loop.watch.*`.                                                                                                                                                                                           |
+| **Arbitrary code in classifier predicates**               | Rules are a **safe AST** with a **closed op set** (`eq`, `neq`, `gt`, `lt`, `gte`, `lte`, `contains`, `startsWith`, `endsWith`, `matches`, `exists`, `absent`). No `eval`, no JS, no function calls, no arithmetic, no cross-field joins — a rule can't say "compute days_until_next from birthday_date".                                                                                                                                                |
+| **Custom decision-type ids that collide with built-ins**  | Your `id` must not collide with the **16 built-in `DecisionType`** values (`email_reply`, `rsvp`, `review_pr`, `im_reply`, `todo`, …). snake_case, 2–41 chars.                                                                                                                                                                                                                                                                                           |
+| **Workspace-level / team-wide extensions**                | Scope is **per-user, stored locally** in `~/.openloomi/loop/`. No central registry, no sync, no RBAC. To share, you copy the JSON file.                                                                                                                                                                                                                                                                                                                  |
+| **Re-ordering classifier rules via the API**              | Rules are **first-match-wins in insertion order**. There's no `PATCH /order` — to re-prioritise, delete and re-insert.                                                                                                                                                                                                                                                                                                                                   |
+| **Bypassing the human-in-the-loop gate**                  | Auto-execute is gated behind Settings → Loop → Automation Rules (off by default), and **only** on card types whose `actionKind` is in the built-in runner set. Custom types inherit the same gate; there's no API to mark a custom type as "always send without approval".                                                                                                                                                                               |
+| **Mutating the briefing schedule beyond the Settings UI** | The morning brief / evening wrap are scheduled jobs; you can edit their time in Settings, but their payload composition (what sections appear, what order, what copy) lives in `components/agent/brief-panel.tsx` and is not data-driven.                                                                                                                                                                                                                |
+
+> 💡 **The mental model:** Loop's extension surface is wide on **naming and routing** (labels, icons, signal sources, deterministic routing rules), and narrow on **execution semantics** (the 14 runners, the Composio-backed watcher, the closed predicate AST). If your extension fits inside that envelope — and most "I want Loop to surface X from Y" requests do — no code change is needed. If it doesn't, **we'd love your help making Loop better**.
+
+### 🐛 Hit a wall? Open an Issue
+
+The clearest signal for "this should be a built-in" is a well-described use case. When you open an issue, please include:
+
+- **The decision you wanted Loop to surface** (e.g. "expense approval waiting on me in Rippling")
+- **Why the existing runner set doesn't fit** (e.g. "it's not an email, not an IM, not a calendar RSVP — it needs an `approval_sign` runner that calls the Rippling API")
+- **How often it happens** (daily? weekly? one-off?) — this helps us prioritise
+- **Your current workaround** if any (a manual script? another tool?)
+
+File it at **[github.com/openloomi/openloomi/issues/new?template=loop_runner_request.md](https://github.com/openloomi/openloomi/issues/new?template=loop_runner_request.md)** with the `loop-runner-request` label — that's the queue we read first when planning the next Loop release.
+
+### 🛠️ Want to build it yourself? Open a PR
+
+Loop is Apache 2.0 and we genuinely welcome contributions. If you've already got a working `ActionKind` you want to upstream, the path is short:
+
+1. **Pick the runner slot** — open (or comment on) an issue first so we can agree on the `ActionKind` name, the runner semantics, and the dry-run preview before you write code.
+2. **Add the branch** in `lib/loop/runners/<your_kind>.ts` — implement `run({ decision, ctx })` plus a `dryRun({ decision, ctx })` that returns the proposed payload (no side effects).
+3. **Wire it into the closed switch** — add your `ActionKind` to the `ActionKind` union and a new `case` in `lib/loop/run.ts`. The compiler will tell you every site that needs updating.
+4. **Cover it with the standard harness** — a fixture in `apps/web/tests/unit/loop/runners/<your_kind>.test.ts` exercising approve / edit / dismiss paths, plus a docs entry in this file.
+5. **Open the PR** against `main` — link the issue, paste the output of `pnpm test --filter=loop`, and we'll review within a couple of days.
+
+You don't need to wait for a maintainer to assign the issue. Most first-time Loop PRs land within a week of the issue being opened. If you've spotted a smaller gap — a missing icon in the registry, a classifier op you wish existed, a clearer error message — those are great first PRs too, and they're often approved the same day.
+
+> 🙏 The eight rows in the "What you cannot extend" table above are not a moat — they're a snapshot of what we haven't shipped yet. Every one of them started as an issue, and we'd rather close them with you than alone.
 
 ### How the extension model stays safe
 

@@ -12,13 +12,14 @@ Engineering teams waste hours every week pulling commit logs, writing status rep
 
 **What it does:**
 
-| Step           | Action                                                      |
-| -------------- | ----------------------------------------------------------- |
-| 🌙 Every 10 PM | Pull all commits from your GitHub repo                      |
-| 📝 Compile     | Generate a structured daily dev report                      |
-| 📧 Email       | Send the report to the engineering team                     |
-| 🐛 New Issues  | Fetch all issues created that day, rewrite with full detail |
-| 🔄 Linear Sync | Sync rewritten issues to Linear for prioritization          |
+| Step           | Action                                                                                       |
+| -------------- | -------------------------------------------------------------------------------------------- |
+| 🌙 Every 10 PM | Pull all commits from your GitHub repo                                                       |
+| 📝 Compile     | Generate a structured daily dev report                                                       |
+| 📧 Email       | Send the report to the engineering team                                                      |
+| 🐛 New Issues  | Fetch all issues created that day, rewrite with full detail                                  |
+| 🔄 Linear Sync | Sync rewritten issues to Linear for prioritization                                           |
+| 🔍 PR Review   | Surface a `review_pr` decision card when a PR is assigned, @-mentions you, or has failing CI |
 
 ---
 
@@ -41,6 +42,8 @@ Two scheduled tasks handle the full workflow:
 
 Both tasks are created with tracking enabled for full observability.
 
+> 💡 **PR review isn't in this table** because it's not a scheduled task — it's an event-driven flow inside Loop's tick. The moment a PR is assigned to you or @-mentions you, Loop surfaces a `review_pr` decision card with the AI summary, CI status, and inline comment drafts. No separate task to wire up; just enable the GitHub source in Loop's settings.
+
 ---
 
 ## The Operation
@@ -57,6 +60,49 @@ The sync produces two structured artifacts — the daily dev report and the issu
 
 ---
 
+### Every Hour: PD Issue Sync Runs
+
+PD Issue Sync doesn't just copy raw issues into Linear — each issue is rewritten with the context the team needs to triage, so the next person who opens the Linear ticket doesn't have to bounce back to GitHub to understand what was reported.
+
+| What Loop pulls                       | What Loop writes into Linear                                                                       |
+| ------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| Issue title + body                    | Verbatim, prefixed with a `Reported via GitHub on YYYY-MM-DD by @user` header                      |
+| Linked PRs / referenced commits       | Auto-resolved and appended as a `Related code` section — the ticket is no longer a black box       |
+| Labels + milestone                    | Mapped to Linear's priority / project fields; new labels need your approval before they're created |
+| Top 10 comments (by reactions)        | Threaded as a `Context` section so the triage discussion isn't lost                                |
+| Reproduction info from issue template | Pulled out into a separate `Steps to reproduce` block in the Linear description                    |
+
+Sync runs are idempotent — if Loop already created a Linear ticket for that GitHub issue (matched by source URL), it updates the existing one instead of duplicating. You can pin a per-repo override list in `~/.openloomi/loop/issue-sync-overrides.json` if a specific repo needs different field mapping.
+
+### When a PR Lands: PD PR Review
+
+PR review isn't a scheduled task — it's an event-driven flow inside Loop's tick. The moment a PR is assigned to you, @-mentions you, or has a CI failure you should look at, Loop surfaces a **`review_pr`** decision card. Same Loop engine, same human-in-the-loop gate, just tuned for code review.
+
+<p align="center">
+  <img
+    src="/img/use-cases/loomi-review-pr.gif"
+    alt="Loomi review_pr card — PR #482 in acme/api with AI diff summary, CI status, linked issue, risky-area flags, and inline draft comments"
+    width="90%"
+  />
+</p>
+
+What the card surfaces before you tap **APPROVE**:
+
+| Field on the card        | Source                                                                               |
+| ------------------------ | ------------------------------------------------------------------------------------ |
+| 🟢 / 🔴 CI status        | GitHub Checks API — lint, typecheck, tests, build                                    |
+| 📐 Diff summary          | Loop reads the diff and writes a 3-bullet "what changed" — never the raw patch       |
+| 🔗 Linked issue          | `Closes` / `Fixes` / `Refs` parsed from the PR body                                  |
+| ⚠️ Risky areas           | Files > 400 lines changed, missing tests, new dependencies → flagged with ⚠          |
+| 💬 Inline draft comments | Per-file drafts (style / bug / suggestion); you approve before any comment is posted |
+| 🧠 Memory hooks          | Loomi pulls related Obsidian notes / past PRs / RFCs and attaches them as evidence   |
+
+**APPROVE** → comments are posted to GitHub and the PR is left in `Awaiting review` state. **EDIT** → jumps into the chat with the draft loaded; say "drop comment 3, shorten comment 1" and Loop redrafts. **LATER** → parked for your next focus block. **SKIP** → dismissed with a `skippedByUser` audit entry.
+
+PR review is on by default for any repo you've starred or been active on in the last 30 days. To tune which repos / authors / labels qualify, open **Settings → Loop → Sources** — the same panel that controls your email and calendar sources.
+
+---
+
 ## Tracking Every Execution
 
 OpenLoomi's tracking panel shows exactly how many times each task has run, against which repositories:
@@ -65,48 +111,29 @@ OpenLoomi's tracking panel shows exactly how many times each task has run, again
 
 ## What Changed
 
-| Aspect                 | Before                        | After                          |
-| ---------------------- | ----------------------------- | ------------------------------ |
-| Dev report compilation | Manual, weekly or never       | Automated, every night         |
-| Commit review          | Developer pulls logs manually | AI fetches and summarizes      |
-| Issue triaging         | Often delayed or missed       | Real-time, every hour          |
-| Linear sync            | Manual copy-paste             | Fully automated rewrite & sync |
-| Engineering time saved | ~2 hrs/week                   | Near-zero, review only         |
+| Aspect                 | Before                                    | After                                          |
+| ---------------------- | ----------------------------------------- | ---------------------------------------------- |
+| Dev report compilation | Manual, weekly or never                   | Automated, every night                         |
+| Commit review          | Developer pulls logs manually             | AI fetches and summarizes                      |
+| Issue triaging         | Often delayed or missed                   | Real-time, every hour                          |
+| Linear sync            | Manual copy-paste                         | Fully automated rewrite & sync                 |
+| PR review              | Context-switch to GitHub, read every file | AI summary + inline drafts, approve in one tap |
+| Issue context          | GitHub only, comments get buried          | Auto-threaded into Linear description          |
+| Engineering time saved | ~2 hrs/week                               | Near-zero, review only                         |
 
 ---
 
 ## How to Set Up
 
-**Option 1: Copy & Paste (Easiest)**
-
-Open OpenLoomi and paste this:
+Two connector calls. The same commands work in OpenLoomi Desktop, the Claude plugin, or the Codex plugin — invoke `openloomi-connectors` in chat:
 
 ```
-Please pull all commits from my GitHub repo every night at 10 PM, compile a report, and send it to my email. Also, monitor all new issues created that day, rewrite them in detail, and sync them to Linear.
+use openloomi-connectors to connect GitHub and Linear
 ```
 
-OpenLoomi will automatically create the scheduled tasks for you!
+GitHub and Linear live in Composio's app catalog, so the skill installs Composio on the fly if you don't have it yet. Verify with `list-accounts` — once both show `active`, Loop picks them up on the next tick and **PD Daily Sync** (10 PM nightly report) + **PD Issue Sync** (hourly issue migration) start firing on their own schedules. No automation tasks to wire up by hand.
 
----
-
-**Option 2: Manual Setup**
-
-1. Go to the **Agent** page, then select **Automation** → **New Task**
-2. Create the first task:
-
-| Field            | Input                                                                                                                                                                                                                                      |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Task Name        | `PD Daily Sync`                                                                                                                                                                                                                            |
-| Task Description | `1. Fetch all commits from your GitHub repo\n2. Compile a structured daily dev report\n3. Email the report to your team\n4. Fetch all issues created that day\n5. Rewrite each issue with full detail\n6. Sync rewritten issues to Linear` |
-| Schedule         | `0 22 * * *` (every day at 10 PM)                                                                                                                                                                                                          |
-
-3. Create the second task:
-
-| Field            | Input                                                                                                    |
-| ---------------- | -------------------------------------------------------------------------------------------------------- |
-| Task Name        | `PD Issue Sync`                                                                                          |
-| Task Description | `Fetch new GitHub issues created today, rewrite each with full detail and context, then sync to Linear.` |
-| Schedule         | `Every 1 hour`                                                                                           |
+> 💡 The flow also lights up the **PR review** path automatically — any repo you've starred or been active on in the last 30 days will surface `review_pr` cards the moment a PR is assigned to you or @-mentions you. Tune the list in **Settings → Loop → Sources**.
 
 ---
 
