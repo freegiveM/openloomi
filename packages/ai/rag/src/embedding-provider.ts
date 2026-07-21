@@ -149,7 +149,7 @@ export class CloudEmbeddingProvider implements EmbeddingProvider {
       headers.Authorization = `Bearer ${this.userAuthToken}`;
     } else {
       console.warn(
-        `[RAG] No auth token available for embeddings API. This may cause request failures or use default rate limits. baseURL=${this.baseURL}, hasApiKey=${!!this.apiKey}`,
+        `[RAG] Cloud embeddings provider has no API key configured (baseURL=${this.baseURL}). Requests will fail with 401. Either set OPENROUTER_API_KEY, configure a user-level embedding setting, or switch to a local provider via EMBEDDING_PROVIDER=local.`,
       );
     }
 
@@ -164,7 +164,9 @@ export class CloudEmbeddingProvider implements EmbeddingProvider {
 
     if (!response.ok) {
       const errorText = await response.text();
-      const errorMessage = `Embeddings API error (${response.status}): ${errorText}`;
+      const parsedMessage = extractApiErrorMessage(errorText);
+      const display = parsedMessage ?? truncateForLog(errorText, 500);
+      const errorMessage = `Embeddings API error (${response.status}): ${display}`;
       throw new Error(errorMessage);
     }
 
@@ -202,4 +204,36 @@ function getEmbeddingBatchSize(): number {
   }
 
   return Math.floor(parsedBatchSize);
+}
+
+/**
+ * Try to extract a human-readable error message from an API error response body.
+ * Handles common shapes: `{ error: { message } }` (OpenRouter/OpenAI),
+ * `{ message }`, or `{ error }` (string). Returns undefined if the body isn't
+ * JSON or doesn't contain a recognizable message field.
+ */
+function extractApiErrorMessage(body: string): string | undefined {
+  if (!body) return undefined;
+  try {
+    const parsed = JSON.parse(body);
+    const candidate =
+      (typeof parsed?.error === "object" && parsed?.error?.message) ||
+      parsed?.message ||
+      (typeof parsed?.error === "string" ? parsed.error : undefined);
+    if (typeof candidate === "string" && candidate.trim().length > 0) {
+      return candidate.trim();
+    }
+  } catch {
+    // not JSON, fall through
+  }
+  return undefined;
+}
+
+/**
+ * Truncate a body for logging so a large HTML/error page can't blow up logs.
+ */
+function truncateForLog(body: string, maxLength: number): string {
+  if (!body) return "(empty body)";
+  if (body.length <= maxLength) return body;
+  return `${body.slice(0, maxLength)}… [truncated ${body.length - maxLength} chars]`;
 }

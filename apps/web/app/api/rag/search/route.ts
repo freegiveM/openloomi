@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/app/(auth)/auth";
+import { extractCloudAuthToken } from "@/lib/ai/request-context";
 import {
   searchSimilarChunks,
   formatSearchResultsForLLM,
@@ -30,10 +31,15 @@ export async function POST(request: Request) {
     }
 
     // Search for similar chunks
-    const results = await searchSimilarChunks(session.user.id, query, {
-      limit,
-      threshold,
-    });
+    const results = await searchSimilarChunks(
+      session.user.id,
+      query,
+      {
+        limit,
+        threshold,
+      },
+      extractCloudAuthToken(request),
+    );
 
     // Format results for different use cases
     const formattedResults = results.map((result) => ({
