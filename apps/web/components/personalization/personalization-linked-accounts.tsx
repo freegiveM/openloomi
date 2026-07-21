@@ -61,6 +61,7 @@ import { createIntegrationAccount } from "@/lib/integrations/client";
 import { useIntegrations } from "@/hooks/use-integrations";
 import { useLoopConnectors } from "@/hooks/use-loop-connectors";
 import { ComposioConnectorList } from "@/components/personalization/composio-connector-list";
+import { ProbeErrorCallout } from "@/components/loop/probe-error-callout";
 import { ComposioIcon } from "@/components/composio-icon";
 
 /**
@@ -466,10 +467,11 @@ export function PersonalizationLinkedAccounts({
                   items={loopConnectors}
                 />
                 {lastProbeError ? (
-                  <p className="mt-2 text-xs text-amber-600">
-                    {t("connectors.probeError", "Last sync failed")}:{" "}
-                    {lastProbeError}
-                  </p>
+                  <ProbeErrorCallout
+                    error={lastProbeError}
+                    onRetry={() => void syncLoopConnectors()}
+                    isRetrying={isLoopSyncing}
+                  />
                 ) : null}
               </AccordionContent>
             </AccordionItem>

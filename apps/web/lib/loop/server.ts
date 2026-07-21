@@ -14,7 +14,6 @@ import {
   refreshConnectors,
   getLastProbeError,
 } from "./connectors";
-import type { ProbeErrorInfo } from "./connectors";
 import { summarizeConnectorCapability } from "./connectors-pure";
 import { decisions, log, readStatus, signals } from "./store";
 import { readPreferences, writePreferences } from "./preferences";
@@ -38,6 +37,7 @@ import type {
   LoopPreferences,
   LoopState,
   LoopTickResult,
+  ProbeErrorInfo,
 } from "./types";
 
 /** GET /api/loop/state — aggregated dashboard payload. */

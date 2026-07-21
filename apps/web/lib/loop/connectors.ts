@@ -46,7 +46,7 @@ import {
   FALLBACK_CONNECTORS,
   withConnectorCapability,
 } from "./connectors-pure";
-import type { ConnectorEntry } from "./types";
+import type { ConnectorEntry, ProbeErrorInfo, ProbeErrorKind } from "./types";
 
 /**
  * How long the on-disk connector snapshot is trusted to be current
@@ -70,42 +70,6 @@ import type { ConnectorEntry } from "./types";
  *      "last known + here's why we couldn't refresh".
  */
 const CACHE_TTL_MS = 30 * 1000;
-
-/**
- * #391 — the kind of failure the last connector probe hit. Mirrors the
- * failure arms of `ProbeOutcome` in `composio-bridge.ts` (timeout is
- * observed here in `refreshConnectors`'s silent race, the rest come
- * from the probe itself).
- *
- * The `cli_*` kinds are emitted by the CLI-direct fast-path
- * (`composio-cli.ts`) when the user's local `composio` binary is
- * installed but can't answer the probe (auth broken, dev project not
- * initialized, output unparseable). They map 1:1 onto the agentic
- * failure arms so the UI can render one unified `lastProbeError`
- * affordance regardless of which surface attempted the probe.
- */
-export type ProbeErrorKind =
-  | "transport_error"
-  | "agent_http_error"
-  | "empty_response"
-  | "malformed_response"
-  | "timeout"
-  | "cli_not_found"
-  | "cli_unauthorized"
-  | "cli_malformed";
-
-/**
- * #391 — persisted diagnostic for the last failed probe. Lives on the
- * connector cache file alongside the (possibly stale) snapshot so the
- * next API read can return both the entries and the reason the probe
- * couldn't refresh them.
- */
-export interface ProbeErrorInfo {
-  kind: ProbeErrorKind;
-  message: string;
-  /** ISO timestamp of when the failure was recorded. */
-  at: string;
-}
 
 interface ConnectorCache {
   fetchedAt: string;
@@ -331,6 +295,29 @@ function readProbeCooldown(): number {
  * `kind` (e.g. one that maps to a canonical toolkit via `kind`) gets a
  * real capability state, not just `connected: false`. A user-defined
  * custom channel is `needs_setup` until the watcher confirms it.
+ *
+ * #413 — the stamp `{ connected: false, probed: false, accountCount: 0 }`
+ * is deliberate, not a placeholder. Three reasons it must stay this
+ * way until the watcher actually exercises the channel:
+ *
+ *   1. The downstream list (`composio-connector-list.tsx`'s
+ *      `filterComposioOnlyEntries`) excludes `connected === false` and
+ *      `probed === false` rows, so an unauthorized custom channel NEVER
+ *      renders as a red dot. The "Not authorized" affordance is the
+ *      "Connect more via Composio" button on the parent dialog — we
+ *      deliberately do not draw a row for it here.
+ *
+ *   2. `probed: false` short-circuits `withConnectorCapability` /
+ *      `deriveConnectorCapability` to `capability: null`, so even if a
+ *      future caller bypasses the filter (e.g. a "list every channel
+ *      I've ever configured" surface), the capability badge will
+ *      gracefully render nothing instead of falsely claiming
+ *      `needs_setup` before the watcher has actually probed the row.
+ *
+ *   3. Custom channels contribute nothing to the readiness summary
+ *      (`summarizeConnectorCapability` skips `connected: false` rows),
+ *      so the dashboard's "X connected, Y monitored" counts ignore
+ *      them until the watcher confirms they're live.
  */
 function appendCustomChannels(seed: ConnectorEntry[]): ConnectorEntry[] {
   const extras = customChannels.list();

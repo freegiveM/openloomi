@@ -876,6 +876,44 @@ const enUS = {
     sourceComposio: "Composio",
     sourceComposioHint: "Connected via Composio (agent-managed)",
     probeError: "Last sync failed",
+    // #412 — per-kind callout copy + affordances. Keys live here so the
+    // connectors page can render a localized reason + one-click fix
+    // instead of the previous generic "Last sync failed: <message>" line.
+    probeRetry: "Retry probe",
+    probeRetrying: "Retrying…",
+    probeKindTitle: {
+      cli_not_found: "Composio CLI not installed",
+      cli_unauthorized: "Composio CLI not signed in",
+      timeout: "Probe took too long",
+      transport_error: "Couldn't reach the agent",
+      agent_http_error: "Agent returned an error",
+      empty_response: "Agent returned no data",
+      malformed_response: "Agent output was unparseable",
+      cli_malformed: "Composio CLI returned bad output",
+    },
+    probeKindDesc: {
+      cli_not_found: "Install it with `npm i -g @composio/cli`, then retry.",
+      cli_unauthorized:
+        "Ask the agent to sign in, or run `composio login` in your terminal.",
+      timeout:
+        "Lower the probe interval in `~/.openloomi/loop/preferences.json` or check your network.",
+      transport_error:
+        "The agent service didn't respond. Check your network and try again.",
+      agent_http_error:
+        "The agent responded with a non-OK status. Try again in a few minutes.",
+      empty_response:
+        "The probe finished but produced no output. Retrying may help.",
+      malformed_response:
+        "The agent didn't return a recognizable `connectors` block. Retrying may help.",
+      cli_malformed:
+        "The CLI answered but its JSON couldn't be parsed. Run `composio dev init` then retry.",
+    },
+    probeKindInstall: "Copy install command",
+    probeKindCopied: "Copied",
+    probeKindSignIn: "Sign in via agent",
+    probeKindSignInPrompt:
+      "Please run `composio login --no-wait` in the user's terminal so the Loop probe can authenticate, then retry.",
+    probeKindHttpTooltip: "Upstream status: {{status}}",
     healthOk: "Healthy",
     healthDegraded: "Degraded",
     healthError: "Connection error",

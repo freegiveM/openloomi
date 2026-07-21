@@ -31,18 +31,39 @@
 
 import useSWR from "swr";
 import { getAuthToken } from "@/lib/auth/token-manager";
-import type { ConnectorEntry } from "@/lib/loop/types";
+import type {
+  ConnectorEntry,
+  ProbeErrorInfo,
+  ProbeErrorKind,
+} from "@/lib/loop/types";
 
 const KEY = "/api/loop/connectors";
+
+// Allow-list mirroring `connectors.ts`'s `PROBE_ERROR_KINDS`. Duplicated
+// here on purpose: the set is small (one line) and keeping the client
+// from re-importing `connectors.ts` (which pulls `node:fs`) is the whole
+// reason `ProbeErrorKind` now lives in `./types`.
+const CLIENT_PROBE_ERROR_KINDS: ReadonlySet<ProbeErrorKind> = new Set([
+  "transport_error",
+  "agent_http_error",
+  "empty_response",
+  "malformed_response",
+  "timeout",
+  "cli_not_found",
+  "cli_unauthorized",
+  "cli_malformed",
+]);
 
 export type ConnectorSnapshot = {
   items: ConnectorEntry[];
   /**
    * Persisted by `/api/loop/connectors` only when the most recent probe
-   * failed (#391). `null` on the happy path so consumers can branch on
-   * its presence without a separate `lastProbeError` flag.
+   * failed (#391 #412). `null` on the happy path so consumers can branch
+   * on its presence without a separate `lastProbeError` flag. Carries
+   * the full `{kind, message, at}` shape so the UI can render a per-
+   * kind affordance instead of a generic message string.
    */
-  lastProbeError: string | null;
+  lastProbeError: ProbeErrorInfo | null;
 };
 
 const fetcher = async (url: string): Promise<ConnectorSnapshot> => {
@@ -62,14 +83,34 @@ const fetcher = async (url: string): Promise<ConnectorSnapshot> => {
   }
   const raw = (await res.json()) as {
     items?: ConnectorEntry[];
-    lastProbeError?: { message?: string };
+    lastProbeError?: { kind?: unknown; message?: unknown; at?: unknown };
   };
+  // Validate the full {kind, message, at} shape rather than dropping
+  // `kind` on the floor (the previous behaviour before #412). Anything
+  // unrecognised is treated as no error so a malformed server payload
+  // can't surface as a broken callout.
+  let lastProbeError: ProbeErrorInfo | null = null;
+  const blob = raw.lastProbeError;
+  if (blob && typeof blob === "object") {
+    const kind = blob.kind;
+    const message = blob.message;
+    const at = blob.at;
+    if (
+      typeof kind === "string" &&
+      CLIENT_PROBE_ERROR_KINDS.has(kind as ProbeErrorKind) &&
+      typeof message === "string" &&
+      typeof at === "string"
+    ) {
+      lastProbeError = {
+        kind: kind as ProbeErrorKind,
+        message,
+        at,
+      };
+    }
+  }
   return {
     items: Array.isArray(raw.items) ? raw.items : [],
-    lastProbeError:
-      typeof raw.lastProbeError?.message === "string"
-        ? raw.lastProbeError.message
-        : null,
+    lastProbeError,
   };
 };
 

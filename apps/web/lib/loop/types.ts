@@ -664,3 +664,46 @@ export interface BriefMuted {
   title: string;
   reason: string;
 }
+
+// ---------------------------------------------------------------------------
+// Probe error kinds (#391 #412) — moved here from `./connectors.ts` so the
+// client-side per-kind callout can import them via `@/lib/loop/client`
+// without dragging `node:fs` into the browser bundle. The on-disk shape is
+// unchanged — `connectors.ts` just re-imports the types below.
+// ---------------------------------------------------------------------------
+
+/**
+ * #391 — the kind of failure the last connector probe hit. Mirrors the
+ * failure arms of `ProbeOutcome` in `composio-bridge.ts` (timeout is
+ * observed here in `refreshConnectors`'s silent race, the rest come
+ * from the probe itself).
+ *
+ * The `cli_*` kinds are emitted by the CLI-direct fast-path
+ * (`composio-cli.ts`) when the user's local `composio` binary is
+ * installed but can't answer the probe (auth broken, dev project not
+ * initialized, output unparseable). They map 1:1 onto the agentic
+ * failure arms so the UI can render one unified `lastProbeError`
+ * affordance regardless of which surface attempted the probe.
+ */
+export type ProbeErrorKind =
+  | "transport_error"
+  | "agent_http_error"
+  | "empty_response"
+  | "malformed_response"
+  | "timeout"
+  | "cli_not_found"
+  | "cli_unauthorized"
+  | "cli_malformed";
+
+/**
+ * #391 — persisted diagnostic for the last failed probe. Lives on the
+ * connector cache file alongside the (possibly stale) snapshot so the
+ * next API read can return both the entries and the reason the probe
+ * couldn't refresh them.
+ */
+export interface ProbeErrorInfo {
+  kind: ProbeErrorKind;
+  message: string;
+  /** ISO timestamp of when the failure was recorded. */
+  at: string;
+}

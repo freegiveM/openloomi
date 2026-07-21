@@ -809,6 +809,38 @@ const zhHans = {
     sourceComposio: "Composio",
     sourceComposioHint: "通过 Composio（智能体管理）连接",
     probeError: "最近同步失败",
+    // #412 — 每种探测失败类型对应的提示与一键修复。详见
+    // `apps/web/components/loop/probe-error-callout.tsx`。
+    probeRetry: "重新探测",
+    probeRetrying: "重新探测中…",
+    probeKindTitle: {
+      cli_not_found: "未安装 Composio CLI",
+      cli_unauthorized: "Composio CLI 未登录",
+      timeout: "探测超时",
+      transport_error: "无法连接智能体",
+      agent_http_error: "智能体返回错误",
+      empty_response: "智能体未返回数据",
+      malformed_response: "智能体输出无法解析",
+      cli_malformed: "Composio CLI 返回异常输出",
+    },
+    probeKindDesc: {
+      cli_not_found: "请先用 `npm i -g @composio/cli` 安装,再点击重试。",
+      cli_unauthorized: "请让智能体登录,或在终端运行 `composio login`。",
+      timeout:
+        "请到 `~/.openloomi/loop/preferences.json` 缩短探测间隔,或检查网络。",
+      transport_error: "智能体服务未响应,请检查网络后重试。",
+      agent_http_error: "智能体返回了非正常状态码,请稍后重试。",
+      empty_response: "探测完成但未返回内容,可重试。",
+      malformed_response: "智能体未返回可识别的 `connectors` 结构,可重试。",
+      cli_malformed:
+        "CLI 已返回但 JSON 无法解析。请运行 `composio dev init` 后重试。",
+    },
+    probeKindInstall: "复制安装命令",
+    probeKindCopied: "已复制",
+    probeKindSignIn: "让智能体登录",
+    probeKindSignInPrompt:
+      "请在用户终端运行 `composio login --no-wait` 完成 Loop 探测的身份验证,然后重新探测。",
+    probeKindHttpTooltip: "上游状态:{{status}}",
     healthOk: "正常",
     healthDegraded: "部分降级",
     healthError: "连接异常",
