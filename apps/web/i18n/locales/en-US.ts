@@ -288,7 +288,7 @@ const en = {
   },
   settings: {
     ...baseEn.settings,
-    aiSettingsTitle: "API Settings",
+    aiSettingsTitle: "Settings",
     loopSectionTitle: "Loop (proactive execution)",
     loopEnableLabel: "Enable the Loop",
     loopEnableDescription:

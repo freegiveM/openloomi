@@ -276,7 +276,7 @@ const zh = {
   },
   settings: {
     ...baseZh.settings,
-    aiSettingsTitle: "API 设置",
+    aiSettingsTitle: "设置",
     loopSectionTitle: "Loop（主动执行）",
     loopEnableLabel: "启用 Loop",
     loopEnableDescription:
