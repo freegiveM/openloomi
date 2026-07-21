@@ -250,6 +250,13 @@ export interface PlatformIntegrationsProps {
   onMessengerAuthOpen: () => void;
   onOutlookAuthOpen: () => void;
   onIMessageAuthOpen?: () => void;
+  /**
+   * Skip the "No integrations connected yet" empty-state panel when no
+   * native accounts exist. Set when the parent will render Composio-only
+   * rows beneath this component so the empty-state doesn't contradict
+   * the rows below it (#360 follow-up).
+   */
+  hideEmptyState?: boolean;
 }
 
 /**
@@ -262,6 +269,7 @@ export function PlatformIntegrations({
   onMessengerAuthOpen,
   onOutlookAuthOpen,
   onIMessageAuthOpen,
+  hideEmptyState = false,
 }: PlatformIntegrationsProps) {
   const { t } = useTranslation();
   const router = useRouter();
@@ -427,11 +435,11 @@ export function PlatformIntegrations({
   return (
     <div className="space-y-6">
       <div className="space-y-6">
-        {connectedAccounts.length === 0 ? (
+        {connectedAccounts.length === 0 && !hideEmptyState ? (
           <div className="rounded-xl border border-[#e5e5e5] bg-white p-4 text-xs text-[#6f6e69]">
             {t("common.noConnectedPlatforms")}
           </div>
-        ) : (
+        ) : connectedAccounts.length === 0 ? null : (
           <div className="flex flex-col gap-3">
             {connectedAccounts.map((account) => {
               const platformInfo = getPlatformDisplayInfo(account.platform, t);

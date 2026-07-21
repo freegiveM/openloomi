@@ -59,6 +59,8 @@ import { QQBotAuthForm } from "@/components/qqbot-auth-form";
 import { WeixinAuthForm } from "@/components/weixin-auth-form";
 import { createIntegrationAccount } from "@/lib/integrations/client";
 import { useIntegrations } from "@/hooks/use-integrations";
+import { useLoopConnectors } from "@/hooks/use-loop-connectors";
+import { ComposioConnectorList } from "@/components/personalization/composio-connector-list";
 import { ComposioIcon } from "@/components/composio-icon";
 
 /**
@@ -103,6 +105,28 @@ export function PersonalizationLinkedAccounts({
   } = useTelegramTokenForm();
   const { accounts: integrationAccounts, mutate: mutateIntegrations } =
     useIntegrations();
+  const {
+    items: loopConnectors,
+    lastProbeError,
+    isValidating: isLoopSyncing,
+    sync: syncLoopConnectors,
+  } = useLoopConnectors();
+  /**
+   * #360+#391 — number of connected Loop entries that have no native
+   * counterpart. Mirrors `ComposioConnectorList`'s dedup rule so the
+   * header count matches what's rendered.
+   */
+  const composioOnlyCount = (() => {
+    const nativePlatforms = new Set<IntegrationId>(
+      integrationAccounts.map((a) => a.platform),
+    );
+    return loopConnectors.filter(
+      (e) =>
+        e.connected &&
+        e.probed !== false &&
+        !nativePlatforms.has(e.id as IntegrationId),
+    ).length;
+  })();
   const [internalAddConnectorDialogOpen, setInternalAddConnectorDialogOpen] =
     useState(false);
 
@@ -392,16 +416,42 @@ export function PersonalizationLinkedAccounts({
               value="platforms"
               className="border-none flex flex-col gap-3"
             >
-              <AccordionTrigger className="px-0 py-0 gap-3 hover:no-underline">
-                <div className="flex w-full items-center justify-between gap-2">
-                  <span className="text-sm font-semibold text-foreground">
+              <div className="flex w-full items-center justify-between gap-2">
+                <AccordionTrigger className="flex-1 min-w-0 px-0 py-0 gap-3 hover:no-underline">
+                  <span className="text-sm font-semibold text-foreground truncate">
                     {t("common.connectedAccounts")}{" "}
                     <span className="text-xs font-medium text-muted-foreground">
-                      ({integrationAccounts.length})
+                      ({integrationAccounts.length}
+                      {composioOnlyCount > 0
+                        ? ` · ${t(
+                            "connectors.sourceComposio",
+                            "Composio",
+                          )} ${composioOnlyCount}`
+                        : ""}
+                      )
                     </span>
                   </span>
-                </div>
-              </AccordionTrigger>
+                </AccordionTrigger>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  disabled={isLoopSyncing}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void syncLoopConnectors();
+                  }}
+                  className="h-7 w-7 shrink-0"
+                  aria-label={t("connectors.sync", "Sync")}
+                  title={t("connectors.sync", "Sync")}
+                >
+                  <RemixIcon
+                    name={isLoopSyncing ? "loader_2" : "refresh"}
+                    size="size-4"
+                    className={isLoopSyncing ? "animate-spin" : undefined}
+                  />
+                </Button>
+              </div>
               <AccordionContent className="pt-0 px-0 pb-0">
                 <PlatformIntegrations
                   onGoogleAuthOpen={() => setIsGoogleAuthFormOpen(true)}
@@ -409,7 +459,18 @@ export function PersonalizationLinkedAccounts({
                   onOutlookAuthOpen={() => setIsOutlookAuthFormOpen(true)}
                   onMessengerAuthOpen={() => setIsMessengerAuthFormOpen(true)}
                   onIMessageAuthOpen={() => setIsIMessageAuthFormOpen(true)}
+                  hideEmptyState={composioOnlyCount > 0}
                 />
+                <ComposioConnectorList
+                  nativeAccounts={integrationAccounts}
+                  items={loopConnectors}
+                />
+                {lastProbeError ? (
+                  <p className="mt-2 text-xs text-amber-600">
+                    {t("connectors.probeError", "Last sync failed")}:{" "}
+                    {lastProbeError}
+                  </p>
+                ) : null}
               </AccordionContent>
             </AccordionItem>
 

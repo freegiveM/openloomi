@@ -868,6 +868,17 @@ const enUS = {
      * can ask the agent to wire up a custom mapping.
      */
     needsSetupAction: "Ask the agent to wire up Loop",
+    // #391 — `/connectors` page surfaces Composio-managed OAuth accounts
+    // that aren't on the local `platform_accounts` table. The Sync button
+    // forces a fresh Loop probe so the list reflects the agent's view
+    // rather than a stale cache.
+    sync: "Sync",
+    sourceComposio: "Composio",
+    sourceComposioHint: "Connected via Composio (agent-managed)",
+    probeError: "Last sync failed",
+    healthOk: "Healthy",
+    healthDegraded: "Degraded",
+    healthError: "Connection error",
   },
   integrations: {
     description:

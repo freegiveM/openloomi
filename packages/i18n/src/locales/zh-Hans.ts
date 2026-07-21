@@ -803,6 +803,15 @@ const zhHans = {
     unsupportedSignalsNote:
       "{{count}} 条信号被丢弃 —— 来源缺少 Loop 标准映射。",
     needsSetupAction: "让智能体接入 Loop",
+    // #391 — `/connectors` 页面同步 Composio 后端账户。同步按钮触发
+    // Loop 后台重新探测,展示给用户的账户可能落后于实际授权状态。
+    sync: "同步",
+    sourceComposio: "Composio",
+    sourceComposioHint: "通过 Composio（智能体管理）连接",
+    probeError: "最近同步失败",
+    healthOk: "正常",
+    healthDegraded: "部分降级",
+    healthError: "连接异常",
   },
   integrations: {
     description: "在一个地方管理您的连接平台、RSS 订阅和已保存文件。",
