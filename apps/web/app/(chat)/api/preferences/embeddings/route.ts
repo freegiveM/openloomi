@@ -21,22 +21,55 @@ const embeddingSettingSchema = z.object({
   enabled: z.boolean().optional(),
 });
 
-const systemDefaults = {
-  providerType:
-    process.env.EMBEDDING_PROVIDER?.trim().toLowerCase() === "local"
-      ? ("local" as const)
-      : ("cloud" as const),
+type SystemDefaults = {
+  configuredProvider: "cloud" | "local" | null;
   cloud: {
-    baseUrl: "https://openrouter.ai/api/v1",
-    model: "text-embedding-3-small",
-    hasApiKey: Boolean(process.env.OPENROUTER_API_KEY),
-  },
+    baseUrl: string;
+    model: string;
+    hasApiKey: boolean;
+    ready: boolean;
+  };
   local: {
-    model: process.env.LOCAL_EMBEDDING_MODEL ?? "Xenova/all-MiniLM-L6-v2",
-    device: process.env.LOCAL_EMBEDDING_DEVICE ?? "cpu",
-    localFilesOnly: process.env.LOCAL_EMBEDDING_LOCAL_ONLY === "true",
-  },
+    model: string;
+    device: string;
+    localFilesOnly: boolean;
+    ready: boolean;
+  };
 };
+
+// Read env-derived defaults per request so tests (and any future runtime
+// reload) see current values, not the snapshot taken at module load.
+function computeSystemDefaults(): SystemDefaults {
+  const isLocalDefault =
+    process.env.EMBEDDING_PROVIDER?.trim().toLowerCase() === "local";
+  const hasSystemCloudCredential = Boolean(process.env.OPENROUTER_API_KEY);
+
+  // `configuredProvider` is the authoritative "what's actually configured
+  // right now" signal. It's `null` (UNSET) when no usable credentials exist
+  // for the default provider — e.g. cloud default with no OPENROUTER_API_KEY
+  // and no user override. Mirrors the `nativeRuntime.ready` pattern used by
+  // the LLM preferences route.
+  const configuredProvider = (
+    isLocalDefault ? "local" : hasSystemCloudCredential ? "cloud" : null
+  ) as "cloud" | "local" | null;
+
+  return {
+    configuredProvider,
+    cloud: {
+      baseUrl: "https://openrouter.ai/api/v1",
+      model: "text-embedding-3-small",
+      hasApiKey: hasSystemCloudCredential,
+      ready: hasSystemCloudCredential,
+    },
+    local: {
+      model: process.env.LOCAL_EMBEDDING_MODEL ?? "Xenova/all-MiniLM-L6-v2",
+      device: process.env.LOCAL_EMBEDDING_DEVICE ?? "cpu",
+      localFilesOnly: process.env.LOCAL_EMBEDDING_LOCAL_ONLY === "true",
+      // Local provider never needs credentials, so it's always ready.
+      ready: true,
+    },
+  };
+}
 
 function normalizeOptionalString(value: string | null | undefined) {
   if (!value) return undefined;
@@ -59,7 +92,10 @@ export async function GET() {
 
   try {
     const setting = await getUserEmbeddingSetting(session.user.id);
-    return NextResponse.json({ setting, systemDefaults });
+    return NextResponse.json({
+      setting,
+      systemDefaults: computeSystemDefaults(),
+    });
   } catch (error) {
     console.error("[Embedding Preferences] Failed to load settings", error);
     if (error instanceof AppError) return error.toResponse();
@@ -115,6 +151,7 @@ export async function POST(request: Request) {
   if (!parsed.success) return invalidPayloadResponse();
 
   try {
+    const systemDefaults = computeSystemDefaults();
     const saved = await getUserEmbeddingSettingWithApiKey(session.user.id);
     const savedForProvider =
       saved?.providerType === parsed.data.providerType ? saved : null;

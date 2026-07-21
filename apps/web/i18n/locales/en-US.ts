@@ -311,6 +311,7 @@ const en = {
       "Anthropic Claude or compatible provider endpoints",
     aiSettingsOverride: "User override",
     aiSettingsSystem: "System default",
+    aiSettingsNotConfigured: "Not configured",
     aiSettingsApiKey: "API Key",
     aiSettingsBaseUrl: "Base URL",
     aiSettingsModel: "Model",
@@ -366,6 +367,8 @@ const en = {
     embeddingLocalOnly: "Use local files only",
     embeddingLocalOnlyDescription:
       "To use your own local model, enter its path and enable this option. Model downloads will be disabled, and only model files already available on this device will be loaded.",
+    embeddingSelectProviderHint:
+      "Pick an embedding provider above to configure it.",
     embeddingLocalDownloadHint:
       "The first test may download the model and take a little longer. After switching models, you need to restart the application.",
     embeddingUsageHint: "Used by knowledge base, memory, and semantic search.",

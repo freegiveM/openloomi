@@ -1,6 +1,6 @@
+import path from "node:path";
 // vite.config.ts
 import { defineConfig } from "vitest/config";
-import path from "node:path";
 
 const alias = (p: string) => path.resolve(__dirname, p);
 
@@ -476,6 +476,14 @@ export default defineConfig({
       {
         find: "@openloomi/rss",
         replacement: alias("../../packages/integrations/rss/src/index.ts"),
+      },
+      {
+        find: "@openloomi/ui",
+        replacement: alias("./components/ui/index.ts"),
+      },
+      {
+        find: "@openloomi/ui/*",
+        replacement: alias("./components/ui/*"),
       },
       { find: "@", replacement: alias(".") },
     ],

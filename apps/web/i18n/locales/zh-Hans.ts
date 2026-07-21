@@ -298,6 +298,7 @@ const zh = {
     aiSettingsAnthropicDescription: "支持 Anthropic Claude 或兼容接口",
     aiSettingsOverride: "用户覆盖",
     aiSettingsSystem: "系统默认",
+    aiSettingsNotConfigured: "未配置",
     aiSettingsApiKey: "API 密钥",
     aiSettingsBaseUrl: "接口地址",
     aiSettingsModel: "模型",
@@ -353,6 +354,8 @@ const zh = {
       "想要自行配置，可填写模型路径后打开此选项。禁止下载模型，只加载当前设备上已经存在的模型文件。",
     embeddingLocalDownloadHint:
       "首次测试可能需要下载模型，因此会多等一会儿。切换模型后，需要重启应用。",
+    embeddingSelectProviderHint:
+      "请先在上方选择一种 Embedding 提供方再进行配置。",
     embeddingUsageHint: "用于知识库、记忆和语义搜索。",
     embeddingSaved: "Embedding 设置已保存",
     embeddingSaveError: "Embedding 设置保存失败",

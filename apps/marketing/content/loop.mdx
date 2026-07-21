@@ -379,15 +379,7 @@ A rule is enforced **twice** for safety:
 1. **In the prompt** — the tick prompt's §5 classifier list gets a new "User-defined classifier rules (HARD CONSTRAINTS — deterministic overrides)" block so the agent honours the rule on first pass.
 2. **Server-side, after the agentic tick** — `tick.ts::applyClassifierRules` re-evaluates every newly-added decision against the rule list and pins `type` / `actionKind` / `confidence` in `decisions.update()`. This catches cases where the LLM drifted, or where a long prompt truncated the hint.
 
-The end result on a same-day birthday signal — the LLM would have classified this as a generic `email_reply`; with `force_birthday_today` in place, the card surfaces as your custom type instead:
-
-<p align="center">
-  <img
-    src="/img/openloomi/loop/birthday-wish-card.png"
-    alt="Loomi card showing a custom birthday_wish decision — same-day birthday for Sarah Chen, routed by the force_birthday_today classifier rule to type=birthday_wish with the ri-cake-2-line icon and confidence 0.92"
-    width="360"
-  />
-</p>
+The end result on a same-day birthday signal — the LLM would have classified this as a generic `email_reply`; with `force_birthday_today` in place, the card surfaces as your custom type instead — see [What you actually get](#what-you-actually-get) below for the rendered output.
 
 Field paths use dotted notation: `signal.type`, `signal.source`, `signal.payload.<key>` (one level of nesting is supported). The closed op set covers:
 
@@ -418,6 +410,16 @@ curl -sS -X POST "$BASE/api/loop/classifier-rules/dry-run" \
 Rules are first-match-wins in insertion order, so put more specific rules first and fall-through rules last. To re-order, remove and re-insert.
 
 ### What you actually get
+
+Here's the user-visible output on the very next tick — the custom icon, the bumped confidence, and the same memory slice that informed the call:
+
+<p align="center">
+  <img
+    src="/img/openloomi/loop/birthday-wish-card.png"
+    alt="Loomi card showing a custom birthday_wish decision — same-day birthday for Sarah Chen, routed by the force_birthday_today classifier rule to type=birthday_wish with the ri-cake-2-line icon and confidence 0.92"
+    width="360"
+  />
+</p>
 
 On the very next tick:
 

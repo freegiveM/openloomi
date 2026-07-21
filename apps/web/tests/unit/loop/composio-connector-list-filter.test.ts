@@ -118,9 +118,7 @@ describe("filterComposioOnlyEntries — #413 state separation", () => {
         capability: "decision_capable",
       }),
     ];
-    expect(filterComposioOnlyEntries(items, NATIVE_LINUX)).toEqual([
-      items[3],
-    ]);
+    expect(filterComposioOnlyEntries(items, NATIVE_LINUX)).toEqual([items[3]]);
   });
 
   it("does not leak the custom-channel 'unauthorized' stamp into the rendered list", () => {

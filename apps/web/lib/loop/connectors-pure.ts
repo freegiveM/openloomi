@@ -182,10 +182,7 @@ export function filterComposioOnlyEntries(
   nativePlatforms: ReadonlySet<string>,
 ): ConnectorEntry[] {
   return items.filter(
-    (e) =>
-      e.connected &&
-      e.probed !== false &&
-      !nativePlatforms.has(e.id),
+    (e) => e.connected && e.probed !== false && !nativePlatforms.has(e.id),
   );
 }
 

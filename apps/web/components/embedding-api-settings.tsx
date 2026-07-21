@@ -1,7 +1,5 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { useTranslation } from "react-i18next";
 import {
   Badge,
   Button,
@@ -14,6 +12,8 @@ import {
   SelectValue,
   Switch,
 } from "@openloomi/ui";
+import { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { RemixIcon } from "@/components/remix-icon";
 import { toast } from "@/components/toast";
@@ -21,7 +21,7 @@ import { cn, fetchWithAuth } from "@/lib/utils";
 
 type EmbeddingProviderType = "cloud" | "local";
 
-type EmbeddingSetting = {
+export type EmbeddingSetting = {
   id: string;
   userId: string;
   providerType: EmbeddingProviderType;
@@ -33,17 +33,19 @@ type EmbeddingSetting = {
   hasApiKey: boolean;
 };
 
-type EmbeddingSystemDefaults = {
-  providerType: EmbeddingProviderType;
+export type EmbeddingSystemDefaults = {
+  configuredProvider: EmbeddingProviderType | null;
   cloud: {
     baseUrl: string;
     model: string;
     hasApiKey: boolean;
+    ready: boolean;
   };
   local: {
     model: string;
     device: string;
     localFilesOnly: boolean;
+    ready: boolean;
   };
 };
 
@@ -53,7 +55,10 @@ type EmbeddingSettingsResponse = {
 };
 
 type EmbeddingDraft = {
-  providerType: EmbeddingProviderType;
+  // `null` means no provider selected yet — used in the UNSET state
+  // (no system credentials, no user override) so the user explicitly
+  // picks cloud or local before the form is rendered.
+  providerType: EmbeddingProviderType | null;
   apiKey: string;
   baseUrl: string;
   model: string;
@@ -75,32 +80,84 @@ const LOCAL_MODEL_OPTIONS = [
 ] as const;
 
 const initialDefaults: EmbeddingSystemDefaults = {
-  providerType: "cloud",
+  configuredProvider: null,
   cloud: {
     baseUrl: "https://openrouter.ai/api/v1",
     model: "text-embedding-3-small",
     hasApiKey: false,
+    ready: false,
   },
   local: {
     model: "Xenova/all-MiniLM-L6-v2",
     device: "cpu",
     localFilesOnly: false,
+    ready: true,
   },
 };
 
-function createDraft(
+export function createDraft(
   setting: EmbeddingSetting | null,
   defaults: EmbeddingSystemDefaults,
 ): EmbeddingDraft {
-  const providerType = setting?.providerType ?? defaults.providerType;
+  // When a user override exists, always honor its provider. Otherwise, only
+  // preselect a provider if the system has a usable default configured.
+  // In the UNSET state (no system credentials, no override) we leave the
+  // provider null so the user explicitly picks one before the form renders.
+  const providerType: EmbeddingProviderType | null = setting?.providerType
+    ? setting.providerType
+    : defaults.configuredProvider;
+
   return {
     providerType,
     apiKey: "",
     baseUrl: setting?.baseUrl ?? defaults.cloud.baseUrl,
     model:
       setting?.model ??
-      (providerType === "local" ? defaults.local.model : defaults.cloud.model),
+      (providerType === "local"
+        ? defaults.local.model
+        : providerType === "cloud"
+          ? defaults.cloud.model
+          : ""),
     localFilesOnly: setting?.localFilesOnly ?? defaults.local.localFilesOnly,
+  };
+}
+
+export type EmbeddingBadgeState = {
+  variant: "default" | "secondary";
+  labelKey: string;
+  labelFallback: string;
+};
+
+/**
+ * Pure helper for the tri-state configuration badge. Extracted so the
+ * logic can be unit-tested without a DOM.
+ *
+ *   1. User override present              → "User override"  (default variant)
+ *   2. System default ready               → "System default" (secondary)
+ *   3. UNSET (no credentials, no override) → "Not configured" (secondary)
+ */
+export function getEmbeddingBadgeState(
+  setting: EmbeddingSetting | null,
+  configuredProvider: EmbeddingProviderType | null,
+): EmbeddingBadgeState {
+  if (setting) {
+    return {
+      variant: "default",
+      labelKey: "settings.aiSettingsOverride",
+      labelFallback: "User override",
+    };
+  }
+  if (configuredProvider) {
+    return {
+      variant: "secondary",
+      labelKey: "settings.aiSettingsSystem",
+      labelFallback: "System default",
+    };
+  }
+  return {
+    variant: "secondary",
+    labelKey: "settings.aiSettingsNotConfigured",
+    labelFallback: "Not configured",
   };
 }
 
@@ -171,7 +228,10 @@ export function EmbeddingApiSettings() {
   };
 
   const payload = () => ({
-    providerType: draft.providerType,
+    // `draft.providerType` is null in the UNSET state. The Save button is
+    // disabled until a provider is selected (model stays empty), so this
+    // fallback is defensive — never sent in practice.
+    providerType: draft.providerType ?? "cloud",
     apiKey: draft.apiKey.trim() || undefined,
     baseUrl: draft.baseUrl.trim() || null,
     model: draft.model.trim() || null,
@@ -303,6 +363,7 @@ export function EmbeddingApiSettings() {
 
   const busy = loading || saving || testing || resetting;
   const canTest =
+    draft.providerType !== null &&
     Boolean(draft.model.trim()) &&
     (draft.providerType === "local" ||
       (Boolean(draft.baseUrl.trim()) &&
@@ -322,14 +383,20 @@ export function EmbeddingApiSettings() {
           <p className="text-base font-semibold text-foreground-secondary">
             {t("settings.embeddingTitle", "Embedding models")}
           </p>
-          <Badge
-            variant={setting ? "default" : "secondary"}
-            className="h-5 rounded-md px-2 text-[11px] font-medium"
-          >
-            {setting
-              ? t("settings.aiSettingsOverride", "User override")
-              : t("settings.aiSettingsSystem", "System default")}
-          </Badge>
+          {(() => {
+            const badge = getEmbeddingBadgeState(
+              setting,
+              defaults.configuredProvider,
+            );
+            return (
+              <Badge
+                variant={badge.variant}
+                className="h-5 rounded-md px-2 text-[11px] font-medium"
+              >
+                {t(badge.labelKey, badge.labelFallback)}
+              </Badge>
+            );
+          })()}
         </div>
         <p className="max-w-3xl text-sm text-muted-foreground">
           {t(
@@ -412,7 +479,14 @@ export function EmbeddingApiSettings() {
       </div>
 
       <div className="rounded-lg border border-border bg-background p-4 sm:p-5">
-        {draft.providerType === "cloud" ? (
+        {draft.providerType === null ? (
+          <p className="text-sm text-muted-foreground">
+            {t(
+              "settings.embeddingSelectProviderHint",
+              "Pick an embedding provider above to configure it.",
+            )}
+          </p>
+        ) : draft.providerType === "cloud" ? (
           <div className="grid gap-4 lg:grid-cols-3">
             <div className="space-y-2">
               <Label htmlFor="embedding-api-key">
