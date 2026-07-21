@@ -14,7 +14,7 @@ The user doesn't want another chatbot that waits to be asked. They want an AI as
 
 ---
 
-## Problem 1: Re-reading every thread before every reply
+## Problem: Re-reading every thread before every reply
 
 The painful part of high-volume inbox work isn't the writing — it's the context-loading. The exchange used to go like this:
 
@@ -29,9 +29,9 @@ If three of these stack up in an hour, the morning is gone. If seven stack up, t
 
 ---
 
-## Problem 2: Email and Slack are two different worlds
+## In OpenLoomi: Unified inbox
 
-Once every channel is connected, OpenLoomi treats the same contact across channels as the same person. Sarah who emails Monday is the same Sarah who DMs on Slack Thursday — one shared history, one context, no matter which app the message came in on.
+OpenLoomi treats the same contact across channels as the same person. Sarah who emails Monday is the same Sarah who DMs on Slack Thursday — one shared history, one context, no matter which app the message came in on.
 
 When an inbound from an important contact arrives with an action word — _"RSVP"_, _"please confirm"_, _"reply"_, _"get back to me"_ — and it's been sitting past a few hours, OpenLoomi surfaces it as a ready-to-review reply. Each one comes with:
 
@@ -163,20 +163,3 @@ Once everything shows as connected, OpenLoomi starts picking up new messages aut
 > 💡 Once connected, **OpenLoomi can also be chatted with about any message** — a specific thread can be asked about, a long back-and-forth summarized, or details from any message in the unified inbox pulled. The answer is grounded in the same shared context.
 
 Every action is recorded — how many times messages were checked, which drafts surfaced, which were approved, which were edited. This way inbox triage can be handed off to AI while every action it took remains visible.
-
----
-
-## What's actually needed isn't another chatbot
-
-This experience reinforced a key insight: an AI inbox assistant shouldn't be a chat window waiting to be asked.
-
-If every interaction still requires opening a tool, typing a question, and supplying the context, then the responsibility for gathering information and pushing work forward still sits on the user.
-
-What's actually needed is an AI that can keep working around the conversations:
-
-- It watches the channels that matter — Gmail, Slack, Telegram, iMessage, the rest of the stack
-- It keeps spotting the inbound that needs a reply
-- It proactively organizes the thread context that's scattered across four tools
-- It drafts the reply grounded in what the user and the contact have already discussed
-- It hands the send button back when judgement is needed
-- It remembers edits and choices, gradually learning how the user writes to different audiences
