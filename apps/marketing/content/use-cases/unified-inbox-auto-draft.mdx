@@ -57,13 +57,21 @@ You don't have to curate any of this. A daily analytics refresh surfaces the con
 
 ## Setting Up Loomi for Your Unified Inbox
 
-### Connect Your Accounts
-
-One connector call. Works in OpenLoomi Desktop, the Claude plugin, or the Codex plugin — invoke the `openloomi-connectors` skill in chat:
+The "unified inbox" is just **multiple connectors, one per platform**. Works in OpenLoomi Desktop, the Claude plugin, or the Codex plugin — invoke the `openloomi-connectors` skill in chat, once per account:
 
 ```
 use openloomi-connectors to connect Gmail
+use openloomi-connectors to connect Slack
+use openloomi-connectors to connect iMessage
 ```
+
+(Use `connect Outlook` or `connect IMAP` if your inbox is on a non-Gmail provider; `connect WeChat`, `connect WhatsApp`, `connect Feishu`, `connect DingTalk`, `connect QQ` for the other native channels.)
+
+The skill installs Composio on the fly the first time you ask for a platform that lives in its app catalog — Gmail and Slack do; the seven **native Loomi connectors** (Telegram / WhatsApp / iMessage / Feishu / DingTalk / QQ / WeChat) don't need Composio at all. You can mix native and Composio-managed accounts freely — Loomi's queue treats them identically.
+
+You don't have to connect every platform — only the ones you actually read. Skip the channels you only check once a week, and Loop won't surface decisions from them. You can always add or remove accounts later with the same `connect` / `disconnect` verbs.
+
+Verify with `list-accounts` — once every platform shows `active`, Loop picks them up on the next tick and every connected channel feeds the same `DRAFT_REPLY` (email) / `IM_REPLY` (Slack / Telegram / Lark / iMessage / etc.) card flow. No scheduled tasks to wire up by hand.
 
 Once connected, you can also **chat with Loomi about any message** — ask about a specific thread, summarize a long back-and-forth, or pull details from any message in your unified inbox. Loomi remembers it all.
 
