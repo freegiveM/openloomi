@@ -440,7 +440,7 @@ node plugins/codex/scripts/loomi-bridge.mjs help
 | `pet <state>`           | Sets the Pet to a state (`happy`, `thinking`, …); see [Pet mirror](#pet-mirror-hooks)                     | `INVALID_STATE`, `ENDPOINT_MISSING`             |
 | `state`                 | Stop-hook helper that archives session context into OpenLoomi memory                                      | always exits 0                                  |
 | `archive`               | Stop-hook payload reader that POSTs `{type: "note", groups: ["codex"]}` to `/api/insights`                | always exits 0                                  |
-| `workflow-guidance`     | Returns structured guidance for the workflow skills (`loop`, `memory`, `connectors`, …)        | —                                               |
+| `workflow-guidance`     | Returns structured guidance for the workflow skills (`loop`, `memory`, `connectors`, …)                   | —                                               |
 
 ---
 
@@ -503,16 +503,16 @@ Verification after launch: the desktop app's `GET /api/native/providers` should 
 
 The plugin ships these sub-skills under `plugins/codex/skills/`:
 
-| Skill                     | Role                                                                                                                                                  |
-| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `openloomi`               | Main entry point — triggers on `OpenLoomi` / `Loomi` mention and dispatches to the right sub-skill.                                                   |
-| `openloomi-install`       | Walks install, first-use setup, AI provider setup, and `SESSION_INITIALIZATION_REQUIRED` recovery flows.                                              |
-| `openloomi-loop`          | Run attention-loop and follow-up workflows.                                                                                                           |
-| `openloomi-connectors`    | Check whether Slack, GitHub, Gmail, Calendar, and other sources are configured before acting. Reports status only.                                    |
-| `openloomi-memory`        | Search or write memory through OpenLoomi-owned runtime surfaces. Thin wrapper — does not implement memory storage.                                    |
-| `openloomi-api`           | OpenLoomi HTTP API reference (auth, chat, RAG, workspace, integrations, feedback). Triggered by API/backend questions.                                |
-| `openloomi-feature-guide` | Product overview, capabilities, and how-tos for non-developer questions like "what can openloomi do".                                                 |
-| `composio`                | Third-party 1000+ app integration router (Gmail, Slack, GitHub, etc.) via the Composio CLI. Platform-agnostic; not OpenLoomi business logic.          |
+| Skill                     | Role                                                                                                                                         |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `openloomi`               | Main entry point — triggers on `OpenLoomi` / `Loomi` mention and dispatches to the right sub-skill.                                          |
+| `openloomi-install`       | Walks install, first-use setup, AI provider setup, and `SESSION_INITIALIZATION_REQUIRED` recovery flows.                                     |
+| `openloomi-loop`          | Run attention-loop and follow-up workflows.                                                                                                  |
+| `openloomi-connectors`    | Check whether Slack, GitHub, Gmail, Calendar, and other sources are configured before acting. Reports status only.                           |
+| `openloomi-memory`        | Search or write memory through OpenLoomi-owned runtime surfaces. Thin wrapper — does not implement memory storage.                           |
+| `openloomi-api`           | OpenLoomi HTTP API reference (auth, chat, RAG, workspace, integrations, feedback). Triggered by API/backend questions.                       |
+| `openloomi-feature-guide` | Product overview, capabilities, and how-tos for non-developer questions like "what can openloomi do".                                        |
+| `composio`                | Third-party 1000+ app integration router (Gmail, Slack, GitHub, etc.) via the Composio CLI. Platform-agnostic; not OpenLoomi business logic. |
 
 The `workflow-guidance` bridge command returns structured guidance for the three workflow skills (`openloomi-loop`, `openloomi-memory`, `openloomi-connectors`). All other skills are documentation or routing helpers. The plugin must not copy OpenLoomi connector, memory, or loop logic into Codex — runtime implementations stay inside the OpenLoomi desktop runtime.
 
