@@ -22,7 +22,7 @@
 # Env-var contract (issue #401, restricted-network install):
 #   OPENLOOMI_REPO         Override the GitHub `owner/repo` slug.
 #                          Default: `melandlabs/openloomi`.
-#   OPENLOOMI_VERSION      Pin the release tag (e.g. `v0.8.2`). Replaces
+#   OPENLOOMI_VERSION      Pin the release tag (e.g. `v0.8.6`). Replaces
 #                          `/releases/latest` with `/releases/tags/<tag>`.
 #                          Ignored if OPENLOOMI_DMG_PATH is set.
 #   OPENLOOMI_DMG_PATH     macOS-only. Absolute path to a pre-staged .dmg

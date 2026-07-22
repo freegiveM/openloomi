@@ -88,7 +88,7 @@ const OFFICIAL_RELEASE_SOURCE = {
 };
 
 // Restricted-network install (issue #401). When `OPENLOOMI_VERSION` is set
-// to a literal semver (e.g. `v0.8.2`), resolve that tag's release API
+// to a literal semver (e.g. `v0.8.6`), resolve that tag's release API
 // instead of /releases/latest. `OPENLOOMI_REPO` overrides the `owner/repo`
 // slug. Both are honored here AND forwarded to the install helper script
 // when the bridge spawns it. When one of the manual-path env vars
