@@ -1,6 +1,6 @@
 {
   "name": "openloomi",
-  "version": "0.8.5",
+  "version": "0.8.6",
   "description": "Use local OpenLoomi from Codex as a personal assistant, memory layer, and self-healing setup bridge (auto-recovers from Codex sandbox loopback false negatives via a host-side probe cache).",
   "author": {
     "name": "OpenLoomi"
