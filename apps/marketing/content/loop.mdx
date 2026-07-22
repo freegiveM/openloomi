@@ -265,21 +265,64 @@ File it on GitHub with the `loop-runner-request` label — that's the queue we r
 
 ### 🛠️ Want to build it yourself? Open a PR
 
-Loop is Apache 2.0 and we genuinely welcome contributions. If you've already got a working `ActionKind` you want to upstream, the path is short:
+Loop is Apache 2.0 and we genuinely welcome contributions. Before you write code, file (or comment on) an issue first so we can agree on the `DecisionType` name, the prompt guidance, and the UI affordance.
 
-1. **Pick the runner slot** — open (or comment on) an issue first so we can agree on the `ActionKind` name, the runner semantics, and the dry-run preview before you write code.
-2. **Add the branch** in `lib/loop/runners/<your_kind>.ts` — implement `run({ decision, ctx })` plus a `dryRun({ decision, ctx })` that returns the proposed payload (no side effects).
-3. **Wire it into the closed switch** — add your `ActionKind` to the `ActionKind` union and a new `case` in `lib/loop/run.ts`. The compiler will tell you every site that needs updating.
-4. **Cover it with the standard harness** — a fixture in `apps/web/tests/unit/loop/runners/<your_kind>.test.ts` exercising approve / edit / dismiss paths, plus a docs entry in this file.
-5. **Open the PR** against `main` — link the issue, paste the output of `pnpm test --filter=loop`, and we'll review within a couple of days.
+> ⚠️ **Heads-up — the contributor path below is different from what older docs (and AI summarisers) say.** Loop's runner is **fully agentic**: `runDecision` (`apps/web/lib/loop/runner.ts`) POSTs a prompt to `/api/native/agent`, and the agent picks the right Composio tool. There is **no** `lib/loop/run.ts` switch and **no** `lib/loop/runners/<your_kind>.ts` slot to wire into. What you're extending is the _taxonomy_ — a `DecisionType` literal, an optional prompt branch, an optional UI affordance — not the dispatcher. The `ActionKind` union is open (it ends in `string`), so a brand-new `ActionKind` needs no TS change; `DecisionType` is closed, so a new card type does.
 
-You don't need to wait for a maintainer to assign the issue. Most first-time Loop PRs land within a week of the issue being opened. If you've spotted a smaller gap — a missing icon in the registry, a classifier op you wish existed, a clearer error message — those are great first PRs too, and they're often approved the same day.
+#### The minimum — add a new `DecisionType`
+
+To add a brand-new card type end-to-end (example: `stock_quote` — "report AAPL price + K-line, with a one-tap Buy button"):
+
+1. **`apps/web/lib/loop/types.ts`** — add the literal to the closed `DecisionType` union. The compiler will then flag every site that branches on `type` so nothing slips:
+
+   ```ts
+   export type DecisionType =
+     | "rsvp"
+     | "email_reply"
+     // ...existing 14...
+     | "stock_quote" // ← your new type
+     | "unknown";
+   ```
+
+   You do **not** need to extend the `ActionKind` union — it's open and already accepts any string.
+
+2. **`apps/web/lib/loop/runner.ts` → `buildPrompt()`** — optional. Add a branch when the agent needs kind-specific guidance. The four existing branches are: `deadline_notify` (calendar + slack), `email_reply` user-draft echo, `im_reply` user-draft echo, and the RSVP response echo. For `stock_quote`:
+
+   ```ts
+   if (decision.action?.kind === "stock_quote") {
+     parts.push(
+       "",
+       'How to execute action.kind === "stock_quote":',
+       "- Fetch the live quote + K-line from <your source>.",
+       '- Emit a single SSE `result` event with `outcome: "executed"` and `evidence.toolCallId`.',
+     );
+   }
+   ```
+
+3. **`apps/web/lib/loop/readiness.ts`** — optional. If your type can ever be `not_actionable` (e.g. outside market hours), extend `deriveReadiness` so the execution gate (#359) refuses external writes instead of silently firing. See how `rsvp` / `release_plan` are gated today.
+
+4. **`apps/web/components/loop/decision-card.tsx`** — UI affordance: which buttons render (e.g. `Buy / Skip / Dismiss`), how the chart component lays out, how the params JSON viewer shows the order form. Use the sibling files as templates: `dry-run-preview.tsx` for the dry-run panel, `decision-context-block.tsx` for extra fields, `action-params-viewer.tsx` for structured input.
+
+5. **`apps/web/tests/unit/loop/<your_kind>.test.ts`** — fixture covering approve / edit / dismiss / `not_actionable` paths. The closest patterns today are `custom-types.test.ts`, `execution-outcomes.test.ts`, and `readiness.test.ts`.
+
+6. **`apps/marketing/content/loop.mdx`** — add the row to the "Built-in card types" catalog so the next reader can find it.
+
+7. **Open the PR** against `main`. Link the issue, paste the `apps/web` test output (e.g. `pnpm --filter web test -- loop`), and a screenshot of the new card. Most first-time Loop PRs land within a week.
+
+#### Two paths contributors also ask about
+
+- **A new non-Composio signal source** (webhook, local file, websocket). Add a pull function in `apps/web/lib/loop/watcher.ts`, extend the `SignalType` union in `types.ts`, and teach the classifier prompt what the payload looks like. There's **no** `lib/loop/sources/` directory yet — drop your file at `apps/web/lib/loop/<your_source>.ts` and wire it from `watcher.ts`.
+- **A new classifier predicate op** (e.g. `contains_all`). That's a compiler-side change to `apps/web/lib/loop/classifier-rules.ts`; file an issue first so we can agree on the safe-AST semantics before you ship.
+
+You don't need to wait for a maintainer to assign the issue. If you've spotted a smaller gap — a missing icon in the registry, a clearer error message, a test for an under-covered path — those are great first PRs too, and they're often approved the same day.
 
 > 🙏 The eight rows in the "What you cannot extend" table above are not a moat — they're a snapshot of what we haven't shipped yet. Every one of them started as an issue, and we'd rather close them with you than alone.
 
 ### How the extension model stays safe
 
-The runner that actually executes approved cards is a `switch` over a closed set of `ActionKind` literals. We deliberately don't open that switch up to user-typed strings — that would mean every new type requires a code change. Instead, every custom type **must map its `actionKind` to one of the 14 built-in runners** (`email_reply`, `im_reply`, `calendar_rsvp`, `github_review`, `linear_review`, `todo`, `deadline_notify`, `release_plan`, `requirement_synthesis`, `contact_update`, `doc_update`, `brief`, `wrap`, `quiet_digest`). The classifier reads your registered list and adds the new ids to its candidate set; the UI reads it for label and icon; the runner is the only thing that doesn't change.
+Loop's runner is **fully agentic** — `runDecision` (`apps/web/lib/loop/runner.ts`) POSTs a prompt to `/api/native/agent`, and the agent picks the right Composio tool. There is no TS-level "switch" to extend; the only kind-specific code in `runner.ts` is four short `buildPrompt()` branches — `deadline_notify` (calendar + slack fallback), `email_reply` user-draft echo, `im_reply` user-draft echo, and the RSVP response echo.
+
+The "14 built-in runners" the API talks about aren't branches in code — they're **validated at the user-extension API boundary**. `apps/web/lib/loop/custom-types.ts::validateCustomType` rejects any user-registered type whose `actionKind` is not in the 14-literal `BUILTIN_ACTION_KINDS` set, so a `birthday_wish` card via `PUT /api/loop/types` is just a fresh label/icon/description that maps to one of the 14 existing runners — not a brand-new execution path. For **code contributors** the ceiling is higher: `ActionKind` is open (the union ends in `string`), so new execution kinds ARE allowed in code — see the [contributor path](#-want-to-build-it-yourself-open-a-pr) above for the actual files you'd edit.
 
 Likewise, custom channels don't introduce a new polling runtime — they wrap an existing [Composio](https://composio.dev) toolkit. If Composio supports it, Loop can read it. Each channel is a small JSON record describing **which tool, how often, what shape to extract**, and the watcher throttles per-channel so a custom pull never starves the built-in sources.
 
