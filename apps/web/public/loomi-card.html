@@ -5796,16 +5796,27 @@
             if (action === "close") {
               e.preventDefault();
               // Reuse the same hide path the × button uses (which
-              // also handles the host-side bubble restore).
-              closeCard();
+              // calls win.hide(), setIgnoreCursorEvents(true), and
+              // emits pet:close-card so the host restores the bubble).
+              hideCardWindow();
             } else if (action === "open-loop") {
               e.preventDefault();
               // Reset the compact flag so a subsequent open from
               // the bubble lands in the decision layout, not the
-              // compact surface. The host handles the actual
-              // window management.
+              // compact surface.
               compactMode = false;
               emit("pet:open-dashboard");
+              // #319 symmetry — every exit from the card must BOTH
+              // navigate AND retire the card window. The Rust
+              // `pet:open-dashboard` listener only surfaces the main
+              // window; it does NOT hide the 360×420 always-on-top
+              // card, so without this call the card stays on top of
+              // (or behind) the main window and keeps eating clicks
+              // until the next `loop:decision` flips it to the full
+              // decision layout. hideCardWindow() also emits
+              // pet:close-card so the host runs its bubble-restore
+              // logic, matching the legacy "View details" path.
+              hideCardWindow();
             }
           });
         })();
