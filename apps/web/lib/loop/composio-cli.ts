@@ -13,27 +13,29 @@
  *      user's API key is valid. Cheap (~50ms). Distinguishes "CLI missing"
  *      (ENOENT) from "CLI installed but auth broken" (non-zero exit /
  *      stderr containing "not logged in" / "auth").
- *   2. `composio dev connected-accounts list --status ACTIVE` — returns
- *      the per-account JSON the bridge needs to build `ConnectorEntry[]`.
- *      Group by `toolkit_slug`, normalize slugs (CLI returns
- *      `googlecalendar`, the Loop uses `google_calendar`), and emit one
- *      entry per toolkit with the parsed `accounts[]`.
+ *   2. `composio connections list` — returns the per-toolkit JSON the
+ *      bridge needs to build `ConnectorEntry[]`. Shape is
+ *      `{ "<toolkit_slug>": [{ status, alias, word_id, permission_group }] }`,
+ *      already grouped by toolkit. Normalize slugs (CLI returns
+ *      `googlecalendar`, the Loop uses `google_calendar`) and emit one
+ *      entry per toolkit with the parsed `accounts[]`. Does NOT require
+ *      `composio dev init` — it's a top-level command that talks to the
+ *      cloud, so the fast-path works from any cwd.
  *
- * Any failure here (CLI missing, auth broken, dev-project not initialized,
- * JSON malformed, unknown slug, network timeout) returns a structured
- * `ProbeOutcome` failure kind so `probeConnectorState` can fall through to
- * the agentic path without losing diagnostic context. The agentic path is
- * ALWAYS the fallback of last resort — when the CLI can answer, we never
- * spin up an agent runtime.
+ * Any failure here (CLI missing, auth broken, JSON malformed, unknown
+ * slug, network timeout) returns a structured `ProbeOutcome` failure kind
+ * so `probeConnectorState` can fall through to the agentic path without
+ * losing diagnostic context. The agentic path is ALWAYS the fallback of
+ * last resort — when the CLI can answer, we never spin up an agent
+ * runtime.
  *
  * CLI contract (pinned against `composio 0.2.32`):
  *   - `whoami` → exits 0 with a one-line JSON `{account_type, email, ...}`
- *   - `dev connected-accounts list --status ACTIVE` → JSON array of
- *     `{ id, toolkit_slug, status, user_id, ... }`. Requires `dev init`
- *     to have been run in the cwd; without it, the CLI returns a non-zero
- *     exit and a "No developer project configured" diagnostic — we map
- *     that to `cli_no_dev_project` (sub-kind of `cli_malformed`) so the
- *     agentic fallback can take over.
+ *   - `connections list` → JSON object keyed by toolkit slug, each value
+ *     an array of `{ status, alias, word_id, permission_group }`. `status`
+ *     is `"ACTIVE"` for healthy connections, `"EXPIRED"` / `"FAILED"` /
+ *     etc. for unusable ones. No `id` / `toolkit_slug` / `user_id` fields
+ *     — `word_id` is the canonical identifier per account.
  */
 
 import { execFile } from "node:child_process";
@@ -47,9 +49,10 @@ const execFileAsync = promisify(execFile);
 
 /**
  * Per-call timeout for a single `composio` invocation. The CLI's own
- * startup + a `whoami` round-trip rarely exceeds 5s; the list call adds
- * a network round-trip. 15s is a comfortable ceiling that still leaves
- * room for a slow first call after install (the dev project init).
+ * startup + a `whoami` round-trip rarely exceeds 5s; `connections list`
+ * adds a network round-trip. 15s is a comfortable ceiling that still
+ * leaves room for a slow first call after install (cold auth cache,
+ * network jitter).
  */
 const CLI_CALL_TIMEOUT_MS = 15 * 1000;
 
@@ -65,18 +68,16 @@ interface WhoamiResult {
 }
 
 /**
- * Shape of one entry from `composio dev connected-accounts list
- * --status ACTIVE`. Pinned against `composio 0.2.32` — fields beyond
- * this set may appear in newer CLI versions and are ignored.
+ * Shape of one entry from `composio connections list`. Pinned against
+ * `composio 0.2.32` — fields beyond this set may appear in newer CLI
+ * versions and are ignored. Note: no `id` / `toolkit_slug` / `user_id`
+ * in this version; `word_id` is the per-account identifier.
  */
 interface ConnectedAccountRaw {
-  id?: string;
+  status?: string;
   alias?: string | null;
   word_id?: string;
-  toolkit_slug?: string;
-  user_id?: string;
-  status?: string;
-  created_at?: string;
+  permission_group?: string | null;
 }
 
 /**
@@ -169,9 +170,9 @@ async function runCli(
     const result = await execImpl("composio", args, {
       timeout: CLI_CALL_TIMEOUT_MS,
       maxBuffer: 8 * 1024 * 1024,
-      // `whoami` and `dev connected-accounts list` both print JSON
-      // to stdout. Don't ask for human-readable output — we want the
-      // raw shape so the parser can stay stable across CLI versions.
+      // `whoami` and `connections list` both print JSON to stdout.
+      // Don't ask for human-readable output — we want the raw shape so
+      // the parser can stay stable across CLI versions.
       env: { ...process.env, NO_COLOR: "1" },
     });
     return { ok: true, result };
@@ -272,12 +273,10 @@ async function probeWhoami(
 }
 
 /**
- * `composio dev connected-accounts list --status ACTIVE`. Returns the
- * raw account array on success, or a structured failure when:
- *   - the dev project isn't initialized (most common — `dev init` was
- *     never run in this cwd) → `cli_no_dev_project`
- *   - the JSON can't be parsed → `cli_malformed`
- *   - any other stderr → `cli_malformed` with the stderr text
+ * `composio connections list`. Returns the raw `{ toolkit: accounts[] }`
+ * map on success, or a structured failure when the JSON can't be parsed
+ * or has the wrong shape. Top-level command — works from any cwd, no
+ * `dev init` required.
  */
 async function probeConnectedAccounts(
   execImpl?: (
@@ -286,53 +285,27 @@ async function probeConnectedAccounts(
     opts: unknown,
   ) => Promise<ExecResult>,
 ): Promise<
-  | { ok: true; accounts: ConnectedAccountRaw[] }
+  | { ok: true; accounts: Record<string, ConnectedAccountRaw[]> }
   | { ok: false; outcome: CliProbeOutcome }
 > {
-  const r = await runCli(
-    [
-      "dev",
-      "connected-accounts",
-      "list",
-      "--status",
-      "ACTIVE",
-      "--limit",
-      "1000",
-    ],
-    execImpl,
-  );
+  const r = await runCli(["connections", "list"], execImpl);
   if (!r.ok) {
     return {
       ok: false,
       outcome: {
         kind: "cli_malformed",
-        diagnostic: `connected-accounts list failed: ${r.error}`,
+        diagnostic: `connections list failed: ${r.error}`,
       },
     };
   }
   const stdout = r.result.stdout.trim();
   const stderr = r.result.stderr.trim();
-  // The "No developer project configured" diagnostic prints to stdout
-  // (not stderr) on this CLI version — intercept it before JSON.parse
-  // blows up on the error banner.
-  if (
-    /no developer project/i.test(stdout) ||
-    /no developer project/i.test(stderr)
-  ) {
-    return {
-      ok: false,
-      outcome: {
-        kind: "cli_no_dev_project",
-        error: "composio dev project not initialized — run `composio dev init`",
-      },
-    };
-  }
   if (!stdout) {
     return {
       ok: false,
       outcome: {
         kind: "cli_malformed",
-        diagnostic: `connected-accounts list returned empty stdout; stderr=${stderr.slice(0, 200)}`,
+        diagnostic: `connections list returned empty stdout; stderr=${stderr.slice(0, 200)}`,
       },
     };
   }
@@ -344,20 +317,23 @@ async function probeConnectedAccounts(
       ok: false,
       outcome: {
         kind: "cli_malformed",
-        diagnostic: `connected-accounts list stdout not JSON: ${stdout.slice(0, 200)}`,
+        diagnostic: `connections list stdout not JSON: ${stdout.slice(0, 200)}`,
       },
     };
   }
-  if (!Array.isArray(parsed)) {
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     return {
       ok: false,
       outcome: {
         kind: "cli_malformed",
-        diagnostic: `connected-accounts list not an array: ${typeof parsed}`,
+        diagnostic: `connections list not a JSON object: ${typeof parsed}`,
       },
     };
   }
-  return { ok: true, accounts: parsed as ConnectedAccountRaw[] };
+  return {
+    ok: true,
+    accounts: parsed as Record<string, ConnectedAccountRaw[]>,
+  };
 }
 
 /**
@@ -367,35 +343,48 @@ async function probeConnectedAccounts(
  * tracks gets a row, connected or not.
  */
 function buildEntries(
-  raw: ConnectedAccountRaw[],
+  raw: Record<string, ConnectedAccountRaw[]>,
   toolkits: typeof DEFAULT_TOOLKITS,
 ): ConnectorEntry[] {
-  // Bucket accounts by their normalized toolkit id. Unknown slugs are
-  // bucketed under their raw slug so the data isn't silently dropped
-  // (the UI may already render them via custom channels).
+  // `connections list` returns `{ "<toolkit_slug>": accounts[] }` —
+  // already grouped by toolkit. Bucket under the normalized id
+  // (CLI returns `googlecalendar`, Loop uses `google_calendar`).
+  // Unknown slugs are bucketed under their raw slug so the data isn't
+  // silently dropped (the UI may already render them via custom
+  // channels).
   const buckets = new Map<string, ConnectorAccount[]>();
   const slugFor = (slug: string) => SLUG_TO_LOOP_ID[slug] ?? slug;
-  for (const r of raw) {
-    if (!r.id || typeof r.id !== "string") continue;
-    const slug =
-      typeof r.toolkit_slug === "string" && r.toolkit_slug
-        ? r.toolkit_slug
-        : null;
-    if (!slug) continue;
+  for (const [slug, accounts] of Object.entries(raw)) {
+    if (!Array.isArray(accounts)) continue;
     const id = slugFor(slug);
     if (!buckets.has(id)) buckets.set(id, []);
-    const acc: ConnectorAccount = {
-      id: r.id,
-      // `alias` is the user's optional label for the account; fall back
-      // to `word_id` (e.g. `outlook_apsis-quag`) so the UI always has
-      // *something* to render. Never includes secrets.
-      label:
-        (typeof r.alias === "string" && r.alias) ||
-        (typeof r.word_id === "string" && r.word_id) ||
-        undefined,
-      healthy: r.status === "ACTIVE",
-    };
-    buckets.get(id)?.push(acc);
+    for (const r of accounts) {
+      // `word_id` is the canonical identifier per account in this CLI
+      // version (no `id` field). Skip rows without one — they're
+      // structurally broken and have no stable handle.
+      if (!r.word_id || typeof r.word_id !== "string") continue;
+      // `connections list` returns EVERY account the user has ever
+      // linked — EXPIRED / FAILED / etc. included — and the CLI
+      // doesn't expose a `--status` filter for this subcommand
+      // (compare to the old `dev connected-accounts list --status
+      // ACTIVE` which filtered server-side). The Loop only cares
+      // about ACTIVE accounts, so we drop the rest here. The
+      // `connected` flag below is still derived from whether any
+      // ACTIVE row exists, so a toolkit with 15 EXPIRED + 1 ACTIVE
+      // shows as "1 account, connected" — not "16 accounts, of which
+      // 15 are dead".
+      if (r.status !== "ACTIVE") continue;
+      const acc: ConnectorAccount = {
+        id: r.word_id,
+        // `alias` is the user's optional label for the account; fall
+        // back to `word_id` (e.g. `gmail_curve-feared`) so the UI
+        // always has *something* to render. Never includes secrets.
+        label:
+          (typeof r.alias === "string" && r.alias) || r.word_id || undefined,
+        healthy: true,
+      };
+      buckets.get(id)?.push(acc);
+    }
   }
 
   const stamp = new Date().toISOString();
@@ -447,7 +436,7 @@ function buildEntries(
  * CLI. On any failure returns a structured outcome; on success persists
  * the snapshot via `writeConnectorSnapshot` and returns `kind: "ok"`.
  *
- * The two-step pipeline (`whoami` → `dev connected-accounts list`) is
+ * The two-step pipeline (`whoami` → `connections list`) is
  * deliberately short-circuited: if `whoami` fails we don't bother with
  * the list call — both depend on a working CLI + auth.
  *
@@ -467,7 +456,7 @@ export async function probeViaCli(
 ): Promise<CliProbeOutcome> {
   const toolkits = opts.toolkits ?? DEFAULT_TOOLKITS;
   const t0 = Date.now();
-  log(`composio-cli: probing via local composio CLI`);
+  log("composio-cli: probing via local composio CLI");
 
   // Step 1 — verify CLI + auth. If this fails, the list call is
   // guaranteed to fail too, so we surface immediately. We deliberately
@@ -489,8 +478,8 @@ export async function probeViaCli(
 
   // Step 2 — fetch the active account list. Failure here means CLI is
   // installed and auth works, but we can't enumerate accounts (most
-  // commonly because `dev init` was never run). Same persistence
-  // rationale as above — caller decides.
+  // commonly the JSON shape changed). Same persistence rationale as
+  // above — caller decides.
   const list = await probeConnectedAccounts(opts.execImpl);
   if (!list.ok) {
     log(`composio-cli: list outcome=${list.outcome.kind}`);
@@ -498,10 +487,16 @@ export async function probeViaCli(
   }
 
   const entries = buildEntries(list.accounts, toolkits);
+  // Total active accounts across all toolkits — used in the log line so
+  // operators can sanity-check the snapshot size at a glance.
+  const totalAccounts = Object.values(list.accounts).reduce(
+    (n, arr) => n + (Array.isArray(arr) ? arr.length : 0),
+    0,
+  );
   try {
     writeConnectorSnapshot(entries);
     log(
-      `composio-cli: ok — persisted ${entries.length} connector entries (${list.accounts.length} active account(s)) in ${Date.now() - t0}ms`,
+      `composio-cli: ok — persisted ${entries.length} connector entries (${totalAccounts} active account(s)) in ${Date.now() - t0}ms`,
     );
   } catch (e) {
     // Persistence is best-effort — return the entries anyway so the
