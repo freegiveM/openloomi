@@ -18,9 +18,8 @@ use crate::constants;
 pub const BUBBLE_W: f64 = 320.0;
 /// Logical (CSS) height of the bubble window. Matches `--bubble-h` in
 /// `loomi-bubble.html`. 84px to fit a 2-line speech + the downward
-/// tail + a small overlap with the blue dot; the dot's CSS `bottom: 4px`
-/// keeps it near the window's bottom edge so the tail tip still anchors
-/// to the pet (~7px above pet top with `PET_AUX_GAP = 4`).
+/// tail with a small overlap onto the pet's top so the tail tip still
+/// anchors visually (~7px above pet top with `PET_AUX_GAP = 4`).
 pub const BUBBLE_H: f64 = 84.0;
 
 static BUBBLE_APP_HANDLE: OnceLock<Mutex<Option<AppHandle>>> = OnceLock::new();
