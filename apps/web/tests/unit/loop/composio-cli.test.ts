@@ -10,23 +10,30 @@
  * the CLI can't answer. These tests pin:
  *
  *   1. `kind: "ok"` is returned when both `whoami` and
- *      `dev connected-accounts list --status ACTIVE` succeed; entries
- *      are persisted to the on-disk cache.
+ *      `connections list` succeed; entries are persisted to the on-disk
+ *      cache.
  *   2. `kind: "cli_not_found"` is returned when the spawn-level call
  *      fails with ENOENT (binary not on `$PATH`).
  *   3. `kind: "cli_unauthorized"` is returned when `whoami` exits with
  *      a "not logged in" stderr (or its stdout is non-JSON).
- *   4. `kind: "cli_no_dev_project"` is returned when the list call
- *      surfaces the CLI's "No developer project configured" banner
- *      (most common failure mode on a fresh install).
- *   5. `kind: "cli_malformed"` is returned when the list call's stdout
- *      isn't parseable JSON.
- *   6. The slug normalization (`googlecalendar` → `google_calendar`)
+ *   4. `kind: "cli_malformed"` is returned when the list call's stdout
+ *      isn't parseable JSON, or when it returns an array instead of the
+ *      per-toolkit object the parser expects.
+ *   5. The slug normalization (`googlecalendar` → `google_calendar`)
  *      produces the canonical `ConnectorEntry.id` the Loop expects.
- *   7. The probe never persists `lastProbeError` on its own — the
+ *   6. The probe never persists `lastProbeError` on its own — the
  *      caller (`probeConnectorState`) is responsible for diagnostic
  *      writes, because a successful agentic fallback would overwrite
  *      the CLI diagnostic via `writeConnectorSnapshot` anyway.
+ *
+ * Note: the previous CLI invocation was `dev connected-accounts list
+ * --status ACTIVE`, which required `composio dev init` to have been run
+ * in the cwd. Switching to `connections list` (top-level command, no dev
+ * project required) eliminates the `cli_no_dev_project` failure mode
+ * entirely — the CLI is reachable from any cwd — so that test was
+ * removed. CLI shape changed from a flat array of accounts to an object
+ * keyed by toolkit slug, with `word_id` replacing `id` as the per-account
+ * identifier.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -139,19 +146,13 @@ const whoamiSuccess = {
 };
 
 const listSuccess = (stdoutJson: unknown) => ({
-  match: (c: ExecCall) =>
-    c.args[0] === "dev" && c.args[1] === "connected-accounts",
+  match: (c: ExecCall) => c.args[0] === "connections" && c.args[1] === "list",
   resolve: { stdout: JSON.stringify(stdoutJson), stderr: "" },
 });
 
-const listNoDevProject = {
-  match: (c: ExecCall) =>
-    c.args[0] === "dev" && c.args[1] === "connected-accounts",
-  resolve: {
-    stdout:
-      "💥  Error  • No developer project configured for this directory. Run `composio dev init`.",
-    stderr: "",
-  },
+const listMalformed = {
+  match: (c: ExecCall) => c.args[0] === "connections" && c.args[1] === "list",
+  resolve: { stdout: "<html>nope</html>", stderr: "" },
 };
 
 const enoentError = (args: string[]) => ({
@@ -171,21 +172,24 @@ describe("probeViaCli happy path", () => {
   it("returns ok with parsed entries and persists the snapshot", async () => {
     const exec = makeExec([
       whoamiSuccess,
-      listSuccess([
-        {
-          id: "ca_aaa",
-          alias: "timi@gmail.com",
-          toolkit_slug: "gmail",
-          status: "ACTIVE",
-        },
-        {
-          id: "ca_bbb",
-          alias: null,
-          word_id: "googlecalendar_walrus-situla",
-          toolkit_slug: "googlecalendar",
-          status: "ACTIVE",
-        },
-      ]),
+      listSuccess({
+        gmail: [
+          {
+            status: "ACTIVE",
+            alias: "timi@gmail.com",
+            word_id: "gmail_aaa",
+            permission_group: null,
+          },
+        ],
+        googlecalendar: [
+          {
+            status: "ACTIVE",
+            alias: null,
+            word_id: "googlecalendar_walrus-situla",
+            permission_group: null,
+          },
+        ],
+      }),
     ]);
 
     const outcome = await probeViaCli({ execImpl: exec });
@@ -198,6 +202,7 @@ describe("probeViaCli happy path", () => {
     // gmail: alias used as label, one account, healthy.
     expect(byId.get("gmail")?.connected).toBe(true);
     expect(byId.get("gmail")?.accountCount).toBe(1);
+    expect(byId.get("gmail")?.accounts?.[0].id).toBe("gmail_aaa");
     expect(byId.get("gmail")?.accounts?.[0].label).toBe("timi@gmail.com");
     expect(byId.get("gmail")?.accounts?.[0].healthy).toBe(true);
 
@@ -220,6 +225,47 @@ describe("probeViaCli happy path", () => {
     expect(writeConnectorSnapshot).toHaveBeenCalledTimes(1);
     // Probe error was NOT persisted — happy path leaves the cache clean.
     expect(writeProbeError).not.toHaveBeenCalled();
+  });
+
+  it("filters non-ACTIVE accounts (EXPIRED/FAILED) out of the snapshot", async () => {
+    // `connections list` returns EVERY account the user has ever linked,
+    // including EXPIRED / FAILED — the Loop only cares about ACTIVE.
+    // A toolkit with 2 EXPIRED + 1 ACTIVE should report as "1 connected"
+    // (not "3 accounts, of which 2 are dead").
+    const exec = makeExec([
+      whoamiSuccess,
+      listSuccess({
+        gmail: [
+          {
+            status: "EXPIRED",
+            alias: null,
+            word_id: "gmail_dead-1",
+            permission_group: null,
+          },
+          {
+            status: "EXPIRED",
+            alias: null,
+            word_id: "gmail_dead-2",
+            permission_group: null,
+          },
+          {
+            status: "ACTIVE",
+            alias: "alive@gmail.com",
+            word_id: "gmail_alive",
+            permission_group: null,
+          },
+        ],
+      }),
+    ]);
+
+    const outcome = await probeViaCli({ execImpl: exec });
+    expect(outcome.kind).toBe("ok");
+    if (outcome.kind !== "ok") return;
+
+    const gmail = outcome.entries.find((e) => e.id === "gmail");
+    expect(gmail?.connected).toBe(true);
+    expect(gmail?.accountCount).toBe(1);
+    expect(gmail?.accounts?.[0].id).toBe("gmail_alive");
   });
 });
 
@@ -277,41 +323,60 @@ describe("probeViaCli when CLI is unauthorized", () => {
 });
 
 // ---------------------------------------------------------------------------
-// CLI present + authed but dev project not initialized
-// ---------------------------------------------------------------------------
-describe("probeViaCli when dev project is missing", () => {
-  it("returns cli_no_dev_project when list surfaces the CLI's banner", async () => {
-    const exec = makeExec([whoamiSuccess, listNoDevProject]);
-
-    const outcome = await probeViaCli({ execImpl: exec });
-    expect(outcome.kind).toBe("cli_no_dev_project");
-    if (outcome.kind !== "cli_no_dev_project") return;
-    expect(outcome.error).toMatch(/dev init/);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// CLI present + authed + dev project but list output is malformed
+// CLI present + authed but list output is malformed
 // ---------------------------------------------------------------------------
 describe("probeViaCli on malformed list output", () => {
   it("returns cli_malformed when the list stdout isn't JSON", async () => {
-    const exec = makeExec([
-      whoamiSuccess,
-      {
-        match: (c) => c.args[0] === "dev" && c.args[1] === "connected-accounts",
-        resolve: { stdout: "<html>nope</html>", stderr: "" },
-      },
-    ]);
+    const exec = makeExec([whoamiSuccess, listMalformed]);
 
     const outcome = await probeViaCli({ execImpl: exec });
     expect(outcome.kind).toBe("cli_malformed");
   });
 
-  it("returns cli_malformed when the list stdout is JSON but not an array", async () => {
-    const exec = makeExec([whoamiSuccess, listSuccess({ not: "an array" })]);
+  it("returns cli_malformed when the list stdout is JSON but not an object", async () => {
+    // The new `connections list` shape is a per-toolkit object keyed by
+    // slug, NOT a flat array. An array response (or any non-object) is
+    // a `cli_malformed` outcome.
+    const exec = makeExec([whoamiSuccess, listSuccess([{ not: "an object" }])]);
 
     const outcome = await probeViaCli({ execImpl: exec });
     expect(outcome.kind).toBe("cli_malformed");
+  });
+
+  it("silently drops toolkits whose value is not an array (tolerant parse)", async () => {
+    // The parser is tolerant — a malformed value for one toolkit
+    // (e.g. the CLI shipped a string instead of an account array) does
+    // NOT poison the whole snapshot. The toolkit just renders as
+    // disconnected (no accounts) and the rest of the catalog parses
+    // normally. This is by design: a single broken row shouldn't drop
+    // every other connector the user has authorized.
+    const exec = makeExec([
+      whoamiSuccess,
+      listSuccess({
+        gmail: "not an array",
+        slack: [
+          {
+            status: "ACTIVE",
+            alias: null,
+            word_id: "slack_alive",
+            permission_group: null,
+          },
+        ],
+      }),
+    ]);
+
+    const outcome = await probeViaCli({ execImpl: exec });
+    expect(outcome.kind).toBe("ok");
+    if (outcome.kind !== "ok") return;
+
+    const gmail = outcome.entries.find((e) => e.id === "gmail");
+    expect(gmail?.connected).toBe(false);
+    expect(gmail?.accountCount).toBe(0);
+
+    const slack = outcome.entries.find((e) => e.id === "slack");
+    expect(slack?.connected).toBe(true);
+    expect(slack?.accountCount).toBe(1);
+    expect(slack?.accounts?.[0].id).toBe("slack_alive");
   });
 });
 
@@ -321,9 +386,11 @@ describe("probeViaCli on malformed list output", () => {
 // ---------------------------------------------------------------------------
 describe("probeViaCli diagnostic-write contract", () => {
   it("never writes lastProbeError — only the caller (probeConnectorState) decides", async () => {
-    // Force a `cli_no_dev_project` outcome (CLI + auth works, list
-    // can't run). This is the most common production failure.
-    const exec = makeExec([whoamiSuccess, listNoDevProject]);
+    // Force a `cli_malformed` outcome (CLI + auth works, list returns
+    // something the parser can't read). This pins that the CLI probe
+    // never persists a diagnostic of its own — the caller's
+    // `probeConnectorState` decides what to write.
+    const exec = makeExec([whoamiSuccess, listMalformed]);
     await probeViaCli({ execImpl: exec });
     expect(writeProbeError).not.toHaveBeenCalled();
   });
@@ -339,13 +406,16 @@ describe("probeViaCli file-write seam", () => {
   it("only writes via writeConnectorSnapshot — never directly to disk", async () => {
     const exec = makeExec([
       whoamiSuccess,
-      listSuccess([
-        {
-          id: "ca_a",
-          toolkit_slug: "gmail",
-          status: "ACTIVE",
-        },
-      ]),
+      listSuccess({
+        gmail: [
+          {
+            status: "ACTIVE",
+            alias: null,
+            word_id: "gmail_a",
+            permission_group: null,
+          },
+        ],
+      }),
     ]);
     await probeViaCli({ execImpl: exec });
 

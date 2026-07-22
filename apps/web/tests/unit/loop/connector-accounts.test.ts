@@ -13,6 +13,15 @@ const invokeAgentPrompt = vi.fn();
 const writeConnectorSnapshot = vi.fn();
 const writeProbeError = vi.fn();
 
+// Mock the CLI fast-path so the bridge always falls through to the
+// agentic path these tests are pinning. Without this, the real `composio`
+// CLI runs on the host and short-circuits the probe with `kind: "ok"`,
+// which silently bypasses every mocked `invokeAgentPrompt` assertion.
+const probeViaCli = vi.fn();
+vi.mock("@/lib/loop/composio-cli", () => ({
+  probeViaCli: (...args: unknown[]) => probeViaCli(...args),
+}));
+
 vi.mock("@/lib/loop/runner", () => ({
   invokeAgentPrompt: (...args: unknown[]) => invokeAgentPrompt(...args),
 }));
@@ -34,6 +43,14 @@ beforeEach(() => {
   invokeAgentPrompt.mockReset();
   writeConnectorSnapshot.mockReset();
   writeProbeError.mockReset();
+  // Default: CLI fast-path is unavailable on the test host (we don't
+  // want tests to depend on whether the user has `composio` installed
+  // locally). Force the bridge to fall through to the agentic path.
+  probeViaCli.mockReset();
+  probeViaCli.mockResolvedValue({
+    kind: "cli_not_found",
+    error: "test mock — composio-cli fast-path disabled",
+  });
 });
 
 afterEach(() => {
