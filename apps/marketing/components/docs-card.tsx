@@ -68,6 +68,11 @@ export const OpenLoomiDocsCards = (): JSX.Element => {
       description: "Sign up, connect platforms, and get started",
     },
     {
+      id: "glossary",
+      title: "Glossary",
+      description: "Key terms and concepts",
+    },
+    {
       id: "attention-agent",
       title: "Attention Agent",
       description:
@@ -134,11 +139,6 @@ export const OpenLoomiDocsCards = (): JSX.Element => {
       id: "benchmark",
       title: "Benchmarks",
       description: "LoCoMo, LongMemEval, and Aloomi Harness performance data",
-    },
-    {
-      id: "glossary",
-      title: "Glossary",
-      description: "Key terms and concepts",
     },
     {
       id: "use-cases",
