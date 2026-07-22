@@ -17,6 +17,7 @@ Static reference. Lists all slash commands in the `openloomi:` namespace.
 | `/openloomi:hooks [install\|uninstall\|status]` | Manage the optional hook bundle                                 |
 | `/openloomi:loop`                               | Loop dashboard snapshot (doorway into `openloomi-loop`)         |
 | `/openloomi:memory <query>`                     | Search memory + KB + insights (doorway into `openloomi-memory`) |
+| `/openloomi:tour`                               | Guided first-run walkthrough (doorway into `openloomi-tour`)    |
 | `/openloomi:help`                               | This help                                                       |
 
 None of these commands handle AI provider API keys. AI provider

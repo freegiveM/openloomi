@@ -1152,19 +1152,27 @@ async function probeClaudeNativeRuntime(aiProvider) {
   const active = defaultAgent === CLAUDE_NATIVE_PROVIDER;
 
   if (!active) {
+    // The native Claude runtime was intentionally skipped: the configured
+    // `defaultAgent` is something other than `claude` (e.g. `codex`) or no
+    // agent is configured at all. The host's `claude` CLI may be perfectly
+    // healthy — we just don't probe it because it isn't the configured
+    // execution provider. Fields are `null` (not `false`) so consumers can
+    // distinguish "not probed / not applicable" from "probed and failed",
+    // and the reason strings are neutral so they don't read as errors at
+    // the top-level setup-status surface.
     return {
       checked: false,
-      available: false,
-      authenticated: false,
+      available: null,
+      authenticated: null,
       active: false,
-      ready: false,
+      ready: null,
       reason: defaultAgent
-        ? "CLAUDE_RUNTIME_INACTIVE"
-        : "DEFAULT_AGENT_UNAVAILABLE",
+        ? "NATIVE_RUNTIME_NOT_SELECTED"
+        : "NATIVE_RUNTIME_NOT_CONFIGURED",
       defaultAgent,
-      cliPathPresent: false,
+      cliPathPresent: null,
       cliPathSource: null,
-      versionPresent: false,
+      versionPresent: null,
       probes: {},
     };
   }
@@ -1326,18 +1334,31 @@ function providerStatusFields(aiProvider, nativeRuntime) {
     executionProviderSource: executionProvider.source,
     nativeRuntimeActive: !!nativeRuntime?.active,
     nativeRuntimeProvider: nativeRuntime?.defaultAgent || null,
-    nativeRuntimeStatus: nativeRuntime?.reason || null,
+    // Only surface the runtime's reason at the top level when the probe
+    // actually ran (`checked: true`). When the runtime was skipped because
+    // the user picked a different default agent, the reason is
+    // informational and would mislead users (e.g. surface
+    // "CLAUDE_RUNTIME_INACTIVE" / "DEFAULT_AGENT_UNAVAILABLE" when nothing
+    // is wrong with their setup — they just chose Codex as the execution
+    // provider and Claude CLI status isn't on the critical path).
+    nativeRuntimeStatus: nativeRuntime?.checked
+      ? nativeRuntime?.reason || null
+      : null,
     nativeRuntime: {
-      checked: !!nativeRuntime?.checked,
-      available: !!nativeRuntime?.available,
-      authenticated: !!nativeRuntime?.authenticated,
+      // Pass `null` through as `null` instead of `!!`-coercing to `false`
+      // so consumers can distinguish "not probed / not applicable" from
+      // "probed and failed". `probeClaudeNativeRuntime` already returns
+      // `null` for fields it didn't probe.
+      checked: nativeRuntime?.checked ?? null,
+      available: nativeRuntime?.available ?? null,
+      authenticated: nativeRuntime?.authenticated ?? null,
       active: !!nativeRuntime?.active,
-      ready: !!nativeRuntime?.ready,
+      ready: nativeRuntime?.ready ?? null,
       reason: nativeRuntime?.reason || null,
       defaultAgent: nativeRuntime?.defaultAgent || null,
-      cliPathPresent: !!nativeRuntime?.cliPathPresent,
+      cliPathPresent: nativeRuntime?.cliPathPresent ?? null,
       cliPathSource: nativeRuntime?.cliPathSource || null,
-      versionPresent: !!nativeRuntime?.versionPresent,
+      versionPresent: nativeRuntime?.versionPresent ?? null,
       probes: nativeRuntime?.probes || {},
     },
   };

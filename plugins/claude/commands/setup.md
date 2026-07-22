@@ -106,11 +106,94 @@ The bridge's stdout output is authoritative. Never invoke the platform
 install script (`setup.{macos,linux,windows}.*`) directly — only the
 bridge may run it, and only after explicit y/N consent.
 
-## Post-`ready` guidance
+## Post-`ready` walkthrough
 
-When `setup: ready` fires, the wizard is done. Do **not** improvise a
-"Next: run X" hint — pick from the closed list below, or say nothing
-beyond the audit table.
+When `setup: ready` fires, the wizard is done. Print the canonical
+post-setup hand-off so the user knows what they just installed and what
+to try next. The bridge JSON above is for machines; this section is the
+human-facing surface and supersedes the earlier "do not improvise" rule
+with a richer, scripted intro + tour. Print all four parts on the very
+first `setup: ready` emission. On later re-runs you may abbreviate to
+the audit table plus the "where to go next" line, but never skip the
+intro.
+
+### 1. One-paragraph intro
+
+> OpenLoomi is your **local-first AI coworker**. It runs as a desktop
+> app on your Mac, connects to the tools you authorise (Gmail, Slack,
+> GitHub, Google Calendar, Notion, Linear, etc. via Composio, plus
+> native bots for Telegram / WhatsApp / iMessage / Feishu / DingTalk /
+> QQ / WeChat), watches the signals that come in, and surfaces daily
+> decisions as cards on the desktop pet (Loomi the fox). You tap
+> **Approve** and the action runs through the same connector — the
+> result is written back into Memory so the next judgement is sharper.
+> Nothing leaves your machine unless you opt in to a Connector.
+
+### 2. Where things live (orientation)
+
+| Surface             | Where                                                                             |
+| ------------------- | --------------------------------------------------------------------------------- |
+| Desktop app         | `/Applications/OpenLoomi.app`                                                     |
+| Local HTTP API      | `http://localhost:3414` (fallback `3515`)                                         |
+| Guest bearer token  | `~/.openloomi/token` (base64-encoded JWT)                                         |
+| Claude runtime auth | Native `claude` CLI (`claude auth login`); OpenLoomi runtime probes it on demand  |
+| Memory files        | `~/.openloomi/data/memory/{people,projects,notes,strategy,chats,channels}/`       |
+| Knowledge Base      | `GET /api/rag/documents`                                                          |
+| Audit log           | `GET /api/audit/...`                                                              |
+| Pet widget          | Watcher polls `~/.openloomi/loop/decisions.json` every 2s                         |
+| Hooks (optional)    | `/openloomi:hooks install` wires Stop / PreToolUse / PostToolUse into Claude Code |
+
+### 3. The five-step first tour
+
+After `setup: ready`, suggest this exact sequence. Each step is a
+single command plus a one-line description of what the user will see.
+Skip steps the user has already done — but always emit step 1 (health
+check) so the user knows what "still ready" looks like.
+
+| #   | What                  | Command                                                                 | What you'll see                                                                                                                                                             |
+| --- | --------------------- | ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | **Health check**      | `/openloomi:status`                                                     | Same audit table you just got. Confirms the native Claude CLI runtime is still authenticated.                                                                               |
+| 2   | **Pet reacts**        | `/openloomi:pet happy`                                                  | Loomi the fox flips to the happy sprite. Try `thinking`, `working`, `juggling` to see the rest of the 7-state API set.                                                      |
+| 3   | **Connect a tool**    | Native: `/openloomi:connect telegram` _or_ OAuth: `composio link gmail` | A QR scan or browser OAuth opens; once you approve, the account shows in `list-accounts`.                                                                                   |
+| 4   | **Run one Loop tick** | `/openloomi:loop refresh` then `/openloomi:loop tick`                   | Loop pulls signals, classifies them, and enqueues decisions. Then `GET /api/loop/decisions?status=pending` to see the cards. Approve with `POST /api/loop/action/schedule`. |
+| 5   | **Seed Memory**       | `/openloomi:memory "about me"` (then `add-memory` for files)            | A real `.md` shows up in `~/.openloomi/data/memory/people/`. Future Loop ticks have grounding context.                                                                      |
+
+Optional extensions after step 4 (skip if the user is new):
+
+- **Custom Loop channel** — register your own signal source
+  (`PUT /api/loop/channels` with `toolkit` + `toolSlug`).
+- **Classifier rule** — deterministic overrides for known signal
+  patterns (`PUT /api/loop/classifier-rules`).
+- **Custom decision type** — your own `DecisionType` icon + label
+  (`PUT /api/loop/types`).
+
+If the user asks for a hands-on walkthrough rather than just a
+recommendation, hand off to `/openloomi:tour` — it runs the same five
+steps with live probes and stops between each one for the user to
+react.
+
+### 4. Quick reference card
+
+End with this closed list so the user doesn't have to memorise URLs.
+
+| Want to…              | Run                                                                                                                                      |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| See health            | `/openloomi:status`                                                                                                                      |
+| Flip the pet          | `/openloomi:pet <state>`                                                                                                                 |
+| Today's LLM usage     | `/openloomi:usage`                                                                                                                       |
+| List connectors       | `composio connections list` _or_ `node ${CLAUDE_PLUGIN_ROOT}/skills/openloomi-connectors/scripts/openloomi-connectors.cjs list-accounts` |
+| Search memory         | `/openloomi:memory "<query>"`                                                                                                            |
+| Run a Loop tick       | `/openloomi:loop tick`                                                                                                                   |
+| See pending decisions | `GET /api/loop/decisions?status=pending`                                                                                                 |
+| Approve a decision    | `POST /api/loop/action/schedule {decision_id, action:"run"}`                                                                             |
+| Install hooks         | `/openloomi:hooks install`                                                                                                               |
+| Archive old data      | `/openloomi:archive`                                                                                                                     |
+
+### 5. Hand-off
+
+Finish with: "Run `/openloomi:tour` from this Claude session for a
+guided walkthrough, or pick a number above and I'll run that step for
+you."
 
 ## After `api_not_ready`
 

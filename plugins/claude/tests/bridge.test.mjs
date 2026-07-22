@@ -753,6 +753,77 @@ test("setup-status treats a user-saved anthropic_compatible row as the AI provid
   });
 });
 
+test("setup-status skips native Claude probe when defaultAgent is not claude", async () => {
+  // When the runtime reports `defaultAgent: "codex"` (or any non-claude
+  // agent), the bridge must NOT surface the native Claude CLI status as
+  // a top-level error. The probe is intentionally skipped because
+  // Claude isn't the configured execution provider — its CLI may be
+  // perfectly healthy. Top-level `nativeRuntimeStatus` should be `null`,
+  // and the nested runtime fields should be `null` (not `false`) to
+  // signal "not probed / not applicable" vs "probed and failed".
+  await withClaHomeAsync(async (env) => {
+    const fakeOpenLoomi = createFakeOpenLoomiBin(join(env.HOME, "fake-bin"), {
+      name: "openloomi",
+    });
+    const fakeClaude = createFakeClaudeCli(join(env.HOME, "fake-claude"), {
+      authenticated: true, // proves the probe would have succeeded if asked
+    });
+
+    await withPreferencesServer(
+      aiPreferencesPayload({
+        // Override the mock so the runtime reports a non-claude agent
+        // and a direct API config (mirrors a user whose
+        // `OPENLOOMI_AGENT_PROVIDER=codex` is paired with a saved
+        // anthropic_compatible provider row).
+        defaultAgent: "codex",
+        settings: [
+          {
+            providerType: "anthropic_compatible",
+            baseUrl: "https://example.com",
+            model: "claude-sonnet-5",
+            enabled: true,
+            hasApiKey: true,
+          },
+        ],
+      }),
+      async (baseUrl) => {
+        const j = await runJsonAsync(["setup-status"], {
+          ...env,
+          PATH: makePath(),
+          OPENLOOMI_BIN: fakeOpenLoomi.binPath,
+          OPENLOOMI_AUTH_TOKEN: "mock-bearer",
+          OPENLOOMI_BASE_URL: baseUrl,
+          CLAUDE_CODE_PATH: fakeClaude,
+        });
+
+        // Top-level: status string must be empty, not "CLAUDE_RUNTIME_INACTIVE".
+        assert.equal(j.nativeRuntimeStatus, null);
+        assert.equal(j.nativeRuntimeActive, false);
+        assert.equal(j.nativeRuntimeProvider, "codex");
+
+        // Nested runtime block: probe wasn't run; fields are `null`,
+        // not `false`. Reason is neutral, not error-shaped.
+        assert.equal(j.nativeRuntime.checked, false);
+        assert.equal(j.nativeRuntime.available, null);
+        assert.equal(j.nativeRuntime.authenticated, null);
+        assert.equal(j.nativeRuntime.active, false);
+        assert.equal(j.nativeRuntime.ready, null);
+        assert.equal(j.nativeRuntime.cliPathPresent, null);
+        assert.equal(j.nativeRuntime.versionPresent, null);
+        assert.equal(j.nativeRuntime.reason, "NATIVE_RUNTIME_NOT_SELECTED");
+        assert.equal(j.nativeRuntime.defaultAgent, "codex");
+
+        // System remains fully ready because the runtime's
+        // direct_api_configured path is independent of the Claude probe.
+        assert.equal(j.aiProviderConfigured, true);
+        assert.equal(j.executionProviderReady, true);
+        assert.equal(j.ready, true);
+        assert.equal(j.reason, "READY");
+      },
+    );
+  });
+});
+
 test("setup-status exposes canGuestLogin=false when API is unreachable", () => {
   // Skip on hosts where OpenLoomi is already installed — its presence
   // makes the API reachable for real and would flip canGuestLogin to true.
