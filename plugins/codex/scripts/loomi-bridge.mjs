@@ -3800,6 +3800,84 @@ async function launchDesktopApp({ appPath } = {}) {
 //   reason: "user_override"  - set to a non-codex value, we left it alone
 //   reason: "unsupported"    - platform has no auto-write path (Windows)
 async function ensureCodexRuntimeEnvForLaunch() {
+  // Side-band: OPENLOOMI_LAUNCH_MODE=plugin. Run UNCONDITIONALLY —
+  // before any of the early-return paths below — so the side-band
+  // write is re-applied on every setup, not only on the first one
+  // where the main provider env needed writing. Without this, a
+  // system whose launchd domain was cleared between setups (or
+  // whose provider was set to codex by a separate `set-codex-runtime-
+  // env` call) would never get the side-band re-applied, and the
+  // desktop would lose the pet-click → compact-card routing.
+  //
+  // The desktop reads this to route pet left-clicks to the compact
+  // status card instead of the main dashboard — a Codex-initiated
+  // launch would otherwise surface two dialogs (pet + main) for the
+  // same chat because the plugin already owns the conversation.
+  // `applyRuntimeEnvChange` is key-agnostic so we just call it again
+  // with the new key — no helper-level refactor needed.
+  //
+  // This is non-fatal on purpose: the desktop still works without
+  // it (it just falls back to the existing standalone behaviour). We
+  // log a warning but don't promote the failure to a launch-blocker.
+  // We capture the result (or a synthesised failure on throw) into
+  // `wrappedLaunchMode` and surface it on every return envelope so
+  // `launchDesktopApp`'s `env` field carries it through to the setup
+  // state machine's `launchModeEnv` audit field. Previously this
+  // side-band was only visible via console.warn, leaving operators
+  // blind when reading `steps[]`.
+  let launchModeResult = null;
+  try {
+    launchModeResult = await applyRuntimeEnvChange({
+      key: "OPENLOOMI_LAUNCH_MODE",
+      value: "plugin",
+      persist: false,
+    });
+    if (!launchModeResult.ok) {
+      console.warn(
+        "[loomi-bridge] failed to set OPENLOOMI_LAUNCH_MODE=plugin; " +
+          "pet click will fall back to standalone behaviour",
+        launchModeResult,
+      );
+    }
+  } catch (launchModeError) {
+    console.warn(
+      "[loomi-bridge] threw while setting OPENLOOMI_LAUNCH_MODE=plugin; " +
+        "pet click will fall back to standalone behaviour",
+      launchModeError,
+    );
+    // Synthesise a failure-shaped result so downstream readers
+    // (notably `launchDesktopApp`'s `env` field) can surface the
+    // throw uniformly with non-throw failures. Mirrors the
+    // {ok:false, ...} envelope that `applyRuntimeEnvChange` itself
+    // returns on a non-zero exit.
+    launchModeResult = {
+      ok: false,
+      skipped: false,
+      dryRun: false,
+      platform: process.platform,
+      key: "OPENLOOMI_LAUNCH_MODE",
+      value: "plugin",
+      before: null,
+      after: null,
+      plan: null,
+      executed: [],
+      error: {
+        stage: "exception",
+        exitCode: null,
+        stderr: String(
+          launchModeError?.message || launchModeError || "unknown",
+        ),
+      },
+    };
+  }
+  // Wrap with `reason` so the side-band result mirrors the main
+  // provider result shape. Lets the setup state machine record both
+  // env writes with the same `{ ok, key, after, reason }` shape —
+  // see `providerEnv` and `launchModeEnv` in the launch record.
+  const wrappedLaunchMode = launchModeResult.ok
+    ? { ...launchModeResult, reason: "applied" }
+    : { ...launchModeResult, reason: "failed" };
+
   if (process.platform === "win32") {
     // Windows has no safe auto-write path; surface manual steps instead.
     return {
@@ -3815,6 +3893,7 @@ async function ensureCodexRuntimeEnvForLaunch() {
       error: null,
       plan: null,
       executed: [],
+      launchMode: wrappedLaunchMode,
     };
   }
 
@@ -3836,6 +3915,7 @@ async function ensureCodexRuntimeEnvForLaunch() {
         error: null,
         plan: null,
         executed: [],
+        launchMode: wrappedLaunchMode,
       };
     }
     return {
@@ -3851,6 +3931,7 @@ async function ensureCodexRuntimeEnvForLaunch() {
       error: null,
       plan: null,
       executed: [],
+      launchMode: wrappedLaunchMode,
     };
   }
 
@@ -3860,39 +3941,11 @@ async function ensureCodexRuntimeEnvForLaunch() {
     persist: true,
   });
 
-  // Side-band: also write OPENLOOMI_LAUNCH_MODE=plugin so the freshly-
-  // spawned desktop app routes pet left-clicks to the compact status
-  // card instead of the main dashboard. Without this, a Codex-initiated
-  // launch would surface two dialogs (pet + main) for the same chat
-  // because the plugin already owns the chat conversation in the
-  // terminal. `applyRuntimeEnvChange` is key-agnostic so we just call
-  // it again with the new key — no helper-level refactor needed.
-  //
-  // This is non-fatal on purpose: the desktop still works without it
-  // (it just falls back to the existing standalone behaviour). We log
-  // a warning but don't promote the failure to a launch-blocker.
-  try {
-    const launchModeResult = await applyRuntimeEnvChange({
-      key: "OPENLOOMI_LAUNCH_MODE",
-      value: "plugin",
-      persist: false,
-    });
-    if (!launchModeResult.ok) {
-      console.warn(
-        "[loomi-bridge] failed to set OPENLOOMI_LAUNCH_MODE=plugin; " +
-          "pet click will fall back to standalone behaviour",
-        launchModeResult,
-      );
-    }
-  } catch (launchModeError) {
-    console.warn(
-      "[loomi-bridge] threw while setting OPENLOOMI_LAUNCH_MODE=plugin; " +
-        "pet click will fall back to standalone behaviour",
-      launchModeError,
-    );
-  }
-
-  return { ...result, reason: result.ok ? "applied" : "failed" };
+  return {
+    ...result,
+    reason: result.ok ? "applied" : "failed",
+    launchMode: wrappedLaunchMode,
+  };
 }
 
 // Polls the local OpenLoomi HTTP API until it answers 2xx/3xx/4xx (any
@@ -4387,15 +4440,21 @@ function codexRuntimeInfo() {
 const RUNTIME_ENV_KEY = "OPENLOOMI_AGENT_PROVIDER";
 const LINUX_ENV_DIR = ".config/environment.d";
 const LINUX_ENV_FILE = "openloomi-codex.conf";
-const DARWIN_LAUNCH_AGENT_LABEL = "com.openloomi.codex-runtime-env";
+// LaunchAgent label is per-key so multiple OpenLoomi env vars can each
+// survive logout/reboot without overwriting each other's plist.
+//   OPENLOOMI_AGENT_PROVIDER  -> com.openloomi.codex-runtime-env.OPENLOOMI_AGENT_PROVIDER
+//   OPENLOOMI_LAUNCH_MODE     -> com.openloomi.codex-runtime-env.OPENLOOMI_LAUNCH_MODE
+function darwinLaunchAgentLabel(key) {
+  return `com.openloomi.codex-runtime-env.${key}`;
+}
 
-// ~/Library/LaunchAgents/com.openloomi.codex-runtime-env.plist
-function darwinLaunchAgentPath() {
+// ~/Library/LaunchAgents/com.openloomi.codex-runtime-env.<KEY>.plist
+function darwinLaunchAgentPath(key) {
   return path.join(
     expandHome("~"),
     "Library",
     "LaunchAgents",
-    `${DARWIN_LAUNCH_AGENT_LABEL}.plist`,
+    `${darwinLaunchAgentLabel(key)}.plist`,
   );
 }
 
@@ -4439,12 +4498,29 @@ function buildLaunchAgentPlist({ label, key, value }) {
 }
 
 function parseSetRuntimeEnvFlags(args) {
-  const out = { value: "codex", unset: false, dryRun: false, persist: false };
-  for (const arg of args) {
+  const out = {
+    key: RUNTIME_ENV_KEY,
+    value: "codex",
+    unset: false,
+    dryRun: false,
+    persist: false,
+  };
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
     if (arg === "--unset") out.unset = true;
     else if (arg === "--dry-run") out.dryRun = true;
     else if (arg === "--persist") out.persist = true;
-    else if (!arg.startsWith("--") && out.value === "codex") out.value = arg;
+    else if (arg === "--key") {
+      const next = args[i + 1];
+      if (next && !next.startsWith("--")) {
+        out.key = next;
+        i++;
+      }
+    } else if (arg.startsWith("--key=")) {
+      out.key = arg.slice("--key=".length);
+    } else if (!arg.startsWith("--") && out.value === "codex") {
+      out.value = arg;
+    }
   }
   return out;
 }
@@ -4487,7 +4563,7 @@ function runCapture(command, args, { timeoutMs = 5000 } = {}) {
 
 async function setCodexRuntimeEnv(args) {
   const flags = parseSetRuntimeEnvFlags(args || []);
-  const key = RUNTIME_ENV_KEY;
+  const key = flags.key;
   const value = flags.unset ? null : flags.value;
 
   const result = await applyRuntimeEnvChange({
@@ -4524,7 +4600,7 @@ async function setCodexRuntimeEnv(args) {
       value: result.value,
       before: result.before,
       actions: result.plan.actions,
-      notes: result.plan.notes,
+      notes: rewriteRuntimeEnvNotes(result.plan.notes, result.key, result.value),
       requiresRestart: result.plan.requiresRestart,
       commands: result.plan.commands,
     });
@@ -4538,11 +4614,25 @@ async function setCodexRuntimeEnv(args) {
     before: result.before,
     after: result.after,
     actions: result.executed,
-    notes: result.plan.notes,
+    notes: rewriteRuntimeEnvNotes(result.plan.notes, result.key, result.value),
     requiresRestart: result.plan.requiresRestart,
     commands: result.plan.commands,
     manualSteps: result.plan.manualSteps || [],
   });
+}
+
+// Key-aware note rewriter. The planner emits notes that historically
+// mentioned OPENLOOMI_AGENT_PROVIDER by name; when a caller writes a
+// different key (e.g. OPENLOOMI_LAUNCH_MODE) we rewrite the note text so
+// the user sees the variable they actually wrote.
+function rewriteRuntimeEnvNotes(notes, key, value) {
+  if (!Array.isArray(notes)) return notes;
+  return notes.map((note) =>
+    String(note)
+      .replaceAll("OPENLOOMI_AGENT_PROVIDER", key)
+      .replace(/=codex/g, value ? `=${value}` : "=")
+      .replace(/the key/, `${key}`),
+  );
 }
 
 // Reusable apply-runtime-env-change core. Plans + executes the platform-
@@ -4655,10 +4745,16 @@ async function applyRuntimeEnvChange({
 // "not applicable" distinguishable from "false" in downstream tests.
 function probePersistenceState() {
   if (process.platform === "darwin") {
-    const plistPath = darwinLaunchAgentPath();
+    // Report on the primary key (AGENT_PROVIDER). LAUNCH_MODE plist status
+    // is observable via the same probe if a caller asks for it explicitly.
+    const plistPath = darwinLaunchAgentPath(RUNTIME_ENV_KEY);
     const installed = isFile(plistPath);
     return {
-      darwin: { launchAgentInstalled: installed, launchAgentPath: plistPath },
+      darwin: {
+        launchAgentInstalled: installed,
+        launchAgentPath: plistPath,
+        key: RUNTIME_ENV_KEY,
+      },
       linux: { envFileInstalled: null, envFilePath: null },
       win32: { manualStepsRequired: true },
     };
@@ -4728,7 +4824,7 @@ function planRuntimeEnvChange({ platform, key, value, flags }) {
     );
 
     if (flags.persist) {
-      const plistPath = darwinLaunchAgentPath();
+      const plistPath = darwinLaunchAgentPath(key);
       const plistDir = path.dirname(plistPath);
       const uid =
         typeof process.getuid === "function" ? process.getuid() : null;
@@ -4764,7 +4860,7 @@ function planRuntimeEnvChange({ platform, key, value, flags }) {
           command: "/bin/sh",
           args: [
             "-c",
-            `cat > '${plistPath}' <<'__OPENLOOMI_CODEX_PLIST_EOF__'\n${buildLaunchAgentPlist({ label: DARWIN_LAUNCH_AGENT_LABEL, key, value })}__OPENLOOMI_CODEX_PLIST_EOF__`,
+            `cat > '${plistPath}' <<'__OPENLOOMI_CODEX_PLIST_EOF__'\n${buildLaunchAgentPlist({ label: darwinLaunchAgentLabel(key), key, value })}__OPENLOOMI_CODEX_PLIST_EOF__`,
           ],
         });
         if (uid != null) {
@@ -5148,6 +5244,22 @@ async function setup(args) {
               key: launch.env.key,
               after: launch.env.after,
               reason: launch.env.reason,
+            }
+          : null,
+        // Side-band env write the desktop reads to route pet
+        // left-clicks. Surfaced alongside `providerEnv` so the two
+        // pre-spawn env writes share a shape and operators can see
+        // whether the wizard actually tagged the desktop process.
+        // Failure here is non-fatal (the spawn still succeeds; pet
+        // click falls back to standalone behaviour) so `ok: false`
+        // is logged, not promoted to a launch-blocker.
+        launchModeEnv: launch.env?.launchMode
+          ? {
+              ok: launch.env.launchMode.ok,
+              key: launch.env.launchMode.key,
+              value: launch.env.launchMode.value,
+              after: launch.env.launchMode.after,
+              reason: launch.env.launchMode.reason,
             }
           : null,
       });

@@ -315,6 +315,15 @@ This is the recommended path for first-time Codex-plugin users.
 > unset, so the pet click continues to open the dashboard directly.
 > This flag is intentionally separate from `OPENLOOMI_AGENT_PROVIDER`
 > so it cannot clobber a user-set provider choice.
+>
+> The `setup` wizard records both env writes inside its `launch`
+> audit step as `providerEnv` (the main write) and `launchModeEnv`
+> (the side-band), each carrying `{ ok, key, after, reason }`.
+> Operators reading `steps[]` can confirm whether the wizard actually
+> tagged the desktop process. Side-band failures are non-fatal
+> (`reason: "failed"`) — the spawn still succeeds and the pet click
+> falls back to standalone behaviour — so they show up as a record
+> detail rather than a `setup` stop condition.
 
 ### How to make the env switch stick
 
