@@ -743,7 +743,8 @@
       .card.editing #dec-dialogue,
       .card.editing #dec-evidence,
       .card.editing #dec-status,
-      .card.editing #dec-footer {
+      .card.editing #dec-footer,
+      .card.editing #dec-scroll {
         display: none;
       }
       .card.editing [data-layout="decision"] {
@@ -853,7 +854,8 @@
       .card.editing-im #dec-dialogue,
       .card.editing-im #dec-evidence,
       .card.editing-im #dec-status,
-      .card.editing-im #dec-footer {
+      .card.editing-im #dec-footer,
+      .card.editing-im #dec-scroll {
         display: none;
       }
       .card.editing-im [data-layout="decision"] {
@@ -1324,6 +1326,27 @@
         -webkit-box-orient: vertical;
         overflow: hidden;
         flex: 0 0 auto;
+      }
+      /* Scrollable middle column for the decision layout. Sits between
+         .source-chain and the action footer, absorbs the leftover
+         vertical space inside [data-layout="decision"], and scrolls
+         internally when the dec-body + dialogue + evidence-pills rows
+         would otherwise push the footer below the 360×420 card frame
+         (Skip / Edit / Send etc. getting clipped against
+         `body { overflow: hidden }`). `min-height: 0` is the critical
+         bit — without it the flex child won't shrink past its content
+         size. The wrapper is hidden in editing mode so the inline
+         draft editor takes its place (see .card.editing rules). */
+      .dec-scroll {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        /* Mask the right-edge scrollbar gutter so long evidence lists
+           don't shift the row alignment when scrollbar appears. */
+        scrollbar-gutter: stable;
       }
       .subtitle {
         font-size: 11px;
@@ -2398,39 +2421,51 @@
              deciding. -->
         <div class="subtitle" id="dec-subtitle"></div>
         <div class="source-chain" id="dec-source-chain"></div>
-        <!-- Type-specific body block. Renders one of:
-             - deadline_reminder: sender + subject + email snippet + countdown
-             - email_reply: drafted body preview + thread context
-             - rsvp: event time + organizer + attendee summary
-             - review_pr: PR title + repo/diffstat + reviewer status
-             - other types: hidden (falls back to evidence pills)
-             Add `.show-body` to #dec (in JS) so the legacy evidence
-             grid is hidden when the body block is taking its slot. -->
-        <div class="dec-body" id="dec-body" hidden></div>
-        <!-- Confidence is already shown in the meta-node row above.
-             Hide the duplicate bottom bar — the percentage and color
-             gradient were both being rendered twice on every decision. -->
-        <div class="confidence-row" id="dec-confidence-row" hidden>
-          <span class="label">Confidence</span>
-          <div class="confidence-track">
-            <div
-              class="confidence-fill"
-              id="dec-confidence-fill"
-              style="--confidence: 72%"
-            ></div>
+        <!-- Scrollable content area. Sits between the source-chain and
+             the action footer, eating any leftover vertical space and
+             scrolling internally when the body / dialogue / evidence
+             rows would otherwise push the footer (Skip / Edit / Send
+             etc.) below the 360×420 card frame. `min-height: 0` is the
+             critical bit — without it the flex child can't shrink past
+             its content size, and the footer ends up clipped against
+             `body { overflow: hidden }`. The wrapper is hidden in
+             editing mode (see .card.editing rules below) so the inline
+             draft editor takes its place. -->
+        <div class="dec-scroll" id="dec-scroll">
+          <!-- Type-specific body block. Renders one of:
+               - deadline_reminder: sender + subject + email snippet + countdown
+               - email_reply: drafted body preview + thread context
+               - rsvp: event time + organizer + attendee summary
+               - review_pr: PR title + repo/diffstat + reviewer status
+               - other types: hidden (falls back to evidence pills)
+               Add `.show-body` to #dec (in JS) so the legacy evidence
+               grid is hidden when the body block is taking its slot. -->
+          <div class="dec-body" id="dec-body" hidden></div>
+          <!-- Confidence is already shown in the meta-node row above.
+               Hide the duplicate bottom bar — the percentage and color
+               gradient were both being rendered twice on every decision. -->
+          <div class="confidence-row" id="dec-confidence-row" hidden>
+            <span class="label">Confidence</span>
+            <div class="confidence-track">
+              <div
+                class="confidence-fill"
+                id="dec-confidence-fill"
+                style="--confidence: 72%"
+              ></div>
+            </div>
+            <span class="value" id="dec-confidence-value">72%</span>
           </div>
-          <span class="value" id="dec-confidence-value">72%</span>
+          <div class="dialogue" id="dec-dialogue">
+            <span class="label">From Loomi</span>
+            <span class="body" id="dec-dialogue-body">…</span>
+          </div>
+          <div class="evidence-pills" id="dec-evidence"></div>
+          <!-- Inline status banner — shows Running… / Sent ✓ / Dismissed ✓
+               inline so the user sees the trail without losing the action
+               context. The toast still fires for redundancy but the
+               banner is the primary signal. -->
+          <div class="status-banner" id="dec-status"></div>
         </div>
-        <div class="dialogue" id="dec-dialogue">
-          <span class="label">From Loomi</span>
-          <span class="body" id="dec-dialogue-body">…</span>
-        </div>
-        <div class="evidence-pills" id="dec-evidence"></div>
-        <!-- Inline status banner — shows Running… / Sent ✓ / Dismissed ✓
-             inline so the user sees the trail without losing the action
-             context. The toast still fires for redundancy but the
-             banner is the primary signal. -->
-        <div class="status-banner" id="dec-status"></div>
         <!-- Inline draft editor — hidden by default. Toggled on for
              email_reply when the user clicks ↗ Edit. Replaces the
              footer (Save & Send / Save / Cancel). The chrome above
