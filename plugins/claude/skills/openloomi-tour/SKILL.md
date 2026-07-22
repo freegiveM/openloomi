@@ -58,21 +58,23 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/loomi-bridge.mjs" setup-status --json
 # 2. If loopbackAccessAmbiguous: true, refresh host probe outside sandbox
 node "${CLAUDE_PLUGIN_ROOT}/scripts/loomi-bridge.mjs" run-host-probe
 
-# 3. Confirm native Claude runtime auth (no separate bridge command — read nativeRuntime)
-node "${CLAUDE_PLUGIN_ROOT}/scripts/loomi-bridge.mjs" setup-status --json | jq '.nativeRuntime'
+# 3. Confirm the selected execution provider. Only inspect Claude auth when
+#    Claude is selected; Codex/OpenCode/Hermes/OpenClaw use their own auth.
+node "${CLAUDE_PLUGIN_ROOT}/scripts/loomi-bridge.mjs" setup-status --json | jq '{executionProviderReady, executionProviderSource, nativeRuntimeProvider, nativeRuntime}'
 ```
 
 Decision tree:
 
 | Pre-flight outcome | Tour action |
 | --- | --- |
-| `ready: true`, `nativeRuntime.authenticated: true` | Proceed straight to Phase 1 |
+| `ready: true`, `executionProviderReady: true` | Proceed straight to Phase 1, regardless of which runtime is selected |
 | `ready: false`, `nextAction: setup` (or no setup) | Tell the user setup hasn't run yet. Offer to invoke `/openloomi:setup` first, then return to tour |
 | `ready: false`, `OPENLOOMI_API_UNREACHABLE` | Re-run `run-host-probe` outside the sandbox; if still unreachable, surface the bridge's `hints[]` and stop |
-| `nativeRuntime.authenticated: false` | Point user at `claude auth login`, then re-run setup-status. The tour can continue but Loop won't have a runtime to drive actions |
+| `nativeRuntimeProvider: "claude"`, `nativeRuntime.authenticated: false` | Point user at `claude auth login`, then re-run setup-status. The tour can continue but Loop won't have a runtime to drive actions |
+| Non-Claude `nativeRuntimeProvider`, `executionProviderReady: true` | Proceed without asking for Claude login or an Anthropic API key; the selected runtime brings its own auth |
 
-Print the user's current state in one line (mode, installed, runtime
-authenticated) before announcing Phase 1.
+Print the user's current state in one line (mode, installed, selected
+execution provider, provider ready) before announcing Phase 1.
 
 ---
 

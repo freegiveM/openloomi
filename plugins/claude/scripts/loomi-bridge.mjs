@@ -1281,16 +1281,23 @@ async function probeClaudeNativeRuntime(aiProvider) {
 
 function getExecutionProviderStatus(aiProvider, nativeRuntime) {
   // `source` is the user-facing label for *how* the runtime is reaching
-  // an LLM. The HTTP probe (`aiProvider`) reports `configured: true`
-  // when EITHER a user-saved `anthropic_compatible` row OR the runtime's
-  // own nativeRuntime probe says "ready" — they're conflated in that
-  // field. We disambiguate using `directApi.userConfigured` (the
-  // per-user row flag carried alongside `configured`) so the label
-  // reflects the actual mechanism the user set up:
-  //   - "ai_provider" → the user explicitly saved an
-  //     `anthropic_compatible` row with a key
-  //   - "native_claude_runtime" → the user authenticated the host's
-  //     `claude` CLI (no direct API key)
+  // an LLM. A non-Claude `defaultAgent` is already a selected execution
+  // runtime and brings its own CLI auth, so it must not be gated on Claude
+  // authentication or an Anthropic-compatible API key.
+  const defaultAgent =
+    typeof aiProvider?.defaultAgent === "string"
+      ? aiProvider.defaultAgent
+      : null;
+  if (defaultAgent && defaultAgent !== CLAUDE_NATIVE_PROVIDER) {
+    return {
+      ready: true,
+      source: `native_${defaultAgent}_runtime`,
+    };
+  }
+
+  // The HTTP probe (`aiProvider`) reports `configured: true` when EITHER a
+  // user-saved `anthropic_compatible` row OR the runtime's own native Claude
+  // probe says "ready". Disambiguate those paths for the user-facing label.
   if (aiProvider?.configured) {
     return {
       ready: true,
@@ -1319,24 +1326,11 @@ function providerStatusFields(aiProvider, nativeRuntime) {
     nativeRuntime,
   );
   // `aiProviderConfigured` is the public "can the runtime talk to an LLM
-  // right now" signal. It's an OR of two sources:
-  //   1. `aiProvider.configured` — derived from the runtime's
-  //      `/api/preferences/ai` payload (per-user `anthropic_compatible`
-  //      row + nativeRuntime.authenticated as the runtime reports it).
-  //      This path can 401 for the bridge because the route requires a
-  //      NextAuth cookie, not the Bearer token the bridge sends.
-  //   2. `nativeRuntime.authenticated` — the bridge's own local
-  //      `claude auth status` probe via `probeClaudeNativeRuntime()`.
-  //      This always reflects the host's real CLI state, regardless
-  //      of the HTTP path's auth outcome.
-  // We OR them so the documented semantics hold:
-  // "`aiProviderConfigured` is derived from the runtime's `nativeRuntime`
-  // probe, with user-saved `anthropic_compatible` rows as a fallback"
-  // (see apps/marketing/content/plugins/claude.mdx).
+  // right now" signal. `executionProvider` combines all supported paths:
+  // a user-saved API provider, authenticated native Claude, or a selected
+  // non-Claude runtime such as Codex/OpenCode/Hermes/OpenClaw.
   return {
-    aiProviderConfigured: !!(
-      aiProvider?.configured || nativeRuntime?.authenticated
-    ),
+    aiProviderConfigured: executionProvider.ready,
     aiProviderStatus:
       aiProvider?.status ||
       (aiProvider?.ok ? "unknown" : aiProvider?.reason || "unknown"),
@@ -1908,7 +1902,7 @@ async function buildStatus({ json = true, explicit = null } = {}) {
     };
   }
 
-  if (!aiProvider.configured) {
+  if (!providerFields.executionProviderReady) {
     return {
       mode: disc.mode,
       installed: true,

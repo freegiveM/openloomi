@@ -36,11 +36,15 @@ paths; this file covers the surface area that needs Claude Code itself
 - [ ] Accepting y launches the appropriate platform install script
       (`setup.macos.sh`, `setup.linux.sh`, or `setup.windows.ps1`).
 - [ ] After install completes, `/openloomi:setup` reaches
-      `setup: ready` without prompting the user for an API key (the
-      runtime self-closes AI provider config via the local `claude`
-      CLI auth probe — no shell key-sync step exists any more).
-- [ ] If no native Claude runtime is authenticated and no per-user
-      provider row exists, `setup-status` reports
+      `setup: ready` without prompting the user for an API key when either
+      the selected non-Claude runtime is ready or the local `claude` CLI
+      auth probe succeeds.
+- [ ] With `defaultAgent: "codex"` (or another supported non-Claude runtime)
+      and no per-user provider row, `setup-status` reports
+      `executionProviderReady: true`, `ready: true`, and never requests
+      Claude login or an Anthropic-compatible API key.
+- [ ] If Claude is selected but no native Claude runtime is authenticated and
+      no per-user provider row exists, `setup-status` reports
       `reason: "AI_PROVIDER_REQUIRED"` and `nextAction: "configure_ai_provider"`
       — the user is pointed at the OpenLoomi Desktop Preferences page.
 

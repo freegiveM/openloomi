@@ -808,14 +808,9 @@ test("setup-status reads the AI provider after resolving the fallback API port",
   });
 });
 
-test("setup-status skips native Claude probe when defaultAgent is not claude", async () => {
-  // When the runtime reports `defaultAgent: "codex"` (or any non-claude
-  // agent), the bridge must NOT surface the native Claude CLI status as
-  // a top-level error. The probe is intentionally skipped because
-  // Claude isn't the configured execution provider — its CLI may be
-  // perfectly healthy. Top-level `nativeRuntimeStatus` should be `null`,
-  // and the nested runtime fields should be `null` (not `false`) to
-  // signal "not probed / not applicable" vs "probed and failed".
+test("setup-status treats a non-Claude defaultAgent as ready without an API key", async () => {
+  // A selected non-Claude runtime brings its own CLI auth. The bridge must
+  // skip the Claude probe and must not require an Anthropic-compatible key.
   await withClaHomeAsync(async (env) => {
     const fakeOpenLoomi = createFakeOpenLoomiBin(join(env.HOME, "fake-bin"), {
       name: "openloomi",
@@ -825,22 +820,7 @@ test("setup-status skips native Claude probe when defaultAgent is not claude", a
     });
 
     await withPreferencesServer(
-      aiPreferencesPayload({
-        // Override the mock so the runtime reports a non-claude agent
-        // and a direct API config (mirrors a user whose
-        // `OPENLOOMI_AGENT_PROVIDER=codex` is paired with a saved
-        // anthropic_compatible provider row).
-        defaultAgent: "codex",
-        settings: [
-          {
-            providerType: "anthropic_compatible",
-            baseUrl: "https://example.com",
-            model: "claude-sonnet-5",
-            enabled: true,
-            hasApiKey: true,
-          },
-        ],
-      }),
+      aiPreferencesPayload({ defaultAgent: "codex" }),
       async (baseUrl) => {
         const j = await runJsonAsync(["setup-status"], {
           ...env,
@@ -868,11 +848,13 @@ test("setup-status skips native Claude probe when defaultAgent is not claude", a
         assert.equal(j.nativeRuntime.reason, "NATIVE_RUNTIME_NOT_SELECTED");
         assert.equal(j.nativeRuntime.defaultAgent, "codex");
 
-        // System remains fully ready because the runtime's
-        // direct_api_configured path is independent of the Claude probe.
+        // The selected Codex runtime is sufficient by itself; no Claude
+        // login and no Anthropic-compatible API key are required.
         assert.equal(j.aiProviderConfigured, true);
         assert.equal(j.executionProviderReady, true);
+        assert.equal(j.executionProviderSource, "native_codex_runtime");
         assert.equal(j.ready, true);
+        assert.equal(j.nextAction, "run");
         assert.equal(j.reason, "READY");
       },
     );

@@ -10,7 +10,7 @@ Thin doorway into the [`openloomi-tour`](../skills/openloomi-tour/SKILL.md)
 sub-skill. The skill runs the full first-run pipeline live with
 checkpoints between phases:
 
-1. Pre-flight (`setup-status`, `run-host-probe`, native Claude runtime probe)
+1. Pre-flight (`setup-status`, `run-host-probe`, selected execution-provider readiness)
 2. Pet reaction (4 sprite states cycled)
 3. Connector onboarding (native bot vs Composio OAuth — user picks)
 4. Run one Loop tick + inspect & approve a decision card

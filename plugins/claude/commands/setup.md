@@ -19,9 +19,9 @@ install OpenLoomi.app
 
 Each transition is automatic. **Do not** ask the user to click anything in
 the GUI. The bridge only surfaces a stop condition when the next step
-truly requires human action (e.g. AI provider not configured and the
-native `claude` CLI isn't authenticated — point the user at
-`claude auth login` or at OpenLoomi Desktop → API Settings).
+truly requires human action (e.g. no selected execution runtime is ready and
+no direct AI provider is configured — if Claude is selected, point the user at
+`claude auth login`; otherwise use OpenLoomi Desktop → API Settings).
 
 ## Steps
 
@@ -37,8 +37,8 @@ native `claude` CLI isn't authenticated — point the user at
 5. If `setup: awaiting_user_action` → the chain hit a step that genuinely
    needs the user (e.g. `nextAction: login_openloomi` but `canGuestLogin:
 false` because the local runtime didn't come up, or `nextAction:
-configure_ai_provider` because the runtime reports no authenticated
-   native Claude runtime AND no per-user provider row). Explain what the
+configure_ai_provider` because the runtime reports no ready selected
+   execution provider and no per-user provider row). Explain what the
    user needs to do and stop.
 
 ## Flags
@@ -91,16 +91,16 @@ new fields are added alongside it.
 
 ## Stop conditions and what they mean
 
-| `setup`                | When it fires                                                                                                                                                                                                                                                                            |
-| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ready`                | All transitions completed. Show `mode` and `version`.                                                                                                                                                                                                                                    |
-| `install_attempted`    | First invocation: install ran. The user pre-approved; this is just informational.                                                                                                                                                                                                        |
-| `install_failed`       | The platform install script exited non-zero (or `code: "INSTALL_TIMEOUT"` from the per-stage budget). Show `install.code` / `install.stderr`.                                                                                                                                            |
-| `launch_failed`        | `open -a <desktopMarker>` returned a non-zero exit. On macOS this almost never happens for a signed .app; if it does, fall back to manual launch instructions.                                                                                                                           |
-| `api_not_ready`        | The desktop app was launched but the local HTTP API didn't respond within `--api-timeout`. **New behavior**: `code` distinguishes network/slow vs TCC prompt; `hints[]` and `resumeCommand` are pre-built; `canResume: true` makes re-running the slash command the recommended action.  |
-| `guest_login_failed`   | API is up but the one-tap guest login was rejected. Show `guest.code` / `guest.error`. The user can sign in via the GUI and re-run setup.                                                                                                                                                |
-| `awaiting_user_action` | A transition that needs the user ran without a programmatic path. Most commonly: `configure_ai_provider` when neither the native Claude CLI is authenticated nor a per-user provider is configured — walk them through running `claude auth login`, or OpenLoomi Desktop → API Settings. |
-| `step_limit_reached`   | Hit the internal step ceiling without reaching READY (default 8 transitions). Almost certainly means a state-machine bug; show `steps[]`.                                                                                                                                                |
+| `setup`                | When it fires                                                                                                                                                                                                                                                                           |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ready`                | All transitions completed. Show `mode` and `version`.                                                                                                                                                                                                                                   |
+| `install_attempted`    | First invocation: install ran. The user pre-approved; this is just informational.                                                                                                                                                                                                       |
+| `install_failed`       | The platform install script exited non-zero (or `code: "INSTALL_TIMEOUT"` from the per-stage budget). Show `install.code` / `install.stderr`.                                                                                                                                           |
+| `launch_failed`        | `open -a <desktopMarker>` returned a non-zero exit. On macOS this almost never happens for a signed .app; if it does, fall back to manual launch instructions.                                                                                                                          |
+| `api_not_ready`        | The desktop app was launched but the local HTTP API didn't respond within `--api-timeout`. **New behavior**: `code` distinguishes network/slow vs TCC prompt; `hints[]` and `resumeCommand` are pre-built; `canResume: true` makes re-running the slash command the recommended action. |
+| `guest_login_failed`   | API is up but the one-tap guest login was rejected. Show `guest.code` / `guest.error`. The user can sign in via the GUI and re-run setup.                                                                                                                                               |
+| `awaiting_user_action` | A transition that needs the user ran without a programmatic path. Most commonly: `configure_ai_provider` when no selected execution runtime is ready and no per-user provider is configured — for Claude, run `claude auth login`; otherwise use OpenLoomi Desktop → API Settings.      |
+| `step_limit_reached`   | Hit the internal step ceiling without reaching READY (default 8 transitions). Almost certainly means a state-machine bug; show `steps[]`.                                                                                                                                               |
 
 The bridge's stdout output is authoritative. Never invoke the platform
 install script (`setup.{macos,linux,windows}.*`) directly — only the
@@ -131,17 +131,17 @@ intro.
 
 ### 2. Where things live (orientation)
 
-| Surface             | Where                                                                             |
-| ------------------- | --------------------------------------------------------------------------------- |
-| Desktop app         | `/Applications/OpenLoomi.app`                                                     |
-| Local HTTP API      | `http://localhost:3414` (fallback `3515`)                                         |
-| Guest bearer token  | `~/.openloomi/token` (base64-encoded JWT)                                         |
-| Claude runtime auth | Native `claude` CLI (`claude auth login`); OpenLoomi runtime probes it on demand  |
-| Memory files        | `~/.openloomi/data/memory/{people,projects,notes,strategy,chats,channels}/`       |
-| Knowledge Base      | `GET /api/rag/documents`                                                          |
-| Audit log           | `GET /api/audit/...`                                                              |
-| Pet widget          | Watcher polls `~/.openloomi/loop/decisions.json` every 2s                         |
-| Hooks (optional)    | `/openloomi:hooks install` wires Stop / PreToolUse / PostToolUse into Claude Code |
+| Surface            | Where                                                                                                  |
+| ------------------ | ------------------------------------------------------------------------------------------------------ |
+| Desktop app        | `/Applications/OpenLoomi.app`                                                                          |
+| Local HTTP API     | `http://localhost:3414` (fallback `3515`)                                                              |
+| Guest bearer token | `~/.openloomi/token` (base64-encoded JWT)                                                              |
+| Agent runtime      | Selected native runtime; Claude uses `claude auth login`, while non-Claude runtimes use their own auth |
+| Memory files       | `~/.openloomi/data/memory/{people,projects,notes,strategy,chats,channels}/`                            |
+| Knowledge Base     | `GET /api/rag/documents`                                                                               |
+| Audit log          | `GET /api/audit/...`                                                                                   |
+| Pet widget         | Watcher polls `~/.openloomi/loop/decisions.json` every 2s                                              |
+| Hooks (optional)   | `/openloomi:hooks install` wires Stop / PreToolUse / PostToolUse into Claude Code                      |
 
 ### 3. The five-step first tour
 
@@ -152,7 +152,7 @@ check) so the user knows what "still ready" looks like.
 
 | #   | What                  | Command                                                                 | What you'll see                                                                                                                                                             |
 | --- | --------------------- | ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | **Health check**      | `/openloomi:status`                                                     | Same audit table you just got. Confirms the native Claude CLI runtime is still authenticated.                                                                               |
+| 1   | **Health check**      | `/openloomi:status`                                                     | Same audit table you just got. Confirms the selected execution provider is still ready.                                                                                     |
 | 2   | **Pet reacts**        | `/openloomi:pet happy`                                                  | Loomi the fox flips to the happy sprite. Try `thinking`, `working`, `juggling` to see the rest of the 7-state API set.                                                      |
 | 3   | **Connect a tool**    | Native: `/openloomi:connect telegram` _or_ OAuth: `composio link gmail` | A QR scan or browser OAuth opens; once you approve, the account shows in `list-accounts`.                                                                                   |
 | 4   | **Run one Loop tick** | `/openloomi:loop refresh` then `/openloomi:loop tick`                   | Loop pulls signals, classifies them, and enqueues decisions. Then `GET /api/loop/decisions?status=pending` to see the cards. Approve with `POST /api/loop/action/schedule`. |
