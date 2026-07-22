@@ -136,6 +136,7 @@ pub fn build_card_window(app: &AppHandle) -> tauri::Result<tauri::WebviewWindow>
         if let tauri::WindowEvent::CloseRequested { api, .. } = ev {
             api.prevent_close();
             if let Some(win) = app_handle.get_webview_window(&label) {
+                let _ = win.set_ignore_cursor_events(true);
                 let _ = win.hide();
             }
         }
@@ -223,6 +224,7 @@ fn show_card_window_with(app: &AppHandle, compact: bool) {
 /// is preserved in the DOM.
 pub fn hide_card_window(app: &AppHandle) {
     if let Some(w) = app.get_webview_window(PET_CARD_LABEL) {
+        let _ = w.set_ignore_cursor_events(true);
         let _ = w.hide();
     }
 }

@@ -111,7 +111,7 @@ The wizard auto-chains install → launch → wait API → guest login. When it 
 | ------------------ | ---------- |
 | Guest login        | Successful |
 | Runtime mode       | packaged   |
-| Version            | 0.8.6      |
+| Version            | 0.8.7      |
 | Local API          | Reachable  |
 | AI provider        | Configured |
 | Execution provider | Ready      |
@@ -242,11 +242,11 @@ The Loop ships with these decision types out of the box:
 | `EMAIL_REPLY`           | Pre-draft an outbound email                 | "Sarah needs the Q3 OKR draft status by Friday"                                       |
 | `LINEAR_REVIEW`         | Triage a Linear issue assigned to you       | "LIN-1234 (pet bubble drag-and-drop) is in In Review with you assigned"               |
 | `REQUIREMENT_SYNTHESIS` | Cluster PRs/issues into a requirements doc  | "14 PRs/issues tagged loop/v0.9 — needs a single requirements doc"                    |
-| `RELEASE_PLAN`          | Draft a release plan from merged PRs        | "12 PRs merged since v0.8.6 — time to draft the v0.8.6 release plan"                  |
+| `RELEASE_PLAN`          | Draft a release plan from merged PRs        | "12 PRs merged since v0.8.7 — time to draft the v0.8.7 release plan"                  |
 | `CONTACT_UPDATE`        | Update a contact record when memory drifts  | "Sarah's signature says 'Head of Product' — memory still says PM"                     |
-| `DOC_UPDATE`            | Refresh a stale doc for the next version    | "docs/getting-started.md is stale (42 days, pre-v0.8.6)"                              |
+| `DOC_UPDATE`            | Refresh a stale doc for the next version    | "docs/getting-started.md is stale (42 days, pre-v0.8.7)"                              |
 | `REVIEW_PR`             | Surface a PR waiting on your review         | "PR #220 (lifestyle image prompts) is waiting on your review"                         |
-| `DEADLINE_REMINDER`     | Surface an upcoming due date                | "v0.8.6 release plan due Friday — 3 PRs blocking the cut"                             |
+| `DEADLINE_REMINDER`     | Surface an upcoming due date                | "v0.8.7 release plan due Friday — 3 PRs blocking the cut"                             |
 | `TODO`                  | Add a follow-up to your todo list           | "Bug: historical self-owned calendar events surface as fake RSVP decisions"           |
 | `DIGEST` (QUIET)        | Consolidate a flood of low-priority signals | "8 GitHub notifications — none urgent individually, but here's the consolidated view" |
 
@@ -260,7 +260,7 @@ A few examples in detail:
 
 ![Loop card — REQUIREMENT_SYNTHESIS for 14 PRs/issues tagged loop/v0.9](/img/openloomi/plugins/claude/18-loop-requirement-synthesis.png)
 
-![Loop card — RELEASE_PLAN for v0.8.6 "classifier-rules UX + custom channels"](/img/openloomi/plugins/claude/19-loop-release-plan.png)
+![Loop card — RELEASE_PLAN for v0.8.7 "classifier-rules UX + custom channels"](/img/openloomi/plugins/claude/19-loop-release-plan.png)
 
 ![Loop card — CONTACT_UPDATE for Sarah Chen's new "Head of Product" role](/img/openloomi/plugins/claude/20-loop-contact-update.png)
 

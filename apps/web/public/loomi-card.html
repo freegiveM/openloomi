@@ -5757,14 +5757,16 @@
         // until the user clicked ✕ — the mirror-image half of #317.
         function hideCardWindow() {
           const t = window.__TAURI__;
-          const win =
-            t && t.window
-              ? t.window.getCurrentWebviewWindow
-                ? t.window.getCurrentWebviewWindow()
-                : t.window.getCurrentWindow
-                  ? t.window.getCurrentWindow()
-                  : null
-              : null;
+          const win = getCurrentWindow();
+          // Defensive: turn off cursor events before requesting the hide so
+          // the 360×420 region stops intercepting the mouse immediately,
+          // even if the OS-level hide settles asynchronously. The native
+          // show path restores cursor events when the card is shown again.
+          if (win && typeof win.setIgnoreCursorEvents === "function") {
+            try {
+              win.setIgnoreCursorEvents(true);
+            } catch (_) {}
+          }
           // Primary path: hide the window directly. More reliable than
           // the pet:close-card event roundtrip — the OS-level hide takes
           // effect immediately and doesn't depend on the Rust listener.
@@ -5774,15 +5776,6 @@
             } catch (_) {
               /* fall through to the event + fade below */
             }
-          }
-          // Defensive: turn off cursor events so even if the OS-level
-          // hide is delayed, the 360×420 region stops intercepting the
-          // mouse. Reset by the loop:state / loop:decision listeners when
-          // the card re-shows.
-          if (win && typeof win.setIgnoreCursorEvents === "function") {
-            try {
-              win.setIgnoreCursorEvents(true);
-            } catch (_) {}
           }
           // Secondary path: still emit pet:close-card so the Rust host
           // can run its own hide + bubble-restore logic (main.rs).
@@ -5831,7 +5824,7 @@
             if (action === "close") {
               e.preventDefault();
               // Reuse the same hide path the × button uses (which
-              // calls win.hide(), setIgnoreCursorEvents(true), and
+              // calls setIgnoreCursorEvents(true), then win.hide(), and
               // emits pet:close-card so the host restores the bubble).
               hideCardWindow();
             } else if (action === "open-loop") {
@@ -6605,33 +6598,11 @@
         const tauri = window.__TAURI__;
         if (tauri && tauri.event && tauri.event.listen) {
           tauri.event.listen("loop:decision", (e) => {
-            // The previous × click set three pieces of state on the card:
-            //   1. setIgnoreCursorEvents(true) on the Tauri window
-            //   2. card.style.opacity = "0" (immediate)
-            //   3. card.style.display = "none" (after 160ms fade)
-            // All three must be cleared here, otherwise the host's
-            // show_card_window() brings the OS window back on screen but
-            // the .card element stays at display:none → blank window
-            // even though a new decision is being routed in. Tauri
-            // window is restored first (so the 360×420 region becomes
-            // mouse-active again), then the CSS inline styles are wiped
-            // so the DOM becomes visible. Order matters: wiping CSS
-            // before the OS window is clickable would flash a frame
-            // of unclickable content on the user's previous click.
-            if (tauri && tauri.window) {
-              try {
-                const w = tauri.window.getCurrentWebviewWindow
-                  ? tauri.window.getCurrentWebviewWindow()
-                  : tauri.window.getCurrentWindow
-                    ? tauri.window.getCurrentWindow()
-                    : null;
-                if (w && typeof w.setIgnoreCursorEvents === "function") {
-                  w.setIgnoreCursorEvents(false);
-                }
-              } catch (_) {
-                /* non-fatal */
-              }
-            }
+            // The previous × click hid the local card DOM. Clear those
+            // inline styles so a later native show renders fresh decision
+            // content. Cursor interactivity is intentionally not restored
+            // here: background events may arrive while the OS window is
+            // hidden, and show_card_window_with() owns that lifecycle.
             // Wipe the × click's CSS hiding. Inline style "" clears
             // the property back to whatever the stylesheet says, which
             // is `display: flex` (see .card rule at the top of this
@@ -6724,23 +6695,6 @@
             }
           });
           tauri.event.listen("loop:state", (e) => {
-            // The previous × click set setIgnoreCursorEvents(true) so
-            // the card would stop blocking clicks. Restore it now that
-            // the card has content to show again.
-            if (tauri && tauri.window) {
-              try {
-                const w = tauri.window.getCurrentWebviewWindow
-                  ? tauri.window.getCurrentWebviewWindow()
-                  : tauri.window.getCurrentWindow
-                    ? tauri.window.getCurrentWindow()
-                    : null;
-                if (w && typeof w.setIgnoreCursorEvents === "function") {
-                  w.setIgnoreCursorEvents(false);
-                }
-              } catch (_) {
-                /* non-fatal */
-              }
-            }
             const p = (e && e.payload) || {};
             state =
               (typeof p === "object" && p.state) ||
