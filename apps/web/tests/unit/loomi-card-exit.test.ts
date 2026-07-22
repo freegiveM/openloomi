@@ -73,13 +73,18 @@ function legacyCloseBranch(): string {
     'card.addEventListener("click", (e) => {',
     postAction,
   );
-  expect(delegatedClick, "delegated card click handler not found").toBeGreaterThan(
-    postAction,
-  );
+  expect(
+    delegatedClick,
+    "delegated card click handler not found",
+  ).toBeGreaterThan(postAction);
   const start = source.indexOf('if (action === "close")', delegatedClick);
-  expect(start, "legacy close branch not found").toBeGreaterThan(delegatedClick);
+  expect(start, "legacy close branch not found").toBeGreaterThan(
+    delegatedClick,
+  );
   const end = source.indexOf('if (action === "guide-connect-more")', start);
-  expect(end, "legacy close branch terminator not found").toBeGreaterThan(start);
+  expect(end, "legacy close branch terminator not found").toBeGreaterThan(
+    start,
+  );
   return source.slice(start, end);
 }
 
@@ -106,9 +111,10 @@ describe("loomi-card shared window-hide helper", () => {
 
     const cursorTransparent = body.indexOf("win.setIgnoreCursorEvents(true)");
     const nativeHide = body.indexOf("win.hide()");
-    expect(cursorTransparent, "cursor transparency call not found").toBeGreaterThan(
-      -1,
-    );
+    expect(
+      cursorTransparent,
+      "cursor transparency call not found",
+    ).toBeGreaterThan(-1);
     expect(nativeHide, "native hide call not found").toBeGreaterThan(-1);
     expect(cursorTransparent).toBeLessThan(nativeHide);
 
