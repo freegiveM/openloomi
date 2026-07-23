@@ -600,6 +600,62 @@ where <json> is (FIELD PLACEMENT IS STRICT — see warning below):
 }
 \`\`\`
 
+For \`email_reply\` and \`im_reply\` decisions, also include a \`context.draft\` field so the card shows the draft body immediately — no PATCH round-trip at run time. The run-time agent will reuse \`context.draft\` verbatim, so getting it right here is the whole point. Draft quality rules:
+
+  - Mention the sender's name (or channel/user) and the thread subject so the recipient knows what is being replied to.
+  - Be specific, not a generic placeholder ("Got it, thanks" or "Will follow up").
+  - Use the original sender's language. Keep it 3–6 sentences for email, 1–3 for IM.
+  - For \`email_reply\`, set \`subject\` to \`"Re: <original subject>"\`. For \`im_reply\`, set \`subject\` to \`null\` (IM channels only carry the body).
+  - Reflect the sender's tone / formality / language (Chinese reply for Chinese thread, English for English, etc.) — never one-sided.
+
+Example for \`email_reply\`:
+
+\`\`\`json
+{
+  "signal_id": "sig_...",
+  "type": "email_reply",
+  "title": "Reply: <subject>",
+  "action": { "kind": "email_reply", "params": { "to": "...", "subject": "Re: ...", "threadId": "..." } },
+  "context": {
+    "why": [...],
+    "memory_refs": [...],
+    "person": "<sender>",
+    "project_ref": "<project or null>",
+    "draft": {
+      "subject": "Re: <original subject>",
+      "body": "<draft reply body, 3–6 sentences, mentions sender name + thread>"
+    }
+  },
+  "confidence": 0.85,
+  "source_signal": <original signal object>
+}
+\`\`\`
+
+Example for \`im_reply\`:
+
+\`\`\`json
+{
+  "signal_id": "sig_...",
+  "type": "im_reply",
+  "title": "Reply on <channel> to <user>",
+  "action": { "kind": "im_reply", "params": { "channel": "...", "chatId": "...", "user": "...", "threadId": null } },
+  "context": {
+    "why": [...],
+    "memory_refs": [...],
+    "person": "<user>",
+    "project_ref": "<project or null>",
+    "draft": {
+      "subject": null,
+      "body": "<draft reply body, 1–3 sentences, mentions user + thread>"
+    }
+  },
+  "confidence": 0.85,
+  "source_signal": <original signal object>
+}
+\`\`\`
+
+The user can still override the body via the inline editor before clicking Run — that path writes to \`context.draft\` via PATCH and the run-time agent picks up the edited version. The PATCH step is a fallback for decisions that came in without a draft (e.g. the non-agentic TS classifier path), not the primary generation path.
+
 For \`deadline_reminder\` decisions, the ingest-decision JSON is:
 
 \`\`\`json

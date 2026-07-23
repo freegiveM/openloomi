@@ -267,6 +267,56 @@ function buildPrompt(decision: LoopDecision, mode: "dry" | "run"): string {
       '- If you cannot execute (auth, network), emit `{"outcome":"blocked"|"failed","reason":"..."}` instead so the card can retry.',
     );
   }
+  // email_reply / im_reply with no `context.draft` yet — FALLBACK path.
+  // The agentic tick (`tick-prompt.ts`) is supposed to bake the draft
+  // body into `context.draft` at ingest time so the card shows it from
+  // the moment the decision surfaces. This branch only fires when the
+  // decision came in without a draft (non-agentic TS classifier path,
+  // legacy ingest, or an agent that forgot the draft). Without the PATCH
+  // the pet card and web UI render an empty draft body and the user has
+  // no way to tell what was sent until they dig into the agent logs.
+  // The user-edited-draft branch further below handles the case where
+  // the user already filled the body via the inline editor — there we
+  // just inject verbatim.
+  if (
+    (decision.action?.kind === "email_reply" ||
+      decision.action?.kind === "im_reply") &&
+    !decision.context?.draft
+  ) {
+    const isEmail = decision.action.kind === "email_reply";
+    const params = (decision.action?.params ?? {}) as Record<string, unknown>;
+    const subjectHint = isEmail
+      ? `The subject line lives in \`action.params.subject\` (already prefixed with "Re: "). Keep it as-is unless \`action.params.subject\` is empty/missing, in which case invent a short, boring one.`
+      : `There is no subject line — IM channels only carry a message body.`;
+    // Re-use the same loop-server port the native agent URL resolves to
+    // so the PATCH hits the same host the agent's bash tool runs from.
+    const loopBaseUrl = `http://localhost:${
+      process.env.PORT ??
+      (process.env.NODE_ENV === "development" ? DEV_PORT : PROD_PORT)
+    }`;
+    const patchUrl = `${loopBaseUrl}/api/loop/decision/${decision.id}`;
+    parts.push(
+      "",
+      "No draft exists yet — you must generate one, PATCH it back to the decision, and THEN send.",
+      "",
+      "Step 1 — Draft a concise reply grounded in the source signal:",
+      "  - Mention the sender's name (or channel/user) and the thread subject so the recipient knows what you are replying to.",
+      '  - Be specific, not a generic placeholder ("Got it, thanks" or "Will follow up").',
+      "  - Use the original sender's language. Keep it short (3–6 sentences for email, 1–3 for IM).",
+      `  - ${subjectHint}`,
+      "",
+      "Step 2 — PATCH the draft back to the decision so the UI can show it BEFORE the send:",
+      `  curl -sS -X PATCH ${patchUrl} \\`,
+      `    -H 'content-type: application/json' \\`,
+      `    -d '{"draft":{"subject":<subject string or null>,"body":<body string>}}'`,
+      "",
+      "The endpoint rejects empty body (HTTP 400 `draft.body required`), so the body MUST be non-empty. The PATCH is what the UI keys on; the send is what the recipient sees.",
+      "",
+      "Step 3 — ONLY AFTER the PATCH succeeds, send via the composio tool (see the tool guidance below).",
+      "",
+      "If the PATCH fails (decision no longer pending, auth expired, etc.), DO NOT send — emit the outcome as `skipped` with reason=`draft PATCH failed: <msg>`. The user can retry from the card.",
+    );
+  }
   // If the user edited the draft inline (via the pet card's #dec-editor
   // + PATCH /api/loop/decision/:id) the edited subject/body lives at
   // `context.draft`. Inject it verbatim and tell the agent not to

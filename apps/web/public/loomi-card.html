@@ -2945,7 +2945,7 @@
         };
         const TYPE_RECOMMENDATIONS = {
           rsvp: "Send RSVP yes",
-          email_reply: "Send the drafted reply",
+          email_reply: "Send the email reply",
           review_pr: "Post review summary",
           im_reply: "Draft a quick reply",
           deadline_reminder: "Add calendar reminder",
@@ -3071,7 +3071,7 @@
               action: "run",
               label: "▶ Send",
               variant: "primary",
-              tip: "Send the drafted reply (or the edited version if you saved one) as-is",
+              tip: "Send the email reply (or the edited version if you saved one) as-is",
             },
           ],
           release_plan: [
@@ -3140,7 +3140,7 @@
         ];
         const TYPE_LABELS = {
           rsvp: "RSVP",
-          email_reply: "DRAFT_REPLY",
+          email_reply: "EMAIL_REPLY",
           review_pr: "REVIEW_PR",
           im_reply: "IM_REPLY",
           deadline_reminder: "DEADLINE",
@@ -3437,7 +3437,7 @@
             const empty = document.createElement("div");
             empty.className = "connector-row";
             empty.innerHTML =
-              '<span class="connector-dot"></span><div><span class="connector-name">Loading…</span><span class="connector-meta">Fetching from /api/loop/connectors</span></div><span class="connector-status off">—</span>';
+              '<span class="connector-dot"></span><div><span class="connector-name">Loading…</span></div><span class="connector-status off">—</span>';
             cl.appendChild(empty);
           } else {
             for (const c of connectors) {
@@ -4262,7 +4262,7 @@
             const user = params.user || params.to || "";
             const lab = document.createElement("span");
             lab.className = "label";
-            lab.textContent = "Drafted reply";
+            lab.textContent = "Email reply";
             bodyEl.appendChild(lab);
             if (user || channel) {
               const ctx = document.createElement("div");
@@ -4293,7 +4293,7 @@
             if (!draft && !subject) return;
             const lab = document.createElement("span");
             lab.className = "label";
-            lab.textContent = "Drafted reply";
+            lab.textContent = "Email reply";
             bodyEl.appendChild(lab);
             if (subject) {
               const sbj = document.createElement("div");
@@ -4662,22 +4662,75 @@
             // handler on #dec-editor below — it's the safety net for the
             // case where the user opens the editor without clicking the
             // window first).
-            const focusBody = () => {
-              if (!body || document.activeElement === body) return;
-              body.focus();
-              const len = body.value.length;
-              try {
-                body.setSelectionRange(len, len);
-              } catch (_) {
-                /* some input types don't support setSelectionRange */
+            //
+            // Defense in depth — keep firing focus() on the editable
+            // surface (try Body first, fall back to Subject) every
+            // 80 ms for up to 6 s until `document.activeElement`
+            // confirms it stuck. The previous one-shot ladder
+            // (0 / 60 / 200 / 500 / 1000 / 1500 ms) capped out at
+            // 1.5 s; cold NSPanel + a brand-new macOS session can stay
+            // non-key for several seconds, and any later Tauri build
+            // add (e.g. setBecomesKeyOnlyOnOrderFront removal on
+            // macOS 14+) silently extends that window. The watchdog
+            // self-cancels the moment focus sticks or the budget
+            // elapses, so it costs zero CPU in the steady state. We
+            // also no-op if Subject / Body don't exist yet (this path
+            // can fire on initial inflate before the markup
+            // settles), and the click-to-focus safety net at the
+            // bottom of this file still runs as the first line of
+            // defense for the user's actual clicks.
+            const tryFocusEditor = () => {
+              if (!body && !subject) return false;
+              const active = document.activeElement;
+              if (active === body || active === subject) return true;
+              // Try Body first (the primary editor surface); if it
+              // doesn't take, Subject.
+              if (body) {
+                body.focus({ preventScroll: true });
+                if (document.activeElement === body) {
+                  const len = body.value.length;
+                  try {
+                    body.setSelectionRange(len, len);
+                  } catch (_) {
+                    /* some input types don't support setSelectionRange */
+                  }
+                  return true;
+                }
               }
+              if (subject) {
+                subject.focus({ preventScroll: true });
+                if (document.activeElement === subject) return true;
+              }
+              return false;
             };
-            requestAnimationFrame(() => {
-              focusBody();
-              setTimeout(focusBody, 60);
-              setTimeout(focusBody, 200);
-            });
+            // Cancel any watchdog left over from a previous setEditMode
+            // cycle (e.g. the user opened, dismissed, and reopened the
+            // editor faster than the previous watchdog's 6s budget).
+            if (window.__loomiEditorFocusTimer) {
+              clearInterval(window.__loomiEditorFocusTimer);
+              window.__loomiEditorFocusTimer = null;
+            }
+            const watchdogStart = Date.now();
+            window.__loomiEditorFocusTimer = setInterval(() => {
+              if (tryFocusEditor()) {
+                clearInterval(window.__loomiEditorFocusTimer);
+                window.__loomiEditorFocusTimer = null;
+                return;
+              }
+              if (Date.now() - watchdogStart > 6000) {
+                clearInterval(window.__loomiEditorFocusTimer);
+                window.__loomiEditorFocusTimer = null;
+              }
+            }, 80);
           } else {
+            // Editor is closing — cancel the focus watchdog so it
+            // doesn't keep firing focus() on a hidden field (which
+            // would silently steal focus from anywhere else on the
+            // card after a Save / Cancel / Esc).
+            if (window.__loomiEditorFocusTimer) {
+              clearInterval(window.__loomiEditorFocusTimer);
+              window.__loomiEditorFocusTimer = null;
+            }
             if (err) {
               err.textContent = "";
               err.classList.remove("show");
@@ -4850,28 +4903,54 @@
               err.classList.remove("show");
             }
             renderDecisionFooter();
-            // Same NSPanel focus-activation dance as setEditMode() above —
-            // see that comment for why requestAnimationFrame alone isn't
-            // enough on macOS. Triple-tap (rAF + 60ms + 200ms) covers the
-            // window becoming key after the user's first click on the
-            // card, and the click-to-focus handler on #dec-editor-im is
-            // the safety net if focus is still lost.
-            const focusBodyIm = () => {
-              if (!body || document.activeElement === body) return;
-              body.focus();
+            // Same NSPanel focus-activation dance as setEditMode() above.
+            // See that comment for why we now use a continuous watchdog
+            // (80 ms poll, 6 s budget) instead of a one-shot ladder. The
+            // previous 0 / 60 / 200 / 500 / 1000 / 1500 ms ladder cap
+            // burned out within 1.5 s, which was too tight on cold
+            // NSPanel promote on macOS 14+ where
+            // `setBecomesKeyOnlyOnOrderFront:` can stay at the panel's
+            // default (non-key) for several seconds. The IM editor
+            // shares the single `window.__loomiEditorFocusTimer` with
+            // the email editor — they're mutually exclusive at any
+            // moment, so cancelling on each setEditMode call is safe.
+            const tryFocusEditorIm = () => {
+              if (!body) return false;
+              if (document.activeElement === body) return true;
+              body.focus({ preventScroll: true });
+              if (document.activeElement !== body) return false;
               const len = body.value.length;
               try {
                 body.setSelectionRange(len, len);
               } catch (_) {
                 /* noop */
               }
+              return true;
             };
-            requestAnimationFrame(() => {
-              focusBodyIm();
-              setTimeout(focusBodyIm, 60);
-              setTimeout(focusBodyIm, 200);
-            });
+            if (window.__loomiEditorFocusTimer) {
+              clearInterval(window.__loomiEditorFocusTimer);
+              window.__loomiEditorFocusTimer = null;
+            }
+            const watchdogStartIm = Date.now();
+            window.__loomiEditorFocusTimer = setInterval(() => {
+              if (tryFocusEditorIm()) {
+                clearInterval(window.__loomiEditorFocusTimer);
+                window.__loomiEditorFocusTimer = null;
+                return;
+              }
+              if (Date.now() - watchdogStartIm > 6000) {
+                clearInterval(window.__loomiEditorFocusTimer);
+                window.__loomiEditorFocusTimer = null;
+              }
+            }, 80);
           } else {
+            // Symmetric cleanup to setEditMode()'s else branch — the
+            // shared watchdog handle is the one we just cancelled at
+            // the top of the `if` block, so this is mostly defensive.
+            if (window.__loomiEditorFocusTimer) {
+              clearInterval(window.__loomiEditorFocusTimer);
+              window.__loomiEditorFocusTimer = null;
+            }
             if (err) {
               err.textContent = "";
               err.classList.remove("show");
@@ -4992,30 +5071,117 @@
         // Re-firing `focus()` from inside this click handler runs *after*
         // the NSPanel has promoted (clicks promote the window, then
         // bubble up to this listener), so the second focus() call is the
-        // one that actually sticks. We only do this for clicks that
-        // landed on the editor's own surface — clicks on the editor's
-        // buttons / the textarea itself / the recipient pill are left
-        // alone to avoid fighting the user's selection.
+        // one that actually sticks.
+        //
+        // Earlier this handler only re-focused the body textarea on
+        // whitespace clicks and returned early for clicks on inputs /
+        // textareas themselves. That's wrong for the NSPanel case: if
+        // the browser default focus() silently no-ops because the
+        // window hasn't promoted to key yet, we still need to fire
+        // focus() ourselves on the clicked Subject / Body, or the user
+        // sees "Subject and Body are both unclickable". The fix: focus
+        // any input / textarea that was clicked (idempotent if the
+        // browser already focused it), and on whitespace clicks focus
+        // the body textarea. Buttons / labels / recipient pills stay
+        // untouched so we never fight the user's selection.
         const focusOnEditorSurface = (rootEl, targetEl) => {
           if (!rootEl) return;
-          // Don't fight a click that already landed on something
-          // interactive (textarea, button, label that targets it,
-          // recipient pill, etc.) — the browser already did the right
-          // thing there.
-          if (
-            targetEl &&
-            targetEl.closest(
-              "button,input,textarea,select,[contenteditable='true'],label",
-            )
-          ) {
+          const editable =
+            targetEl && targetEl.closest
+              ? targetEl.closest("input,textarea")
+              : null;
+          const isIm = rootEl.id === "dec-editor-im";
+          const body = rootEl.querySelector(
+            isIm ? "#dec-editor-im-body" : "#dec-editor-body",
+          );
+          // Email editor has a Subject input — keep it adjacent for
+          // parity even though the click handler doesn't currently
+          // target it directly (Subject is reached via the same
+          // input/textarea-closest branch above when clicked).
+          const subject = isIm
+            ? null
+            : rootEl.querySelector("#dec-editor-subject");
+          const target =
+            editable && rootEl.contains(editable) ? editable : body;
+          if (!target) return;
+          // Hard reset: ask the underlying NSPanel to become key BEFORE
+          // any DOM focus() attempt. On macOS 14+ where
+          // `setBecomesKeyOnlyOnOrderFront:` has been pruned and
+          // `.focusable(true)` alone isn't enough, the textarea/input
+          // never even receives an I-beam cursor on hover (because OS
+          // hit-testing treats the panel as non-interactive for text
+          // input). Calling `setFocus()` on the WebviewWindow bridges
+          // both layers: it runs Tauri's `focus_window` path which
+          // does `makeKeyAndOrderFront:` on the NSWindow under the
+          // hood, and the panel — even an NSPanel — will accept
+          // keyboard events for its first responder as a result.
+          //
+          // We previously tried relying on Tauri's auto-focus on show
+          // (`w.set_focus()` in `pet/card.rs::show_card_window_with`),
+          // but on cold / NSPanel promote that one-shot call lands
+          // before the OS has fully accepted the new window state, so
+          // a subsequent click in the editor still doesn't promote.
+          // Re-firing it on every click inside the editor is cheap
+          // and idempotent.
+          try {
+            const w = getCurrentWindow();
+            if (w && typeof w.setFocus === "function") {
+              w.setFocus();
+            }
+          } catch (_) {
+            /* Tauri bridge not available (dev console, raw HTML) */
+          }
+          // Direct focus() — the click event has already been processed
+          // by the OS, so the window should be ready to promote.
+          target.focus({ preventScroll: true });
+          if (document.activeElement === target) {
+            if (target === body) {
+              const len = body.value.length;
+              try {
+                body.setSelectionRange(len, len);
+              } catch (_) {
+                /* noop */
+              }
+            }
             return;
           }
-          const body = rootEl.querySelector(
-            rootEl.id === "dec-editor-im"
-              ? "#dec-editor-im-body"
-              : "#dec-editor-body",
-          );
-          if (body) body.focus();
+          // Direct focus() didn't stick (OS still mid-promote) — kick
+          // off a short burst of retries against just this target,
+          // reusing the shared watchdog slot so any setEditMode()
+          // call can cancel it cleanly. Without this the user sees
+          // the click do nothing — the click has fired, the input has
+          // NOT been focused, and the watchdog never re-arms because
+          // the original setEditMode() watchdog already cancelled
+          // itself when the click landed.
+          if (window.__loomiEditorFocusTimer) {
+            clearInterval(window.__loomiEditorFocusTimer);
+            window.__loomiEditorFocusTimer = null;
+          }
+          const burstStart = Date.now();
+          window.__loomiEditorFocusTimer = setInterval(() => {
+            if (document.activeElement === target) {
+              clearInterval(window.__loomiEditorFocusTimer);
+              window.__loomiEditorFocusTimer = null;
+              return;
+            }
+            target.focus({ preventScroll: true });
+            if (target === body && document.activeElement === body) {
+              const len = body.value.length;
+              try {
+                body.setSelectionRange(len, len);
+              } catch (_) {
+                /* noop */
+              }
+            }
+            if (Date.now() - burstStart > 3000) {
+              clearInterval(window.__loomiEditorFocusTimer);
+              window.__loomiEditorFocusTimer = null;
+            }
+          }, 60);
+          // Suppress an unused-var warning for `subject`, kept on
+          // purpose to make the email / IM symmetry obvious at the
+          // call site.
+          void subject;
         };
         const editorRoot = document.getElementById("dec-editor");
         const editorImRoot = document.getElementById("dec-editor-im");
@@ -5665,11 +5831,11 @@
             const toolHints = {
               rsvp: "Send the RSVP — call the googlecalendar composio tool with `responseStatus: <sub_action.response>` (accepted / declined / tentative) on the event from `action.params.eventId`. Skill: `Skill composio execute GOOGLECALENDAR_EVENTS_MODIFY on googlecalendar with {...}`. CLI: `composio googlecalendar events_modify --json {...}`.",
               email_reply:
-                "Send the drafted email — call the gmail composio tool with the subject/body from `context.draft` if present, otherwise draft from `decision.title`. Skill: `Skill composio execute GMAIL_SEND_MESSAGE on gmail with {...}`. CLI: `composio gmail send_message --json {...}`.",
+                'Reply to this email. If `context.draft` is already set (user edited it inline), use that subject/body verbatim. If NOT, draft a concise reply (3–6 sentences) grounded in the source signal — mention the sender\'s name and the thread subject, don\'t write a generic placeholder — then PATCH it back to the decision via `curl -sS -X PATCH http://localhost:3515/api/loop/decision/<id> -H \'content-type: application/json\' -d \'{"draft":{"subject":"<...>","body":"<...>"}}\'` so the UI can show the draft before you send. The endpoint rejects empty body (HTTP 400 `draft.body required`). Only AFTER the PATCH succeeds, call the gmail composio tool with the subject/body from `context.draft`. Skill: `Skill composio execute GMAIL_SEND_MESSAGE on gmail with {...}`. CLI: `composio gmail send_message --json {...}`. If the PATCH fails, do NOT send — emit `skipped` with reason=`draft PATCH failed: <msg>`.',
               review_pr:
                 "Post a PR review — call the github composio tool with the verdict from `sub_action.verdict` (approve / comment / request_changes) on PR `params.number` in `params.repo`. Skill: `Skill composio execute GITHUB_CREATE_REVIEW on github with {...}`. CLI: `composio github create_review --json {...}`.",
               im_reply:
-                "Send the drafted IM reply — discover the composio toolkit that matches params.channel (slack / telegram / feishu / lark / weixin / qq / dingtalk). For slack use SLACK_SEND_MESSAGE in `params.chatId` (channel), replying in-thread to `params.threadId` if present. For the others, run `composio search '<channel> send message'` first, then `Skill composio execute <DISCOVERED_SLUG> on <toolkit>` with {chat_id: params.chatId, text: <user-edited body from context.draft.body>}. Fallback CLI: `composio execute <DISCOVERED_SLUG> -d '<args-json>'`.",
+                "Reply on this IM. If `context.draft.body` is already set (user edited it inline), use that body verbatim. If NOT, draft a short message (1–3 sentences) grounded in the source signal — then PATCH it back via `curl -sS -X PATCH http://localhost:3515/api/loop/decision/<id> -H 'content-type: application/json' -d '{\"draft\":{\"subject\":null,\"body\":\"<...>\"}}'` so the UI can show the draft before you send. The endpoint rejects empty body (HTTP 400 `draft.body required`). Only AFTER the PATCH succeeds, send via the composio toolkit matching `params.channel` (slack / telegram / feishu / lark / weixin / qq / dingtalk). For slack use SLACK_SEND_MESSAGE in `params.chatId`, replying in-thread to `params.threadId` if present. For the others, run `composio search '<channel> send message'` first, then `Skill composio execute <DISCOVERED_SLUG> on <toolkit>` with {chat_id: params.chatId, text: context.draft.body}. Fallback CLI: `composio execute <DISCOVERED_SLUG> -d '<args-json>'`. If the PATCH fails, do NOT send — emit `skipped` with reason=`draft PATCH failed: <msg>`.",
               deadline_reminder:
                 'Create a deadline reminder — default: call the googlecalendar composio tool (skill: `Skill composio execute GOOGLECALENDAR_CREATE_EVENT on googlecalendar` or CLI: `composio googlecalendar create_event`) with `params.message` as the title and `params.notifyAt` → `params.deadlineAt` as the time window (or all-day on `params.deadlineAt`\'s date). If `params.channel === "slack"`, send a DM via the slack composio tool instead. Emit a single SSE `result` event whose `content` describes what you did (include the calendar event id / Slack ts / `skipped: <reason>`) — the system records `completed_at` and `result` automatically.',
               release_plan:
