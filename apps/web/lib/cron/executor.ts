@@ -10,7 +10,11 @@ import type {
   JobExecutionContext,
 } from "./types";
 import { prepareConversationWindows } from "@/lib/ai";
-import { preprocessCompactionMessages } from "@openloomi/ai/agent";
+import { getAgentRegistry } from "@openloomi/ai/agent/registry";
+import type { AgentConfig, AgentProvider } from "@openloomi/ai/agent/types";
+import { resolveNativeAgentProviderRequest } from "@/lib/ai/native-agent/provider-env";
+import { getUserLlmProviderConfig } from "@/lib/ai/user-llm-api-settings";
+import { registerPlugins } from "@/lib/ai/runtime/register-plugins";
 import { formatAgentStreamErrorForUser } from "@/lib/ai/runtime/format-error";
 import {
   saveChat,
@@ -80,20 +84,6 @@ function normalizeRole(role: unknown): "user" | "assistant" {
   return role === "user" ? "user" : "assistant";
 }
 
-function stringifyToolPayload(value: unknown): string {
-  if (typeof value === "string") {
-    return value;
-  }
-  if (value === null || value === undefined) {
-    return "";
-  }
-  try {
-    return JSON.stringify(value, null, 2);
-  } catch {
-    return String(value);
-  }
-}
-
 function buildSchedulerWorkspaceOverride(
   messageText: string,
   sessionDir: string,
@@ -114,35 +104,6 @@ File output rules for this scheduled execution:
 
 User task:
 ${messageText}`;
-}
-
-function buildToolUseContent(part: Record<string, unknown>): string {
-  const toolName =
-    typeof part.toolName === "string" && part.toolName.trim().length > 0
-      ? part.toolName
-      : "UnknownTool";
-  const toolInput = stringifyToolPayload(part.toolInput);
-
-  return toolInput
-    ? `[TOOL_USE] ${toolName}\n${toolInput}`
-    : `[TOOL_USE] ${toolName}`;
-}
-
-function buildToolResultContent(part: Record<string, unknown>): string {
-  const toolName =
-    typeof part.toolName === "string" && part.toolName.trim().length > 0
-      ? part.toolName
-      : "UnknownTool";
-  const status =
-    typeof part.status === "string" && part.status.trim().length > 0
-      ? part.status
-      : "completed";
-  const toolOutput = stringifyToolPayload(part.toolOutput);
-  const errorLine = part.isError === true ? "\n[ERROR]" : "";
-
-  return toolOutput
-    ? `[TOOL_RESULT] ${toolName} (${status})${errorLine}\n${toolOutput}`
-    : `[TOOL_RESULT] ${toolName} (${status})${errorLine}`;
 }
 
 type JobHistoryMessage = {
@@ -413,9 +374,6 @@ After calling chatInsight with withDetail=true, if any insights have attachments
     : "";
 
   try {
-    // Lazily import createClaudeAgent to avoid loading AI providers at module init
-    const { createClaudeAgent } = await import("@/lib/ai/extensions");
-
     // Prepare the message from job description
     // The job description should contain the full message/task to execute
     const messageText: string = jobDescription || config.handler || "";
@@ -435,26 +393,75 @@ After calling chatInsight with withDetail=true, if any insights have attachments
       sessionDir,
     );
 
-    // Build model config for agent
-    // Use default proxy baseUrl instead of database-stored config.modelConfig.baseUrl
-    const defaultBaseUrl = AI_PROXY_BASE_URL;
-    const rawModelConfig = context.modelConfig || config.modelConfig;
-    const modelConfig = {
+    // Build call-time model config. baseUrl defaults to AI_PROXY_BASE_URL
+    // (cron jobs historically routed through the in-app proxy); model defaults
+    // to DEFAULT_AI_MODEL. For non-Claude runtimes these are ignored — only
+    // the Claude branch below forwards them, matching apps/web/lib/ai/runtime/shared.ts.
+    const rawModelConfig =
+      context.modelConfig || (config as any).modelConfig || {};
+    const callModelConfig = {
       ...rawModelConfig,
-      baseUrl: defaultBaseUrl || rawModelConfig?.baseUrl,
+      baseUrl: AI_PROXY_BASE_URL || rawModelConfig?.baseUrl,
       model:
         rawModelConfig?.model ||
         (config as any).modelConfig?.model ||
         DEFAULT_AI_MODEL,
     };
 
-    const agent = createClaudeAgent({
-      provider: "claude",
-      ...modelConfig,
+    // Resolve provider + per-provider env config from OPENLOOMI_AGENT_PROVIDER.
+    // Same entry point the Telegram / WhatsApp / iMessage integrations use, so
+    // a deployment with OPENLOOMI_AGENT_PROVIDER=codex now runs scheduled jobs
+    // through Codex instead of being hard-pinned to Claude.
+    const runtimeRequest = resolveNativeAgentProviderRequest({
+      prompt: agentPrompt,
+      modelConfig: callModelConfig,
     });
 
-    // Extract authToken for business-tools MCP server (used for embeddings API)
-    const authToken = modelConfig?.apiKey;
+    const agentConfig: AgentConfig = {
+      provider: (runtimeRequest.provider || "claude") as AgentProvider,
+      model: runtimeRequest.modelConfig?.model,
+      providerConfig: runtimeRequest.providerConfig,
+      workDir: sessionDir,
+    };
+
+    // Claude path: layer call-time config first, then the user's saved
+    // anthropic_compatible row on top — user settings win, mirroring the IM
+    // integration flow. Non-Claude runtimes only consume env-driven config and
+    // skip this branch entirely.
+    if (agentConfig.provider === "claude") {
+      if (callModelConfig.apiKey) {
+        agentConfig.apiKey = callModelConfig.apiKey;
+      }
+      if (callModelConfig.baseUrl) {
+        agentConfig.baseUrl = callModelConfig.baseUrl;
+      }
+      if (callModelConfig.model) {
+        agentConfig.model = callModelConfig.model;
+      }
+      if (context.userId) {
+        const userAnthropicConfig = await getUserLlmProviderConfig({
+          userId: context.userId,
+          providerType: "anthropic_compatible",
+        });
+        if (userAnthropicConfig?.apiKey) {
+          agentConfig.apiKey = userAnthropicConfig.apiKey;
+        }
+        if (userAnthropicConfig?.baseUrl) {
+          agentConfig.baseUrl = userAnthropicConfig.baseUrl;
+        }
+        if (userAnthropicConfig?.model) {
+          agentConfig.model = userAnthropicConfig.model;
+        }
+      }
+    }
+
+    // Idempotent plugin registration so the registry knows about every
+    // provider the user might select via OPENLOOMI_AGENT_PROVIDER.
+    registerPlugins();
+    const agent = getAgentRegistry().create(agentConfig);
+
+    // authToken feeds the business-tools MCP server (embeddings API).
+    const authToken = agentConfig.apiKey ?? callModelConfig.apiKey;
 
     // Track insight IDs created/modified during this execution for chat association
     const createdInsightIds: string[] = [];
@@ -481,25 +488,6 @@ After calling chatInsight with withDetail=true, if any insights have attachments
     const userSettings = context.userId
       ? await getUserInsightSettings(context.userId)
       : null;
-    const userLanguage = userSettings?.language ?? null;
-    const useEnglishOutput =
-      userLanguage?.toLowerCase().startsWith("en") ?? false;
-    const structuredOutputLanguage = useEnglishOutput
-      ? "English"
-      : "Simplified Chinese";
-    const traceTitles = useEnglishOutput
-      ? {
-          taskReceived: "Task received",
-          executionError: "Execution error",
-          executionFailed: "Execution failed",
-          executionCompleted: "Execution completed",
-        }
-      : {
-          taskReceived: "接收任务",
-          executionError: "执行异常",
-          executionFailed: "执行失败",
-          executionCompleted: "执行完成",
-        };
 
     // OS desktop notifications are no longer injected into cron prompts.
     // All reminders go through configured cross-platform Notification Channels
@@ -685,24 +673,6 @@ ${characterContextSection}`,
         compactionCandidatePool
           .filter((message) => immediateSourceIds.has(message.sourceMessageId))
           .map((message) => message.sourceMessageId),
-      );
-      const safeCompactionCandidates = compactionCandidatePool.filter(
-        (message) => !overlappingSourceMessageIds.has(message.sourceMessageId),
-      );
-      const safeImmediateHistory = [
-        ...immediateHistory,
-        ...protectedFromCompaction,
-        ...compactionCandidatePool.filter((message) =>
-          overlappingSourceMessageIds.has(message.sourceMessageId),
-        ),
-      ].sort(compareJobHistoryMessages);
-
-      const preprocessedHistory = preprocessCompactionMessages(
-        safeImmediateHistory.map(({ role, content, messageType }) => ({
-          role,
-          type: messageType,
-          content,
-        })),
       );
 
       // Historical messages are excluded from the runtime conversation to avoid
