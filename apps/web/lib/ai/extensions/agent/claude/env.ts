@@ -7,6 +7,8 @@ import type { AgentConfig } from "@openloomi/ai/agent/types";
 import { DEFAULT_AI_MODEL } from "@/lib/env/constants";
 import { createLogger } from "@/lib/utils/logger";
 
+import { prepareClaudeCodeTempDirectory } from "./runtime-preflight";
+
 const logger = createLogger("ClaudeAgent");
 
 /**
@@ -65,9 +67,9 @@ export function getExtendedPath(): string {
 /**
  * Build environment variables for the Claude Code SDK query.
  */
-export function buildClaudeEnvConfig(
+export async function buildClaudeEnvConfig(
   config: AgentConfig,
-): Record<string, string> {
+): Promise<Record<string, string>> {
   const env: Record<string, string | undefined> = { ...process.env };
 
   // Remove the marker used by Claude Code parent sessions. Without this, a
@@ -159,6 +161,20 @@ export function buildClaudeEnvConfig(
     }
   }
 
+  // Ensure the Claude Code temp directory exists (and is private) before the
+  // SDK spawns the child. If the configured override is unusable, the helper
+  // removes the key so the runtime falls back to the OS temp directory.
+  const tempDirectoryError = await prepareClaudeCodeTempDirectory(env);
+  if (tempDirectoryError) {
+    logger.warn(
+      `[ClaudeAgent] Ignoring unusable CLAUDE_CODE_TMPDIR and falling back to the system temp directory: ${tempDirectoryError.message}`,
+    );
+    // Keep filteredEnv in sync with the deletion so the process.env mirror
+    // below does not re-introduce a stale key.
+    // biome-ignore lint/performance/noDelete: filteredEnv is typed as Record<string, string> and cannot hold undefined values.
+    delete filteredEnv.CLAUDE_CODE_TMPDIR;
+  }
+
   // The SDK spawns Claude Code as a child process. Updating process.env here
   // preserves the old behavior where the child inherited these critical vars.
   if (filteredEnv.ANTHROPIC_BASE_URL) {
@@ -176,6 +192,12 @@ export function buildClaudeEnvConfig(
   }
   if (!filteredEnv.CLAUDECODE) {
     process.env.CLAUDECODE = undefined;
+  }
+  if (!filteredEnv.CLAUDE_CODE_TMPDIR) {
+    // biome-ignore lint/performance/noDelete: the SDK may read this key from the parent process before spawning its child, so an unusable override must be removed rather than assigned undefined.
+    delete process.env.CLAUDE_CODE_TMPDIR;
+  } else {
+    process.env.CLAUDE_CODE_TMPDIR = filteredEnv.CLAUDE_CODE_TMPDIR;
   }
 
   return filteredEnv;

@@ -85,6 +85,10 @@ import {
   clearSkillsForClaudeSession,
   syncSkillsForClaudeSession,
 } from "./skills";
+import {
+  createLineBufferedDiagnosticSink,
+  redactClaudeRuntimeDiagnostic,
+} from "./runtime-preflight";
 
 const logger = createLogger("ClaudeAgent");
 
@@ -101,13 +105,16 @@ const SANDBOX_API_URL =
  * Spawn Claude Code process with proper shell support
  * This ensures shell scripts (.sh, .cmd) are executed correctly
  */
-function spawnClaudeCodeProcess(options: {
-  command: string;
-  args: string[];
-  cwd?: string;
-  env: Record<string, string | undefined>;
-  signal?: AbortSignal;
-}) {
+function spawnClaudeCodeProcess(
+  options: {
+    command: string;
+    args: string[];
+    cwd?: string;
+    env: Record<string, string | undefined>;
+    signal?: AbortSignal;
+  },
+  onStderr?: (data: string) => void,
+) {
   const os = platform();
 
   // Kill the entire process tree on Windows when abort is signaled.
@@ -126,6 +133,19 @@ function spawnClaudeCodeProcess(options: {
           },
         );
       });
+    }
+  };
+  const registerChildProcess = (childProcess: ChildProcess) => {
+    registerChildProcess(childProcess);
+    if (onStderr && childProcess.stderr) {
+      // A credential can straddle arbitrary stream chunks. Reassemble bounded
+      // lines before forwarding them to the redacting diagnostic callback.
+      const stderrSink = createLineBufferedDiagnosticSink(onStderr);
+      childProcess.stderr.on("data", (data: Buffer | string) => {
+        stderrSink.write(data);
+      });
+      childProcess.stderr.once("end", () => stderrSink.end());
+      childProcess.stderr.once("close", () => stderrSink.end());
     }
   };
   const asProcessEnv = (
@@ -196,7 +216,7 @@ function spawnClaudeCodeProcess(options: {
       signal: options.signal,
       windowsHide: true,
     });
-    registerWindowsTreeKill(childProcess);
+    registerChildProcess(childProcess);
 
     // CRITICAL: Also update global process.env immediately after spawn
     // to ensure child process doesn't inherit CLAUDECODE from parent process
@@ -223,7 +243,7 @@ function spawnClaudeCodeProcess(options: {
           windowsHide: true,
         },
       );
-      registerWindowsTreeKill(childProcess);
+      registerChildProcess(childProcess);
       return childProcess;
     }
 
@@ -245,7 +265,7 @@ function spawnClaudeCodeProcess(options: {
         windowsHide: true,
       },
     );
-    registerWindowsTreeKill(childProcess);
+    registerChildProcess(childProcess);
     return childProcess;
   }
 
@@ -1555,6 +1575,14 @@ export class ClaudeAgent extends BaseAgent {
     return `msg_${Date.now()}_${++this.messageCounter}`;
   }
 
+  private redactRuntimeDiagnostic(text: string): string {
+    return redactClaudeRuntimeDiagnostic(text, [
+      this.config.apiKey,
+      process.env.ANTHROPIC_API_KEY,
+      process.env.ANTHROPIC_AUTH_TOKEN,
+    ]);
+  }
+
   /**
    * Estimate token count for a text string.
    * Delegates to the shared estimateTokens utility which correctly handles
@@ -1889,11 +1917,18 @@ ${formattedMessages}${truncationNotice}\n\n---\n## Current Request\n`;
     // Centralize Claude SDK environment/settings assembly so run/plan/execute
     // share the same API key, model, permission, and custom endpoint behavior.
     const settingSources = buildClaudeSettingSources(options?.skillsConfig);
-    const envConfig = buildClaudeEnvConfig(this.config);
+    const envConfig = await buildClaudeEnvConfig(this.config);
     const settingsConfig = buildClaudeSettingsConfig(this.config, {
       skipWebFetchPreflight: true,
     });
     const runtimeOptions: AgentOptions = options ?? {};
+    // The SDK does not wire its stderr callback when a custom spawner is
+    // supplied, so the spawner captures and line-buffers stderr directly.
+    const captureStderr = (data: string) => {
+      logger.error(
+        `[Claude ${session.id}] STDERR: ${this.redactRuntimeDiagnostic(data)}`,
+      );
+    };
     const claudeRuntime = new ClaudeRuntimeSession({
       runtimeSessionId: session.id,
       runEpoch: 0,
@@ -1919,7 +1954,8 @@ ${formattedMessages}${truncationNotice}\n\n---\n## Current Request\n`;
       isDev,
       debugFilePath: LOG_FILE_PATH,
       logger,
-      spawnClaudeCodeProcess,
+      spawnClaudeCodeProcess: (spawnOptions) =>
+        spawnClaudeCodeProcess(spawnOptions, captureStderr),
       systemPrompt: getBusinessToolsInstruction(options?.excludeTools),
       maxTurns: 1000,
       includePartialMessages: options?.stream ?? false,
@@ -1985,10 +2021,12 @@ ${formattedMessages}${truncationNotice}\n\n---\n## Current Request\n`;
         },
         env: {
           ANTHROPIC_BASE_URL:
-            buildClaudeEnvConfig(this.config).ANTHROPIC_BASE_URL || "(not set)",
+            (await buildClaudeEnvConfig(this.config)).ANTHROPIC_BASE_URL ||
+            "(not set)",
           ANTHROPIC_MODEL:
-            buildClaudeEnvConfig(this.config).ANTHROPIC_MODEL || "(not set)",
-          hasAuthToken: !!buildClaudeEnvConfig(this.config)
+            (await buildClaudeEnvConfig(this.config)).ANTHROPIC_MODEL ||
+            "(not set)",
+          hasAuthToken: !!(await buildClaudeEnvConfig(this.config))
             .ANTHROPIC_AUTH_TOKEN,
         },
       });
@@ -2191,8 +2229,15 @@ If you need to create any files during planning, use this directory.
     // Planning uses the same env/settings builder as normal runs, but does not
     // expose tools because it should only produce a plan or direct answer.
     const planSettingSources = buildClaudeSettingSources(options?.skillsConfig);
-    const envConfig = buildClaudeEnvConfig(this.config);
+    const envConfig = await buildClaudeEnvConfig(this.config);
     const planSettingsConfig = buildClaudeSettingsConfig(this.config);
+    // The SDK does not wire its stderr callback when a custom spawner is
+    // supplied, so the spawner captures and line-buffers stderr directly.
+    const capturePlanStderr = (data: string) => {
+      logger.error(
+        `[Claude ${session.id}] [PLAN] STDERR: ${this.redactRuntimeDiagnostic(data)}`,
+      );
+    };
     const queryOptions = createClaudeQueryOptions({
       sessionId: session.id,
       cwd: sessionCwd,
@@ -2208,8 +2253,8 @@ If you need to create any files during planning, use this directory.
       isDev,
       debugFilePath: LOG_FILE_PATH,
       logger,
-      spawnClaudeCodeProcess,
-      stderrLabel: "[PLAN]",
+      spawnClaudeCodeProcess: (spawnOptions) =>
+        spawnClaudeCodeProcess(spawnOptions, capturePlanStderr),
       systemPrompt: PLANNING_INSTRUCTION(options?.timezone ?? undefined),
       permissionLogMode: "run",
     });
@@ -2610,8 +2655,15 @@ If you need to create any files during planning, use this directory.
 
     // Execute reuses the common SDK option builder, then adds MCP servers so
     // plan execution has the same tool surface as normal agent runs.
-    const envConfig = buildClaudeEnvConfig(this.config);
+    const envConfig = await buildClaudeEnvConfig(this.config);
     const execSettingsConfig = buildClaudeSettingsConfig(this.config);
+    // The SDK does not wire its stderr callback when a custom spawner is
+    // supplied, so the spawner captures and line-buffers stderr directly.
+    const captureExecuteStderr = (data: string) => {
+      logger.error(
+        `[Claude ${session.id}] STDERR: ${this.redactRuntimeDiagnostic(data)}`,
+      );
+    };
     const queryOptions = createClaudeQueryOptions({
       sessionId: session.id,
       cwd: sessionCwd,
@@ -2628,7 +2680,8 @@ If you need to create any files during planning, use this directory.
       isDev,
       debugFilePath: LOG_FILE_PATH,
       logger,
-      spawnClaudeCodeProcess,
+      spawnClaudeCodeProcess: (spawnOptions) =>
+        spawnClaudeCodeProcess(spawnOptions, captureExecuteStderr),
       systemPrompt:
         "You are executing a pre-approved plan with full permissions to use all available tools.",
       maxTurns: 1000,

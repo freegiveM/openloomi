@@ -8,7 +8,7 @@
 //! Node.js management module — handles discovery, download, and Next.js server lifecycle.
 
 use crate::panic_guard::{catch_unwind_str, lock_recovered};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -966,6 +966,49 @@ fn get_packaged_render_engine_paths(
     (soffice_path, pdftoppm_path)
 }
 
+fn ensure_private_directory(path: &Path) -> Result<(), String> {
+    std::fs::create_dir_all(path)
+        .map_err(|error| format!("failed to create {}: {}", path.display(), error))?;
+
+    let metadata = std::fs::symlink_metadata(path)
+        .map_err(|error| format!("failed to inspect {}: {}", path.display(), error))?;
+    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        return Err(format!("{} is not a real directory", path.display()));
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))
+            .map_err(|error| format!("failed to secure {}: {}", path.display(), error))?;
+    }
+
+    Ok(())
+}
+
+fn prepare_claude_code_tmpdir(home: &Path) -> PathBuf {
+    let primary = home.join(".cache").join("openloomi-tmp");
+    if let Err(error) = ensure_private_directory(&primary) {
+        eprintln!(
+            "⚠️  Claude Code temp directory is unavailable ({}); trying a private system-temp fallback",
+            error
+        );
+        let fallback = std::env::temp_dir().join(format!("openloomi-claude-{}", std::process::id()));
+        if let Err(fallback_error) = ensure_private_directory(&fallback) {
+            eprintln!(
+                "⚠️  Claude Code fallback temp directory is unavailable: {}",
+                fallback_error
+            );
+            // The Node.js preflight removes an unusable override before it
+            // starts Claude Code, allowing the runtime to use its OS default.
+            return primary;
+        }
+        return fallback;
+    }
+
+    primary
+}
+
 /// Attempt to start Next.js server with the given Node.js binary
 #[cfg(not(debug_assertions))]
 pub fn try_start_nextjs(
@@ -1416,7 +1459,7 @@ pub fn start_nextjs_server() {
     let data_dir = crate::storage::get_data_dir();
     let db_path = data_dir.join("data.db");
     let env_home_path = PathBuf::from(&env_home);
-    let code_tmpdir = env_home_path.join(".cache").join("openloomi-tmp");
+    let code_tmpdir = prepare_claude_code_tmpdir(&env_home_path);
 
     let db_path_str = db_path.to_string_lossy().to_string();
     let code_tmpdir_str = code_tmpdir.to_string_lossy().to_string();
@@ -1982,8 +2025,21 @@ pub fn restart_server() -> Result<(), String> {
 
 #[cfg(test)]
 mod resource_dir_tests {
-    use super::resource_dir_from_exe;
+    use super::{ensure_private_directory, prepare_claude_code_tmpdir, resource_dir_from_exe};
     use std::path::PathBuf;
+
+    fn temporary_home(name: &str) -> PathBuf {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "openloomi-node-test-{}-{}-{}",
+            name,
+            std::process::id(),
+            nonce
+        ))
+    }
 
     #[test]
     fn should_return_exe_dir_unchanged_outside_macos_bundle() {
@@ -2012,5 +2068,38 @@ mod resource_dir_tests {
     fn should_fall_back_to_exe_dir_when_resources_dir_missing() {
         let dir = PathBuf::from("/nonexistent/Contents/MacOS");
         assert_eq!(resource_dir_from_exe(dir.clone()), dir);
+    }
+
+    #[test]
+    fn should_create_private_claude_code_temp_directory() {
+        let home = temporary_home("claude-tmpdir");
+        let _ = std::fs::remove_dir_all(&home);
+
+        let directory = prepare_claude_code_tmpdir(&home);
+
+        assert_eq!(directory, home.join(".cache").join("openloomi-tmp"));
+        assert!(directory.is_dir());
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&directory).unwrap().permissions().mode();
+            assert_eq!(mode & 0o777, 0o700);
+        }
+
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn should_reject_a_file_as_private_temp_directory() {
+        let home = temporary_home("invalid-claude-tmpdir");
+        let directory = home.join(".cache").join("openloomi-tmp");
+        let _ = std::fs::remove_dir_all(&home);
+        std::fs::create_dir_all(directory.parent().unwrap()).unwrap();
+        std::fs::write(&directory, "not a directory").unwrap();
+
+        let result = ensure_private_directory(&directory);
+
+        assert!(result.is_err());
+        let _ = std::fs::remove_dir_all(&home);
     }
 }

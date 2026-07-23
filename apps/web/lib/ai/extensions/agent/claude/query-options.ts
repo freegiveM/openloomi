@@ -82,7 +82,6 @@ export function createClaudeQueryOptions({
   logger,
   spawnClaudeCodeProcess,
   systemPrompt,
-  stderrLabel,
   permissionMode,
   permissionLogMode,
   tools,
@@ -108,7 +107,6 @@ export function createClaudeQueryOptions({
   logger: ClaudeRuntimeLogger;
   spawnClaudeCodeProcess: NonNullable<Options["spawnClaudeCodeProcess"]>;
   systemPrompt: string;
-  stderrLabel?: string;
   permissionMode?: AgentOptions["permissionMode"];
   permissionLogMode: "run" | "execute";
   tools?: Options["tools"];
@@ -145,12 +143,8 @@ export function createClaudeQueryOptions({
     ...(maxTurns !== undefined ? { maxTurns } : {}),
     ...(includePartialMessages !== undefined ? { includePartialMessages } : {}),
     ...(isDev ? { debug: true, debugFile: debugFilePath } : {}),
-    stderr: (data: string) => {
-      const label = stderrLabel ? ` ${stderrLabel}` : "";
-      // Keep stderr on the shared logger instead of stdout so CLI JSON output
-      // stays machine-readable.
-      logger.error(`[Claude ${sessionId}]${label} STDERR: ${data}`);
-    },
+    // The SDK does not wire its stderr callback when a custom spawner is
+    // supplied, so per-call sites capture stderr through the spawner.
     spawnClaudeCodeProcess,
     systemPrompt,
     ...(supplementalHooks ? { hooks: supplementalHooks } : {}),
