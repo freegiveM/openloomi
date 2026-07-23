@@ -11,17 +11,31 @@
  *      returns false until a real click lands on the webview. A bare
  *      `requestAnimationFrame(() => body.focus())` fires *before* that
  *      click has promoted the window to key, so the focus() call silently
- *      no-ops and the user sees the editor open but typing goes nowhere.
- *      Fix: triple-tap the focus call (rAF + 60ms + 200ms) so the
- *      textarea picks up focus once the window actually becomes key.
+ *      no-ops. The previous ladder (focus at 0/60/200/500/1000/1500 ms)
+ *      capped out at 1.5 s and burned out faster than a cold NSPanel
+ *      promote on macOS 14+ (where Apple has been pruning
+ *      `setBecomesKeyOnlyOnOrderFront:` across recent releases). The
+ *      current pattern is a continuous focus watchdog: a setInterval
+ *      polling at 80 ms for up to 6 s, self-cancelling the moment
+ *      `document.activeElement === body || subject`.
  *
- *   2. macOS webview shells can drop `pointer-events` on descendants of
+ *   2. The click-to-focus safety net used to return early whenever the
+ *      click target was an input / textarea — fine in browsers, wrong for
+ *      NSPanel where the default focus() silently no-ops. Fix: the
+ *      safety net now re-focuses any clicked input/textarea
+ *      (idempotent when the browser already focused it), and if that
+ *      direct focus() didn't take, kicks off a short 60 ms / 3 s retry
+ *      burst against just the clicked target. Buttons / labels /
+ *      recipient pills stay untouched so we never fight the user's
+ *      selection.
+ *
+ *   3. macOS webview shells can drop `pointer-events` on descendants of
  *      `html, body { user-select: none }` — a defensive `pointer-events:
  *      auto` + `user-select: text` on the editable surface itself keeps
  *      click-to-focus reliable even if a future CSS rule accidentally
  *      disables pointer events upstream.
  *
- *   3. Caret color hard-coded to `--ink` (a fixed dark color) was
+ *   4. Caret color hard-coded to `--ink` (a fixed dark color) was
  *      invisible against the dark-theme `--panel-soft` background. The
  *      caret now follows `currentColor` so it stays visible in both
  *      themes.
@@ -63,53 +77,62 @@ function editModeImBody(): string {
   return stripped.slice(start, end);
 }
 
-describe("setEditMode() focus is robust to NSPanel activation delay", () => {
-  it("calls body.focus() at least once on the next animation frame", () => {
-    expect(editModeBody()).toMatch(/requestAnimationFrame\(/);
-    expect(editModeBody()).toMatch(/body\.focus\(\)/);
-  });
-
-  it("schedules two follow-up focus() calls via setTimeout to survive a slow NSPanel promote", () => {
-    // The triple-tap pattern (rAF + 60ms + 200ms) is the whole point of
-    // the fix — see the file comment for the macOS NSPanel rationale.
+describe("setEditMode() focus is robust to slow NSPanel activation", () => {
+  it("calls body.focus() (and falls back to subject.focus()) via a watchdog", () => {
+    // Continuous watchdog — fires focus() every 80 ms for up to 6 s,
+    // self-cancelling on success. The actual focus call inside the
+    // watchdog loop targets body first (the primary editor surface)
+    // and falls back to subject.
     const body = editModeBody();
-    const setTimeoutMatches =
-      body.match(/setTimeout\([^,]+,\s*\d+\s*\)/g) || [];
-    // Filter for the focus-scheduling setTimeouts (they pass focusBody).
-    const focusSetTimeouts = setTimeoutMatches.filter((m) =>
-      /setTimeout\(focusBody/.test(m),
+    expect(body).toMatch(/body\.focus\(/);
+    expect(body).toMatch(/subject\.focus\(/);
+    expect(body).toMatch(/setInterval\(/);
+    // The shared watchdog slot — single source of truth so setEditMode
+    // (email), setEditModeIm (IM), and the click safety net can all
+    // cancel each other cleanly.
+    expect(body).toMatch(/__loomiEditorFocusTimer/);
+  });
+
+  it("budgets the watchdog at >= 6 seconds so it survives very slow cold promotes", () => {
+    // The previous one-shot ladder (0/60/200/500/1000/1500 ms) capped
+    // out at 1.5 s and burned out before macOS 14+ finished promoting
+    // the NSPanel to key. The new watchdog reads
+    // `Date.now() - watchdogStart` against a 6000 ms budget.
+    expect(editModeBody()).toMatch(/>\s*6000/);
+    // 80 ms poll cadence → 75 polls before budget elapses.
+    expect(editModeBody()).toMatch(/,\s*80\s*\)/);
+  });
+
+  it("cancels the watchdog when the editor closes (else branch)", () => {
+    // setEditMode(false) → clearInterval(window.__loomiEditorFocusTimer)
+    // so a stale editor doesn't keep stealing focus after Save / Cancel.
+    const body = editModeBody();
+    const elseMatch = body.match(
+      /renderDecisionFooter\(\);\s*\n\s*\}\s*\n\s*\}[\s\S]*$/,
     );
-    expect(focusSetTimeouts.length).toBeGreaterThanOrEqual(2);
-    // The numeric delays should include 60 and 200 (give or take formatting).
-    expect(setTimeoutMatches.join(" ")).toMatch(/,\s*60\s*\)/);
-    expect(setTimeoutMatches.join(" ")).toMatch(/,\s*200\s*\)/);
+    // Just assert the cleanup symbol exists somewhere in setEditMode.
+    expect(body).toMatch(
+      /clearInterval\(\s*window\.__loomiEditorFocusTimer\s*\)/,
+    );
   });
 });
 
-describe("setEditModeIm() focus is robust to NSPanel activation delay", () => {
-  it("calls body.focus() at least once on the next animation frame", () => {
-    expect(editModeImBody()).toMatch(/requestAnimationFrame\(/);
-    expect(editModeImBody()).toMatch(/body\.focus\(\)/);
-  });
-
-  it("schedules two follow-up focus() calls via setTimeout (60ms + 200ms)", () => {
+describe("setEditModeIm() focus is robust to slow NSPanel activation", () => {
+  it("calls body.focus() via a watchdog (no separate Subject — IM has no subject)", () => {
     const body = editModeImBody();
-    const setTimeoutMatches =
-      body.match(/setTimeout\([^,]+,\s*\d+\s*\)/g) || [];
-    const focusSetTimeouts = setTimeoutMatches.filter((m) =>
-      /setTimeout\(focusBodyIm/.test(m),
-    );
-    expect(focusSetTimeouts.length).toBeGreaterThanOrEqual(2);
-    expect(setTimeoutMatches.join(" ")).toMatch(/,\s*60\s*\)/);
-    expect(setTimeoutMatches.join(" ")).toMatch(/,\s*200\s*\)/);
+    expect(body).toMatch(/body\.focus\(/);
+    expect(body).toMatch(/setInterval\(/);
+    expect(body).toMatch(/__loomiEditorFocusTimer/);
+  });
+
+  it("uses the same 80 ms / 6 s budget as the email editor (symmetric)", () => {
+    expect(editModeImBody()).toMatch(/>\s*6000/);
+    expect(editModeImBody()).toMatch(/,\s*80\s*\)/);
   });
 });
 
-describe("editor wrappers have a click-to-focus safety net", () => {
+describe("editor wrappers have a click-to-focus safety net with a 3s burst", () => {
   it("binds a mousedown listener on #dec-editor that focuses the body textarea", () => {
-    // Find the binding block (between the comment + the focusOnEditorSurface
-    // helper and the keyboard-shortcuts block). We look for the literal
-    // selector string + the addEventListener call.
     expect(stripped).toMatch(
       /getElementById\(["']dec-editor["']\)[\s\S]{0,200}addEventListener\(["']mousedown["']/,
     );
