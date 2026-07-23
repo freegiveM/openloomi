@@ -2096,6 +2096,50 @@ export async function getIntegrationAccountsByUserId({
   }
 }
 
+/**
+ * Lightweight non-credential listing of a user's `integrationAccounts` rows.
+ * Used by `/api/loop/connectors` to surface native chat integrations on the
+ * Loomi online card. Deliberately does NOT select `credentialsEncrypted`,
+ * `encryptionKeyId`, `metadata`, or `keyVersion` — only fields that
+ * `ConnectorEntry` / `ConnectorAccount` already accept (id, label, status)
+ * plus `externalId` so accounts have a stable per-platform handle.
+ *
+ * Returns plain objects (not the typed `IntegrationAccount` model) because
+ * the route only needs a subset of columns; passing the full model would
+ * risk accidental credential leakage if a future caller spreads the row
+ * into a `ConnectorEntry`.
+ */
+export async function listIntegrationAccountRecordsByUser(
+  userId: string,
+): Promise<
+  Array<{
+    id: string;
+    platform: string;
+    displayName: string;
+    externalId: string;
+    status: string;
+  }>
+> {
+  try {
+    const rows = await db
+      .select({
+        id: integrationAccounts.id,
+        platform: integrationAccounts.platform,
+        displayName: integrationAccounts.displayName,
+        externalId: integrationAccounts.externalId,
+        status: integrationAccounts.status,
+      })
+      .from(integrationAccounts)
+      .where(eq(integrationAccounts.userId, userId));
+    return rows;
+  } catch (error) {
+    throw new AppError(
+      "bad_request:database",
+      `Failed to list integration accounts for user. ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
+
 export async function getIntegrationAccountByPlatform({
   userId,
   platform,

@@ -186,6 +186,103 @@ export function filterComposioOnlyEntries(
   );
 }
 
+// ---------------------------------------------------------------------------
+// Native chat integrations (#xxx) — platforms we want surfaced on the
+// Loomi online card even though they are NOT part of `LOOP_MONITORED_TOOLKITS`.
+// Loop never pulls signals from these sources; they exist purely so the user
+// can see at a glance which of their native OAuth chat accounts is wired up
+// for chat / memory use. Gmail / Calendar / etc. intentionally live in
+// `LOOP_MONITORED_TOOLKITS` instead — adding them here would collide with
+// the Loop rows on id.
+//
+// Keep this set tight: anything new should be added only after the
+// `displayName` and `accountStatus` semantics are confirmed against
+// `integrationAccounts` rows. The id is the `platform` column, lowercased.
+// ---------------------------------------------------------------------------
+export const NATIVE_CHAT_INTEGRATIONS: ReadonlySet<string> = new Set([
+  "telegram",
+  "weixin",
+  "whatsapp",
+  "feishu",
+  "lark",
+  "imessage",
+  "qqbot",
+  "dingtalk",
+  "discord",
+]);
+
+/**
+ * Minimal shape required to turn a native chat account into a
+ * `ConnectorEntry`. Lighter than the full `IntegrationAccount` row so the
+ * route layer can pull only the non-credential columns it needs from the
+ * database — see `listIntegrationAccountRecordsByUser` in
+ * `apps/web/lib/db/queries.ts`.
+ */
+export interface NativeAccountLike {
+  id: string;
+  platform: string;
+  displayName?: string;
+  externalId?: string;
+  status: string;
+}
+
+/**
+ * Reduce a list of native chat accounts into `ConnectorEntry` rows. One row
+ * per `platform`; multiple accounts for the same platform collapse into a
+ * single row with `accountCount > 1` and a `accounts[]` list (mirroring the
+ * multi-account shape used by Composio toolkits — see `types.ts:ConnectorEntry`).
+ *
+ * Pure / browser-safe — no fs, no DB. The route layer fetches records and
+ * passes them in. Capability is stamped via `withConnectorCapability`, so
+ * connected native rows surface as `"needs_setup"` (chat-only, not a Loop
+ * signal source) which matches the existing capability badge vocabulary
+ * used by `composio-connector-list.tsx`.
+ *
+ * Notes:
+ *   - Records whose `platform` is not in `NATIVE_CHAT_INTEGRATIONS` are
+ *     silently dropped — callers don't need to pre-filter.
+ *   - `connected` is `true` when at least one account has `status === "active"`.
+ *     The OR semantic lets a user who wired up two WeChat accounts keep using
+ *     chat skills even if one is paused.
+ *   - `probed: true` is set unconditionally because the source of truth is
+ *     the database, not an agent probe — there is no "haven't asked yet"
+ *     sentinel for these.
+ */
+export function buildNativeChatConnectorEntries(
+  accounts: NativeAccountLike[],
+): ConnectorEntry[] {
+  const byPlatform = new Map<string, NativeAccountLike[]>();
+  for (const acc of accounts) {
+    if (!NATIVE_CHAT_INTEGRATIONS.has(acc.platform)) continue;
+    const bucket = byPlatform.get(acc.platform) ?? [];
+    bucket.push(acc);
+    byPlatform.set(acc.platform, bucket);
+  }
+
+  const fetchedAt = new Date().toISOString();
+  const out: ConnectorEntry[] = [];
+  for (const [platform, group] of byPlatform) {
+    const accountsEntries = group.map((a) => ({
+      id: a.id,
+      label: a.displayName || a.externalId || platform,
+      healthy: a.status === "active",
+    }));
+    const anyActive = group.some((a) => a.status === "active");
+    out.push(
+      withConnectorCapability({
+        id: platform,
+        label: group[0].displayName || platform,
+        connected: anyActive,
+        accountCount: group.length,
+        accounts: accountsEntries,
+        probed: true,
+        fetchedAt,
+      }),
+    );
+  }
+  return out;
+}
+
 /**
  * All-offline fallback used whenever the on-disk snapshot is missing or
  * stale. Re-exported so the server-side connector cache can hand the same

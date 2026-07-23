@@ -18,7 +18,11 @@ export {
   deriveConnectorCapability,
   withConnectorCapability,
   summarizeConnectorCapability,
+  filterComposioOnlyEntries,
+  NATIVE_CHAT_INTEGRATIONS,
+  buildNativeChatConnectorEntries,
 } from "./connectors-pure";
+export type { NativeAccountLike } from "./connectors-pure";
 export { listConnectors, refreshConnectors } from "./connectors";
 export type { ConnectorCapability } from "./types";
 export {
