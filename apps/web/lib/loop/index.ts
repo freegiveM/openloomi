@@ -21,6 +21,8 @@ export {
   filterComposioOnlyEntries,
   NATIVE_CHAT_INTEGRATIONS,
   buildNativeChatConnectorEntries,
+  buildNativeConnectorReadinessEntries,
+  mergeNativeConnectorEntries,
 } from "./connectors-pure";
 export type { NativeAccountLike } from "./connectors-pure";
 export { listConnectors, refreshConnectors } from "./connectors";

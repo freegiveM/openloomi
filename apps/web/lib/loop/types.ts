@@ -496,6 +496,12 @@ export interface ConnectorEntry {
   probed?: boolean;
   fetchedAt: string;
   /**
+   * Optional non-secret provenance for rows derived from an integration
+   * source instead of the Loop probe. Kept advisory so older connector
+   * snapshots without it remain valid.
+   */
+  source?: "native" | "loop" | "composio" | "mixed";
+  /**
    * #361 — Loop participation flag. `true` means scheduled ticks actively
    * pull this connector for signals. `false` (or absent for compat) means
    * the connector is authorized for chat/memory but does not contribute to

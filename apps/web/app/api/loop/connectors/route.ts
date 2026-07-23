@@ -5,8 +5,8 @@
  *
  * Response shape (additive — older fields preserved):
  *   {
- *     items: ConnectorEntry[],           // Loop + native chat rows merged
- *     nativeAccounts?: NativeAccount[],  // NEW: raw native chat rows
+ *     items: ConnectorEntry[],           // Loop + native connector rows merged
+ *     nativeAccounts?: NativeAccount[],  // NEW: raw native integration rows
  *     lastProbeError?: ProbeErrorInfo,
  *   }
  *
@@ -19,7 +19,12 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { authenticateCloudRequest } from "@/lib/auth/cloud-auth";
 import { listIntegrationAccountRecordsByUser } from "@/lib/db/queries";
-import { buildNativeChatConnectorEntries, connectors } from "@/lib/loop";
+import {
+  buildNativeChatConnectorEntries,
+  buildNativeConnectorReadinessEntries,
+  connectors,
+  mergeNativeConnectorEntries,
+} from "@/lib/loop";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -33,11 +38,9 @@ async function handleConnectors(req: NextRequest, refresh: boolean) {
   // don't mind the wait.
   const { items, lastProbeError } = await connectors({ refresh });
 
-  // Surface native chat integrations (Telegram / WeChat / WhatsApp / …) on
-  // the Loomi online card. We never write these into the on-disk
-  // connector cache (Loop doesn't pull from them), only fold them into the
-  // API response — see plan §"为什么在 route 层合并". An unauthenticated
-  // probe gets `user === null` and skips this branch entirely.
+  // Surface native integrations on the Loomi online card without writing
+  // them into the on-disk connector cache. An unauthenticated probe gets
+  // `user === null` and skips this branch entirely.
   const user = await authenticateCloudRequest(req);
   let nativeAccounts:
     | Array<{
@@ -52,9 +55,12 @@ async function handleConnectors(req: NextRequest, refresh: boolean) {
   if (user) {
     const records = await listIntegrationAccountRecordsByUser(user.id);
     nativeAccounts = records;
-    const nativeEntries = buildNativeChatConnectorEntries(records);
+    const nativeEntries = [
+      ...buildNativeConnectorReadinessEntries(records),
+      ...buildNativeChatConnectorEntries(records),
+    ];
     if (nativeEntries.length > 0) {
-      mergedItems = [...items, ...nativeEntries];
+      mergedItems = mergeNativeConnectorEntries(items, nativeEntries);
     }
   }
 
