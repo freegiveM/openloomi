@@ -121,12 +121,44 @@ describe("editor wrappers have a click-to-focus safety net", () => {
     );
   });
 
-  it("the safety-net helper skips clicks on labels / inputs / textareas so it never fights the user's selection", () => {
-    // The closest() selector should include the same interactive tags the
-    // rest of the card uses (see the click delegation in isInteractiveTarget).
+  it("the safety-net helper re-focuses a clicked Subject / Body / IM-body input/textarea", () => {
+    // Pre-fix this returned early for any input/textarea click, leaving
+    // the NSPanel-promote race unhandled (Subject and Body both
+    // unclickable). The fix focuses any input/textarea that was
+    // clicked (idempotent when the browser already focused it) and,
+    // when the direct focus() didn't take, kicks off a short 60 ms /
+    // 3 s retry burst against just that target. The helper is
+    // ~70 lines of code now, so we look for the key invariants as
+    // individual anchored patterns instead of one big regex.
     expect(stripped).toMatch(
-      /closest\(\s*["']button,input,textarea,select,\[contenteditable=["']true["']\],label["']/,
+      /focusOnEditorSurface[\s\S]{0,2000}closest\(\s*["']input,textarea["']\s*\)/,
     );
+    // The direct focus() call against the clicked target (now
+    // outside the input/textarea closest branch — earlier return
+    // early was the bug).
+    expect(stripped).toMatch(
+      /focusOnEditorSurface\s*=\s*\([\s\S]*?\)\s*=>\s*\{[\s\S]{0,500}target\.focus\(\s*\{\s*preventScroll/,
+    );
+  });
+
+  it("the click safety net kicks off a 60 ms / 3 s retry burst when the direct focus() didn't stick", () => {
+    // The burst is shorter than the editor watchdog (3 s vs 6 s)
+    // because the click already proves the OS is dispatching events
+    // to the webview, so the NSPanel shouldn't stay non-key much
+    // longer once a click has landed. The burst reuses the same
+    // window.__loomiEditorFocusTimer slot as setEditMode() so either
+    // handler can cancel the other.
+    const start = stripped.indexOf("focusOnEditorSurface =");
+    expect(start, "focusOnEditorSurface body not found").toBeGreaterThan(-1);
+    const end = stripped.indexOf("const editorRoot =", start);
+    expect(
+      end,
+      "editorRoot (focusOnEditorSurface terminator) not found",
+    ).toBeGreaterThan(start);
+    const body = stripped.slice(start, end);
+    expect(body).toMatch(/>\s*3000/);
+    expect(body).toMatch(/,\s*60\s*\)/);
+    expect(body).toMatch(/__loomiEditorFocusTimer/);
   });
 });
 
