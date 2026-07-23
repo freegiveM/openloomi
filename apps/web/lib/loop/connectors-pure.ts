@@ -13,6 +13,7 @@
  */
 
 import type {
+  ConnectorAccount,
   ConnectorCapability,
   ConnectorCapabilitySummary,
   ConnectorEntry,
@@ -211,6 +212,20 @@ export const NATIVE_CHAT_INTEGRATIONS: ReadonlySet<string> = new Set([
   "discord",
 ]);
 
+// Native integrations whose connected state can satisfy connector readiness
+// for the same platform id. Keep this separate from NATIVE_CHAT_INTEGRATIONS:
+// Gmail is Loop-monitored, so adding it to the chat-only set would recreate
+// the duplicate-row collision #435 is fixing.
+const NATIVE_READINESS_INTEGRATIONS: ReadonlySet<string> = new Set([
+  "gmail",
+  "outlook",
+]);
+
+const NATIVE_CONNECTOR_LABELS: Record<string, string> = {
+  gmail: "Gmail",
+  outlook: "Outlook",
+};
+
 /**
  * Minimal shape required to turn a native chat account into a
  * `ConnectorEntry`. Lighter than the full `IntegrationAccount` row so the
@@ -281,6 +296,135 @@ export function buildNativeChatConnectorEntries(
     );
   }
   return out;
+}
+
+/**
+ * Build native connector readiness rows for platforms whose source of truth
+ * is OpenLoomi's own integration account table rather than a Composio probe.
+ *
+ * Unlike `buildNativeChatConnectorEntries`, these rows are allowed to share an
+ * id with a Loop connector (notably Gmail). Callers should pass them through
+ * `mergeNativeConnectorEntries` so an active native account upgrades the Loop
+ * row instead of appending a duplicate.
+ */
+export function buildNativeConnectorReadinessEntries(
+  accounts: NativeAccountLike[],
+): ConnectorEntry[] {
+  const byPlatform = new Map<string, NativeAccountLike[]>();
+  for (const acc of accounts) {
+    const platform = normalizeNativePlatform(acc.platform);
+    if (!NATIVE_READINESS_INTEGRATIONS.has(platform)) continue;
+    if (!isActiveNativeAccount(acc)) continue;
+    const bucket = byPlatform.get(platform) ?? [];
+    bucket.push({ ...acc, platform });
+    byPlatform.set(platform, bucket);
+  }
+
+  const fetchedAt = new Date().toISOString();
+  const out: ConnectorEntry[] = [];
+  for (const [platform, group] of byPlatform) {
+    const accountsEntries = group.map((a) => ({
+      id: a.id,
+      label: a.displayName || a.externalId || platform,
+      healthy: true,
+    }));
+    out.push(
+      withConnectorCapability({
+        id: platform,
+        label:
+          NATIVE_CONNECTOR_LABELS[platform] ?? formatNativePlatform(platform),
+        connected: true,
+        accountCount: group.length,
+        accounts: accountsEntries,
+        probed: true,
+        fetchedAt,
+        source: "native",
+      }),
+    );
+  }
+  return out;
+}
+
+/**
+ * Merge native connector rows into Loop/Composio probe rows by id. Native
+ * active rows are authoritative for connected-state readiness, but probe
+ * diagnostics stay outside this list as `lastProbeError`.
+ */
+export function mergeNativeConnectorEntries(
+  items: ConnectorEntry[],
+  nativeEntries: ConnectorEntry[],
+): ConnectorEntry[] {
+  const byId = new Map<string, ConnectorEntry>();
+
+  for (const item of items) {
+    byId.set(item.id, withConnectorCapability(item));
+  }
+
+  for (const native of nativeEntries) {
+    const existing = byId.get(native.id);
+    if (!existing) {
+      byId.set(native.id, withConnectorCapability(native));
+      continue;
+    }
+
+    const accountList = mergeConnectorAccounts(
+      existing.accounts,
+      native.accounts,
+    );
+    const merged: ConnectorEntry = {
+      ...existing,
+      ...(native.connected ? native : {}),
+      connected: Boolean(existing.connected || native.connected),
+      accountCount: Math.max(
+        existing.accountCount ?? 0,
+        native.accountCount ?? 0,
+        accountList.length,
+      ),
+      probed:
+        existing.probed === true || native.probed === true
+          ? true
+          : (existing.probed ?? native.probed),
+      fetchedAt: native.connected
+        ? native.fetchedAt || existing.fetchedAt
+        : existing.fetchedAt || native.fetchedAt,
+      lastError: native.connected
+        ? undefined
+        : existing.lastError || native.lastError,
+      ...(accountList.length > 0 ? { accounts: accountList } : {}),
+    };
+
+    byId.set(native.id, withConnectorCapability(merged));
+  }
+
+  return [...byId.values()];
+}
+
+function normalizeNativePlatform(platform: string): string {
+  return platform.trim().toLowerCase();
+}
+
+function isActiveNativeAccount(account: NativeAccountLike): boolean {
+  return account.status.trim().toLowerCase() === "active";
+}
+
+function formatNativePlatform(platform: string): string {
+  return platform
+    .split(/[_-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function mergeConnectorAccounts(
+  left: ConnectorAccount[] | undefined,
+  right: ConnectorAccount[] | undefined,
+): ConnectorAccount[] {
+  const byId = new Map<string, ConnectorAccount>();
+  for (const account of [...(left ?? []), ...(right ?? [])]) {
+    if (!account?.id) continue;
+    byId.set(account.id, account);
+  }
+  return [...byId.values()];
 }
 
 /**

@@ -24,7 +24,9 @@ import { describe, expect, it } from "vitest";
 import {
   NATIVE_CHAT_INTEGRATIONS,
   buildNativeChatConnectorEntries,
+  buildNativeConnectorReadinessEntries,
   filterComposioOnlyEntries,
+  mergeNativeConnectorEntries,
 } from "@/lib/loop/connectors-pure";
 import type { ConnectorEntry } from "@/lib/loop/types";
 
@@ -208,5 +210,142 @@ describe("buildNativeChatConnectorEntries", () => {
     // And the native rows themselves pass the filter unchanged (they're
     // connected + probed + id is the platform).
     expect(filterComposioOnlyEntries(out, new Set())).toEqual(out);
+  });
+});
+
+describe("buildNativeConnectorReadinessEntries", () => {
+  it("emits active native Gmail as a Loop-ready connector row", () => {
+    const out = buildNativeConnectorReadinessEntries([
+      acc({
+        id: "gmail-native-1",
+        platform: "gmail",
+        displayName: "Work Gmail",
+        externalId: "work@example.com",
+        status: "active",
+      }),
+    ]);
+
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({
+      id: "gmail",
+      label: "Gmail",
+      connected: true,
+      accountCount: 1,
+      probed: true,
+      source: "native",
+      capability: "decision_capable",
+      loopMonitored: true,
+      decisionCapable: true,
+    });
+    expect(out[0].accounts).toEqual([
+      { id: "gmail-native-1", label: "Work Gmail", healthy: true },
+    ]);
+  });
+
+  it("emits active native Outlook without claiming Loop monitoring", () => {
+    const out = buildNativeConnectorReadinessEntries([
+      acc({
+        id: "outlook-native-1",
+        platform: "outlook",
+        displayName: "Outlook",
+        status: "active",
+      }),
+    ]);
+
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({
+      id: "outlook",
+      label: "Outlook",
+      connected: true,
+      accountCount: 1,
+      probed: true,
+      source: "native",
+      capability: "needs_setup",
+      loopMonitored: false,
+      decisionCapable: false,
+    });
+  });
+
+  it("does not emit inactive native Gmail rows that could override Composio", () => {
+    const out = buildNativeConnectorReadinessEntries([
+      acc({ id: "gmail-paused", platform: "gmail", status: "paused" }),
+      acc({ id: "gmail-disabled", platform: "gmail", status: "disabled" }),
+    ]);
+
+    expect(out).toEqual([]);
+  });
+});
+
+describe("mergeNativeConnectorEntries", () => {
+  it("lets active native Gmail override a failed Loop/Composio probe row without duplicating it", () => {
+    const loopItems: ConnectorEntry[] = [
+      {
+        id: "gmail",
+        label: "Gmail",
+        connected: false,
+        accountCount: 0,
+        probed: true,
+        fetchedAt: "2026-07-23T00:00:00.000Z",
+        lastError: "composio probe failed",
+        capability: "needs_setup",
+      },
+    ];
+    const nativeEntries = buildNativeConnectorReadinessEntries([
+      acc({
+        id: "native-gmail",
+        platform: "gmail",
+        displayName: "Gmail",
+        status: "active",
+      }),
+    ]);
+
+    const out = mergeNativeConnectorEntries(loopItems, nativeEntries);
+
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({
+      id: "gmail",
+      label: "Gmail",
+      connected: true,
+      accountCount: 1,
+      probed: true,
+      source: "native",
+      capability: "decision_capable",
+      loopMonitored: true,
+      decisionCapable: true,
+    });
+    expect(out[0].lastError).toBeUndefined();
+  });
+
+  it("preserves unrelated Loop rows while appending native-only rows", () => {
+    const loopItems: ConnectorEntry[] = [
+      {
+        id: "linear",
+        label: "Linear",
+        connected: true,
+        accountCount: 1,
+        probed: true,
+        fetchedAt: "2026-07-23T00:00:00.000Z",
+        capability: "decision_capable",
+      },
+    ];
+    const nativeEntries = [
+      ...buildNativeConnectorReadinessEntries([
+        acc({ id: "native-gmail", platform: "gmail", status: "active" }),
+      ]),
+      ...buildNativeChatConnectorEntries([
+        acc({ id: "native-telegram", platform: "telegram", status: "active" }),
+      ]),
+    ];
+
+    const out = mergeNativeConnectorEntries(loopItems, nativeEntries);
+
+    expect(out.map((entry) => entry.id)).toEqual([
+      "linear",
+      "gmail",
+      "telegram",
+    ]);
+    expect(out.find((entry) => entry.id === "linear")?.connected).toBe(true);
+    expect(out.find((entry) => entry.id === "gmail")?.connected).toBe(true);
+    expect(out.find((entry) => entry.id === "telegram")?.connected).toBe(true);
   });
 });
