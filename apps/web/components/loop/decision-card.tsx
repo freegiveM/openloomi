@@ -164,7 +164,7 @@ const TYPE_ICON: Record<string, string> = {
 
 const TYPE_LABEL: Record<string, string> = {
   rsvp: "RSVP",
-  email_reply: "Draft reply",
+  email_reply: "Email reply",
   review_pr: "Review PR",
   todo: "Todo",
   im_reply: "IM reply",
@@ -622,7 +622,7 @@ export function DecisionCard({
     decision.dialogue ??
     (decision.type === "email_reply"
       ? t(
-          "loop.dialogue.draftReply",
+          "loop.dialogue.emailReply",
           "This email looks like it's waiting on you — should I draft a reply?",
         )
       : decision.type === "rsvp"

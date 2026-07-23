@@ -136,7 +136,7 @@ const zh = {
       },
     },
     dialogue: {
-      draftReply: "这封邮件看起来在等你——要我先起草回复吗?",
+      emailReply: "这封邮件看起来在等你——要我先起草回复吗?",
       // #363 — replaces the hardcoded RSVP dialogue in server.ts::defaultDialogue
       rsvp: "这封会议邀请需要你拍板。",
     },

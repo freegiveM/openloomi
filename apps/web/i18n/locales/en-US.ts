@@ -139,7 +139,7 @@ const en = {
       },
     },
     dialogue: {
-      draftReply:
+      emailReply:
         "This email looks like it's waiting on you — should I draft a reply?",
       // #363 — replaces the hardcoded RSVP dialogue in server.ts::defaultDialogue
       rsvp: "This calendar invite needs your call.",

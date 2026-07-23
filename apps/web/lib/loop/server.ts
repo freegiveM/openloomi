@@ -141,7 +141,7 @@ function defaultDialogue(dec: LoopDecision): string {
       // keys cover every locale the user can pick.
       return serverI18n("loop.dialogue.rsvp");
     case "email_reply":
-      return serverI18n("loop.dialogue.draftReply");
+      return serverI18n("loop.dialogue.emailReply");
     case "review_pr":
       return "A PR tagged you as reviewer — take a look?";
     case "im_reply":
@@ -179,7 +179,7 @@ function serverI18n(key: string): string {
   switch (key) {
     case "loop.dialogue.rsvp":
       return "This calendar invite needs your call.";
-    case "loop.dialogue.draftReply":
+    case "loop.dialogue.emailReply":
       return "This email looks like it's waiting on you — should I draft a reply?";
     default:
       return key;

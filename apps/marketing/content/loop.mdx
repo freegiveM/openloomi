@@ -466,7 +466,7 @@ Here's the user-visible output on the very next tick — the custom icon, the bu
 
 On the very next tick:
 
-- The classifier sees a "User-defined types" block listing `birthday_wish` alongside the built-ins, with a clear note that it routes to `email_reply` — so it can decide "this is a birthday wish" the same way it decides "this is a draft reply".
+- The classifier sees a "User-defined types" block listing `birthday_wish` alongside the built-ins, with a clear note that it routes to `email_reply` — so it can decide "this is a birthday wish" the same way it decides "this is an email reply".
 - The expected-toolkits list picks up `stripe`, and a new "User-defined channels" block in the prompt tells the agent **what shape** the Stripe records will have (`{id, amount, status, customer}`) so it can name and prioritise them correctly.
 - The "User-defined classifier rules" block lists `force_birthday_today` as a hard constraint — the agent writes decisions honouring the rule on first pass, and the server-side post-processor pins anything the LLM drifted on.
 - The watcher throttles each custom channel independently via `lastPolledAt` in `syncState.json`, so an aggressive `pollIntervalSec` on one channel can't starve the others.
