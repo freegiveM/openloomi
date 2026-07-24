@@ -459,8 +459,10 @@ describe("pet menu interaction (#369)", () => {
     // Search the slice AFTER the guard for the side-effecting calls so
     // the comment can't satisfy the assertion.
     const afterGuard = body.slice(guardMatch.index);
-    expect(afterGuard).toMatch(/startDragging\(\)/);
+    expect(afterGuard).toMatch(/startNativeDrag\(getCurrentWindow\(\)\)/);
     expect(afterGuard).toMatch(/setPointerCapture\(/);
+    expect(stripped).toMatch(/function startNativeDrag\(win\)/);
+    expect(stripped).toMatch(/win\.startDragging\(\)/);
   });
 
   it("onPointerUp bails when the target is inside the open menu", () => {
