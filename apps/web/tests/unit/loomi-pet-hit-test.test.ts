@@ -49,7 +49,7 @@ describe("loomi-widget — stable drag wiring", () => {
     );
   });
 
-  it("onPointerDown adds the dragging class, records coords, captures the pointer, and calls startDragging", () => {
+  it("onPointerDown adds the dragging class, records coords, captures the pointer, and starts native dragging", () => {
     // Slice from the function header to the next function header
     // (or to the end of the IIFE). `onPointerDown` is the first
     // pointer handler in the widget, so its body is bounded by
@@ -65,8 +65,8 @@ describe("loomi-widget — stable drag wiring", () => {
     // Coordinate bookkeeping — used to classify click vs. drag in
     // onPointerUp. Without this the pointerup branch can never
     // decide whether the user dragged.
-    expect(fnBody).toMatch(/downX\s*=\s*e\.clientX/);
-    expect(fnBody).toMatch(/downY\s*=\s*e\.clientY/);
+    expect(fnBody).toMatch(/downX\s*=\s*e\.screenX/);
+    expect(fnBody).toMatch(/downY\s*=\s*e\.screenY/);
     // The dragging class is what flips the cursor from `grab` to
     // `grabbing` and gates the long-press indicator.
     expect(fnBody).toMatch(
@@ -74,7 +74,9 @@ describe("loomi-widget — stable drag wiring", () => {
     );
     // The actual drag — without this call the window never moves
     // and the whole "click anywhere and drag" promise is broken.
-    expect(fnBody).toMatch(/w\.startDragging\s*\(\s*\)/);
+    expect(fnBody).toMatch(/startNativeDrag\(getCurrentWindow\(\)\)/);
+    expect(stripped).toMatch(/function startNativeDrag\(win\)/);
+    expect(stripped).toMatch(/win\.startDragging\s*\(\s*\)/);
     // Pointer capture keeps the gesture alive when the OS cursor
     // leaves the 168×168 frame during a native drag.
     expect(fnBody).toMatch(
@@ -98,7 +100,8 @@ describe("loomi-widget — stable drag wiring", () => {
     );
     // The dragging class must be removed so the cursor reverts
     // from `grabbing` to `grab` once the gesture is over.
-    expect(fnBody).toMatch(
+    expect(fnBody).toMatch(/clearPointerGesture\(\)/);
+    expect(stripped).toMatch(
       /document\.body\.classList\.remove\(\s*["']dragging["']\s*\)/,
     );
   });
