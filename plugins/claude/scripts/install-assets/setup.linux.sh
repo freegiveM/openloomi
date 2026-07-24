@@ -43,7 +43,7 @@ fi
 #   3. `OPENLOOMI_DMG` env var (legacy alias)
 #   4. `OPENLOOMI_VERSION` IF it happens to point at an existing file
 #      (back-compat with a pre-#401 side-channel convention). A literal
-#      semver like OPENLOOMI_VERSION=v0.8.7 is NOT treated as a path.
+#      semver like OPENLOOMI_VERSION=v0.8.8 is NOT treated as a path.
 OFFLINE_ARTIFACT=""
 prev=""
 for arg in "$@"; do

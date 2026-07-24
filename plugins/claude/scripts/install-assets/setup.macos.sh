@@ -22,7 +22,7 @@
 # Env-var contract (issue #401, restricted-network install):
 #   OPENLOOMI_REPO         Override the GitHub `owner/repo` slug.
 #                          Default: `melandlabs/openloomi`.
-#   OPENLOOMI_VERSION      Pin the release tag (e.g. `v0.8.7`). Replaces
+#   OPENLOOMI_VERSION      Pin the release tag (e.g. `v0.8.8`). Replaces
 #                          `/releases/latest` with `/releases/tags/<tag>`.
 #                          Ignored if OPENLOOMI_DMG_PATH is set.
 #   OPENLOOMI_DMG_PATH     macOS-only. Absolute path to a pre-staged .dmg
@@ -304,7 +304,7 @@ if [[ -n "${offline_dmg}" ]]; then
   cp "${offline_dmg}" "${dmg}"
   asset_url="file://${offline_dmg}"
   # Best-effort: derive tag/version from a filename like
-  # `OpenLoomi-0.8.7.dmg` (or `OpenLoomi_1.2.3-rc.1.dmg`) so downstream
+  # `OpenLoomi-0.8.8.dmg` (or `OpenLoomi_1.2.3-rc.1.dmg`) so downstream
   # consumers still see a version. Strip the `.dmg` suffix first so the
   # dot inside pre-release identifiers (e.g. `1.2.3-rc.1`) doesn't
   # terminate the match.
@@ -373,7 +373,7 @@ else
       ' || true)
 
   # Strip a leading "v" / "V" from tag_name so downstream consumers get a
-  # clean semver-ish version (e.g. "v0.8.7" → "0.8.7"). Fall back to ""
+  # clean semver-ish version (e.g. "v0.8.8" → "0.8.8"). Fall back to ""
   # if the API didn't return a tag_name.
   version=$(printf '%s' "${tag_name}" | sed -E 's/^[vV]//')
 
