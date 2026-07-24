@@ -401,18 +401,57 @@ pub fn configure_as_floating_panel_with(window: &tauri::WebviewWindow, swap_to_p
                 // whether the chain is wired correctly.
                 let before_responder: *mut AnyObject = msg_send![raw_window, firstResponder];
                 let before_accepts: bool = msg_send![content_view, acceptsFirstResponder];
-                let _: () = msg_send![content_view, setAcceptsFirstResponder: true];
-                let fr_ok: bool = msg_send![raw_window, makeFirstResponder: content_view];
+                // Guard the responder-chain re-thread with
+                // `respondsToSelector:` before dispatching each call.
+                // Background: wry 0.55.x replaced the webview's
+                // content view with a `WryWebViewParent` subclass
+                // that does NOT implement `setAcceptsFirstResponder:`
+                // (the selector now lives on the inner web view
+                // itself, not the parent). Issuing the message
+                // unconditionally throws
+                // `NSInvalidArgumentException: unrecognized
+                // selector`, the `catch-all` feature converts that
+                // into a Rust panic, and the panic propagates
+                // through the main event loop into
+                // `tao::did_finish_launching` where Rust cannot
+                // unwind the foreign exception — the process aborts
+                // during cold launch and the user only ever sees
+                // the `loading.html` splash stuck on "Starting
+                // up...". Same root cause for `makeFirstResponder:`
+                // when the window is not yet key. Gating on
+                // `respondsToSelector:` makes the re-thread a
+                // no-op on wry versions that don't expose the
+                // selector, while remaining a no-op for the older
+                // TaoWindow case (already a no-op) and harmless on
+                // the supported wry version (selector exists, fix
+                // still applies).
+                let accepts_selector = sel!(setAcceptsFirstResponder:);
+                let supports_set_accepts: bool =
+                    msg_send![content_view, respondsToSelector: accepts_selector];
+                if supports_set_accepts {
+                    let _: () = msg_send![content_view, setAcceptsFirstResponder: true];
+                }
+                let make_fr_selector = sel!(makeFirstResponder:);
+                let supports_make_fr: bool =
+                    msg_send![raw_window, respondsToSelector: make_fr_selector];
+                let fr_ok: bool = if supports_make_fr {
+                    msg_send![raw_window, makeFirstResponder: content_view]
+                } else {
+                    false
+                };
                 let after_responder: *mut AnyObject = msg_send![raw_window, firstResponder];
                 let after_accepts: bool = msg_send![content_view, acceptsFirstResponder];
                 log::info!(
                     "[loop-pet] {label_on_main}: responder-chain diag → \
-content_view={:p} before_accepts={} before_responder={:p} makeFirstResponder_ret={} \
-after_accepts={} after_responder={:p} same_ptr={}",
+content_view={:p} before_accepts={} before_responder={:p} supports_set_accepts={} \
+makeFirstResponder_ret={} supports_make_fr={} after_accepts={} \
+after_responder={:p} same_ptr={}",
                     content_view,
                     before_accepts,
                     before_responder,
+                    supports_set_accepts,
                     fr_ok,
+                    supports_make_fr,
                     after_accepts,
                     after_responder,
                     after_responder == content_view,
