@@ -16,6 +16,22 @@ const PET_W: f64 = 168.0;
 const PET_H: f64 = 168.0;
 const PET_SCREEN_MARGIN_LOGICAL: f64 = 4.0;
 
+#[cfg(windows)]
+const WM_CANCELMODE: u32 = 0x001F;
+#[cfg(windows)]
+const WM_LBUTTONUP: u32 = 0x0202;
+#[cfg(windows)]
+const WM_NCLBUTTONUP: u32 = 0x00A2;
+#[cfg(windows)]
+const HTCAPTION: usize = 2;
+
+#[cfg(windows)]
+#[link(name = "user32")]
+unsafe extern "system" {
+    fn SendMessageW(hwnd: *mut std::ffi::c_void, msg: u32, wparam: usize, lparam: isize) -> isize;
+    fn PostMessageW(hwnd: *mut std::ffi::c_void, msg: u32, wparam: usize, lparam: isize) -> i32;
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct PhysicalBounds {
     left: f64,
@@ -137,11 +153,50 @@ fn persist_pet_position(app: &AppHandle, reason: &str) {
     }
 }
 
+#[cfg(windows)]
+fn cancel_active_native_drag(window: &WebviewWindow, reason: &str) {
+    let hwnd = match window.hwnd() {
+        Ok(hwnd) => hwnd.0,
+        Err(error) => {
+            log::debug!("[loop-pet] could not get pet hwnd to cancel drag after {reason}: {error}");
+            return;
+        }
+    };
+    if hwnd.is_null() {
+        return;
+    }
+
+    unsafe {
+        let _ = SendMessageW(hwnd, WM_CANCELMODE, 0, 0);
+        let _ = PostMessageW(hwnd, WM_NCLBUTTONUP, HTCAPTION, 0);
+        let _ = PostMessageW(hwnd, WM_LBUTTONUP, 0, 0);
+    }
+    log::debug!("[loop-pet] requested native drag cancel after {reason} clamp");
+}
+
+#[cfg(not(windows))]
+fn cancel_active_native_drag(_window: &WebviewWindow, _reason: &str) {}
+
 fn ensure_pet_in_visible_work_area(app: &AppHandle, reason: &str) {
+    ensure_pet_in_visible_work_area_with_options(app, reason, true, false);
+}
+
+pub(super) fn keep_pet_in_visible_work_area(app: &AppHandle) {
+    ensure_pet_in_visible_work_area_with_options(app, "poll", false, true);
+}
+
+fn ensure_pet_in_visible_work_area_with_options(
+    app: &AppHandle,
+    reason: &str,
+    persist: bool,
+    cancel_drag: bool,
+) {
     let Some(window) = app.get_webview_window(PET_LABEL) else {
         return;
     };
-    if let Err(error) = clamp_pet_window_to_visible_work_area(app, &window, reason) {
+    if let Err(error) =
+        clamp_pet_window_to_visible_work_area(app, &window, reason, persist, cancel_drag)
+    {
         log::warn!("[loop-pet] failed to clamp pet position after {reason}: {error}");
     }
 }
@@ -150,6 +205,8 @@ fn clamp_pet_window_to_visible_work_area(
     app: &AppHandle,
     window: &WebviewWindow,
     reason: &str,
+    persist: bool,
+    cancel_drag: bool,
 ) -> tauri::Result<()> {
     let pos = window.outer_position()?;
     let size = window.outer_size()?;
@@ -165,15 +222,30 @@ fn clamp_pet_window_to_visible_work_area(
     };
 
     if target != pos {
-        log::info!(
-            "[loop-pet] clamping pet position after {reason}: ({},{}) -> ({},{})",
-            pos.x,
-            pos.y,
-            target.x,
-            target.y
-        );
+        if persist {
+            log::info!(
+                "[loop-pet] clamping pet position after {reason}: ({},{}) -> ({},{})",
+                pos.x,
+                pos.y,
+                target.x,
+                target.y
+            );
+        } else {
+            log::debug!(
+                "[loop-pet] clamping pet position after {reason}: ({},{}) -> ({},{})",
+                pos.x,
+                pos.y,
+                target.x,
+                target.y
+            );
+        }
         window.set_position(target)?;
-        persist_pet_position(app, reason);
+        if cancel_drag {
+            cancel_active_native_drag(window, reason);
+        }
+        if persist {
+            persist_pet_position(app, reason);
+        }
     }
 
     Ok(())
@@ -360,7 +432,7 @@ fn wire_pet_window_events(app: &AppHandle) {
                 pos.x,
                 pos.y
             );
-            ensure_pet_in_visible_work_area(&app_handle, "move");
+            ensure_pet_in_visible_work_area_with_options(&app_handle, "move", true, true);
             on_pet_moved_reposition_aux(&app_handle);
         }
         _ => {}

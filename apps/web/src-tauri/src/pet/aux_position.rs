@@ -10,9 +10,10 @@
 // release, not continuously during the drag, so visual follow would
 // look like a single jump at the end of the drag. To get smooth
 // real-time following we also run a low-frequency poller (see
-// `spawn_position_poller`) that re-asserts the aux windows' position
-// at 20Hz — `set_position` is essentially a property write, so the
-// per-tick cost is negligible.
+// `spawn_position_poller`) that first keeps the pet itself in the
+// visible work area, then re-asserts the aux windows' position at 20Hz.
+// `set_position` is essentially a property write, so the per-tick cost
+// is negligible.
 //
 // All desktop coordinates are computed in *physical* pixels. The aux
 // windows still declare logical CSS sizes, so helpers convert those
@@ -300,11 +301,13 @@ pub fn reposition_card_to_pet(app: &AppHandle) {
     }
 }
 
-/// Spawn a background thread that continuously re-asserts the bubble +
-/// card positions based on the pet's current position. Necessary because
-/// Tauri's `WindowEvent::Moved` only fires on release of a native drag,
-/// not during — without polling, the aux windows would visibly jump at
-/// the end of a drag instead of following smoothly.
+/// Spawn a background thread that continuously keeps the pet in the
+/// visible work area, then re-asserts the bubble + card positions based
+/// on the pet's current position. Necessary because Tauri's
+/// `WindowEvent::Moved` only fires on release of a native drag, not
+/// during — without polling, the pet can be dragged fully off-screen
+/// and the aux windows would visibly jump at the end of a drag instead
+/// of following smoothly.
 ///
 /// Cost: `set_position` is a property write on the webview window, so
 /// 20Hz is fine. The poller exits cleanly on app shutdown (the OS
@@ -316,6 +319,7 @@ pub fn spawn_position_poller(app: AppHandle) {
         .spawn(move || {
             let _ =
                 crate::panic_guard::catch_unwind_str("loomi-pet aux position poller", || loop {
+                    super::window::keep_pet_in_visible_work_area(&app);
                     reposition_bubble_to_pet(&app);
                     reposition_card_to_pet(&app);
                     std::thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));
