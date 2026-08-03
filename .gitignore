@@ -142,6 +142,10 @@ apps/web/public/loomi-pet/design/
 # Large dataset files (downloaded separately)
 benchmark/longmemeval/dataset/*.json
 
+# Benchmark dev-junk backups (failed-fetch retries, scratch json fixes, etc.)
+# NOTE: keep real results/*.json tracked — they are the evidence in benchmark/README.md.
+benchmark/**/*.bak_before*
+
 # Native-agent LLM usage is now stored in the `llm_usage` DB table, not
 # on disk. Keep this section in case future per-user file artifacts are
 # reintroduced, but the line itself is currently a no-op.
