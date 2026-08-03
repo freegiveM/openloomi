@@ -257,11 +257,7 @@ describe("parseExecutionOutcome — full default", () => {
 
 describe("parseExecutionOutcome — bare success string (#RSVP fix)", () => {
   it("treats result='success' as executed", () => {
-    const r = outcomes.parseExecutionOutcome(
-      "success",
-      "",
-      [],
-    );
+    const r = outcomes.parseExecutionOutcome("success", "", []);
     expect(r.outcome).toBe("executed");
   });
 
@@ -325,9 +321,9 @@ describe("isSuccessText", () => {
     expect(
       outcomes.isSuccessText("Event was accepted on Google Calendar"),
     ).toBe(true);
-    expect(
-      outcomes.isSuccessText('responseStatus: "accepted" for self'),
-    ).toBe(true);
+    expect(outcomes.isSuccessText('responseStatus: "accepted" for self')).toBe(
+      true,
+    );
   });
   it("rejects empty text and casual prose", () => {
     expect(outcomes.isSuccessText("")).toBe(false);

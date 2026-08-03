@@ -835,7 +835,8 @@ const zhHans = {
     },
     probeKindDesc: {
       cli_not_found: "请先用 `npm i -g @composio/cli` 安装,再点击重试。",
-      cli_unauthorized: "请让智能体登录,或在终端运行 `composio login`。",
+      cli_unauthorized:
+        "请通过 Composio 登录、为智能体运行 `claude auth login`,或在 API 设置中配置一个 Anthropic 兼容的 provider。",
       timeout:
         "请到 `~/.openloomi/loop/preferences.json` 缩短探测间隔,或检查网络。",
       transport_error: "智能体服务未响应,请检查网络后重试。",
@@ -849,7 +850,8 @@ const zhHans = {
     probeKindCopied: "已复制",
     probeKindSignIn: "让智能体登录",
     probeKindSignInPrompt:
-      "请在用户终端运行 `composio login --no-wait` 完成 Loop 探测的身份验证,然后重新探测。",
+      "请帮用户修复 Composio CLI 的鉴权以便 Loop 探测可以运行。最快的路径是在终端运行 `composio login --no-wait`,但如果用户更愿意,也可以提示 (a) 直接运行 `claude auth login` 鉴权 Claude runtime,或 (b) 打开 OpenLoomi 的 API 设置(/?page=ai-api-settings)添加 Anthropic 兼容的 provider。然后重新探测。",
+    probeKindOpenSettings: "打开 API 设置",
     probeKindHttpTooltip: "上游状态:{{status}}",
     healthOk: "正常",
     healthDegraded: "部分降级",
@@ -2393,6 +2395,19 @@ const zhHans = {
           "请重试",
           "如果问题持续存在，请联系支持",
         ],
+      },
+      // 当内置 Claude runtime 没有鉴权（例如从未运行 `claude auth login`
+      // 或会话被清理）时展示。仿照 alloomi 的 `authentication_error`
+      // 策略条目，但显式列出两种修复路径。
+      runtimeNotLoggedIn: {
+        title: "Claude runtime 未登录",
+        description:
+          "聊天正在使用内置的 Claude runtime，但未找到任何 Claude 凭据。请登录 Claude runtime，或在 OpenLoomi 中配置一个 Anthropic 兼容的 API 密钥。",
+        suggestions: [
+          "在终端运行 `claude auth login` 后重试",
+          "或在 API 设置中添加一个 Anthropic 兼容的 provider",
+        ],
+        apiSettingsAction: "打开 API 设置",
       },
     },
   },
