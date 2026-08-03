@@ -57,7 +57,10 @@ async function readProviderError(response: Response): Promise<string> {
   }
 }
 
-function createRequestSignal(signal: AbortSignal | undefined, timeoutMs: number) {
+function createRequestSignal(
+  signal: AbortSignal | undefined,
+  timeoutMs: number,
+) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   const abortFromInput = () => controller.abort();
@@ -110,7 +113,8 @@ export class WhisperPlugin {
       throw new Error("OPENAI_API_KEY is not configured for audio APIs.");
     }
 
-    const model = input.model?.trim() || this.model || DEFAULT_TRANSCRIPTION_MODEL;
+    const model =
+      input.model?.trim() || this.model || DEFAULT_TRANSCRIPTION_MODEL;
     const formData = new FormData();
     formData.append("file", input.file, input.filename || "voice-input.wav");
     formData.append("model", model);

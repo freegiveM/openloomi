@@ -121,9 +121,7 @@ export function AgentChatPanel({
       .reverse()
       .find((message) => message.role === "assistant" && message.id);
     if (!latestAssistantMessage?.id) return;
-    if (
-      lastSpokenAssistantMessageIdRef.current === latestAssistantMessage.id
-    ) {
+    if (lastSpokenAssistantMessageIdRef.current === latestAssistantMessage.id) {
       return;
     }
 
