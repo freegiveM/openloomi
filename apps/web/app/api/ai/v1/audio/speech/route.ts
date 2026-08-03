@@ -34,12 +34,20 @@ type SpeechPayload = {
   speed: number;
 };
 
+const DISABLED_ENV_VALUES = new Set(["0", "false", "off", "no", "disabled"]);
+
 async function authorize() {
   const session = await auth().catch(() => null);
   if (!session?.user?.id && !isTauriMode()) {
     return false;
   }
   return true;
+}
+
+function isEnabledByEnv(value: string | undefined): boolean {
+  const normalized = value?.trim().toLowerCase();
+  if (!normalized) return true;
+  return !DISABLED_ENV_VALUES.has(normalized);
 }
 
 function readString(value: unknown): string | undefined {
@@ -226,6 +234,22 @@ export async function GET(request: Request) {
     return new AppError("unauthorized:auth").toResponse();
   }
 
+  if (!isEnabledByEnv(process.env.NEXT_PUBLIC_ENABLE_KOKORO)) {
+    return NextResponse.json(
+      {
+        ready: false,
+        enabled: false,
+        message: "Kokoro text-to-speech is disabled.",
+      },
+      {
+        status: 503,
+        headers: {
+          "Cache-Control": "no-store",
+        },
+      },
+    );
+  }
+
   const baseUrl = normalizeKokoroBaseUrl(process.env.KOKORO_TTS_BASE_URL);
   const { signal, cleanup } = createRequestSignal(
     request.signal,
@@ -281,6 +305,13 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   if (!(await authorize())) {
     return new AppError("unauthorized:auth").toResponse();
+  }
+
+  if (!isEnabledByEnv(process.env.NEXT_PUBLIC_ENABLE_KOKORO)) {
+    return new AppError(
+      "offline:api",
+      "Kokoro text-to-speech is disabled.",
+    ).toResponse();
   }
 
   try {

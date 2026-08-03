@@ -18,12 +18,20 @@ type TranscriptionPayload = {
   temperature?: number;
 };
 
+const DISABLED_ENV_VALUES = new Set(["0", "false", "off", "no", "disabled"]);
+
 async function authorize() {
   const session = await auth().catch(() => null);
   if (!session?.user?.id && !isTauriMode()) {
     return false;
   }
   return true;
+}
+
+function isEnabledByEnv(value: string | undefined): boolean {
+  const normalized = value?.trim().toLowerCase();
+  if (!normalized) return true;
+  return !DISABLED_ENV_VALUES.has(normalized);
 }
 
 function readString(value: unknown): string | undefined {
@@ -112,10 +120,13 @@ async function parseMultipartPayload(
   };
 }
 
-async function parseJsonPayload(request: Request): Promise<TranscriptionPayload> {
-  const body = (await request.json().catch(() => null)) as
-    | Record<string, unknown>
-    | null;
+async function parseJsonPayload(
+  request: Request,
+): Promise<TranscriptionPayload> {
+  const body = (await request.json().catch(() => null)) as Record<
+    string,
+    unknown
+  > | null;
   if (!body) {
     throw new AppError("bad_request:api", "Invalid transcription payload.");
   }
@@ -152,6 +163,13 @@ export async function POST(request: Request) {
     return new AppError("unauthorized:auth").toResponse();
   }
 
+  if (!isEnabledByEnv(process.env.NEXT_PUBLIC_ENABLE_WHISPER)) {
+    return new AppError(
+      "offline:api",
+      "Whisper speech-to-text is disabled.",
+    ).toResponse();
+  }
+
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) {
     return new AppError(
@@ -163,7 +181,10 @@ export async function POST(request: Request) {
   try {
     const payload = await parsePayload(request);
     if (payload.file.size <= 0) {
-      return new AppError("bad_request:api", "Audio file is empty.").toResponse();
+      return new AppError(
+        "bad_request:api",
+        "Audio file is empty.",
+      ).toResponse();
     }
     if (payload.file.size > MAX_VOICE_UPLOAD_BYTES) {
       return new AppError(
@@ -210,9 +231,7 @@ export async function POST(request: Request) {
     }
     return new AppError(
       "bad_request:api",
-      error instanceof Error
-        ? error.message
-        : "Audio transcription failed.",
+      error instanceof Error ? error.message : "Audio transcription failed.",
     ).toResponse();
   }
 }
