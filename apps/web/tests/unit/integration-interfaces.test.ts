@@ -1,16 +1,16 @@
+import type {
+  BaileysAuthStateProvider,
+  ClientRegistry,
+  ConfigProvider,
+  CredentialStore,
+  InboundMessageHandler,
+} from "@openloomi/integrations/core";
 /**
  * Integration Interfaces Unit Tests
  *
  * Tests for core interfaces in @openloomi/integrations
  */
-import { describe, test, expect, vi } from "vitest";
-import type {
-  BaileysAuthStateProvider,
-  InboundMessageHandler,
-  ClientRegistry,
-  CredentialStore,
-  ConfigProvider,
-} from "@openloomi/integrations/core";
+import { describe, expect, test, vi } from "vitest";
 
 describe("BaileysAuthStateProvider", () => {
   test("should be a valid interface", () => {

@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
 /**
  * Loomi Pet — stable drag regression suite.
  *
@@ -20,8 +22,6 @@
  * We verify the widget no longer carries that plumbing.
  */
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
-import path from "node:path";
 
 const widgetPath = path.resolve(__dirname, "../../public/loomi-widget.html");
 const widgetHtml = readFileSync(widgetPath, "utf8");

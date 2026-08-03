@@ -2,8 +2,8 @@
  * Tests for promotional email detection
  */
 
-import { describe, it, expect } from "vitest";
 import { isPromotionalEmail } from "@/lib/integrations/email";
+import { describe, expect, it } from "vitest";
 
 /** Helper to build a minimal ParsedMail-like object */
 function mockParsed(overrides: {

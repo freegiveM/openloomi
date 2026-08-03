@@ -15,12 +15,12 @@
 
 import { describe, expect, it } from "vitest";
 
-import type { ChatMessage } from "@openloomi/shared";
 import {
-  collectToolOutputFilesFromParts,
   type ToolOutputFileReadiness,
   type ToolOutputFileRole,
+  collectToolOutputFilesFromParts,
 } from "@/components/message/message-output-files";
+import type { ChatMessage } from "@openloomi/shared";
 
 // Permissive fixture type: the production code already treats parts loosely
 // (`(part as { type?: string })`), so `any[]` casts keep the fixtures readable

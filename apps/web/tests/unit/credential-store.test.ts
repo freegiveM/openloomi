@@ -5,7 +5,7 @@
  * CS-01 to CS-06
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock the dependencies before importing
 vi.mock("@/lib/db/queries", () => ({

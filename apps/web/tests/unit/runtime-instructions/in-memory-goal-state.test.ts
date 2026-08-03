@@ -1,13 +1,13 @@
 import {
-  RUNTIME_INSTRUCTION_SCHEMA_VERSION,
-  createAgentGoal,
-  reviseAgentGoal,
   type AgentGoal,
   type AgentGoalUpdate,
   type CreateAgentGoalInput,
   type GoalCommandIdentity,
   type GoalContextReference,
+  RUNTIME_INSTRUCTION_SCHEMA_VERSION,
   type RuntimeInstructionDraft,
+  createAgentGoal,
+  reviseAgentGoal,
 } from "@openloomi/ai/agent/runtime-instructions";
 import { describe, expect, it } from "vitest";
 

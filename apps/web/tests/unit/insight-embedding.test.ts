@@ -1,10 +1,10 @@
-import { describe, expect, it } from "vitest";
 import {
+  INSIGHT_EMBEDDING_TEXT_VERSION,
   buildInsightEmbeddingDocument,
   buildInsightEmbeddingText,
   hashInsightEmbeddingContent,
-  INSIGHT_EMBEDDING_TEXT_VERSION,
 } from "@/lib/insights/embedding";
+import { describe, expect, it } from "vitest";
 
 describe("insight embedding text", () => {
   it("builds stable semantic text from rich insight fields", () => {

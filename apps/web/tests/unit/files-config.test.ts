@@ -5,19 +5,19 @@
  * MIME/extension lookups, attachment allowlist, and supported-extension
  * list stay in sync.
  */
-import { describe, test, expect } from "vitest";
+import { describe, expect, test } from "vitest";
 
-import {
-  FILE_TYPE_CONFIG,
-  SUPPORTED_ATTACHMENT_MIME_TYPES,
-  SUPPORTED_FILE_EXTENSIONS,
-  getMimeTypeFromExtension,
-  getExtensionsFromMimeType,
-} from "@/lib/files/config";
 import {
   getLibraryFileIconSrc,
   getUploadFileIconSrc,
 } from "@/components/file/file-icon-src";
+import {
+  FILE_TYPE_CONFIG,
+  SUPPORTED_ATTACHMENT_MIME_TYPES,
+  SUPPORTED_FILE_EXTENSIONS,
+  getExtensionsFromMimeType,
+  getMimeTypeFromExtension,
+} from "@/lib/files/config";
 
 describe("FILE_TYPE_CONFIG tsv/tgz support", () => {
   test("declares tsv with the tab-separated MIME type", () => {

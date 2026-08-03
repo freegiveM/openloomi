@@ -1,10 +1,10 @@
-import { describe, beforeEach, afterEach, test, expect, vi, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, test, vi } from "vitest";
 
 import {
-  validateUrlForSSRF,
+  SSRFValidationError,
   fetchWithSSRFProtection,
   isTrustedStorageUrl,
-  SSRFValidationError,
+  validateUrlForSSRF,
 } from "@openloomi/security/url-validator";
 
 vi.mock("server-only", () => ({}));

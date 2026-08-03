@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
 /**
  * Loomi Pet card — connector refresh on compact re-open (#376).
  *
@@ -29,8 +31,6 @@
  * happy-dom is wired into the node-environment vitest suite.
  */
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
-import path from "node:path";
 
 const cardPath = path.resolve(__dirname, "../../public/loomi-card.html");
 const cardHtml = readFileSync(cardPath, "utf8");

@@ -5,7 +5,7 @@
  * AL-01 to AL-08
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock fs module
 vi.mock("node:fs", () => ({

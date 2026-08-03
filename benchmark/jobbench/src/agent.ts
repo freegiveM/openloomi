@@ -54,26 +54,141 @@ export async function callAgentApi(
     headers.Authorization = `Bearer ${authToken}`;
   }
 
+  const requestBody = {
+    prompt,
+    provider: "claude",
+    permissionMode: "dontAsk",
+    platform: "benchmark-jobbench",
+  };
+
+  console.log(
+    `  [AGENT] Sending request to http://127.0.0.1:${port}/api/native/agent`,
+  );
+  console.log(
+    `  [AGENT] Prompt preview: ${prompt.slice(0, 100)}${prompt.length > 100 ? "..." : ""}`,
+  );
+  console.log("  [AGENT] Request body:", JSON.stringify(requestBody, null, 2));
+
+  const startTime = Date.now();
   const response = await fetch(`http://127.0.0.1:${port}/api/native/agent`, {
     method: "POST",
     headers,
-    body: JSON.stringify({
-      prompt,
-      provider: "claude",
-      permissionMode: "dontAsk",
-      platform: "benchmark-jobbench",
-    }),
+    body: JSON.stringify(requestBody),
     signal: AbortSignal.timeout(2_400_000),
   });
+  const elapsed = Date.now() - startTime;
+
+  console.log(
+    `  [AGENT] Response received: ${response.status} ${response.statusText} (${elapsed}ms)`,
+  );
 
   if (!response.ok) {
+    const errorText = await response.text();
+    console.log("  [AGENT] Error response body:", errorText);
     throw new Error(
       `Agent API error: ${response.status} ${response.statusText}`,
     );
   }
 
-  const text = await response.text();
-  return extractAgentText(text);
+  // Read SSE stream directly
+  console.log("  [AGENT] Reading SSE stream...");
+  const body = response.body;
+  if (!body) {
+    throw new Error("Response body is null");
+  }
+  const text = await readSSEStream(body);
+  console.log(`  [AGENT] Stream complete: ${text.length} chars`);
+
+  const extracted = extractAgentText(text);
+  console.log(
+    `  [AGENT] Extracted answer: ${extracted.slice(0, 200)}${extracted.length > 200 ? "..." : ""}`,
+  );
+
+  return extracted;
+}
+
+async function readSSEStream(
+  stream: ReadableStream<Uint8Array>,
+): Promise<string> {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  const chunks: string[] = [];
+  let buffer = "";
+  let resultReceived = false;
+  const deadline = Date.now() + 120000; // 2 min total timeout
+  let lastDataTime = Date.now();
+
+  try {
+    while (Date.now() < deadline && !resultReceived) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      const chunk = decoder.decode(value, { stream: true });
+      chunks.push(chunk);
+      buffer += chunk;
+      lastDataTime = Date.now();
+
+      // Check if we received a "result" type message (indicates completion)
+      const lines = buffer.split("\n");
+      let foundResult = false;
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed.startsWith("data:")) {
+          try {
+            const jsonStr = trimmed.slice(5).trim();
+            if (jsonStr && jsonStr !== "[DONE]") {
+              const parsed = JSON.parse(jsonStr) as { type?: string };
+              if (parsed.type === "result") {
+                resultReceived = true;
+                foundResult = true;
+                console.log(
+                  "  [AGENT] Result message received, closing stream...",
+                );
+                break;
+              }
+            }
+          } catch {
+            // Ignore JSON parse errors for non-JSON lines
+          }
+        }
+      }
+      if (foundResult) break;
+
+      // Clear processed lines from buffer (keep last partial line)
+      const lastLine = lines[lines.length - 1] || "";
+      buffer = lastLine.startsWith("data:") ? lastLine : "";
+
+      // Log progress
+      if (chunks.length % 10 === 0) {
+        console.log(
+          `  [AGENT] Received ${chunks.length} chunks, ${chunks.join("").length} chars...`,
+        );
+        // Log last non-heartbeat message
+        for (let i = lines.length - 1; i >= 0; i--) {
+          const trimmed = lines[i].trim();
+          if (
+            trimmed.startsWith("data:") &&
+            !trimmed.includes(": keep-alive")
+          ) {
+            console.log(
+              `  [AGENT] Last data message: ${trimmed.slice(0, 200)}...`,
+            );
+            break;
+          }
+        }
+      }
+
+      // Check idle timeout (no data for 30 seconds)
+      if (Date.now() - lastDataTime > 30000) {
+        console.log("  [AGENT] Idle timeout (30s), closing stream...");
+        break;
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  return chunks.join("");
 }
 
 function extractAgentText(text: string): string {

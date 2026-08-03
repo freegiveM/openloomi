@@ -1,10 +1,10 @@
-import { describe, expect, test } from "vitest";
 import {
+  MAX_LIFESTYLE_REFERENCE_IMAGES,
   buildLifestyleReferenceImages,
   isSupportedLifestyleReferenceImageMimeType,
-  MAX_LIFESTYLE_REFERENCE_IMAGES,
   normalizeLifestyleReferenceImage,
 } from "@/lib/ai/image-generation/lifestyle-reference-images";
+import { describe, expect, test } from "vitest";
 
 const PNG_BASE64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB";
 

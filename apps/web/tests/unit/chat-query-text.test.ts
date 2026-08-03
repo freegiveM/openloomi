@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
 import { decodeSearchParamText } from "@/lib/chat/query-text";
+import { describe, expect, it } from "vitest";
 
 describe("decodeSearchParamText", () => {
   it("returns undefined for missing query params", () => {

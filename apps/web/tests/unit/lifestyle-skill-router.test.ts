@@ -1,9 +1,9 @@
-import { describe, expect, test } from "vitest";
 import {
   parseLifestyleImageSkillDecision,
   resolveLifestyleImageSkillRoute,
   shouldGenerateLifestyleImageFromClassifierFallback,
 } from "@/lib/ai/image-generation/lifestyle-skill-router";
+import { describe, expect, test } from "vitest";
 
 describe("parseLifestyleImageSkillDecision", () => {
   test("accepts a valid structured decision", () => {

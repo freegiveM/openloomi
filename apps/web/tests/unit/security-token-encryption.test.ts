@@ -5,7 +5,7 @@
  * TE-01 to TE-06
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock fernet module before importing the module under test
 vi.mock("fernet", () => {

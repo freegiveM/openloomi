@@ -1,6 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { renderToString } from "react-dom/server";
 import React from "react";
+import { renderToString } from "react-dom/server";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Regression test for the screen-memory capture wiring.
 // ScreenMemoryCaptureProvider is the ONLY place in the app that calls

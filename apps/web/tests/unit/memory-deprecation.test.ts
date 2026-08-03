@@ -1,20 +1,20 @@
 import { describe, expect, it } from "vitest";
 import {
+  type MemorySummaryCandidate,
   buildMemoryDeprecationEntries,
   buildMemoryRelationPipeline,
-  type MemorySummaryCandidate,
 } from "../../../../packages/ai/memory-consolidation/src/pipeline";
 import { buildMemoryDeprecationEntry } from "../../../../packages/ai/memory-consolidation/src/plan";
 import {
+  type DeprecatablePlanEntry,
   deprecateMemoryRecords,
   filterDeprecatedRecords,
-  type DeprecatablePlanEntry,
 } from "../../../../packages/ai/src/memory";
 import type {
   MemoryDeprecateRecordsInput,
   MemoryRecord,
-  MemorySummary,
   MemoryStorageAdapter,
+  MemorySummary,
 } from "../../../../packages/ai/src/memory/contracts";
 
 function makeRecord(

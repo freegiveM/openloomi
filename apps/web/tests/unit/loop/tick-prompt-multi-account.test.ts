@@ -1,3 +1,6 @@
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 /**
  * #360 — the tick prompt must instruct the agent to enumerate EVERY active
  * connected account per toolkit and pull signals once per account, rather
@@ -6,9 +9,6 @@
  * coverage (the "two Google Calendar accounts, only one pulled" bug).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, rmSync, mkdirSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 
 let LOOP_HOME = "";
 

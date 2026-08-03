@@ -1,13 +1,13 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { buildHermesAcpCommand } from "@/lib/ai/extensions/agent/hermes/command";
-import { buildOpenCodeRunCommand } from "@/lib/ai/extensions/agent/opencode/command";
-import { buildOpenClawAcpCommand } from "@/lib/ai/extensions/agent/openclaw/command";
 import { buildCodexRunCommand } from "@/lib/ai/extensions/agent/codex/command";
+import { buildHermesAcpCommand } from "@/lib/ai/extensions/agent/hermes/command";
+import { buildOpenClawAcpCommand } from "@/lib/ai/extensions/agent/openclaw/command";
+import { buildOpenCodeRunCommand } from "@/lib/ai/extensions/agent/opencode/command";
 import {
   getConfiguredDefaultAgentProvider,
   resolveNativeAgentProviderRequest,
 } from "@/lib/ai/native-agent/provider-env";
 import type { NativeAgentRequest } from "@openloomi/ai/agent/native-runner";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 const AGENT_ENV_KEYS = [
   "OPENLOOMI_AGENT_PROVIDER",

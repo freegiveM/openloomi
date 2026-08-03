@@ -1,5 +1,5 @@
-import { describe, expect, test } from "vitest";
 import { detectLifestyleImageTrigger } from "@/lib/ai/image-generation/lifestyle-trigger";
+import { describe, expect, test } from "vitest";
 
 describe("detectLifestyleImageTrigger", () => {
   test("matches explicit English lifestyle image generation requests", () => {

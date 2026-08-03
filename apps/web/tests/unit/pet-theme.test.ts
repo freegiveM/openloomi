@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
 /**
  * Loomi Pet — theme system + sprite resolution tests.
  *
@@ -20,8 +22,6 @@
  * identical; if the widget's logic drifts, this test breaks first.
  */
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
-import path from "node:path";
 
 // Mirror of BUILTIN_THEMES in apps/web/public/loomi-widget.html. Keep
 // these two sources in lock-step — if you change one, change the

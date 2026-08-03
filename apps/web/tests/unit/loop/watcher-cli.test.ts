@@ -1,3 +1,6 @@
+import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 /**
  * Unit tests for the CLI invocation + record-extraction path of
  * `lib/loop/watcher.ts` — issue #348.
@@ -41,9 +44,6 @@ import {
   it,
   vi,
 } from "vitest";
-import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
 
 vi.mock("@/lib/loop/paths", async () => {
   const { join: j } = await import("node:path");

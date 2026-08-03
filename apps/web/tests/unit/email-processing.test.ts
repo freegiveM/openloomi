@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 
 // We need to access the private functions or export them for testing.
 // Since they are not exported, we might need to modify email.ts to export them or rely on a rewiring approach.
@@ -13,7 +13,7 @@ import { describe, it, expect } from "vitest";
 // To test them properly, I should probably export them.
 // I will start by modifying email.ts to export these utility functions.
 
-import { stripQuotedText, isBoilerplate } from "@/lib/integrations/email";
+import { isBoilerplate, stripQuotedText } from "@/lib/integrations/email";
 
 describe("Email Processing Logic", () => {
   describe("stripQuotedText", () => {

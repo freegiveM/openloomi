@@ -1,3 +1,12 @@
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 /**
  * #391 — `refreshConnectors({ silent: true })` wraps the agent probe in a
  * 10-minute `PROBE_TIMEOUT_MS` race. When the probe hangs, the timeout
@@ -15,15 +24,6 @@
  * directory, and replace only the agent-bridge with a hanging promise.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  existsSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 
 // The mock factory needs access to per-test filesystem paths, but
 // `vi.mock` factories are hoisted above module-level `const`/`let`

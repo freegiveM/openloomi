@@ -19,10 +19,10 @@
  * `lib/loop/paths.ts` so they run in a sandboxed temp dir.
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { rmSync } from "node:fs";
-import { join } from "node:path";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // `vi.mock` is hoisted above top-level statements, so the temp dir
 // must be created inside `vi.hoisted` to avoid a TDZ error. The
@@ -59,8 +59,8 @@ vi.mock("@/lib/loop/paths", async () => {
   };
 });
 
-import { decisions } from "@/lib/loop/store";
 import { LOOP_PATHS } from "@/lib/loop/paths";
+import { decisions } from "@/lib/loop/store";
 
 beforeEach(() => {
   // Fresh file per test so migration + version-stamping can be

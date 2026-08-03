@@ -30,8 +30,8 @@ import {
   setPendingAction,
   statusFromOutcome,
 } from "@/lib/loop/decision-lock";
-import { decisions } from "@/lib/loop/store";
 import { LOOP_PATHS } from "@/lib/loop/paths";
+import { decisions } from "@/lib/loop/store";
 
 let decisionId = "";
 

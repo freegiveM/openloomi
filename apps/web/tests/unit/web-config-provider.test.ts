@@ -3,7 +3,7 @@
  *
  * Tests for the WebConfigProvider implementation.
  */
-import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 // Mock the dependencies before importing
 vi.mock("@/lib/env/constants", () => ({
@@ -17,6 +17,7 @@ vi.mock("@/lib/utils/path", () => ({
 
 describe("WebConfigProvider", () => {
   let WebConfigProvider: typeof import("@/lib/integrations/providers/config-provider").WebConfigProvider;
+  // prettier-ignore
   let provider: InstanceType<
     typeof import("@/lib/integrations/providers/config-provider").WebConfigProvider
   >;

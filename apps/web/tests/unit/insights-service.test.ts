@@ -1,11 +1,11 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import {
-  ensureUserInsightSettings,
-  computeInsightPayload,
-} from "@/lib/insights/service";
 import * as dbQueries from "@/lib/db/queries";
-import * as sessionContext from "@/lib/session/context";
 import type { InsightSettings } from "@/lib/db/schema";
+import {
+  computeInsightPayload,
+  ensureUserInsightSettings,
+} from "@/lib/insights/service";
+import * as sessionContext from "@/lib/session/context";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock dependencies
 vi.mock("@/lib/db/queries");

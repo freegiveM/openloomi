@@ -1,3 +1,6 @@
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 /**
  * Verifies that the tick prompt includes the "User-defined types" /
  * "User-defined channels" sections when the user has registered custom
@@ -6,9 +9,6 @@
  * without a code change.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, rmSync, mkdirSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 
 let LOOP_HOME = "";
 

@@ -1,15 +1,15 @@
-import { describe, it, expect } from "vitest";
+import type { InsightSettings } from "@/lib/db/schema";
 import {
+  ACTIVITY_TIER_PRIORITIES,
   clampActivityTier,
   deriveActivityTier,
-  resolveTierRefreshMinutes,
-  resolveTierPriority,
-  getEffectiveRefreshIntervalMinutes,
-  getCacheTtlMs,
   filterDueInsightSettings,
-  ACTIVITY_TIER_PRIORITIES,
+  getCacheTtlMs,
+  getEffectiveRefreshIntervalMinutes,
+  resolveTierPriority,
+  resolveTierRefreshMinutes,
 } from "@/lib/insights/tier";
-import type { InsightSettings } from "@/lib/db/schema";
+import { describe, expect, it } from "vitest";
 
 describe("Insights Tier", () => {
   describe("clampActivityTier", () => {

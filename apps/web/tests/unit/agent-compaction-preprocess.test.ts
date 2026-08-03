@@ -7,16 +7,16 @@
  * flattenCompactionGroups, truncateOldestCompactionGroups, preprocessCompactionMessages
  */
 
-import { describe, it, expect } from "vitest";
 import {
+  type CompactionPreprocessMessage,
+  flattenCompactionGroups,
+  groupCompactionMessages,
+  preprocessCompactionMessages,
   sanitizeCompactionMessage,
   sanitizeCompactionMessages,
-  groupCompactionMessages,
-  flattenCompactionGroups,
   truncateOldestCompactionGroups,
-  preprocessCompactionMessages,
-  type CompactionPreprocessMessage,
 } from "@openloomi/ai/agent";
+import { describe, expect, it } from "vitest";
 
 describe("agent-compaction-preprocess", () => {
   describe("sanitizeCompactionMessage", () => {

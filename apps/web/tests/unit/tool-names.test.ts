@@ -1,9 +1,9 @@
-import { describe, expect, it } from "vitest";
 import {
   containsMalformedToolCall,
   extractMalformedToolCalls,
   stripMalformedToolCalls,
 } from "@/lib/utils/tool-names";
+import { describe, expect, it } from "vitest";
 
 describe("stripMalformedToolCalls", () => {
   describe("containsMalformedToolCall", () => {

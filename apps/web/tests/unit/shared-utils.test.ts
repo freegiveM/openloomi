@@ -5,22 +5,22 @@
  * SU-01 to SU-35
  */
 
-import { describe, it, expect } from "vitest";
 import {
-  normalizeTimestamp,
+  cn,
   coerceDate,
+  formatBytes,
+  generateUUID,
+  getCurrentYearMonth,
+  getMostRecentUserMessage,
+  getTextFromMessage,
+  getTrailingMessageId,
+  normalizeTimestamp,
+  sanitizeText,
   timeBeforeHours,
   timeBeforeHoursMs,
   timeBeforeMinutes,
-  formatBytes,
-  generateUUID,
-  getMostRecentUserMessage,
-  getTrailingMessageId,
-  sanitizeText,
-  getTextFromMessage,
-  getCurrentYearMonth,
-  cn,
 } from "@openloomi/shared/utils";
+import { describe, expect, it } from "vitest";
 
 describe("shared utils", () => {
   describe("normalizeTimestamp", () => {

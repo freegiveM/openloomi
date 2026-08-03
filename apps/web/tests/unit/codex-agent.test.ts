@@ -2,17 +2,15 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { afterEach, describe, expect, it, vi } from "vitest";
-import type { AgentMessage, TaskPlan } from "@openloomi/ai/agent/types";
 import {
-  CodexAgent,
   CODEX_INTERRUPTED_MARKER,
+  CodexAgent,
   formatCodexInterruptedError,
   parseCodexInterruptedError,
 } from "@/lib/ai/extensions/agent/codex";
 import {
-  buildCodexRunCommand,
   CodexCommandNotFoundError,
+  buildCodexRunCommand,
   normalizeCodexProviderConfig,
   resolveCodexSandboxMode,
 } from "@/lib/ai/extensions/agent/codex/command";
@@ -22,6 +20,8 @@ import {
   parseCodexVersion,
 } from "@/lib/ai/extensions/agent/codex/runtime-preflight";
 import { createCodexTransportStatusController } from "@/lib/ai/extensions/agent/codex/transport-status";
+import type { AgentMessage, TaskPlan } from "@openloomi/ai/agent/types";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 const tempDirs: string[] = [];
 

@@ -5,13 +5,13 @@
  * Tests getTagConfig, extractRssTags, buildTagConfigMetadata
  */
 
-import { describe, it, expect } from "vitest";
 import {
-  getTagConfig,
-  extractRssTags,
   buildTagConfigMetadata,
+  extractRssTags,
+  getTagConfig,
 } from "@openloomi/rss";
-import type { RssSubscription, InsertRssItem } from "@openloomi/rss";
+import type { InsertRssItem, RssSubscription } from "@openloomi/rss";
+import { describe, expect, it } from "vitest";
 
 describe("rss-tagging", () => {
   describe("getTagConfig", () => {

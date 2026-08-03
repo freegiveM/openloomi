@@ -50,12 +50,12 @@ vi.mock("@/lib/ai/rag/langchain-service", () => ({
 }));
 
 import {
+  type UnifiedMemorySearchResult,
   clampUnifiedMemorySearchLimit,
   clampUnifiedMemorySearchThreshold,
   mergeUnifiedMemorySearchResults,
   normalizeUnifiedMemorySearchSources,
   searchUnifiedMemory,
-  type UnifiedMemorySearchResult,
 } from "@/lib/memory/unified-search";
 
 describe("unified memory search", () => {

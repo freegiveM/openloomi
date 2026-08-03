@@ -1,140 +1,247 @@
 {
-  "compilerOptions": {
-    "baseUrl": ".",
-    "target": "ESNext",
-    "lib": ["dom", "dom.iterable", "esnext"],
-    "allowJs": true,
-    "skipLibCheck": true,
-    "strict": true,
-    "noEmit": true,
-    "esModuleInterop": true,
-    "module": "esnext",
-    "moduleResolution": "bundler",
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "jsx": "react-jsx",
-    "incremental": true,
-    "tsBuildInfoFile": ".next/cache/tsconfig.tsbuildinfo",
-    "plugins": [
-      {
-        "name": "next"
-      }
-    ],
-    "paths": {
-      "@/*": ["./*"],
-      "cookie": ["./lib/compat/cookie.ts"],
-      "@openloomi/ui": ["./components/ui/index.ts"],
-      "@openloomi/ui/*": ["./components/ui/*"],
-      "@openloomi/shared": ["../../packages/shared/src/index.ts"],
-      "@openloomi/indexeddb": ["../../packages/indexeddb/src/index.ts"],
-      "@openloomi/sqlite": ["../../packages/sqlite/src/index.ts"],
-      "@openloomi/sqlite/*": ["../../packages/sqlite/src/*"],
-      "@openloomi/insights": ["../../packages/insights/src/index.ts"],
-      "@openloomi/agent": ["../../packages/ai/src/agent/index.ts"],
-      "@openloomi/agent/*": ["../../packages/ai/src/agent/*"],
-      "@openloomi/integrations/asana": ["../../packages/integrations/asana/src/index.ts"],
-      "@openloomi/integrations/asana/*": ["../../packages/integrations/asana/src/*"],
-      "@openloomi/audit": ["../../packages/audit/src/index.ts"],
-      "@openloomi/audit/*": ["../../packages/audit/src/*"],
-      "@openloomi/ai": ["../../packages/ai/src/index.ts"],
-      "@openloomi/ai/*": ["../../packages/ai/src/*"],
-      "@openloomi/integrations": ["../../packages/integrations/src/index.ts"],
-      "@openloomi/integrations/*": ["../../packages/integrations/src/*"],
-      "@openloomi/ai/agent": ["../../packages/ai/src/agent/index.ts"],
-      "@openloomi/ai/agent/*": ["../../packages/ai/src/agent/*"],
-      "@openloomi/ai/agent/ai": ["../../packages/ai/src/agent/index.ts"],
-      "@openloomi/ai/agent/ai/*": ["../../packages/ai/src/agent/*"],
-      "@openloomi/ai/agent/billing": ["../../packages/ai/src/agent/billing/index.ts"],
-      "@openloomi/ai/agent/compaction": ["../../packages/ai/src/agent/compaction/index.ts"],
-      "@openloomi/ai/agent/context": ["../../packages/ai/src/agent/context/index.ts"],
-      "@openloomi/ai/agent/model": ["../../packages/ai/src/agent/model/index.ts"],
-      "@openloomi/ai/agent/routing": ["../../packages/ai/src/agent/routing/index.ts"],
-      "@openloomi/ai/store": ["../../packages/ai/src/store/index.ts"],
-      "@openloomi/ai/store/*": ["../../packages/ai/src/store/*"],
-      "@openloomi/ai/audio": ["../../packages/ai/src/audio/index.ts"],
-      "@openloomi/ai/audio/*": ["../../packages/ai/src/audio/*"],
-      "@openloomi/integrations/channels": ["../../packages/integrations/channels/src/index.ts"],
-      "@openloomi/integrations/channels/*": ["../../packages/integrations/channels/src/*"],
-      "@openloomi/rag": ["../../packages/ai/rag/src/index.ts"],
-      "@openloomi/rag/*": ["../../packages/ai/rag/src/*"],
-      "@openloomi/shared/*": ["../../packages/shared/src/*"],
-      "@openloomi/shared/errors": ["../../packages/shared/src/errors.ts"],
-      "@openloomi/shared/ref": ["../../packages/shared/src/ref.ts"],
-      "@openloomi/shared/soul": ["../../packages/shared/src/soul.ts"],
-      "@openloomi/billing/entitlements": ["../../packages/billing/src/entitlements.ts"],
-      "@openloomi/indexeddb/*": ["../../packages/indexeddb/src/*"],
-      "@openloomi/insights/*": ["../../packages/insights/src/*"],
-      "@openloomi/integrations/composio": ["../../packages/integrations/composio/src/index.ts"],
-      "@openloomi/integrations/calendar/*": ["../../packages/integrations/calendar/src/*"],
-      "@openloomi/hooks/*": ["../../packages/hooks/src/*"],
-      "@openloomi/memory-consolidation": ["../../packages/ai/memory-consolidation/src/index.ts"],
-      "@openloomi/memory-consolidation/*": ["../../packages/ai/memory-consolidation/src/*"],
-      "@openloomi/mcp/*": ["../../packages/ai/mcp/src/*"],
-      "@openloomi/rss/*": ["../../packages/integrations/rss/src/*"],
-      "@openloomi/search/*": ["../../packages/search/src/*"],
-      "@openloomi/storage": ["../../packages/storage/src/adapters/index.ts"],
-      "@openloomi/storage/*": ["../../packages/storage/src/*"],
-      "@openloomi/integrations/calendar": ["../../packages/integrations/calendar/src/index.ts"],
-      "@openloomi/api": ["../../packages/api/src/index.ts"],
-      "@openloomi/entitlements": ["../../packages/billing/src/entitlements.ts"],
-      "@openloomi/i18n": ["../../packages/i18n/src/index.ts"],
-      "@openloomi/i18n/*": ["../../packages/i18n/src/*"],
-      "@openloomi/hooks": ["../../packages/hooks/src/index.ts"],
-      "@openloomi/integrations/hubspot": ["../../packages/integrations/hubspot/src/index.ts"],
-      "@openloomi/integrations/hubspot/*": ["../../packages/integrations/hubspot/src/*"],
-      "@openloomi/mcp": ["../../packages/ai/mcp/src/index.ts"],
-      "@openloomi/rss": ["../../packages/integrations/rss/src/index.ts"],
-      "@openloomi/search": ["../../packages/search/src/index.ts"],
-      "@openloomi/integrations/whatsapp": ["../../packages/integrations/whatsapp/src/index.ts"],
-      "@openloomi/integrations/whatsapp/client-registry": ["../../packages/integrations/whatsapp/src/client-registry.ts"],
-      "@openloomi/integrations/whatsapp/*": ["../../packages/integrations/whatsapp/src/*"],
-      "@openloomi/integrations/weixin/ilink-client": ["../../packages/integrations/weixin/src/ilink-client.ts"],
-      "@openloomi/integrations/weixin/conversation-store": ["../../packages/integrations/weixin/src/conversation-store.ts"],
-      "@openloomi/integrations/weixin/ws-listener": ["../../packages/integrations/weixin/src/ws-listener.ts"],
-      "@openloomi/integrations/weixin/*": ["../../packages/integrations/weixin/src/*"],
-      "@openloomi/integrations/weixin": ["../../packages/integrations/weixin/src/index.ts"],
-      "@openloomi/integrations/x": ["../../packages/integrations/x/src/index.ts"],
-      "@openloomi/integrations/gmail/conversation-store": ["../../packages/integrations/gmail/src/conversation-store.ts"],
-      "@openloomi/integrations/linkedin": ["../../packages/integrations/linkedin/src/index.ts"],
-      "@openloomi/integrations/instagram": ["../../packages/integrations/instagram/src/index.ts"],
-      "@openloomi/integrations/feishu": ["../../packages/integrations/feishu/src/index.ts"],
-      "@openloomi/integrations/feishu/app-registration": ["../../packages/integrations/feishu/src/app-registration.ts"],
-      "@openloomi/integrations/feishu/registration-cookie": ["../../packages/integrations/feishu/src/registration-cookie.ts"],
-      "@openloomi/integrations/feishu/conversation-store": ["../../packages/integrations/feishu/src/conversation-store.ts"],
-      "@openloomi/integrations/feishu/state": ["../../packages/integrations/feishu/src/state.ts"],
-      "@openloomi/integrations/jira": ["../../packages/integrations/jira/src/index.ts"],
-      "@openloomi/integrations/facebook-messenger": ["../../packages/integrations/facebook-messenger/src/index.ts"],
-      "@openloomi/integrations/dingtalk": ["../../packages/integrations/dingtalk/src/index.ts"],
-      "@openloomi/integrations/qqbot": ["../../packages/integrations/qqbot/src/index.ts"],
-      "@openloomi/integrations/telegram": ["../../packages/integrations/telegram/src/index.ts"],
-      "@openloomi/integrations/telegram/tdata-converter": ["../../packages/integrations/telegram/src/tdata-converter.ts"],
-      "@openloomi/integrations/telegram/conversation-store": ["../../packages/integrations/telegram/src/conversation-store.ts"],
-      "@openloomi/integrations/telegram/markdown": ["../../packages/integrations/telegram/src/markdown.ts"],
-      "@openloomi/integrations/telegram/tdata-decrypter": ["../../packages/integrations/telegram/src/tdata-decrypter/index.ts"],
-      "@openloomi/integrations/telegram/*": ["../../packages/integrations/telegram/src/*"],
-      "@openloomi/integrations/google-docs": ["../../packages/integrations/google-docs/src/index.ts"],
-      "@openloomi/integrations/google-docs/*": ["../../packages/integrations/google-docs/src/*"],
-      "@openloomi/integrations/imessage": ["../../packages/integrations/imessage/src/index.ts"],
-      "@openloomi/integrations/imessage/*": ["../../packages/integrations/imessage/src/*"],
-      "@openloomi/security": ["../../packages/security/src/index.ts"],
-      "@openloomi/security/token-encryption": ["../../packages/security/src/token-encryption.ts"],
-      "@openloomi/security/url-validator": ["../../packages/security/src/url-validator.ts"],
-      "@openloomi/security/key-manager": ["../../packages/security/src/key-manager.ts"],
-      "@openloomi/voice-kokoro": ["../../packages/voice-kokoro/src/index.ts"],
-      "@openloomi/voice-kokoro/*": ["../../packages/voice-kokoro/src/*"],
-      "@openloomi/voice-whisper": ["../../packages/voice-whisper/src/index.ts"],
-      "@openloomi/voice-whisper/*": ["../../packages/voice-whisper/src/*"]
-    },
-    "typeRoots": ["./node_modules/@types"]
-  },
-  "include": [
-    "**/*.ts",
-    "**/*.tsx",
-    "next-env.d.ts",
-    "next.config.js",
-    "types/**/*.d.ts",
-    ".next/types/**/*.ts",
-    ".next/dev/types/**/*.ts"
-  ],
-  "exclude": ["node_modules", ".next/**/*", "src-tauri/**/*", "node_modules/playwright/types/**/*"]
+	"compilerOptions": {
+		"baseUrl": ".",
+		"target": "ESNext",
+		"lib": ["dom", "dom.iterable", "esnext"],
+		"allowJs": true,
+		"skipLibCheck": true,
+		"strict": true,
+		"noEmit": true,
+		"esModuleInterop": true,
+		"module": "esnext",
+		"moduleResolution": "bundler",
+		"resolveJsonModule": true,
+		"isolatedModules": true,
+		"jsx": "react-jsx",
+		"incremental": true,
+		"tsBuildInfoFile": ".next/cache/tsconfig.tsbuildinfo",
+		"plugins": [
+			{
+				"name": "next"
+			}
+		],
+		"paths": {
+			"@/*": ["./*"],
+			"cookie": ["./lib/compat/cookie.ts"],
+			"@openloomi/ui": ["./components/ui/index.ts"],
+			"@openloomi/ui/*": ["./components/ui/*"],
+			"@openloomi/shared": ["../../packages/shared/src/index.ts"],
+			"@openloomi/indexeddb": ["../../packages/indexeddb/src/index.ts"],
+			"@openloomi/sqlite": ["../../packages/sqlite/src/index.ts"],
+			"@openloomi/sqlite/*": ["../../packages/sqlite/src/*"],
+			"@openloomi/insights": ["../../packages/insights/src/index.ts"],
+			"@openloomi/agent": ["../../packages/ai/src/agent/index.ts"],
+			"@openloomi/agent/*": ["../../packages/ai/src/agent/*"],
+			"@openloomi/integrations/asana": [
+				"../../packages/integrations/asana/src/index.ts"
+			],
+			"@openloomi/integrations/asana/*": [
+				"../../packages/integrations/asana/src/*"
+			],
+			"@openloomi/audit": ["../../packages/audit/src/index.ts"],
+			"@openloomi/audit/*": ["../../packages/audit/src/*"],
+			"@openloomi/ai": ["../../packages/ai/src/index.ts"],
+			"@openloomi/ai/*": ["../../packages/ai/src/*"],
+			"@openloomi/integrations": ["../../packages/integrations/src/index.ts"],
+			"@openloomi/integrations/*": ["../../packages/integrations/src/*"],
+			"@openloomi/ai/agent": ["../../packages/ai/src/agent/index.ts"],
+			"@openloomi/ai/agent/*": ["../../packages/ai/src/agent/*"],
+			"@openloomi/ai/agent/ai": ["../../packages/ai/src/agent/index.ts"],
+			"@openloomi/ai/agent/ai/*": ["../../packages/ai/src/agent/*"],
+			"@openloomi/ai/agent/billing": [
+				"../../packages/ai/src/agent/billing/index.ts"
+			],
+			"@openloomi/ai/agent/compaction": [
+				"../../packages/ai/src/agent/compaction/index.ts"
+			],
+			"@openloomi/ai/agent/context": [
+				"../../packages/ai/src/agent/context/index.ts"
+			],
+			"@openloomi/ai/agent/model": [
+				"../../packages/ai/src/agent/model/index.ts"
+			],
+			"@openloomi/ai/agent/routing": [
+				"../../packages/ai/src/agent/routing/index.ts"
+			],
+			"@openloomi/ai/store": ["../../packages/ai/src/store/index.ts"],
+			"@openloomi/ai/store/*": ["../../packages/ai/src/store/*"],
+			"@openloomi/ai/audio": ["../../packages/ai/src/audio/index.ts"],
+			"@openloomi/ai/audio/*": ["../../packages/ai/src/audio/*"],
+			"@openloomi/integrations/channels": [
+				"../../packages/integrations/channels/src/index.ts"
+			],
+			"@openloomi/integrations/channels/*": [
+				"../../packages/integrations/channels/src/*"
+			],
+			"@openloomi/rag": ["../../packages/ai/rag/src/index.ts"],
+			"@openloomi/rag/*": ["../../packages/ai/rag/src/*"],
+			"@openloomi/shared/*": ["../../packages/shared/src/*"],
+			"@openloomi/shared/errors": ["../../packages/shared/src/errors.ts"],
+			"@openloomi/shared/ref": ["../../packages/shared/src/ref.ts"],
+			"@openloomi/shared/soul": ["../../packages/shared/src/soul.ts"],
+			"@openloomi/billing/entitlements": [
+				"../../packages/billing/src/entitlements.ts"
+			],
+			"@openloomi/indexeddb/*": ["../../packages/indexeddb/src/*"],
+			"@openloomi/insights/*": ["../../packages/insights/src/*"],
+			"@openloomi/integrations/composio": [
+				"../../packages/integrations/composio/src/index.ts"
+			],
+			"@openloomi/integrations/calendar/*": [
+				"../../packages/integrations/calendar/src/*"
+			],
+			"@openloomi/hooks/*": ["../../packages/hooks/src/*"],
+			"@openloomi/memory-consolidation": [
+				"../../packages/ai/memory-consolidation/src/index.ts"
+			],
+			"@openloomi/memory-consolidation/*": [
+				"../../packages/ai/memory-consolidation/src/*"
+			],
+			"@openloomi/mcp/*": ["../../packages/ai/mcp/src/*"],
+			"@openloomi/rss/*": ["../../packages/integrations/rss/src/*"],
+			"@openloomi/search/*": ["../../packages/search/src/*"],
+			"@openloomi/storage": ["../../packages/storage/src/adapters/index.ts"],
+			"@openloomi/storage/*": ["../../packages/storage/src/*"],
+			"@openloomi/integrations/calendar": [
+				"../../packages/integrations/calendar/src/index.ts"
+			],
+			"@openloomi/api": ["../../packages/api/src/index.ts"],
+			"@openloomi/entitlements": ["../../packages/billing/src/entitlements.ts"],
+			"@openloomi/i18n": ["../../packages/i18n/src/index.ts"],
+			"@openloomi/i18n/*": ["../../packages/i18n/src/*"],
+			"@openloomi/hooks": ["../../packages/hooks/src/index.ts"],
+			"@openloomi/integrations/hubspot": [
+				"../../packages/integrations/hubspot/src/index.ts"
+			],
+			"@openloomi/integrations/hubspot/*": [
+				"../../packages/integrations/hubspot/src/*"
+			],
+			"@openloomi/mcp": ["../../packages/ai/mcp/src/index.ts"],
+			"@openloomi/rss": ["../../packages/integrations/rss/src/index.ts"],
+			"@openloomi/search": ["../../packages/search/src/index.ts"],
+			"@openloomi/integrations/whatsapp": [
+				"../../packages/integrations/whatsapp/src/index.ts"
+			],
+			"@openloomi/integrations/whatsapp/client-registry": [
+				"../../packages/integrations/whatsapp/src/client-registry.ts"
+			],
+			"@openloomi/integrations/whatsapp/*": [
+				"../../packages/integrations/whatsapp/src/*"
+			],
+			"@openloomi/integrations/weixin/ilink-client": [
+				"../../packages/integrations/weixin/src/ilink-client.ts"
+			],
+			"@openloomi/integrations/weixin/conversation-store": [
+				"../../packages/integrations/weixin/src/conversation-store.ts"
+			],
+			"@openloomi/integrations/weixin/ws-listener": [
+				"../../packages/integrations/weixin/src/ws-listener.ts"
+			],
+			"@openloomi/integrations/weixin/*": [
+				"../../packages/integrations/weixin/src/*"
+			],
+			"@openloomi/integrations/weixin": [
+				"../../packages/integrations/weixin/src/index.ts"
+			],
+			"@openloomi/integrations/x": [
+				"../../packages/integrations/x/src/index.ts"
+			],
+			"@openloomi/integrations/gmail/conversation-store": [
+				"../../packages/integrations/gmail/src/conversation-store.ts"
+			],
+			"@openloomi/integrations/linkedin": [
+				"../../packages/integrations/linkedin/src/index.ts"
+			],
+			"@openloomi/integrations/instagram": [
+				"../../packages/integrations/instagram/src/index.ts"
+			],
+			"@openloomi/integrations/feishu": [
+				"../../packages/integrations/feishu/src/index.ts"
+			],
+			"@openloomi/integrations/feishu/app-registration": [
+				"../../packages/integrations/feishu/src/app-registration.ts"
+			],
+			"@openloomi/integrations/feishu/registration-cookie": [
+				"../../packages/integrations/feishu/src/registration-cookie.ts"
+			],
+			"@openloomi/integrations/feishu/conversation-store": [
+				"../../packages/integrations/feishu/src/conversation-store.ts"
+			],
+			"@openloomi/integrations/feishu/state": [
+				"../../packages/integrations/feishu/src/state.ts"
+			],
+			"@openloomi/integrations/jira": [
+				"../../packages/integrations/jira/src/index.ts"
+			],
+			"@openloomi/integrations/facebook-messenger": [
+				"../../packages/integrations/facebook-messenger/src/index.ts"
+			],
+			"@openloomi/integrations/dingtalk": [
+				"../../packages/integrations/dingtalk/src/index.ts"
+			],
+			"@openloomi/integrations/qqbot": [
+				"../../packages/integrations/qqbot/src/index.ts"
+			],
+			"@openloomi/integrations/telegram": [
+				"../../packages/integrations/telegram/src/index.ts"
+			],
+			"@openloomi/integrations/telegram/tdata-converter": [
+				"../../packages/integrations/telegram/src/tdata-converter.ts"
+			],
+			"@openloomi/integrations/telegram/conversation-store": [
+				"../../packages/integrations/telegram/src/conversation-store.ts"
+			],
+			"@openloomi/integrations/telegram/markdown": [
+				"../../packages/integrations/telegram/src/markdown.ts"
+			],
+			"@openloomi/integrations/telegram/tdata-decrypter": [
+				"../../packages/integrations/telegram/src/tdata-decrypter/index.ts"
+			],
+			"@openloomi/integrations/telegram/*": [
+				"../../packages/integrations/telegram/src/*"
+			],
+			"@openloomi/integrations/google-docs": [
+				"../../packages/integrations/google-docs/src/index.ts"
+			],
+			"@openloomi/integrations/google-docs/*": [
+				"../../packages/integrations/google-docs/src/*"
+			],
+			"@openloomi/integrations/imessage": [
+				"../../packages/integrations/imessage/src/index.ts"
+			],
+			"@openloomi/integrations/imessage/*": [
+				"../../packages/integrations/imessage/src/*"
+			],
+			"@openloomi/security": ["../../packages/security/src/index.ts"],
+			"@openloomi/security/token-encryption": [
+				"../../packages/security/src/token-encryption.ts"
+			],
+			"@openloomi/security/url-validator": [
+				"../../packages/security/src/url-validator.ts"
+			],
+			"@openloomi/security/key-manager": [
+				"../../packages/security/src/key-manager.ts"
+			],
+			"@openloomi/voice-kokoro": ["../../packages/voice-kokoro/src/index.ts"],
+			"@openloomi/voice-kokoro/*": ["../../packages/voice-kokoro/src/*"],
+			"@openloomi/voice-whisper": ["../../packages/voice-whisper/src/index.ts"],
+			"@openloomi/voice-whisper/*": ["../../packages/voice-whisper/src/*"]
+		},
+		"typeRoots": ["./node_modules/@types"]
+	},
+	"include": [
+		"**/*.ts",
+		"**/*.tsx",
+		"next-env.d.ts",
+		"next.config.js",
+		"types/**/*.d.ts",
+		".next/types/**/*.ts",
+		".next/dev/types/**/*.ts"
+	],
+	"exclude": [
+		"node_modules",
+		".next/**/*",
+		"src-tauri/**/*",
+		"node_modules/playwright/types/**/*"
+	]
 }

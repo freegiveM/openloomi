@@ -1,9 +1,9 @@
-import { describe, it, expect, vi } from "vitest";
 import {
   AppError,
   getMessageByErrorCode,
   isTelegramAuthIssue,
 } from "@openloomi/shared/errors";
+import { describe, expect, it, vi } from "vitest";
 
 describe("errors", () => {
   it("builds message with cause for api bad request", () => {

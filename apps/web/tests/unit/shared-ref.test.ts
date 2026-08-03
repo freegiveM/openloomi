@@ -5,13 +5,13 @@
  * Tests parseContentWithRefs, getRefMarkerRangeBeforeCursor, buildRefMarker, extractRefsFromContent
  */
 
-import { describe, it, expect } from "vitest";
 import {
-  parseContentWithRefs,
-  getRefMarkerRangeBeforeCursor,
   buildRefMarker,
   extractRefsFromContent,
+  getRefMarkerRangeBeforeCursor,
+  parseContentWithRefs,
 } from "@openloomi/shared/ref";
+import { describe, expect, it } from "vitest";
 
 describe("shared-ref", () => {
   describe("parseContentWithRefs", () => {

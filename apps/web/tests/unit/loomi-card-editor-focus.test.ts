@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
 /**
  * Loomi Pet card — editor input focus / pointer-events (regression).
  *
@@ -46,8 +48,6 @@
  * into the node-environment vitest suite.
  */
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
-import path from "node:path";
 
 const cardPath = path.resolve(__dirname, "../../public/loomi-card.html");
 const cardHtml = readFileSync(cardPath, "utf8");

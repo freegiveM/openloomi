@@ -5,17 +5,17 @@
  * SO-01 to SO-12
  */
 
-import { describe, it, expect } from "vitest";
 import {
-  getDefaultPrompt,
-  getPresetPrompt,
-  SOUL_PRESETS,
-  SOUL_PRESET_CUSTOM_ID,
-  getSoulPresetByPrompt,
-  getSelectedSoulPresetId,
   DEFAULT_PROMPT_EN,
   DEFAULT_PROMPT_ZH,
+  SOUL_PRESETS,
+  SOUL_PRESET_CUSTOM_ID,
+  getDefaultPrompt,
+  getPresetPrompt,
+  getSelectedSoulPresetId,
+  getSoulPresetByPrompt,
 } from "@openloomi/shared/soul";
+import { describe, expect, it } from "vitest";
 
 describe("shared soul", () => {
   describe("getDefaultPrompt", () => {

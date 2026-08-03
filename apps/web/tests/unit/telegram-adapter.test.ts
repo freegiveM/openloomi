@@ -1,3 +1,5 @@
+import bigInt from "big-integer";
+import { Api } from "telegram/tl";
 /**
  * Telegram Adapter Unit Tests
  *
@@ -6,9 +8,7 @@
  * - openloomiMessageToTgText utility
  * - tgMessageToopenloomiMessage utility
  */
-import { describe, test, expect } from "vitest";
-import { Api } from "telegram/tl";
-import bigInt from "big-integer";
+import { describe, expect, test } from "vitest";
 
 describe("markdownToTelegramHtml", async () => {
   const { markdownToTelegramHtml } =

@@ -1,10 +1,10 @@
+import type { ExtractedMessageInfo } from "@openloomi/shared";
 /**
  * Channels Sources Types Unit Tests
  *
  * Tests for utility functions in @openloomi/integrations/channels/sources/types
  */
-import { describe, test, expect } from "vitest";
-import type { ExtractedMessageInfo } from "@openloomi/shared";
+import { describe, expect, test } from "vitest";
 
 describe("isEmptyMessage", async () => {
   const { isEmptyMessage } =

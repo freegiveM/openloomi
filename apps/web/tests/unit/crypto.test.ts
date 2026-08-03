@@ -1,10 +1,10 @@
+import * as crypto from "node:crypto";
 import {
   TokenEncryption,
-  encryptToken,
   decryptToken,
+  encryptToken,
 } from "@openloomi/security/token-encryption";
-import { test, expect } from "vitest";
-import * as crypto from "node:crypto";
+import { expect, test } from "vitest";
 
 const generateValidFernetKey = () => {
   return crypto.randomBytes(32).toString("base64url");

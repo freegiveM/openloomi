@@ -1,3 +1,13 @@
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 /**
  * Unit tests for `lib/loop/cli-path.ts` — the resolver used by the
  * tick prompt so the agent can always find `loop-cli.mjs` regardless
@@ -31,16 +41,6 @@
  * "no candidate" test force the resolver to give up.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  realpathSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 
 /** Mutable flag toggled by tests that need every existsSync to miss. */
 let existsSyncAllFalse = false;

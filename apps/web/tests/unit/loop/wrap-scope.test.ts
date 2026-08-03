@@ -56,7 +56,7 @@ vi.mock("node:child_process", async () => ({
 }));
 
 const { computeWrapDialogue } = await import("@/lib/loop/wrap");
-import type { WrapSnapshot, WrapHighlight } from "@/lib/loop/wrap";
+import type { WrapHighlight, WrapSnapshot } from "@/lib/loop/wrap";
 
 beforeEach(() => {
   vi.useFakeTimers();

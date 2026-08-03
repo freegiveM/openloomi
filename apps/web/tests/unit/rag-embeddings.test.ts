@@ -5,13 +5,13 @@
  * Tests calculateCreditCost, cosineSimilarity, getEmbeddingDimensions, getEmbeddingModel, getModelPricing
  */
 
-import { describe, it, expect } from "vitest";
 import {
   cosineSimilarity,
   getEmbeddingDimensions,
   getEmbeddingModel,
   getModelPricing,
 } from "@openloomi/rag";
+import { describe, expect, it } from "vitest";
 
 describe("rag-embeddings", () => {
   describe("cosineSimilarity", () => {

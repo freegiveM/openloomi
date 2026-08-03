@@ -1,3 +1,6 @@
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 /**
  * Unit tests for `lib/loop/classifier-rules.ts`.
  *
@@ -14,9 +17,6 @@
  * `/api/loop/classifier-rules` HTTP route and the watcher.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, rmSync, mkdirSync, readFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 
 let LOOP_HOME = "";
 

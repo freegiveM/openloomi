@@ -4,14 +4,14 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
 
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { getAgentRegistry } from "@openloomi/ai/agent/registry";
 import {
-  runNativeAgentRequest,
   type NativeAgentHost,
   type NativeAgentRunnerContext,
+  runNativeAgentRequest,
 } from "@openloomi/ai/agent/native-runner";
+import { getAgentRegistry } from "@openloomi/ai/agent/registry";
 import type { AgentMessage } from "@openloomi/ai/agent/types";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { HermesAgent, hermesPlugin } from "@/lib/ai/extensions/agent/hermes";
 import { resolveNativeAgentProviderRequest } from "@/lib/ai/native-agent/provider-env";

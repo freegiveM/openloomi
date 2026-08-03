@@ -1,15 +1,15 @@
-import { describe, it, expect } from "vitest";
+import type { DBInsightFilter, Insight } from "@/lib/db/schema";
 import {
   filterInsights,
   insightMatchesFilterDefinition,
   toInsightFilterResponse,
 } from "@/lib/insights/filter-utils";
-import type { DBInsightFilter, Insight } from "@/lib/db/schema";
 import {
   normalizeImportanceOption,
-  normalizeUrgencyOption,
   normalizePlatformOption,
+  normalizeUrgencyOption,
 } from "@openloomi/insights";
+import { describe, expect, it } from "vitest";
 
 describe("Filter Utils", () => {
   describe("toInsightFilterResponse", () => {

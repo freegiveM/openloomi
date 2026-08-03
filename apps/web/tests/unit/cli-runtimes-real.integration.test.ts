@@ -1,18 +1,18 @@
 import type { ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { createServer, connect } from "node:net";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { connect, createServer } from "node:net";
 import { join } from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
-import spawn from "cross-spawn";
 import {
-  runNativeAgentRequest,
   type NativeAgentHost,
   type NativeAgentRunnerContext,
+  runNativeAgentRequest,
 } from "@openloomi/ai/agent/native-runner";
 import { getAgentRegistry } from "@openloomi/ai/agent/registry";
 import type { AgentMessage } from "@openloomi/ai/agent/types";
+import spawn from "cross-spawn";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { codexPlugin } from "@/lib/ai/extensions/agent/codex";
 import { openclawPlugin } from "@/lib/ai/extensions/agent/openclaw";

@@ -1,3 +1,6 @@
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 /**
  * Unit tests for `lib/loop/custom-types.ts`. Mirrors the `mutes` test
  * pattern: mock `@/lib/loop/paths` to a fresh tmp dir per test, then
@@ -5,9 +8,6 @@
  * re-derivation, and the built-in id collision guard.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, rmSync, mkdirSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 
 let LOOP_HOME = "";
 

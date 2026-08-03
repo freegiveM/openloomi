@@ -1,6 +1,6 @@
-import { test, expect } from "vitest";
 import * as crypto from "node:crypto";
 import { decryptPayload, encryptPayload } from "@/lib/db/queries";
+import { expect, test } from "vitest";
 
 const generateValidFernetKey = () => {
   return crypto.randomBytes(32).toString("base64url");

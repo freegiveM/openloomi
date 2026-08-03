@@ -6,7 +6,7 @@
  * Or using phone number only:
  *   RUN_IMESSAGE_SEND=1 IMESSAGE_TEST_CHAT_ID="+8613800138000" pnpm test:unit imessage.test.ts -t "Real send single text message"
  */
-import { describe, test, expect } from "vitest";
+import { describe, expect, test } from "vitest";
 
 describe("iMessage Utility Functions", () => {
   test("parseIMessageChatId parses phone numbers", async () => {

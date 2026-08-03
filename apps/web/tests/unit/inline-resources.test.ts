@@ -1,5 +1,5 @@
-import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { inlineResources } from "@/lib/files/inline-resources";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 describe("inlineResources", () => {
   const originalFetch = global.fetch;

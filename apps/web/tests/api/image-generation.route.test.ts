@@ -26,9 +26,9 @@ vi.mock("@/lib/env/constants", () => ({
 import { POST } from "@/app/api/ai/v1/images/generations/route";
 import { __resetImageGenerationServiceForTests } from "@/lib/ai/image-generation/service";
 import {
+  type ImageGenerationUsageRecord,
   __resetImageGenerationUsageRecorderForTests,
   __setImageGenerationUsageRecorderForTests,
-  type ImageGenerationUsageRecord,
 } from "@/lib/ai/image-generation/usage";
 
 const fetchMock = vi.fn();

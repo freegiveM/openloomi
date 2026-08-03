@@ -1,9 +1,9 @@
 import {
-  formatRuntimeInstruction,
   type CreateAgentGoalInput,
   type RuntimeDeliveryReceipt,
   type RuntimeInstruction,
   type RuntimeInstructionTransportPort,
+  formatRuntimeInstruction,
 } from "@openloomi/ai/agent/runtime-instructions";
 import { describe, expect, it } from "vitest";
 

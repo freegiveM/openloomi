@@ -1,9 +1,12 @@
 import {
+  type AgentGoal,
   AgentGoalDomainError,
   AgentGoalSchema,
   AgentRuntimeStateTransitionError,
+  type CreateAgentGoalInput,
   CreateAgentGoalInputSchema,
   GoalConstraintSchema,
+  type GoalContextReference,
   GoalContextReferenceSchema,
   GoalEvaluationResultSchema,
   RUNTIME_INSTRUCTION_SCHEMA_VERSION,
@@ -16,9 +19,6 @@ import {
   formatRuntimeInstruction,
   reviseAgentGoal,
   transitionAgentGoal,
-  type AgentGoal,
-  type CreateAgentGoalInput,
-  type GoalContextReference,
 } from "@openloomi/ai/agent/runtime-instructions";
 import { describe, expect, it } from "vitest";
 

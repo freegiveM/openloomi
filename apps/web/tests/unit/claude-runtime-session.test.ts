@@ -15,8 +15,8 @@ import { describe, expect, it, vi } from "vitest";
 import {
   type ClaudeGoalRuntimeEpochMismatchError,
   type ClaudeGoalRuntimeRecoveryRequiredError,
-  ClaudeInputMultiplexer,
   ClaudeGoalRuntimeRegistrationError,
+  ClaudeInputMultiplexer,
   ClaudeRuntimeSession,
   createClaudeSupplementalInputHooks,
   startClaudeGoalRuntimeSession,

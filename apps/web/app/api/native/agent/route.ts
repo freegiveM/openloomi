@@ -75,7 +75,13 @@ function createSSEStream(
 
   return new ReadableStream({
     start(controller) {
+      let controllerClosed = false;
+
       heartbeatTimer = setInterval(() => {
+        if (controllerClosed) {
+          clearHeartbeat();
+          return;
+        }
         try {
           // SSE comments are ignored by clients but keep the connection hot.
           controller.enqueue(encoder.encode(": keep-alive\n\n"));
@@ -87,11 +93,25 @@ function createSSEStream(
       void (async () => {
         try {
           for await (const message of generator) {
+            if (controllerClosed) break;
             const data = `data: ${JSON.stringify(message)}\n\n`;
-            controller.enqueue(encoder.encode(data));
+            try {
+              controller.enqueue(encoder.encode(data));
+            } catch (enqueueError) {
+              // Controller already closed, stop processing
+              break;
+            }
             // Fire usage instrumentation AFTER the byte is enqueued so a slow
             // disk write can never push the SSE frame out.
             onUsage?.(message);
+
+            // Close stream after result message to signal completion
+            if (message.type === "result") {
+              console.log(
+                "[AgentAPI] Result message received, closing stream...",
+              );
+              break;
+            }
           }
         } catch (error) {
           console.error("[AgentAPI] Generator error:", {
@@ -104,9 +124,13 @@ function createSSEStream(
             message: error instanceof Error ? error.message : String(error),
           })}\n\n`;
           try {
-            controller.enqueue(encoder.encode(errorData));
+            if (!controllerClosed) {
+              controller.enqueue(encoder.encode(errorData));
+            }
           } catch {}
         } finally {
+          controllerClosed = true;
+          clearHeartbeat();
           try {
             controller.close();
           } catch {}

@@ -1,3 +1,17 @@
+import {
+  BURST_THRESHOLD,
+  EMAIL_BURSTS_MODULE,
+  MAX_EMAIL_BURST_ITEMS,
+  aggregateEmailBursts,
+  buildEmailBurstDigest,
+  collectCoveredEmailBurstKeys,
+  emailBurstKey,
+  findPendingEmailBurst,
+  isEmailBurstDecision,
+  isEmailBurstSignal,
+  normalizeEmailBursts,
+} from "@/lib/loop/email-bursts";
+import type { LoopDecision, LoopSignal } from "@/lib/loop/types";
 /**
  * SP-3 — email burst aggregator regression tests.
  *
@@ -19,20 +33,6 @@
  *     couldn't cover).
  */
 import { describe, expect, it } from "vitest";
-import {
-  BURST_THRESHOLD,
-  EMAIL_BURSTS_MODULE,
-  MAX_EMAIL_BURST_ITEMS,
-  aggregateEmailBursts,
-  buildEmailBurstDigest,
-  collectCoveredEmailBurstKeys,
-  emailBurstKey,
-  findPendingEmailBurst,
-  isEmailBurstDecision,
-  isEmailBurstSignal,
-  normalizeEmailBursts,
-} from "@/lib/loop/email-bursts";
-import type { LoopDecision, LoopSignal } from "@/lib/loop/types";
 
 // Anchor all `now`-relative math at this point.
 const NOW = new Date("2026-07-17T12:00:00.000Z").getTime();

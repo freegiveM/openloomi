@@ -5,13 +5,13 @@
  * Tests chunkText, getOverlapText, countTokens, getOptimalChunkSize, estimateChunkCount
  */
 
-import { describe, it, expect } from "vitest";
 import {
   chunkText,
   countTokens,
-  getOptimalChunkSize,
   estimateChunkCount,
+  getOptimalChunkSize,
 } from "@openloomi/rag";
+import { describe, expect, it } from "vitest";
 
 describe("rag-chunking", () => {
   describe("chunkText", () => {

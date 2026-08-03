@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  type AtomicFactProvider,
   chunkAtomicFacts,
   chunkDocument,
-  type AtomicFactProvider,
 } from "../../../../packages/ai/rag/src";
 
 class StubProvider implements AtomicFactProvider {

@@ -1,10 +1,10 @@
-import { describe, expect, test } from "vitest";
 import {
   buildInsightUsageAnalytics,
   calculateInsightTrend,
   calculateInsightValueScore,
   recommendInsightOrganization,
 } from "@/lib/insights/analytics";
+import { describe, expect, test } from "vitest";
 
 const NOW = new Date("2026-05-09T12:00:00.000Z");
 

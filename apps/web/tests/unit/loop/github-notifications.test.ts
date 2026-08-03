@@ -1,3 +1,17 @@
+import {
+  GITHUB_NOTIFICATIONS_MODULE,
+  MAX_DIGEST_ITEMS,
+  aggregateGithubNotifications,
+  buildGithubDigestDecision,
+  collectCoveredNotificationKeys,
+  deriveGithubWebUrl,
+  findPendingGithubDigest,
+  githubNotificationKey,
+  isGithubDigestDecision,
+  isGithubNotificationSignal,
+  normalizeGithubNotifications,
+} from "@/lib/loop/github-notifications";
+import type { LoopDecision, LoopSignal } from "@/lib/loop/types";
 /**
  * #378 — deterministic GitHub notification aggregator regression tests.
  *
@@ -18,20 +32,6 @@
  *     cover).
  */
 import { describe, expect, it } from "vitest";
-import {
-  GITHUB_NOTIFICATIONS_MODULE,
-  MAX_DIGEST_ITEMS,
-  aggregateGithubNotifications,
-  buildGithubDigestDecision,
-  collectCoveredNotificationKeys,
-  deriveGithubWebUrl,
-  findPendingGithubDigest,
-  githubNotificationKey,
-  isGithubDigestDecision,
-  isGithubNotificationSignal,
-  normalizeGithubNotifications,
-} from "@/lib/loop/github-notifications";
-import type { LoopDecision, LoopSignal } from "@/lib/loop/types";
 
 function sig(
   id: string,

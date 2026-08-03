@@ -2,7 +2,7 @@
  * Token Manager Tests
  */
 
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const localStorageMock = {
   getItem: vi.fn(),
@@ -42,14 +42,14 @@ vi.mock("@/lib/auth/token-manager", async (orig) => {
 });
 
 import {
-  storeAuthToken,
-  getAuthToken,
   clearAuthToken,
-  parseToken,
+  getAuthToken,
+  getTokenTimeRemaining,
   isTokenExpired,
   isTokenValid,
+  parseToken,
   shouldRefreshToken,
-  getTokenTimeRemaining,
+  storeAuthToken,
 } from "../../lib/auth/token-manager";
 
 describe("TokenManager", () => {

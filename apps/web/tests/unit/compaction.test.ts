@@ -1,10 +1,10 @@
-import { describe, expect, it } from "vitest";
 import {
-  buildCompactionPrompt,
   COMPACTION_EMERGENCY_RATIO,
   COMPACTION_HARD_RATIO,
   COMPACTION_SOFT_RATIO,
+  buildCompactionPrompt,
 } from "@openloomi/ai/agent/compaction";
+import { describe, expect, it } from "vitest";
 
 describe("compaction prompt", () => {
   it("includes the soft-level instruction and response marker", () => {

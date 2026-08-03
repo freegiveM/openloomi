@@ -1,15 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
-import type {
-  RawMessage,
-  RawMessageEmbeddingUpdate,
-  RawMessageQuery,
-} from "../../../../packages/indexeddb/src/manager";
 import {
   cosineSimilarity,
   resolveRawMessageEmbeddingDreamReason,
   runRawMessageEmbeddingDream,
   searchRawMessagesSemantically,
 } from "../../../../packages/indexeddb/src/embedding";
+import type {
+  RawMessage,
+  RawMessageEmbeddingUpdate,
+  RawMessageQuery,
+} from "../../../../packages/indexeddb/src/manager";
 
 class InMemoryEmbeddingManager {
   messages: RawMessage[] = [];

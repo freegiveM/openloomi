@@ -169,6 +169,9 @@ async function main() {
   console.log(`Success: ${finalResult.success_count}`);
   console.log(`Errors: ${finalResult.error_count}`);
   if (args.output) console.log(`Results saved to: ${args.output}`);
+
+  // Explicit exit to ensure clean termination
+  process.exit(0);
 }
 
 main().catch((error) => {

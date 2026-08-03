@@ -1,3 +1,6 @@
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 /**
  * Unit tests for `lib/loop/custom-channels.ts`. Mirrors the
  * `custom-types` test pattern: mock `@/lib/loop/paths` to a fresh
@@ -6,9 +9,6 @@
  * `eventFilter` shape check.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, rmSync, mkdirSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 
 let LOOP_HOME = "";
 

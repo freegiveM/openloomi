@@ -1,8 +1,8 @@
 import {
   RUNTIME_INSTRUCTION_SCHEMA_VERSION,
-  RuntimeInstructionSchema,
   type RuntimeDeliveryReceipt,
   type RuntimeInstruction,
+  RuntimeInstructionSchema,
   type RuntimeInstructionTransportPort,
 } from "@openloomi/ai/agent/runtime-instructions";
 import { describe, expect, it } from "vitest";

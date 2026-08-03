@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 /**
  * Regression tests for issue #380.
  *
@@ -12,8 +14,6 @@
  * behavior.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 
 // Hoisted mocks — referenced inside vi.mock factories.
 const uploadFileMock = vi.hoisted(() => vi.fn());

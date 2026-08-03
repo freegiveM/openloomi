@@ -5,15 +5,15 @@
  * Tests normalizeImportanceOption, normalizeUrgencyOption, normalizePlatformOption, normalizeBasicOption, dedupeOptions, normalizePlatformKey
  */
 
-import { describe, it, expect } from "vitest";
 import {
-  normalizeImportanceOption,
-  normalizeUrgencyOption,
-  normalizePlatformOption,
-  normalizeBasicOption,
   dedupeOptions,
+  normalizeBasicOption,
+  normalizeImportanceOption,
   normalizePlatformKey,
+  normalizePlatformOption,
+  normalizeUrgencyOption,
 } from "@openloomi/insights";
+import { describe, expect, it } from "vitest";
 
 describe("insights-option-normalizers", () => {
   describe("normalizeImportanceOption", () => {

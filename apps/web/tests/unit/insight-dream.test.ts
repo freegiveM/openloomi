@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
 import { resolveInsightEmbeddingDreamReason } from "@/lib/insights/dream";
+import { describe, expect, it } from "vitest";
 
 describe("insight embedding dream", () => {
   it("selects missing embeddings", () => {

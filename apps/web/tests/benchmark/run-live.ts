@@ -1,7 +1,7 @@
-import { generateText } from "ai";
-import { BENCHMARK_SCENARIOS } from "./scenarios";
-import dotenv from "dotenv";
 import path from "node:path";
+import { generateText } from "ai";
+import dotenv from "dotenv";
+import { BENCHMARK_SCENARIOS } from "./scenarios";
 
 const formatTime = (ms: number): string => {
   return ms < 1000 ? `${ms.toFixed(2)}ms` : `${(ms / 1000).toFixed(2)}s`;

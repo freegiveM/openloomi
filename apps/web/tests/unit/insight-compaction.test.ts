@@ -1,5 +1,5 @@
-﻿import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import type { Insight } from "@/lib/db/schema";
+﻿import type { Insight } from "@/lib/db/schema";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   clearAIUserContextMock,

@@ -36,7 +36,6 @@
  * identifier.
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   chmodSync,
   existsSync,
@@ -48,6 +47,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // `composio-cli.ts` imports `./connectors` (for `writeConnectorSnapshot`)
 // and `./store` (for `log`). Both need mocks so the on-disk cache is

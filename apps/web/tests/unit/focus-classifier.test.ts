@@ -1,9 +1,9 @@
-import { describe, it, expect } from "vitest";
 import {
-  extractInsightTags,
   classifyFocusInsight,
+  extractInsightTags,
   getFocusCategoryMeta,
 } from "@/lib/insights/focus-classifier";
+import { describe, expect, it } from "vitest";
 
 describe("extractInsightTags", () => {
   it("should extract 'important' tag when importance is 'Important'", () => {

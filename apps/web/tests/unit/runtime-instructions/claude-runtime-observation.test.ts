@@ -6,12 +6,12 @@ import type {
 import type { CreateAgentGoalInput } from "@openloomi/ai/agent/runtime-instructions";
 import { describe, expect, it, vi } from "vitest";
 
-import { collectClaudeToolEvidence } from "@/lib/ai/extensions/agent/claude/runtime/evidence-collector";
 import {
   ClaudeRuntimeSession,
   createClaudeSupplementalInputHooks,
   startClaudeGoalRuntimeSession,
 } from "@/lib/ai/extensions/agent/claude/runtime";
+import { collectClaudeToolEvidence } from "@/lib/ai/extensions/agent/claude/runtime/evidence-collector";
 import { createInMemoryAgentGoalRuntime } from "@/lib/ai/runtime-instructions/runtime";
 import {
   createControlledClaudeQuery,

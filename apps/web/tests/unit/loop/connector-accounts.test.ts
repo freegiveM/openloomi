@@ -1,3 +1,4 @@
+import type { ConnectorEntry } from "@/lib/loop/types";
 /**
  * #360 — `probeConnectorState` must parse the agent's per-account
  * `accounts` array into the connector snapshot so a multi-account toolkit
@@ -7,7 +8,6 @@
  * include must never survive into the persisted snapshot.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ConnectorEntry } from "@/lib/loop/types";
 
 const invokeAgentPrompt = vi.fn();
 const writeConnectorSnapshot = vi.fn();

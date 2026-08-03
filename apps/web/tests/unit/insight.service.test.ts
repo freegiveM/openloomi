@@ -1,15 +1,15 @@
-import { test, expect } from "vitest";
+import type { InsightSettings } from "@/lib/db/schema";
 import {
+  type ActivityTier,
+  clampActivityTier,
   deriveActivityTier,
+  filterDueInsightSettings,
   getCacheTtlMs,
   getEffectiveRefreshIntervalMinutes,
-  filterDueInsightSettings,
-  resolveTierRefreshMinutes,
   resolveTierPriority,
-  clampActivityTier,
-  type ActivityTier,
+  resolveTierRefreshMinutes,
 } from "@/lib/insights/tier";
-import type { InsightSettings } from "@/lib/db/schema";
+import { expect, test } from "vitest";
 
 test("clampActivityTier keeps known tiers and defaults to low", () => {
   expect(clampActivityTier("high")).eq("high");

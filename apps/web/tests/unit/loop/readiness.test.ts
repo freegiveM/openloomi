@@ -19,6 +19,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  type RankableDecision,
   canExecute,
   derivePriority,
   deriveReadiness,
@@ -27,7 +28,6 @@ import {
   rankByPriority,
   readinessState,
   stateLabel,
-  type RankableDecision,
 } from "@/lib/loop/readiness";
 
 beforeEach(() => {

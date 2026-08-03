@@ -1,10 +1,10 @@
-import { describe, expect, it } from "vitest";
 import {
   DEFAULT_CONVERSATION_WINDOW_CONFIG,
   estimateConversationTokens,
   getConversationBucket,
   prepareConversationWindows,
 } from "@openloomi/ai/agent/context";
+import { describe, expect, it } from "vitest";
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;

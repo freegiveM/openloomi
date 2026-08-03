@@ -26,14 +26,14 @@ vi.mock("@openloomi/ai/agent/registry", () => ({
   getAgentRegistry: vi.fn(),
 }));
 
-import {
-  getUserTypeForService,
-  getUserInsightSettings,
-} from "@/lib/db/queries";
 import { prepareConversationWindows, triggerCompactionAsync } from "@/lib/ai";
+import { handleAgentRuntime } from "@/lib/ai/runtime/shared";
+import {
+  getUserInsightSettings,
+  getUserTypeForService,
+} from "@/lib/db/queries";
 import { sanitizeCompactionMessages } from "@openloomi/ai/agent";
 import { getAgentRegistry } from "@openloomi/ai/agent/registry";
-import { handleAgentRuntime } from "@/lib/ai/runtime/shared";
 
 function createDoneOnlyGenerator() {
   return (async function* () {

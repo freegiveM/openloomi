@@ -1,84 +1,84 @@
 {
-  "$schema": "https://schema.tauri.app/config/2",
-  "productName": "openloomi",
-  "version": "0.8.8",
-  "identifier": "com.openloomi.app",
-  "build": {
-    "beforeDevCommand": "node scripts/run-tauri-dev.js",
-    "devUrl": "http://localhost:3515",
-    "frontendDist": "../public"
-  },
-  "app": {
-    "withGlobalTauri": true,
-    "windows": [
-      {
-        "title": "openloomi",
-        "width": 1280,
-        "height": 800,
-        "minWidth": 450,
-        "minHeight": 600,
-        "dragDropEnabled": false,
-        "url": "http://localhost:3515",
-        "visible": false,
-        "focus": false
-      },
-      {
-        "label": "loomi-pet",
-        "title": "Loomi",
-        "url": "loomi-widget.html",
-        "width": 168,
-        "height": 168,
-        "minWidth": 168,
-        "minHeight": 168,
-        "maxWidth": 168,
-        "maxHeight": 168,
-        "resizable": false,
-        "decorations": false,
-        "transparent": true,
-        "alwaysOnTop": true,
-        "skipTaskbar": true,
-        "shadow": false,
-        "visible": true,
-        "focus": false,
-        "dragDropEnabled": false
-      }
-    ],
-    "security": {
-      "csp": null,
-      "capabilities": ["default", "loomi-pet"]
-    }
-  },
-  "bundle": {
-    "active": true,
-    "targets": "all",
-    "icon": [
-      "icons/icon.iconset/icon_512x512@2x.png",
-      "icons/icon.iconset/icon_256x256.png",
-      "icons/icon.iconset/icon_128x128.png",
-      "icons/icon.icns",
-      "icons/icon.ico",
-      "icons/128x128.png",
-      "icons/32x32.png"
-    ],
-    "category": "Productivity",
-    "shortDescription": "openloomi AI Assistant",
-    "longDescription": "openloomi AI Assistant - Your Personal Productivity Tool. Integrate all your messaging platforms and get AI-powered insights.",
-    "macOS": {
-      "frameworks": [],
-      "minimumSystemVersion": "10.13",
-      "entitlements": "entitlements.plist",
-      "providerShortName": null,
-      "signingIdentity": null
-    },
-    "resources": [
-      "../../../skills/**/*",
-      "resources/render-engine-manifest.json"
-    ]
-  },
-  "plugins": {
-    "shell": {
-      "open": true
-    },
-    "fs": {}
-  }
+	"$schema": "https://schema.tauri.app/config/2",
+	"productName": "openloomi",
+	"version": "0.8.8",
+	"identifier": "com.openloomi.app",
+	"build": {
+		"beforeDevCommand": "node scripts/run-tauri-dev.js",
+		"devUrl": "http://localhost:3515",
+		"frontendDist": "../public"
+	},
+	"app": {
+		"withGlobalTauri": true,
+		"windows": [
+			{
+				"title": "openloomi",
+				"width": 1280,
+				"height": 800,
+				"minWidth": 450,
+				"minHeight": 600,
+				"dragDropEnabled": false,
+				"url": "http://localhost:3515",
+				"visible": false,
+				"focus": false
+			},
+			{
+				"label": "loomi-pet",
+				"title": "Loomi",
+				"url": "loomi-widget.html",
+				"width": 168,
+				"height": 168,
+				"minWidth": 168,
+				"minHeight": 168,
+				"maxWidth": 168,
+				"maxHeight": 168,
+				"resizable": false,
+				"decorations": false,
+				"transparent": true,
+				"alwaysOnTop": true,
+				"skipTaskbar": true,
+				"shadow": false,
+				"visible": true,
+				"focus": false,
+				"dragDropEnabled": false
+			}
+		],
+		"security": {
+			"csp": null,
+			"capabilities": ["default", "loomi-pet"]
+		}
+	},
+	"bundle": {
+		"active": true,
+		"targets": "all",
+		"icon": [
+			"icons/icon.iconset/icon_512x512@2x.png",
+			"icons/icon.iconset/icon_256x256.png",
+			"icons/icon.iconset/icon_128x128.png",
+			"icons/icon.icns",
+			"icons/icon.ico",
+			"icons/128x128.png",
+			"icons/32x32.png"
+		],
+		"category": "Productivity",
+		"shortDescription": "openloomi AI Assistant",
+		"longDescription": "openloomi AI Assistant - Your Personal Productivity Tool. Integrate all your messaging platforms and get AI-powered insights.",
+		"macOS": {
+			"frameworks": [],
+			"minimumSystemVersion": "10.13",
+			"entitlements": "entitlements.plist",
+			"providerShortName": null,
+			"signingIdentity": null
+		},
+		"resources": [
+			"../../../skills/**/*",
+			"resources/render-engine-manifest.json"
+		]
+	},
+	"plugins": {
+		"shell": {
+			"open": true
+		},
+		"fs": {}
+	}
 }

@@ -5,8 +5,8 @@
  * Tests parseOpmlFeeds, normalizeFeedUrl
  */
 
-import { describe, it, expect } from "vitest";
 import { parseOpmlFeeds } from "@openloomi/rss";
+import { describe, expect, it } from "vitest";
 
 describe("rss-opml", () => {
   describe("parseOpmlFeeds", () => {

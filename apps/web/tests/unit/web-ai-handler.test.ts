@@ -3,7 +3,7 @@
  *
  * Tests for the WebAIHandler implementation.
  */
-import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 describe("WebAIHandler", () => {
   let mockHandleAgentRuntime: ReturnType<typeof vi.fn>;

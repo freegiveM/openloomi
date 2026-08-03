@@ -1,3 +1,6 @@
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 /**
  * Regression coverage for `lib/loop/classify.ts` calendar_event gates.
  *
@@ -17,9 +20,6 @@
  * against `2026-07-16T12:00:00Z` regardless of the host's wall clock.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, rmSync, mkdirSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 
 // Mutable tmp dir reference for the mocked paths module. Each beforeEach
 // creates a fresh dir and rewrites LOOP_HOME so test runs are isolated
