@@ -99,6 +99,13 @@ export async function startClaudeGoalRuntimeSession(
         goalRuntime.observations,
       ),
     );
+    input.runtime.attachGoalStopController(
+      goalRuntime.controller.forSession({
+        ownerId,
+        runtimeSessionId: input.runtime.runtimeSessionId,
+        transport: input.runtime,
+      }),
+    );
     registration = goalRuntime.sessions.register({
       ownerId,
       transport: input.runtime,

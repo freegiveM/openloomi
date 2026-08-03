@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import type {
   Options,
   Query,
@@ -37,6 +39,12 @@ import type {
 import { ClaudeInputMultiplexer } from "./input-multiplexer";
 import { ClaudeOutputMultiplexer } from "./output-multiplexer";
 import type { ClaudeSdkTransport } from "./sdk-transport";
+import type {
+  ClaudeRuntimeStopHookDecision,
+  ClaudeRuntimeStopHookInput,
+  ClaudeRuntimeStopHookObserver,
+  ClaudeRuntimeGoalStopController,
+} from "./supplemental-hooks";
 
 export interface ClaudeRuntimeSessionOptions {
   runtimeSessionId: string;
@@ -60,7 +68,9 @@ interface TerminalWaiter {
  * Owns one Claude SDK Query and exposes an OpenLoomi runtime-session boundary.
  * Goal lifecycle and persistence intentionally remain outside this class.
  */
-export class ClaudeRuntimeSession implements RuntimeSessionLifecycleControlPort {
+export class ClaudeRuntimeSession
+  implements RuntimeSessionLifecycleControlPort, ClaudeRuntimeStopHookObserver
+{
   readonly runtimeSessionId: string;
 
   private readonly sdkTransport: ClaudeSdkTransport;
@@ -81,6 +91,9 @@ export class ClaudeRuntimeSession implements RuntimeSessionLifecycleControlPort 
   private readonly terminalHistory: RuntimeTurnTerminal[] = [];
   private readonly terminalWaiters = new Set<TerminalWaiter>();
   private eventObserver: ClaudeRuntimeEventObserverPort | null = null;
+  private stopController: ClaudeRuntimeGoalStopController | null = null;
+  private latestAssistantTurnId?: string;
+  private assistantTurnSequence = 0;
 
   claudeSessionId?: string;
 
@@ -142,6 +155,90 @@ export class ClaudeRuntimeSession implements RuntimeSessionLifecycleControlPort 
       );
     }
     this.eventObserver = observer;
+  }
+
+  attachGoalStopController(controller: ClaudeRuntimeGoalStopController): void {
+    if (this.query || this.currentState !== "starting") {
+      throw new ClaudeRuntimeSessionError(
+        "already_started",
+        "Claude Goal Stop controller must be attached before start",
+      );
+    }
+    if (this.stopController && this.stopController !== controller) {
+      throw new ClaudeRuntimeSessionError(
+        "stop_controller_already_attached",
+        "Claude runtime session already has a Goal Stop controller",
+      );
+    }
+    this.stopController = controller;
+  }
+
+  async evaluateStop(
+    input: ClaudeRuntimeStopHookInput,
+  ): Promise<ClaudeRuntimeStopHookDecision> {
+    if (
+      input.providerSessionId !== undefined &&
+      this.claudeSessionId !== undefined &&
+      input.providerSessionId !== this.claudeSessionId
+    ) {
+      throw new ClaudeRuntimeSessionError(
+        "provider_session_mismatch",
+        `Stop hook belongs to Claude session ${input.providerSessionId}, not ${this.claudeSessionId}`,
+      );
+    }
+    const controller = this.stopController;
+    if (!controller) {
+      throw new ClaudeRuntimeSessionError(
+        "stop_controller_missing",
+        "Claude runtime session has no Goal Stop controller",
+      );
+    }
+
+    const requestedRunEpoch = input.runEpoch ?? this.runEpoch;
+    const lastAssistantMessage = input.lastAssistantMessage;
+    const assistantTurnId =
+      input.assistantTurnId ??
+      this.latestAssistantTurnId ??
+      this.fallbackAssistantTurnId(lastAssistantMessage);
+    if (requestedRunEpoch !== this.runEpoch) {
+      return controller.evaluateStop({
+        runEpoch: requestedRunEpoch,
+        assistantTurnId,
+        ...(lastAssistantMessage === undefined ? {} : { lastAssistantMessage }),
+        stopHookActive: input.stopHookActive,
+      });
+    }
+
+    await this.eventObserver?.flush();
+    if (lastAssistantMessage) {
+      await this.recordObservation("record Stop assistant report", (observer) =>
+        observer.observeStopAssistantReport({
+          assistantTurnId,
+          text: lastAssistantMessage,
+          ...(input.providerSessionId === undefined
+            ? {}
+            : { providerSessionId: input.providerSessionId }),
+          runEpoch: requestedRunEpoch,
+        }),
+      );
+    }
+
+    if (this.currentState === "running") this.transition("evaluating");
+    try {
+      const decision = await controller.evaluateStop({
+        runEpoch: requestedRunEpoch,
+        assistantTurnId,
+        ...(lastAssistantMessage === undefined ? {} : { lastAssistantMessage }),
+        stopHookActive: input.stopHookActive,
+      });
+      if (decision.decision === "block" && this.currentState === "evaluating") {
+        this.transition("running");
+      }
+      return decision;
+    } catch (error) {
+      if (this.currentState === "evaluating") this.transition("running");
+      throw error;
+    }
   }
 
   start(input: {
@@ -382,6 +479,8 @@ export class ClaudeRuntimeSession implements RuntimeSessionLifecycleControlPort 
       );
     }
     const discarded = this.instructionTransport.advanceRunEpoch(input);
+    this.latestAssistantTurnId = undefined;
+    this.assistantTurnSequence = 0;
     return {
       previousRunEpoch: input.expectedRunEpoch,
       runEpoch: input.nextRunEpoch,
@@ -392,6 +491,7 @@ export class ClaudeRuntimeSession implements RuntimeSessionLifecycleControlPort 
   async close(): Promise<void> {
     if (this.closing) return;
     this.closing = true;
+    this.stopController = null;
 
     this.inputQueue.setInterruptHandler(null);
     this.inputQueue.setHandoffHandler(null);
@@ -506,6 +606,11 @@ export class ClaudeRuntimeSession implements RuntimeSessionLifecycleControlPort 
   ): void {
     if (message.type === "system" && message.subtype === "init") {
       this.claudeSessionId = message.session_id;
+    }
+    if (message.type === "assistant" && observedRunEpoch === this.runEpoch) {
+      this.latestAssistantTurnId =
+        sdkMessageUuid(message) ??
+        this.fallbackAssistantTurnId(assistantMessageText(message));
     }
     if (
       observedRunEpoch === this.runEpoch &&
@@ -650,6 +755,20 @@ export class ClaudeRuntimeSession implements RuntimeSessionLifecycleControlPort 
     );
   }
 
+  private fallbackAssistantTurnId(lastAssistantMessage?: string): string {
+    const sequence = ++this.assistantTurnSequence;
+    return createHash("sha256")
+      .update(
+        JSON.stringify([
+          this.runtimeSessionId,
+          this.runEpoch,
+          sequence,
+          lastAssistantMessage ?? "",
+        ]),
+      )
+      .digest("hex");
+  }
+
   private transition(next: RuntimeSessionState): void {
     if (this.currentState === next) return;
     assertRuntimeSessionStateTransition(this.currentState, next);
@@ -663,6 +782,9 @@ export type ClaudeRuntimeSessionErrorCode =
   | "invalid_run_epoch"
   | "not_started"
   | "observer_already_attached"
+  | "provider_session_mismatch"
+  | "stop_controller_already_attached"
+  | "stop_controller_missing"
   | "terminal_unavailable"
   | "terminal_wait_aborted"
   | "turn_not_terminal";
@@ -675,6 +797,31 @@ export class ClaudeRuntimeSessionError extends Error {
     super(message);
     this.name = "ClaudeRuntimeSessionError";
   }
+}
+
+function sdkMessageUuid(message: SDKMessage): string | undefined {
+  const uuid = (message as SDKMessage & { uuid?: unknown }).uuid;
+  return typeof uuid === "string" && uuid.length > 0 && uuid.length <= 256
+    ? uuid
+    : undefined;
+}
+
+function assistantMessageText(message: SDKMessage): string {
+  if (message.type !== "assistant") return "";
+  const content = (message as SDKMessage & { message?: { content?: unknown } })
+    .message?.content;
+  if (!Array.isArray(content)) return "";
+  return content
+    .flatMap((block) =>
+      block !== null &&
+      typeof block === "object" &&
+      (block as { type?: unknown }).type === "text" &&
+      typeof (block as { text?: unknown }).text === "string"
+        ? [(block as { text: string }).text]
+        : [],
+    )
+    .join("\n")
+    .trim();
 }
 
 function assertRunEpoch(runEpoch: number): void {

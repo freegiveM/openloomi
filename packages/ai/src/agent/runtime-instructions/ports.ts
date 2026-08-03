@@ -29,6 +29,10 @@ export interface GoalLifecycleTransitionCommit {
   deduplicated: boolean;
 }
 
+export interface GoalEvaluationTransitionCommit {
+  goal: PersistedAgentGoal;
+}
+
 export interface GoalCommandIdentity {
   idempotencyKey: string;
   requestFingerprint: string;
@@ -159,6 +163,39 @@ export interface AgentGoalStatePort {
     activationInstruction: RuntimeInstructionDraft;
     command: GoalCommandIdentity;
   }): Promise<GoalReplacementCommit>;
+}
+
+/**
+ * Evaluator-owned mutations are separated from user/lifecycle commands so
+ * existing Goal repositories can adopt the controller contract explicitly.
+ */
+export interface AgentGoalEvaluationStatePort {
+  /**
+   * Atomically appends an evaluator-generated continuation without revising
+   * the authoritative Goal. The expected revision and run epoch fence a late
+   * Stop-hook result from a newer Goal revision or replacement run.
+   */
+  commitContinuation(input: {
+    ownerId: string;
+    runtimeSessionId: string;
+    goalId: string;
+    expectedRevision: number;
+    expectedRunEpoch: number;
+    instruction: RuntimeInstructionDraft;
+    command: GoalCommandIdentity;
+  }): Promise<GoalInstructionCommit>;
+
+  /**
+   * Commits a terminal or blocked evaluator outcome without creating a model
+   * instruction. The transition advances the Goal revision exactly once.
+   */
+  commitEvaluationTransition(input: {
+    ownerId: string;
+    runtimeSessionId: string;
+    expectedRevision: number;
+    expectedRunEpoch: number;
+    goal: AgentGoal;
+  }): Promise<GoalEvaluationTransitionCommit>;
 }
 
 /** Provider execution boundary. PR 3 supplies the Claude implementation. */

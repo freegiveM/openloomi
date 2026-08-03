@@ -1747,8 +1747,9 @@ ${formattedMessages}${truncationNotice}\n\n---\n## Current Request\n`;
         `[Claude ${session.id}] STDERR: ${this.redactRuntimeDiagnostic(data)}`,
       );
     };
+    const goalRuntimeSessionId = options?.sessionId?.trim() || session.id;
     const claudeRuntime = new ClaudeRuntimeSession({
-      runtimeSessionId: session.id,
+      runtimeSessionId: goalRuntimeSessionId,
       runEpoch: 0,
       sdkTransport: claudeAgentSdkTransport,
       logger,
@@ -1765,6 +1766,9 @@ ${formattedMessages}${truncationNotice}\n\n---\n## Current Request\n`;
       agentOptions: options,
       supplementalInput: claudeRuntime.liveInputSource,
       toolObserver: resolveAuthenticatedGoalRuntimeOwnerId(options?.session)
+        ? claudeRuntime
+        : undefined,
+      stopObserver: resolveAuthenticatedGoalRuntimeOwnerId(options?.session)
         ? claudeRuntime
         : undefined,
       permissionMode: options?.permissionMode,

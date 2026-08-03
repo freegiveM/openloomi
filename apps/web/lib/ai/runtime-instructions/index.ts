@@ -1,3 +1,5 @@
+export * from "./goal-controller";
+export * from "./goal-evaluator";
 export * from "./goal-service";
 export * from "./goal-replacement-coordinator";
 export type { RuntimeInstructionDispatch } from "./instruction-dispatcher";

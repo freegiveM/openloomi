@@ -4,11 +4,17 @@ import type {
 } from "@openloomi/ai/agent/runtime-instructions";
 
 import { GoalService } from "./goal-service";
+import { GoalController } from "./goal-controller";
+import {
+  GoalEvaluator,
+  type GoalSemanticEvaluatorPort,
+} from "./goal-evaluator";
 import { GoalLifecycleService } from "./goal-lifecycle-service";
 import { GoalReplacementCoordinator } from "./goal-replacement-coordinator";
 import { InMemoryAgentGoalState } from "./in-memory-goal-state";
 import { InMemoryRuntimeObservationJournal } from "./in-memory-runtime-observation-journal";
 import { RuntimeInstructionDispatcher } from "./instruction-dispatcher";
+import { OpenLoomiGoalSemanticEvaluator } from "./openloomi-goal-semantic-evaluator";
 import type { RuntimeProviderObservationPort } from "./runtime-observation";
 import { RuntimeSessionRegistry } from "./runtime-session-registry";
 
@@ -17,6 +23,7 @@ export interface InMemoryAgentGoalRuntime {
   readonly observations: InMemoryRuntimeObservationJournal;
   readonly sessions: RuntimeSessionRegistry;
   readonly dispatcher: RuntimeInstructionDispatcher;
+  readonly controller: GoalController;
   readonly goals: GoalService;
   readonly replacements: GoalReplacementCoordinator;
 }
@@ -24,6 +31,7 @@ export interface InMemoryAgentGoalRuntime {
 export interface AgentGoalRuntime {
   readonly sessions: RuntimeSessionRegistry;
   readonly goals: GoalService;
+  readonly controller: GoalController;
   readonly observations: RuntimeProviderObservationPort;
   readonly replacements: GoalReplacementCoordinator;
 }
@@ -33,6 +41,7 @@ export function createInMemoryAgentGoalRuntime(
     clock?: RuntimeClockPort;
     idGenerator?: RuntimeIdGeneratorPort;
     observationIdGenerator?: RuntimeIdGeneratorPort;
+    semanticEvaluator?: GoalSemanticEvaluatorPort;
   } = {},
 ): InMemoryAgentGoalRuntime {
   const state = new InMemoryAgentGoalState();
@@ -53,6 +62,14 @@ export function createInMemoryAgentGoalRuntime(
     sessions,
     state,
     observations,
+  );
+  const controller = new GoalController(
+    state,
+    observations,
+    dispatcher,
+    new GoalEvaluator(options.semanticEvaluator),
+    clock,
+    idGenerator,
   );
   const lifecycle = new GoalLifecycleService(
     state,
@@ -84,6 +101,7 @@ export function createInMemoryAgentGoalRuntime(
     observations,
     sessions,
     dispatcher,
+    controller,
     goals,
     replacements,
   };
@@ -97,6 +115,8 @@ let agentGoalRuntime: InMemoryAgentGoalRuntime | undefined;
  * without changing callers.
  */
 export function getAgentGoalRuntime(): AgentGoalRuntime {
-  agentGoalRuntime ??= createInMemoryAgentGoalRuntime();
+  agentGoalRuntime ??= createInMemoryAgentGoalRuntime({
+    semanticEvaluator: new OpenLoomiGoalSemanticEvaluator(),
+  });
   return agentGoalRuntime;
 }
