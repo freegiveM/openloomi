@@ -252,6 +252,91 @@ describe("parseExecutionOutcome — full default", () => {
 });
 
 // ---------------------------------------------------------------------------
+// #RSVP fix — bare success strings & success-side text heuristic
+// ---------------------------------------------------------------------------
+
+describe("parseExecutionOutcome — bare success string (#RSVP fix)", () => {
+  it("treats result='success' as executed", () => {
+    const r = outcomes.parseExecutionOutcome(
+      "success",
+      "",
+      [],
+    );
+    expect(r.outcome).toBe("executed");
+  });
+
+  it("treats result='ok' / 'true' / 'done' as executed", () => {
+    for (const v of ["ok", "true", "done", "completed", "successful"]) {
+      expect(
+        outcomes.parseExecutionOutcome(v, "", []).outcome,
+        `result='${v}' should map to executed`,
+      ).toBe("executed");
+    }
+  });
+
+  it("falls through when the string is not a recognised success marker", () => {
+    // 'maybe' is unknown → not a success string → no structured outcome →
+    // empty text / events → final fallback `failed`.
+    const r = outcomes.parseExecutionOutcome("maybe", "", []);
+    expect(r.outcome).toBe("failed");
+  });
+});
+
+describe("parseExecutionOutcome — success text heuristic (#RSVP fix)", () => {
+  it("returns executed when the agent narrates a Google Calendar RSVP success", () => {
+    const r = outcomes.parseExecutionOutcome(
+      null,
+      "RSVP executed successfully against Google Calendar. The PATCH_EVENT call returned successful:true and the event payload confirms timi@melandlabs.ai now has responseStatus:accepted.",
+      [],
+    );
+    expect(r.outcome).toBe("executed");
+    expect(r.reason).toMatch(/RSVP executed successfully/i);
+  });
+
+  it("returns executed when the agent reports responseStatus: accepted", () => {
+    const r = outcomes.parseExecutionOutcome(
+      null,
+      "Event updated. responseStatus: 'accepted' for self attendee.",
+      [],
+    );
+    expect(r.outcome).toBe("executed");
+  });
+
+  it("does not over-fire on casual closing prose", () => {
+    // A polite "done!" with no concrete success signal must not flip a
+    // silent run into `executed`. The success heuristic is intentionally
+    // scoped to phrases that prove an external write happened.
+    const r = outcomes.parseExecutionOutcome(
+      null,
+      "Done — here is the plan you asked for.",
+      [],
+    );
+    expect(r.outcome).toBe("skipped");
+  });
+});
+
+describe("isSuccessText", () => {
+  it("matches RSVP / calendar success phrases", () => {
+    expect(
+      outcomes.isSuccessText(
+        "RSVP executed successfully against Google Calendar",
+      ),
+    ).toBe(true);
+    expect(
+      outcomes.isSuccessText("Event was accepted on Google Calendar"),
+    ).toBe(true);
+    expect(
+      outcomes.isSuccessText('responseStatus: "accepted" for self'),
+    ).toBe(true);
+  });
+  it("rejects empty text and casual prose", () => {
+    expect(outcomes.isSuccessText("")).toBe(false);
+    expect(outcomes.isSuccessText("Done — here is the plan.")).toBe(false);
+    expect(outcomes.isSuccessText("All set.")).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Helper coverage
 // ---------------------------------------------------------------------------
 
