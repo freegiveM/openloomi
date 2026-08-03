@@ -4,7 +4,6 @@ import { useRef, useState, useCallback, useEffect } from "react";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 import { fetchWithAuth } from "@/lib/utils";
-import { uploadImageTUS } from "@/lib/files/tus-upload";
 import {
   formatVoiceDuration,
   isVoiceProcessingPhase,
@@ -14,11 +13,6 @@ import {
   type VoiceInputPhase,
   type WaveformSample,
 } from "@/lib/audio/voice-input";
-
-/**
- * Detect if running in Tauri environment
- */
-const isTauriEnv = typeof window !== "undefined" && "__TAURI__" in window;
 
 function getSupportedAudioMimeType(): string {
   if (typeof MediaRecorder === "undefined") {
@@ -33,9 +27,8 @@ function getSupportedAudioMimeType(): string {
   return candidates.find((type) => MediaRecorder.isTypeSupported(type)) || "";
 }
 
-const DEFAULT_AUDIO_TRANSCRIPTION_MODEL = "gemini-2.5-flash-lite";
-
 /** Reject trivially empty recordings before upload */
+const DEFAULT_AUDIO_TRANSCRIPTION_MODEL = "whisper-1";
 const MIN_VOICE_UPLOAD_BYTES = 256;
 const VOICE_ACTIVITY_THRESHOLD = 0.12;
 const MIN_VOICE_ACTIVITY_FRAMES = 4;
@@ -111,6 +104,8 @@ async function convertWebmToWav(webmBlob: Blob): Promise<Blob> {
 interface UseAudioRecordingOptions {
   /** Called when transcription completes with the transcribed text */
   onTranscriptionComplete: (text: string) => void;
+  /** STT model to request from the backend transcription provider */
+  transcriptionModel?: string;
 }
 
 interface UseAudioRecordingReturn {
@@ -136,6 +131,7 @@ interface UseAudioRecordingReturn {
  */
 export function useAudioRecording({
   onTranscriptionComplete,
+  transcriptionModel = DEFAULT_AUDIO_TRANSCRIPTION_MODEL,
 }: UseAudioRecordingOptions): UseAudioRecordingReturn {
   const { t } = useTranslation();
   const [phase, setPhase] = useState<VoiceInputPhase>("idle");
@@ -155,10 +151,8 @@ export function useAudioRecording({
   );
   /** Store MediaStreamSourceNode so we can disconnect it on cleanup */
   const mediaStreamSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
-  const uploadAbortControllerRef = useRef<AbortController | null>(null);
   const transcriptionAbortControllerRef = useRef<AbortController | null>(null);
   const activeRequestIdRef = useRef<string | null>(null);
-  const currentUploadIdRef = useRef<string | null>(null);
   const hasDetectedSpeechRef = useRef(false);
   const voiceActivityFramesRef = useRef(0);
   const lastVoiceActivityAtRef = useRef<number | null>(null);
@@ -299,17 +293,6 @@ export function useAudioRecording({
     t,
   ]);
 
-  const cleanupUploadSession = useCallback(async (uploadId: string | null) => {
-    if (!uploadId) return;
-    try {
-      await fetchWithAuth(`/api/ai/v1/upload?uploadId=${uploadId}`, {
-        method: "DELETE",
-      });
-    } catch (error) {
-      console.warn("[AudioRecording] Failed to cleanup upload session:", error);
-    }
-  }, []);
-
   const startAudioLevelMonitor = useCallback(
     (stream: MediaStream) => {
       if (typeof window === "undefined") return;
@@ -388,8 +371,6 @@ export function useAudioRecording({
   }, []);
 
   const abortProcessingControllers = useCallback(() => {
-    uploadAbortControllerRef.current?.abort();
-    uploadAbortControllerRef.current = null;
     transcriptionAbortControllerRef.current?.abort();
     transcriptionAbortControllerRef.current = null;
   }, []);
@@ -454,55 +435,30 @@ export function useAudioRecording({
           type: audioType,
         });
 
-        let response: Response;
+        setPhaseState("uploading");
+        const controller = new AbortController();
+        transcriptionAbortControllerRef.current = controller;
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append(
+          "model",
+          transcriptionModel.trim() || DEFAULT_AUDIO_TRANSCRIPTION_MODEL,
+        );
+        formData.append("response_format", "json");
 
-        if (isTauriEnv) {
-          setPhaseState("transcribing");
-          const controller = new AbortController();
-          transcriptionAbortControllerRef.current = controller;
-          const formData = new FormData();
-          formData.append("file", file);
-          formData.append("model", DEFAULT_AUDIO_TRANSCRIPTION_MODEL);
-          formData.append("response_format", "json");
+        if (!isRequestCurrent(requestId)) {
+          return;
+        }
 
-          response = await fetchWithAuth("/api/ai/v1/audio/transcriptions", {
+        setPhaseState("transcribing");
+        const response = await fetchWithAuth(
+          "/api/ai/v1/audio/transcriptions",
+          {
             method: "POST",
             body: formData,
             signal: controller.signal,
-          });
-        } else {
-          setPhaseState("uploading");
-          const uploadController = new AbortController();
-          uploadAbortControllerRef.current = uploadController;
-          const audioUrl = await uploadImageTUS(file, {
-            signal: uploadController.signal,
-            onUploadCreated: (uploadId: string) => {
-              currentUploadIdRef.current = uploadId;
-            },
-          });
-          uploadAbortControllerRef.current = null;
-          currentUploadIdRef.current = null;
-          if (!isRequestCurrent(requestId)) {
-            return;
-          }
-          if (!audioUrl) {
-            throw new Error("Audio upload failed");
-          }
-
-          setPhaseState("transcribing");
-          const controller = new AbortController();
-          transcriptionAbortControllerRef.current = controller;
-          response = await fetchWithAuth("/api/ai/v1/audio/transcriptions", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              audio_url: audioUrl,
-              model: DEFAULT_AUDIO_TRANSCRIPTION_MODEL,
-              response_format: "json",
-            }),
-            signal: controller.signal,
-          });
-        }
+          },
+        );
         transcriptionAbortControllerRef.current = null;
 
         if (!response.ok) {
@@ -584,25 +540,17 @@ export function useAudioRecording({
           resetVoiceActivityState();
         }
       } finally {
-        uploadAbortControllerRef.current = null;
         transcriptionAbortControllerRef.current = null;
-        if (
-          currentUploadIdRef.current &&
-          activeRequestIdRef.current !== requestId
-        ) {
-          void cleanupUploadSession(currentUploadIdRef.current);
-          currentUploadIdRef.current = null;
-        }
       }
     },
     [
-      cleanupUploadSession,
       isAbortError,
       isRequestCurrent,
       resetVisualState,
       resetVoiceActivityState,
       setPhaseState,
       t,
+      transcriptionModel,
     ],
   );
 
@@ -766,20 +714,14 @@ export function useAudioRecording({
 
   const cancelProcessing = useCallback(() => {
     if (!isVoiceProcessingPhase(phase)) return;
-    const uploadId = currentUploadIdRef.current;
     activeRequestIdRef.current = null;
-    currentUploadIdRef.current = null;
     abortProcessingControllers();
     stopDurationTimer();
     setPhaseState("idle");
     resetVisualState();
     resetVoiceActivityState();
-    if (uploadId) {
-      void cleanupUploadSession(uploadId);
-    }
   }, [
     abortProcessingControllers,
-    cleanupUploadSession,
     phase,
     resetVisualState,
     resetVoiceActivityState,
@@ -802,10 +744,6 @@ export function useAudioRecording({
       resetVoiceActivityState();
       stopDurationTimer();
       abortProcessingControllers();
-      if (currentUploadIdRef.current) {
-        void cleanupUploadSession(currentUploadIdRef.current);
-        currentUploadIdRef.current = null;
-      }
       if (
         mediaRecorderRef.current &&
         mediaRecorderRef.current.state !== "inactive"
@@ -817,7 +755,6 @@ export function useAudioRecording({
     };
   }, [
     abortProcessingControllers,
-    cleanupUploadSession,
     resetVoiceActivityState,
     stopAudioLevelMonitor,
     stopAudioStreamTracks,

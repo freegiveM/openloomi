@@ -15,6 +15,9 @@ export class KokoroPlugin {
 
     // Defaulting to fallback since Kokoro backend isn't integrated yet.
     if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      if (window.speechSynthesis.speaking || window.speechSynthesis.pending) {
+        window.speechSynthesis.cancel();
+      }
       const utterance = new SpeechSynthesisUtterance(text);
       window.speechSynthesis.speak(utterance);
     } else {
