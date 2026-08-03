@@ -49,6 +49,12 @@ type RuntimeEvidenceJsonValue =
   | RuntimeEvidenceJsonValue[]
   | { [key: string]: RuntimeEvidenceJsonValue };
 
+interface ClaudeAssistantEvidenceInput {
+  providerEventId: string;
+  text: string;
+  observedAt: string;
+}
+
 interface ClaudeToolEvidenceInput {
   providerEventId: string;
   toolUseId: string;
@@ -209,8 +215,19 @@ function stableSourceEventId(
   if (raw.length <= MAX_SOURCE_EVENT_ID_CHARACTERS) return raw;
 
   const digest = createHash("sha256").update(raw).digest("hex");
-  const prefix = truncate(providerEventId, 170).replace(/\s+/g, "-");
+  const prefix = truncate(raw, 170).replace(/\s+/g, "-");
   return `${prefix}:tool:${digest}`.slice(0, MAX_SOURCE_EVENT_ID_CHARACTERS);
+}
+
+function stableAssistantSourceEventId(providerEventId: string): string {
+  const raw = `${providerEventId}:assistant`;
+  if (raw.length <= MAX_SOURCE_EVENT_ID_CHARACTERS) return raw;
+
+  const digest = createHash("sha256").update(raw).digest("hex");
+  return `${providerEventId.slice(0, 170)}:assistant:${digest}`.slice(
+    0,
+    MAX_SOURCE_EVENT_ID_CHARACTERS,
+  );
 }
 
 function boundedJsonValue(
@@ -403,6 +420,37 @@ export function collectClaudeToolEvidence({
     summary: summaryFor(type, toolName, outcome.success, command, paths),
     success: outcome.success,
     payload,
+    observedAt,
+  };
+}
+
+/**
+ * Captures the bounded assistant report that a semantic evaluator is asked to
+ * judge. It is evidence input, not proof of success, so `success` is omitted.
+ */
+export function collectClaudeAssistantEvidence({
+  providerEventId,
+  text,
+  observedAt,
+}: ClaudeAssistantEvidenceInput): RuntimeEvidenceDraft | undefined {
+  const normalized = text.trim();
+  if (!normalized) return undefined;
+
+  const report = truncate(
+    redactSensitiveText(normalized),
+    MAX_DETAIL_CHARACTERS,
+  );
+  return {
+    type: "agent_report",
+    sourceEventId: stableAssistantSourceEventId(providerEventId),
+    summary: truncate(
+      `Claude assistant report: ${report}`,
+      MAX_SUMMARY_CHARACTERS,
+    ),
+    payload: {
+      provider: "claude",
+      outputPreview: report,
+    },
     observedAt,
   };
 }

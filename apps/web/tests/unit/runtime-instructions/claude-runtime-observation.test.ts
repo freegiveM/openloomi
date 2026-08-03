@@ -73,6 +73,25 @@ function assistantMessage(): SDKMessage {
   } as unknown as SDKMessage;
 }
 
+function assistantMessageWithUsage(): SDKMessage {
+  return {
+    type: "assistant",
+    uuid: "10000000-0000-4000-8000-000000000004",
+    session_id: PROVIDER_SESSION_ID,
+    parent_tool_use_id: null,
+    message: {
+      role: "assistant",
+      content: [{ type: "text", text: "I am applying the active Goal." }],
+      usage: {
+        input_tokens: 5,
+        output_tokens: 2,
+        cache_creation_input_tokens: 1,
+        cache_read_input_tokens: 2,
+      },
+    },
+  } as unknown as SDKMessage;
+}
+
 function resultMessage(uuid = RESULT_EVENT_ID): SDKMessage {
   return {
     type: "result",
@@ -310,6 +329,54 @@ describe("Claude runtime Goal observations", () => {
       await runtime.observations.listDeliveries(OWNER_ID, SESSION_ID)
     ).find(({ instructionId }) => instructionId === updated.instruction.id);
     expect(retry).toMatchObject({ state: "written_to_sdk", attempt: 2 });
+  });
+
+  it("uses assistant-turn usage before Stop without adding aggregate result usage twice", async () => {
+    const harness = await createHarness("65000000");
+    const activated = await harness.runtime.goals.activate({
+      ownerId: OWNER_ID,
+      runtimeSessionId: SESSION_ID,
+      idempotencyKey: "assistant-usage-activate",
+      source: { type: "user", authority: "user" },
+      goal: goalInput("Count each Claude turn exactly once"),
+    });
+    await harness.sdkInput.next();
+    await harness.sdkInput.next();
+    await vi.waitFor(async () => {
+      await expect(
+        deliveryState(harness.runtime, activated.instruction.id),
+      ).resolves.toMatchObject({ state: "written_to_sdk" });
+    });
+
+    harness.handle.push(initMessage());
+    harness.handle.push(assistantMessageWithUsage());
+    await vi.waitFor(async () => {
+      await expect(
+        harness.runtime.observations.listGoalRuns(OWNER_ID, SESSION_ID),
+      ).resolves.toMatchObject([{ tokensUsed: 10, turnsUsed: 1 }]);
+    });
+    await expect(
+      harness.runtime.observations.listEvidence(OWNER_ID, SESSION_ID),
+    ).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "agent_report",
+          sourceEventId: "10000000-0000-4000-8000-000000000004:assistant",
+          payload: expect.objectContaining({
+            outputPreview: "I am applying the active Goal.",
+          }),
+        }),
+      ]),
+    );
+
+    harness.handle.push(resultMessage());
+    await vi.waitFor(() => expect(harness.claude.sdkMessageCount).toBe(3));
+    await expect(
+      harness.runtime.observations.listGoalRuns(OWNER_ID, SESSION_ID),
+    ).resolves.toMatchObject([{ tokensUsed: 10, turnsUsed: 1 }]);
+
+    harness.registration?.release();
+    await harness.claude.close();
   });
 
   it("records next-boundary context as written when PostToolBatch consumes it", async () => {

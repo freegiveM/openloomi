@@ -1,10 +1,12 @@
 import {
   type AgentGoal,
+  type AgentGoalEvaluationStatePort,
   type AgentGoalLifecycleTransition,
   type AgentGoalReplacement,
   AgentGoalSchema,
   type AgentGoalStatePort,
   type GoalCommandIdentity,
+  type GoalEvaluationTransitionCommit,
   type GoalInstructionCommit,
   type GoalLifecycleTransitionAction,
   type GoalLifecycleTransitionCommit,
@@ -90,7 +92,9 @@ export class InMemoryGoalStateError extends Error {
  * session sequence and outbox instruction therefore become visible together
  * or not at all.
  */
-export class InMemoryAgentGoalState implements AgentGoalStatePort {
+export class InMemoryAgentGoalState
+  implements AgentGoalStatePort, AgentGoalEvaluationStatePort
+{
   private readonly sessions = new Map<string, GoalSessionSnapshot>();
   private readonly mutations = new KeyedSerialExecutor();
 
@@ -452,6 +456,163 @@ export class InMemoryAgentGoalState implements AgentGoalStatePort {
       recordInstruction(next, command, stored);
       this.sessions.set(scope.key, next);
       return toCommit(stored, false);
+    });
+  }
+
+  async commitContinuation(input: {
+    ownerId: string;
+    runtimeSessionId: string;
+    goalId: string;
+    expectedRevision: number;
+    expectedRunEpoch: number;
+    instruction: RuntimeInstructionDraft;
+    command: GoalCommandIdentity;
+  }): Promise<GoalInstructionCommit> {
+    const scope = validatedScope(input.ownerId, input.runtimeSessionId);
+    const goalId = requiredIdentifier(input.goalId, "goalId");
+    const expectedRevision = positiveInteger(
+      input.expectedRevision,
+      "expectedRevision",
+    );
+    const expectedRunEpoch = nonNegativeInteger(
+      input.expectedRunEpoch,
+      "expectedRunEpoch",
+    );
+    const command = validateCommand(input.command);
+
+    return this.mutations.run(ownerScope(scope.ownerId), () => {
+      const current = this.sessions.get(scope.key);
+      const duplicate = current ? findIdempotentCommit(current, command) : null;
+      if (duplicate) return toCommit(duplicate, true);
+      if (!current) {
+        throw new InMemoryGoalStateError(
+          "goal_not_found",
+          `Goal ${goalId} does not exist in Runtime Session ${scope.runtimeSessionId}`,
+        );
+      }
+      assertNoReplacementIdempotencyCollision(current, command);
+      assertNoLifecycleIdempotencyCollision(current, command);
+      assertNoPendingReplacement(current);
+      assertNoPendingLifecycleTransition(current);
+      if (current.runEpoch !== expectedRunEpoch) {
+        throw new InMemoryGoalStateError(
+          "run_epoch_conflict",
+          `Expected Runtime Session epoch ${expectedRunEpoch}, received ${current.runEpoch}`,
+        );
+      }
+
+      const persisted = current.goals.get(goalId);
+      if (!persisted) {
+        throw new InMemoryGoalStateError(
+          "goal_not_found",
+          `Goal ${goalId} does not exist in Runtime Session ${scope.runtimeSessionId}`,
+        );
+      }
+      if (
+        current.primaryGoalId !== goalId ||
+        persisted.goal.status !== "active"
+      ) {
+        throw new InMemoryGoalStateError(
+          "invalid_commit",
+          `Goal ${goalId} is not the active primary Goal for Runtime Session ${scope.runtimeSessionId}`,
+        );
+      }
+      if (persisted.goal.revision !== expectedRevision) {
+        throw new InMemoryGoalStateError(
+          "revision_conflict",
+          `Expected Goal revision ${expectedRevision}, received ${persisted.goal.revision}`,
+        );
+      }
+
+      const instruction = materializeInstruction(
+        input.instruction,
+        command,
+        current.lastInstructionSequence + 1,
+      );
+      assertContinuationCriteria(persisted.goal, instruction);
+      assertContinuationCommit(
+        persisted.goal,
+        instruction,
+        scope.runtimeSessionId,
+        expectedRevision,
+      );
+      const stored = createStoredCommit(
+        persisted,
+        instruction,
+        command.requestFingerprint,
+      );
+      const next = copySnapshot(current);
+      recordInstruction(next, command, stored);
+      this.sessions.set(scope.key, next);
+      return toCommit(stored, false);
+    });
+  }
+
+  async commitEvaluationTransition(input: {
+    ownerId: string;
+    runtimeSessionId: string;
+    expectedRevision: number;
+    expectedRunEpoch: number;
+    goal: AgentGoal;
+  }): Promise<GoalEvaluationTransitionCommit> {
+    const scope = validatedScope(input.ownerId, input.runtimeSessionId);
+    const expectedRevision = positiveInteger(
+      input.expectedRevision,
+      "expectedRevision",
+    );
+    const expectedRunEpoch = nonNegativeInteger(
+      input.expectedRunEpoch,
+      "expectedRunEpoch",
+    );
+    const goal = parseGoal(input.goal);
+
+    return this.mutations.run(ownerScope(scope.ownerId), () => {
+      const current = this.sessions.get(scope.key);
+      const persisted = current?.goals.get(goal.id);
+      if (!current || !persisted) {
+        throw new InMemoryGoalStateError(
+          "goal_not_found",
+          `Goal ${goal.id} does not exist in Runtime Session ${scope.runtimeSessionId}`,
+        );
+      }
+      assertNoPendingReplacement(current);
+      assertNoPendingLifecycleTransition(current);
+      if (current.runEpoch !== expectedRunEpoch) {
+        throw new InMemoryGoalStateError(
+          "run_epoch_conflict",
+          `Expected Runtime Session epoch ${expectedRunEpoch}, received ${current.runEpoch}`,
+        );
+      }
+      if (
+        current.primaryGoalId !== goal.id ||
+        persisted.goal.status !== "active"
+      ) {
+        throw new InMemoryGoalStateError(
+          "invalid_commit",
+          `Goal ${goal.id} is not the active primary Goal for Runtime Session ${scope.runtimeSessionId}`,
+        );
+      }
+      if (persisted.goal.revision !== expectedRevision) {
+        throw new InMemoryGoalStateError(
+          "revision_conflict",
+          `Expected Goal revision ${expectedRevision}, received ${persisted.goal.revision}`,
+        );
+      }
+      assertEvaluationTransition(persisted.goal, goal, expectedRevision);
+
+      const transitioned: PersistedAgentGoal = {
+        ownerId: scope.ownerId,
+        runtimeSessionId: scope.runtimeSessionId,
+        slot: "primary",
+        goal,
+      };
+      const next = copySnapshot(current);
+      next.primaryGoalId = occupiesPrimarySlot(goal.status)
+        ? goal.id
+        : undefined;
+      next.goals.set(goal.id, clone(transitioned));
+      this.sessions.set(scope.key, next);
+      return { goal: clone(transitioned) };
     });
   }
 
@@ -1345,6 +1506,126 @@ function assertTransitionCommit(
     throw new InMemoryGoalStateError(
       "invalid_commit",
       "A Goal lifecycle commit may change only status, revision, and updatedAt",
+    );
+  }
+}
+
+function assertContinuationCriteria(
+  goal: AgentGoal,
+  instruction: RuntimeInstruction,
+): void {
+  if (instruction.kind !== "goal.continue") {
+    throw new InMemoryGoalStateError(
+      "invalid_commit",
+      "A Goal continuation must use a goal.continue instruction",
+    );
+  }
+
+  const requiredCriteria = new Map(
+    goal.successCriteria
+      .filter((criterion) => criterion.required)
+      .map((criterion) => [criterion.id, criterion.description] as const),
+  );
+  const seenCriteria = new Set<string>();
+  const hasInvalidCriterion = instruction.payload.missingCriteria.some(
+    (criterion) => {
+      if (seenCriteria.has(criterion.id)) return true;
+      seenCriteria.add(criterion.id);
+      return requiredCriteria.get(criterion.id) !== criterion.description;
+    },
+  );
+
+  if (instruction.payload.missingCriteria.length === 0 || hasInvalidCriterion) {
+    throw new InMemoryGoalStateError(
+      "invalid_commit",
+      "A Goal continuation may reference only unique, current required success criteria with their exact descriptions",
+    );
+  }
+}
+
+function assertContinuationCommit(
+  goal: AgentGoal,
+  instruction: RuntimeInstruction,
+  runtimeSessionId: string,
+  expectedRevision: number,
+): void {
+  if (
+    goal.status !== "active" ||
+    goal.revision !== expectedRevision ||
+    instruction.kind !== "goal.continue" ||
+    instruction.deliveryMode !== "steer" ||
+    instruction.targetSessionId !== runtimeSessionId ||
+    instruction.goalId !== goal.id ||
+    instruction.goalRevision !== expectedRevision
+  ) {
+    throw new InMemoryGoalStateError(
+      "invalid_commit",
+      "A Goal continuation must append a matching steer instruction without revising the active Goal",
+    );
+  }
+
+  const requiredCriteria = new Map(
+    goal.successCriteria
+      .filter((criterion) => criterion.required)
+      .map((criterion) => [criterion.id, criterion.description]),
+  );
+  if (
+    instruction.payload.missingCriteria.some(
+      (criterion) =>
+        requiredCriteria.get(criterion.id) !== criterion.description,
+    )
+  ) {
+    throw new InMemoryGoalStateError(
+      "invalid_commit",
+      "A Goal continuation may reference only missing required criteria from the active Goal revision",
+    );
+  }
+}
+
+function assertEvaluationTransition(
+  previousGoal: AgentGoal,
+  goal: AgentGoal,
+  expectedRevision: number,
+): void {
+  const allowedStatus =
+    goal.status === "blocked" ||
+    goal.status === "completed" ||
+    goal.status === "expired" ||
+    goal.status === "budget_limited" ||
+    goal.status === "failed";
+  if (
+    previousGoal.status !== "active" ||
+    !allowedStatus ||
+    goal.revision !== expectedRevision + 1
+  ) {
+    throw new InMemoryGoalStateError(
+      "invalid_commit",
+      "An evaluator transition must advance an active Goal exactly once to an evaluator-owned outcome",
+    );
+  }
+  try {
+    assertGoalStatusTransition(previousGoal.status, goal.status);
+  } catch (cause) {
+    throw new InMemoryGoalStateError(
+      "invalid_commit",
+      `Goal evaluation transition ${previousGoal.status} -> ${goal.status} is invalid`,
+      cause,
+    );
+  }
+
+  const expected: AgentGoal = {
+    ...previousGoal,
+    revision: expectedRevision + 1,
+    status: goal.status,
+    updatedAt: goal.updatedAt,
+  };
+  if (
+    Date.parse(goal.updatedAt) < Date.parse(previousGoal.updatedAt) ||
+    canonicalJson(expected) !== canonicalJson(goal)
+  ) {
+    throw new InMemoryGoalStateError(
+      "invalid_commit",
+      "A Goal evaluation transition may change only status, revision, and updatedAt",
     );
   }
 }
