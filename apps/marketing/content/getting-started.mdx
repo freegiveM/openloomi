@@ -18,12 +18,13 @@ By the end of this page you should have:
 
 ## Choose a path
 
-| If you are…                            | First step                                                         | Next step                                                                                          |
-| -------------------------------------- | ------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------- |
-| A new **desktop app** user             | [Download](#download) the installer for your OS                    | Finish [permissions](#permissions) and [AI configuration](#ai-configuration), then run a Loop tick |
-| A **Claude Code** developer            | Install the [Claude Code plugin](/docs/plugins/claude)             | Run `/openloomi:setup` and confirm the readiness table is `READY`                                  |
-| A **Codex CLI** developer              | Install the [Codex plugin](/docs/plugins/codex)                    | Run `@OpenLoomi Run first-use setup.` and verify the status block                                  |
-| Wiring a **runtime / API** integration | Pick a runtime in [Agent Runtimes](/docs/reference/agent-runtimes) | Configure the matching `OPENLOOMI_AGENT_*` environment variables                                   |
+| If you are…                            | First step                                                         | Next step                                                                                             |
+| -------------------------------------- | ------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
+| A new **desktop app** user             | [Download](#download) the installer for your OS                    | Finish [permissions](#permissions) and [AI configuration](#ai-configuration), then run a Loop tick    |
+| A **Claude Code** developer            | Install the [Claude Code plugin](/docs/plugins/claude)             | Run `/openloomi:setup` and confirm the readiness table is `READY`                                     |
+| A **Codex CLI** developer              | Install the [Codex plugin](/docs/plugins/codex)                    | Run `@OpenLoomi Run first-use setup.` and verify the status block                                     |
+| A **skill-only agent runtime** user    | Install the [OpenLoomi skill pack](#use-as-a-skillssh-skill-pack)  | Run the agent-native setup skill (e.g. `/openloomi:setup`) and confirm the readiness table is `READY` |
+| Wiring a **runtime / API** integration | Pick a runtime in [Agent Runtimes](/docs/reference/agent-runtimes) | Configure the matching `OPENLOOMI_AGENT_*` environment variables                                      |
 
 ## Before you begin
 
@@ -147,6 +148,20 @@ For full documentation, see the plugin docs:
 
 - [Claude Code Plugin](/docs/plugins/claude)
 - [Codex Plugin](/docs/plugins/codex)
+
+---
+
+## Use as a Skills.sh Skill Pack
+
+For agent runtimes that only consume the [`skills.sh`](https://skills.sh/) skill protocol, install the OpenLoomi skill set directly from this repository:
+
+```bash
+npx skills add https://github.com/melandlabs/openloomi/tree/main/skills \
+  --skill openloomi openloomi-setup openloomi-memory openloomi-connectors openloomi-loop openloomi-api openloomi-feature-guide composio \
+  -y
+```
+
+Start with the `openloomi` or `openloomi-setup` skill. The first setup pass checks whether OpenLoomi Desktop is installed, whether the local API is reachable, and whether a local session token is available. If OpenLoomi Desktop is missing, the skill points you to the official [Downloads](#download) section above before continuing.
 
 ---
 
