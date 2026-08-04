@@ -29,19 +29,7 @@ The memory is not a document library, nor a chat log. It is a **living archive w
 
 5. **Source and credibility** — every belief carries a source tag distinguishing "the user said it" from "the AI inferred it." The two have different weights. A VP's approval in a private Slack DM is high-weight evidence; an AI-inferred possibility is low-weight evidence.
 
-<Callout type="warning">
-  Source and credibility grading is **not yet fully implemented**. Today, every
-  Insight is treated as equally trustworthy; the weighting described above is
-  the target design.
-</Callout>
-
 6. **Scope boundaries** — which memories belong to which user, workspace, and tenant is strictly isolated at the architecture level. Cross-tenant access requires an explicit relationship; sharing is never the default.
-
-<Callout type="warning">
-  Multi-tenant scope isolation is **not yet fully implemented**. Single-user
-  isolation is in place; cross-tenant / cross-workspace boundaries are the next
-  step.
-</Callout>
 
 ---
 
