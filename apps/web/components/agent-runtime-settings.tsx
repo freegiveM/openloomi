@@ -1,7 +1,7 @@
 "use client";
 
 import { Badge, Button, Separator } from "@openloomi/ui";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { RemixIcon } from "@/components/remix-icon";
@@ -13,6 +13,10 @@ import {
   type SelectableAgentRuntime,
   canSaveAgentRuntime,
 } from "@/lib/ai/native-agent/runtime-contract";
+import {
+  CODEX_LOGIN_COMMAND,
+  getCodexInstallCommand,
+} from "@/lib/ai/native-agent/runtime-installation";
 import { notifyAiSettingsChanged } from "@/lib/ai/notify-ai-settings-changed";
 import { isTauri, openUrl } from "@/lib/tauri";
 import { cn, fetchWithAuth } from "@/lib/utils";
@@ -20,27 +24,29 @@ import { cn, fetchWithAuth } from "@/lib/utils";
 const runtimeOptions: Array<{
   provider: SelectableAgentRuntime;
   name: string;
+  builtIn: boolean;
   descriptionKey: string;
   descriptionFallback: string;
   docsUrl: string;
-  loginCommand: string;
+  loginCommand?: string;
 }> = [
   {
     provider: "claude",
-    name: "Claude Code",
+    name: "Claude",
+    builtIn: true,
     descriptionKey: "settings.agentRuntimeClaudeDescription",
     descriptionFallback:
-      "Use local Claude Code with its CLI login or your saved API configuration.",
-    docsUrl: "https://code.claude.com/docs/en/installation",
-    loginCommand: "claude auth login",
+      "Powered by Claude Agent SDK with its runtime bundled in OpenLoomi—no separate Claude CLI installation required. Use a saved Anthropic-compatible API configuration or existing Claude authentication.",
+    docsUrl: "https://openloomi.ai/docs/reference/agent-runtimes/claude",
   },
   {
     provider: "codex",
     name: "Codex CLI",
+    builtIn: false,
     descriptionKey: "settings.agentRuntimeCodexDescription",
     descriptionFallback: "Use your local Codex CLI installation and account.",
-    docsUrl: "https://developers.openai.com/codex/cli/",
-    loginCommand: "codex login",
+    docsUrl: "https://learn.chatgpt.com/docs/codex/cli",
+    loginCommand: CODEX_LOGIN_COMMAND,
   },
 ];
 
@@ -57,19 +63,36 @@ export function AgentRuntimeSettings() {
   const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
+  const loadRequestId = useRef(0);
+  const loadAbortController = useRef<AbortController | null>(null);
+  const savingRef = useRef(false);
+  const pendingReloadRef = useRef(false);
 
   const loadState = useCallback(
     async (refresh = false) => {
+      if (savingRef.current) {
+        pendingReloadRef.current = true;
+        return;
+      }
+
+      const requestId = ++loadRequestId.current;
+      loadAbortController.current?.abort();
+      const controller = new AbortController();
+      loadAbortController.current = controller;
       if (refresh) setRefreshing(true);
       else setLoading(true);
+      if (refresh) setLoading(false);
+      else setRefreshing(false);
       setLoadFailed(false);
       try {
         const response = await fetchWithAuth(
           `/api/preferences/agent-runtime${refresh ? "?refresh=1" : ""}`,
+          { signal: controller.signal },
         );
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const nextState =
           (await response.json()) as AgentRuntimeSettingsResponse;
+        if (requestId !== loadRequestId.current) return;
         setState(nextState);
         setDraft(
           (current) =>
@@ -79,6 +102,9 @@ export function AgentRuntimeSettings() {
               : null),
         );
       } catch (error) {
+        if (controller.signal.aborted || requestId !== loadRequestId.current) {
+          return;
+        }
         console.error("[Agent Runtime Settings] Failed to load state", error);
         setLoadFailed(true);
         toast({
@@ -89,8 +115,13 @@ export function AgentRuntimeSettings() {
           ),
         });
       } finally {
-        setLoading(false);
-        setRefreshing(false);
+        if (requestId === loadRequestId.current) {
+          setLoading(false);
+          setRefreshing(false);
+          if (loadAbortController.current === controller) {
+            loadAbortController.current = null;
+          }
+        }
       }
     },
     [t],
@@ -113,8 +144,29 @@ export function AgentRuntimeSettings() {
       );
   }, [desktop, loadState]);
 
+  useEffect(
+    () => () => {
+      ++loadRequestId.current;
+      loadAbortController.current?.abort();
+    },
+    [],
+  );
+
   const saveSelection = async () => {
-    if (!state || !draft || !canSaveAgentRuntime(state, draft)) return;
+    if (
+      savingRef.current ||
+      !state ||
+      !draft ||
+      !canSaveAgentRuntime(state, draft)
+    ) {
+      return;
+    }
+    ++loadRequestId.current;
+    loadAbortController.current?.abort();
+    loadAbortController.current = null;
+    setLoading(false);
+    setRefreshing(false);
+    savingRef.current = true;
     setSaving(true);
     try {
       const response = await fetchWithAuth("/api/preferences/agent-runtime", {
@@ -168,7 +220,63 @@ export function AgentRuntimeSettings() {
         ),
       });
     } finally {
+      savingRef.current = false;
       setSaving(false);
+      if (pendingReloadRef.current) {
+        pendingReloadRef.current = false;
+        void loadState();
+      }
+    }
+  };
+
+  const clearSelection = async () => {
+    if (!state?.preference || savingRef.current) return;
+    ++loadRequestId.current;
+    loadAbortController.current?.abort();
+    loadAbortController.current = null;
+    setLoading(false);
+    setRefreshing(false);
+    savingRef.current = true;
+    setSaving(true);
+    try {
+      const response = await fetchWithAuth("/api/preferences/agent-runtime", {
+        method: "DELETE",
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const nextState = (await response.json()) as AgentRuntimeSettingsResponse;
+      setState(nextState);
+      setDraft(
+        isSelectableRuntime(nextState.effective.provider)
+          ? nextState.effective.provider
+          : null,
+      );
+      notifyAiSettingsChanged();
+      toast({
+        type: "success",
+        description: t(
+          "settings.agentRuntimePreferenceCleared",
+          "Desktop runtime preference cleared.",
+        ),
+      });
+    } catch (error) {
+      console.error(
+        "[Agent Runtime Settings] Failed to clear desktop preference",
+        error,
+      );
+      toast({
+        type: "error",
+        description: t(
+          "settings.agentRuntimeClearError",
+          "Failed to restore the managed runtime setting.",
+        ),
+      });
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
+      if (pendingReloadRef.current) {
+        pendingReloadRef.current = false;
+        void loadState();
+      }
     }
   };
 
@@ -191,7 +299,7 @@ export function AgentRuntimeSettings() {
           <p className="max-w-3xl text-sm text-muted-foreground">
             {t(
               "settings.agentRuntimeDescription",
-              "Choose the local CLI OpenLoomi uses for new agent tasks. Running tasks are not interrupted.",
+              "Choose the agent runtime OpenLoomi uses for new tasks. Claude is built in; Codex uses its local CLI. Running tasks are not interrupted.",
             )}
           </p>
         </div>
@@ -231,6 +339,30 @@ export function AgentRuntimeSettings() {
                 </p>
               )}
 
+            {state.preference && (
+              <div className="flex flex-col gap-3 rounded-lg border border-border bg-muted/30 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-xs text-muted-foreground">
+                  {t(
+                    "settings.agentRuntimePreferenceOverrideDescription",
+                    "This desktop preference overrides the environment/default runtime for new tasks.",
+                  )}
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={saving || loading || refreshing}
+                  onClick={clearSelection}
+                  className="shrink-0"
+                >
+                  {t(
+                    "settings.agentRuntimeUseManagedSetting",
+                    "Use environment/default",
+                  )}
+                </Button>
+              </div>
+            )}
+
             <div
               className="grid gap-3 sm:grid-cols-2"
               role="radiogroup"
@@ -248,7 +380,7 @@ export function AgentRuntimeSettings() {
                       selected
                         ? "border-primary/50 bg-primary/5 ring-1 ring-primary/15"
                         : "border-border bg-background hover:border-foreground/20 hover:bg-muted/30",
-                      (saving || refreshing) &&
+                      (saving || loading || refreshing) &&
                         "pointer-events-none opacity-60",
                     )}
                   >
@@ -257,7 +389,7 @@ export function AgentRuntimeSettings() {
                       name="agent-runtime"
                       value={option.provider}
                       checked={selected}
-                      disabled={saving || refreshing}
+                      disabled={saving || loading || refreshing}
                       onChange={() => setDraft(option.provider)}
                       className="sr-only"
                     />
@@ -274,8 +406,20 @@ export function AgentRuntimeSettings() {
                     <span className="min-w-0 flex-1">
                       <span className="flex flex-wrap items-center gap-2 text-sm font-semibold text-foreground">
                         {option.name}
+                        {option.builtIn && (
+                          <Badge
+                            as="span"
+                            variant="secondary"
+                            className="h-5 rounded-md px-2 text-[11px] font-medium"
+                          >
+                            {t("settings.agentRuntimeBuiltIn", "Built in")}
+                          </Badge>
+                        )}
                         {active && (
-                          <Badge className="h-5 rounded-md px-2 text-[11px] font-medium">
+                          <Badge
+                            as="span"
+                            className="h-5 rounded-md px-2 text-[11px] font-medium"
+                          >
                             {t("settings.agentRuntimeInUse", "In use")}
                           </Badge>
                         )}
@@ -294,8 +438,9 @@ export function AgentRuntimeSettings() {
               <RuntimeSetupPanel
                 option={selectedOption}
                 probe={state.runtimes[draft]}
+                platform={state.platform}
                 active={state.effective.provider === draft}
-                busy={saving || refreshing}
+                busy={saving || loading || refreshing}
                 refreshing={refreshing}
                 canSave={canSaveAgentRuntime(state, draft)}
                 onRefresh={() => loadState(true)}
@@ -312,12 +457,24 @@ export function AgentRuntimeSettings() {
 
 function RuntimeStatusLine({ probe }: { probe: AgentRuntimePublicProbe }) {
   const { t } = useTranslation();
-  const labels = {
-    ready: t("settings.agentRuntimeReady", "Ready"),
-    login_required: t("settings.agentRuntimeLoginRequired", "Sign-in required"),
-    not_installed: t("settings.agentRuntimeNotInstalled", "Not installed"),
-    unverified: t("settings.agentRuntimeUnverifiedShort", "Could not verify"),
-  };
+  const label =
+    probe.status === "ready"
+      ? t("settings.agentRuntimeReady", "Ready")
+      : probe.status === "login_required"
+        ? probe.provider === "claude"
+          ? t(
+              "settings.agentRuntimeAuthenticationRequired",
+              "Authentication required",
+            )
+          : t("settings.agentRuntimeLoginRequired", "Sign-in required")
+        : probe.status === "not_installed"
+          ? probe.provider === "claude"
+            ? t(
+                "settings.agentRuntimeBuiltInUnavailable",
+                "Built-in runtime unavailable",
+              )
+            : t("settings.agentRuntimeNotInstalled", "Not installed")
+          : t("settings.agentRuntimeUnverifiedShort", "Could not verify");
   return (
     <span
       className={cn(
@@ -331,7 +488,7 @@ function RuntimeStatusLine({ probe }: { probe: AgentRuntimePublicProbe }) {
           probe.ready ? "bg-emerald-500" : "bg-muted-foreground/60",
         )}
       />
-      {labels[probe.status]}
+      {label}
       {probe.version ? ` · v${probe.version.replace(/^v/, "")}` : ""}
     </span>
   );
@@ -340,6 +497,7 @@ function RuntimeStatusLine({ probe }: { probe: AgentRuntimePublicProbe }) {
 function RuntimeSetupPanel({
   option,
   probe,
+  platform,
   active,
   busy,
   refreshing,
@@ -349,6 +507,7 @@ function RuntimeSetupPanel({
 }: {
   option: (typeof runtimeOptions)[number];
   probe: AgentRuntimePublicProbe;
+  platform: AgentRuntimeSettingsResponse["platform"];
   active: boolean;
   busy: boolean;
   refreshing: boolean;
@@ -357,55 +516,22 @@ function RuntimeSetupPanel({
   onSave: () => void;
 }) {
   const { t } = useTranslation();
+  const showGuide =
+    probe.status === "not_installed" || probe.status === "unverified";
   return (
     <div
       className="rounded-lg border border-border bg-background p-4 sm:p-5"
       aria-live="polite"
     >
       <div className="space-y-3">
-        {probe.status === "ready" ? (
-          <p className="text-sm text-muted-foreground">
-            {probe.readyVia === "api"
-              ? t(
-                  "settings.agentRuntimeApiReadyDescription",
-                  "{{runtime}} is installed and your saved API configuration is ready for new tasks.",
-                  { runtime: option.name },
-                )
-              : t(
-                  "settings.agentRuntimeReadyDescription",
-                  "{{runtime}} is installed and signed in. It is ready for new tasks.",
-                  { runtime: option.name },
-                )}
-          </p>
-        ) : probe.status === "login_required" ? (
-          <div className="space-y-2">
-            <p className="text-sm text-muted-foreground">
-              {t(
-                "settings.agentRuntimeLoginDescription",
-                "Run this command in a terminal, finish signing in, then check again.",
-              )}
-            </p>
-            <CopyCommand command={option.loginCommand} />
-          </div>
-        ) : probe.status === "not_installed" ? (
-          <p className="text-sm text-muted-foreground">
-            {t(
-              "settings.agentRuntimeInstallDescription",
-              "Install {{runtime}} from its official guide, then check again.",
-              { runtime: option.name },
-            )}
-          </p>
-        ) : (
-          <p className="text-sm text-muted-foreground">
-            {t(
-              "settings.agentRuntimeUnverifiedDescription",
-              "OpenLoomi could not verify this CLI. Confirm it runs in your terminal, then check again.",
-            )}
-          </p>
-        )}
+        <RuntimeSetupSummary
+          option={option}
+          probe={probe}
+          platform={platform}
+        />
 
         <div className="flex flex-wrap justify-end gap-2">
-          {probe.status !== "ready" && (
+          {showGuide && (
             <Button
               type="button"
               variant="outline"
@@ -414,7 +540,17 @@ function RuntimeSetupPanel({
               onClick={() => void openUrl(option.docsUrl)}
             >
               <RemixIcon name="external_link" size="size-4" />
-              {t("settings.agentRuntimeInstallGuide", "Installation guide")}
+              {option.provider === "claude"
+                ? t(
+                    "settings.agentRuntimeTroubleshootingGuide",
+                    "Troubleshooting guide",
+                  )
+                : probe.status === "not_installed"
+                  ? t(
+                      "settings.agentRuntimeOfficialInstructions",
+                      "Official instructions",
+                    )
+                  : t("settings.agentRuntimeSetupGuide", "Setup guide")}
             </Button>
           )}
           <Button
@@ -445,6 +581,176 @@ function RuntimeSetupPanel({
           </Button>
         </div>
       </div>
+    </div>
+  );
+}
+
+function RuntimeSetupSummary({
+  option,
+  probe,
+  platform,
+}: {
+  option: (typeof runtimeOptions)[number];
+  probe: AgentRuntimePublicProbe;
+  platform: AgentRuntimeSettingsResponse["platform"];
+}) {
+  const { t } = useTranslation();
+  const isClaude = option.provider === "claude";
+
+  if (probe.status === "ready") {
+    if (isClaude) {
+      return (
+        <p className="text-sm text-muted-foreground">
+          {probe.readyVia === "api"
+            ? t(
+                "settings.agentRuntimeClaudeApiReadyDescription",
+                "The built-in Claude runtime will use your saved Anthropic-compatible configuration. Test the connection below, then confirm it with a new task.",
+              )
+            : t(
+                "settings.agentRuntimeClaudeAuthReadyDescription",
+                "The built-in Claude runtime found existing Claude authentication. This check does not start a model request.",
+              )}
+        </p>
+      );
+    }
+
+    return (
+      <p className="text-sm text-muted-foreground">
+        {t(
+          "settings.agentRuntimeReadyDescription",
+          "{{runtime}} is installed and signed in. This check does not start a model request.",
+          { runtime: option.name },
+        )}
+      </p>
+    );
+  }
+
+  if (probe.status === "login_required") {
+    if (isClaude) {
+      return (
+        <p className="text-sm text-muted-foreground">
+          {t(
+            "settings.agentRuntimeClaudeAuthenticationDescription",
+            "Save an Anthropic-compatible API configuration below. If this OS account already has Claude authentication, check again to reuse it.",
+          )}
+        </p>
+      );
+    }
+
+    return (
+      <div className="space-y-2">
+        <p className="text-sm text-muted-foreground">
+          {t(
+            "settings.agentRuntimeLoginDescription",
+            "Run this command in a terminal, finish signing in, then check again.",
+          )}
+        </p>
+        {option.loginCommand && <CopyCommand command={option.loginCommand} />}
+      </div>
+    );
+  }
+
+  if (probe.status === "not_installed") {
+    if (!isClaude) {
+      return <CodexInstallSteps platform={platform} />;
+    }
+
+    return (
+      <p className="text-sm text-muted-foreground">
+        {t(
+          "settings.agentRuntimeClaudeUnavailableDescription",
+          "OpenLoomi could not load its built-in Claude runtime. Update or repair the desktop app, then check again.",
+        )}
+      </p>
+    );
+  }
+
+  return (
+    <p className="text-sm text-muted-foreground">
+      {isClaude
+        ? t(
+            "settings.agentRuntimeClaudeUnverifiedDescription",
+            "OpenLoomi could not verify the built-in Claude runtime. Open the troubleshooting guide, then check again.",
+          )
+        : t(
+            "settings.agentRuntimeUnverifiedDescription",
+            "OpenLoomi could not verify this CLI. Confirm it runs in your terminal, then check again.",
+          )}
+    </p>
+  );
+}
+
+function CodexInstallSteps({
+  platform,
+}: {
+  platform: AgentRuntimeSettingsResponse["platform"];
+}) {
+  const { t } = useTranslation();
+  const terminal =
+    platform === "windows"
+      ? "PowerShell"
+      : t("settings.agentRuntimeTerminal", "Terminal");
+  const checkAgain = t("settings.agentRuntimeCheckAgain", "Check again");
+  const useCodex = t("settings.agentRuntimeUse", "Use {{runtime}}", {
+    runtime: "Codex CLI",
+  });
+  const inUse = t("settings.agentRuntimeInUse", "In use");
+
+  return (
+    <div className="space-y-3">
+      <p className="text-sm font-medium text-foreground">
+        {t(
+          "settings.agentRuntimeCodexInstallTitle",
+          "Install and sign in to Codex CLI",
+        )}
+      </p>
+      <ol className="list-decimal space-y-3 pl-5 text-sm text-muted-foreground">
+        <li>
+          {t(
+            "settings.agentRuntimeCodexInstallOpenTerminal",
+            "Open {{terminal}}.",
+            { terminal },
+          )}
+        </li>
+        <li className="space-y-2 pl-1">
+          <p>
+            {t(
+              "settings.agentRuntimeCodexInstallRunInstaller",
+              "Copy and run the official install command.",
+            )}
+          </p>
+          <CopyCommand command={getCodexInstallCommand(platform)} />
+          <p>
+            {t(
+              "settings.agentRuntimeCodexInstallSkipLaunch",
+              'When "Start Codex now? [y/N]" appears at the end, press Enter to keep the default N. Do not start Codex yet.',
+            )}
+          </p>
+          <p>
+            {t(
+              "settings.agentRuntimeCodexInstallExitAccidentalLaunch",
+              'If you already selected y and see "Hooks need review", select "3. Continue without trusting". After Codex opens, enter /exit or press Ctrl+C to close it.',
+            )}
+          </p>
+        </li>
+        <li className="space-y-2 pl-1">
+          <p>
+            {t(
+              "settings.agentRuntimeCodexInstallSignIn",
+              "After the installer returns to {{terminal}}, close that window and open a new one. Run this command and finish signing in in your browser. When sign-in succeeds, you can close the browser page and {{terminal}}.",
+              { terminal },
+            )}
+          </p>
+          <CopyCommand command={CODEX_LOGIN_COMMAND} />
+        </li>
+        <li>
+          {t(
+            "settings.agentRuntimeCodexInstallReturn",
+            "Return here and select {{checkAction}}. Once Codex CLI is ready, select {{useAction}} if it does not already show {{inUse}}. You do not need to restart OpenLoomi.",
+            { checkAction: checkAgain, useAction: useCodex, inUse },
+          )}
+        </li>
+      </ol>
     </div>
   );
 }

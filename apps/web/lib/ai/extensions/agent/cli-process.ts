@@ -46,18 +46,29 @@ export function shouldDetachCliProcess(): boolean {
  */
 export function buildAgentCliSearchPath(
   basePath = process.env.PATH ?? "",
+  options: {
+    platform?: NodeJS.Platform;
+    homeDirectory?: string;
+    localAppData?: string;
+  } = {},
 ): string {
-  const home = homedir();
+  const currentPlatform = options.platform ?? platform();
+  const home = options.homeDirectory ?? homedir();
   const paths = basePath
     .split(delimiter)
     .map((entry) => entry.replace(/^"|"$/g, "").trim())
     .filter(Boolean);
 
-  if (platform() === "win32") {
+  if (currentPlatform === "win32") {
+    const localAppData =
+      options.localAppData?.trim() ||
+      process.env.LOCALAPPDATA?.trim() ||
+      join(home, "AppData", "Local");
     paths.push(
       join(home, ".local", "bin"),
       join(home, "AppData", "Roaming", "npm"),
       join(home, "AppData", "Local", "Programs", "nodejs"),
+      join(localAppData, "Programs", "OpenAI", "Codex", "bin"),
       join(home, ".volta", "bin"),
       "C:\\Program Files\\nodejs",
       "C:\\Program Files (x86)\\nodejs",
@@ -88,6 +99,26 @@ export function buildAgentCliSearchPath(
   }
 
   return Array.from(new Set(paths)).join(delimiter);
+}
+
+/** Resolve commands in the same directory-first order used by PATH lookup. */
+export function findCliExecutableOnSearchPath(
+  searchPath: string,
+  candidates: readonly string[],
+): string | null {
+  const directories = searchPath
+    .split(delimiter)
+    .map((directory) => directory.replace(/^"|"$/g, "").trim())
+    .filter(Boolean);
+
+  for (const directory of directories) {
+    for (const candidate of candidates) {
+      const command = join(directory, candidate);
+      if (existsSync(command)) return command;
+    }
+  }
+
+  return null;
 }
 
 /**

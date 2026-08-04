@@ -10,7 +10,7 @@
 import type { ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
 import { homedir, platform } from "node:os";
-import { delimiter, join, parse } from "node:path";
+import { join, parse } from "node:path";
 import spawn from "cross-spawn";
 
 import { getClaudeBundleDirectories } from "@/lib/ai/extensions/agent/claude/cli-locations";
@@ -18,6 +18,7 @@ import {
   appendCapturedCliOutput,
   buildAgentCliSearchPath,
   buildCliEnvironment,
+  findCliExecutableOnSearchPath,
   shouldDetachCliProcess,
   terminateCliProcessTree,
 } from "@/lib/ai/extensions/agent/cli-process";
@@ -210,22 +211,17 @@ function resolveCliPath(
     }
   }
 
-  const pathDirectories = searchPath
-    .split(delimiter)
-    .map((directory) => directory.replace(/^"|"$/g, ""))
-    .filter(Boolean);
-  for (const binary of candidateBinaries(definition.binary)) {
-    for (const directory of pathDirectories) {
-      const candidate = join(directory, binary);
-      if (existsSync(candidate)) {
-        return {
-          path: candidate,
-          source: "PATH",
-          searchPath,
-          argsPrefix: [],
-        };
-      }
-    }
+  const pathCommand = findCliExecutableOnSearchPath(
+    searchPath,
+    candidateBinaries(definition.binary),
+  );
+  if (pathCommand) {
+    return {
+      path: pathCommand,
+      source: "PATH",
+      searchPath,
+      argsPrefix: [],
+    };
   }
 
   return { path: null, source: null, searchPath, argsPrefix: [] };

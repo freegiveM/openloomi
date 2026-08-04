@@ -131,7 +131,7 @@ describe("agent runtime public probe", () => {
     });
   });
 
-  test("accepts a complete saved API configuration instead of CLI login for Claude", () => {
+  test("accepts a complete saved API configuration for the bundled Claude runtime", () => {
     const probe: NativeRuntimeProbe = {
       checked: true,
       provider: "claude",
@@ -142,12 +142,18 @@ describe("agent runtime public probe", () => {
       ready: false,
       reason: "CLAUDE_CLI_AUTH_REQUIRED",
       cliPathPresent: true,
-      cliPathSource: "PATH",
+      cliPathSource: "BUNDLED",
       versionPresent: true,
       version: "2.1.3",
       probes: {},
     };
 
+    expect(toPublicProbe("claude", probe)).toMatchObject({
+      installed: true,
+      ready: false,
+      readyVia: null,
+      status: "login_required",
+    });
     expect(
       toPublicProbe("claude", probe, { claudeApiConfigured: true }),
     ).toMatchObject({
@@ -157,6 +163,33 @@ describe("agent runtime public probe", () => {
       readyVia: "api",
       status: "ready",
       reason: "READY",
+    });
+  });
+
+  test("reports the saved Claude API configuration when CLI auth is also available", () => {
+    const probe: NativeRuntimeProbe = {
+      checked: true,
+      provider: "claude",
+      defaultAgent: "claude",
+      available: true,
+      authenticated: true,
+      active: true,
+      ready: true,
+      reason: "CLAUDE_CLI_AUTHENTICATED",
+      cliPathPresent: true,
+      cliPathSource: "BUNDLED",
+      versionPresent: true,
+      version: "2.1.141",
+      probes: {},
+    };
+
+    expect(
+      toPublicProbe("claude", probe, { claudeApiConfigured: true }),
+    ).toMatchObject({
+      authenticated: true,
+      ready: true,
+      readyVia: "api",
+      status: "ready",
     });
   });
 });

@@ -218,13 +218,13 @@ _The onboarding screen — pick your AI agent and complete sign-in in a few clic
   />
 </div>
 
-_The API Settings panel — enter your provider's base URL, auth token, and model name. These map to the `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, and `ANTHROPIC_MODEL` environment variables shown below._
+_The API Settings panel — enter your provider's base URL, credential, and model name. OpenLoomi passes that per-user configuration to the selected runtime._
 
-OpenLoomi uses your existing AI agent configuration to work. To get started, set up your agent's environment variables in `~/.claude/settings.json`.
+For the desktop app, complete runtime and model setup in **Settings → Agent runtime** and **Settings → Conversation models**. You do not need to edit Claude configuration files manually.
 
 **Default: Claude**
 
-OpenLoomi automatically detects an existing Claude Code configuration. For server deployments and shared installations, configure a Claude API key or an Anthropic-compatible endpoint in OpenLoomi instead of relying on a personal Claude login.
+OpenLoomi Desktop includes the Claude Agent SDK runtime, so users do not install a separate Claude CLI. Authenticate it with a complete Anthropic-compatible configuration saved in OpenLoomi, or reuse supported Claude authentication already available to the same OS account. For server deployments and shared installations, prefer an API configuration over a personal Claude login.
 
 **Supported Agents**
 
@@ -237,7 +237,7 @@ OpenLoomi automatically detects an existing Claude Code configuration. For serve
 | OpenClaw   | ✅ Supported   | Gateway-backed `openclaw acp` bridge                    |
 | DeepAgents | 🔜 Coming Soon | Metadata exists; a production adapter is not registered |
 
-In the desktop app, open **Settings → Agent runtime** to choose Claude Code or Codex CLI. OpenLoomi checks whether the selected CLI is installed and authenticated, then enables the switch once it is ready. Claude can authenticate through its CLI login or a complete Anthropic-compatible configuration saved in API Settings; Codex uses its CLI login. The saved device preference applies to new tasks and takes precedence over `OPENLOOMI_AGENT_PROVIDER`; running tasks are not interrupted.
+In the desktop app, open **Settings → Agent runtime** to choose **Claude** or **Codex CLI**. Claude uses the runtime bundled with OpenLoomi and a saved Anthropic-compatible configuration or existing Claude authentication. Codex requires a local CLI installation and `codex login`. OpenLoomi performs read-only version and authentication checks before enabling a switch; it does not start a model request. The saved device preference applies to new tasks and takes precedence over `OPENLOOMI_AGENT_PROVIDER`; running tasks are not interrupted. Use **Use environment/default** to remove that override.
 
 Server/headless deployments—and the OpenCode, Hermes, and OpenClaw runtimes—remain environment-controlled. Claude is used when neither a desktop preference nor `OPENLOOMI_AGENT_PROVIDER` is set; supported environment values are `claude`, `codex`, `opencode`, `hermes`, and `openclaw`.
 
@@ -265,30 +265,21 @@ OPENLOOMI_AGENT_CODEX_COMMAND=codex
 OPENLOOMI_AGENT_CODEX_SANDBOX=workspace-write
 ```
 
-OpenLoomi guides desktop users to the official installer and CLI login flow, but does not run either one automatically. CLI subprocesses receive a restricted environment; use `OPENLOOMI_AGENT_ENV_ALLOWLIST` only when a runtime needs an additional named variable. Executable paths, runtime models, profiles, Gateway targets, and approval policy cannot be overridden by chat/API request bodies.
+For Codex, OpenLoomi links to the official installer and shows the login command, but does not run either one automatically. Claude is already bundled with the desktop app. External CLI runtimes receive a restricted environment; use `OPENLOOMI_AGENT_ENV_ALLOWLIST` only when one needs an additional named variable. Executable paths, runtime models, profiles, Gateway targets, and approval policy cannot be overridden by chat/API request bodies.
 
 Agent runtimes and sandboxes are separate layers: OpenCode, Hermes, OpenClaw, and Codex are registered through `AgentPlugin` and do not pretend to be sandbox providers. Filesystem or process isolation must still be selected and enforced independently by the host.
 
 See the **[Agent Runtimes reference](/docs/reference/agent-runtimes)** for detailed runtime setup and security behavior.
 
-**Configuring Your Agent**
+**Configure Claude in the desktop app**
 
-Edit `~/.claude/settings.json` to customize your environment:
-
-```json
-{
-  "skipWebFetchPreflight": true,
-  "env": {
-    "ANTHROPIC_AUTH_TOKEN": "your-auth-token-here",
-    "ANTHROPIC_BASE_URL": "your-base-url-here",
-    "ANTHROPIC_MODEL": "your-model-here"
-  }
-}
-```
+In **Settings → Conversation models**, save the API key or gateway token, base URL, and model under **Anthropic compatible**. Return to **Agent runtime**, select **Check again**, and choose Claude when its status is **Ready**. Use **Test connection** as an endpoint check, then start a new task to confirm the complete Agent SDK path.
 
 <Callout type="warning">
-  **Security:** Your API keys are stored locally in `~/.claude/settings.json`.
-  Always keep your settings file private.
+  **Security:** OpenLoomi stores the saved credential as an encrypted user
+  setting and only passes it to that user's Claude runtime request. Keep
+  deployment environment files and any external Claude configuration private as
+  well.
 </Callout>
 
 ---
@@ -306,7 +297,7 @@ If you're on the plugin path, confirm the readiness table lands on `READY` and `
 ## Troubleshooting
 
 - **App doesn't open on macOS** — confirm the binary is in `/Applications` (not quarantined in `~/Downloads`). Re-run `brew install --cask openloomi` to repair.
-- **API key rejected** — verify the key in `~/.claude/settings.json`, then restart the desktop app so the helper binary picks up the new env.
+- **API key rejected** — verify the credential, base URL, and model in **Settings → Conversation models**, run **Test connection**, then retry the task.
 - **Loop is silent** — make sure at least one connector is enabled; otherwise there's nothing to surface.
 - **Plugin says `OPENLOOMI_NOT_INSTALLED`** — re-run `/openloomi:setup` or `@OpenLoomi Run first-use setup.` to mint a guest session.
 

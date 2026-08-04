@@ -90,21 +90,10 @@ export function toPublicProbe(
     };
   }
 
-  if (probe.ready && probe.authenticated) {
-    return {
-      provider,
-      installed: true,
-      authenticated: true,
-      ready: true,
-      readyVia: "cli",
-      status: "ready",
-      version: probe.version,
-      reason: "READY",
-    };
-  }
-
-  // Claude still needs an installed CLI, but a complete saved Anthropic-
-  // compatible configuration is a valid alternative to `claude auth login`.
+  // Claude Agent SDK needs its runtime executable, which packaged desktop
+  // builds bundle with OpenLoomi. A complete saved Anthropic-compatible
+  // configuration overrides existing Claude authentication during execution,
+  // so report it first when both credential sources exist.
   if (
     provider === "claude" &&
     options.claudeApiConfigured &&
@@ -116,6 +105,19 @@ export function toPublicProbe(
       authenticated: probe.authenticated,
       ready: true,
       readyVia: "api",
+      status: "ready",
+      version: probe.version,
+      reason: "READY",
+    };
+  }
+
+  if (probe.ready && probe.authenticated) {
+    return {
+      provider,
+      installed: true,
+      authenticated: true,
+      ready: true,
+      readyVia: "cli",
       status: "ready",
       version: probe.version,
       reason: "READY",

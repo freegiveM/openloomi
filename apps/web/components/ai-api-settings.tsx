@@ -437,7 +437,9 @@ export function AiApiSettings() {
       <div className="w-full px-1 sm:px-0 space-y-8">
         {showMissingApiKeyNotice && (
           <div
+            role="status"
             aria-live="polite"
+            aria-atomic="true"
             className="flex gap-3 rounded-lg border border-primary/25 bg-primary/5 p-4 text-sm"
           >
             <RemixIcon

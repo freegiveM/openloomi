@@ -18,12 +18,15 @@ const runtimeState = vi.hoisted(() => ({
     },
   },
   get: vi.fn(),
+  read: vi.fn(),
   write: vi.fn(),
+  clear: vi.fn(),
 }));
 const llmSettingsState = vi.hoisted(() => ({
   config: undefined as
     | { apiKey: string; baseUrl: string; model: string }
     | undefined,
+  get: vi.fn(),
 }));
 
 vi.mock("@/lib/auth/dual-auth", () => ({
@@ -39,14 +42,16 @@ vi.mock("@/lib/ai/native-agent/runtime-settings", () => ({
 }));
 
 vi.mock("@/lib/ai/native-agent/runtime-preference", () => ({
+  clearAgentRuntimePreference: runtimeState.clear,
+  readAgentRuntimePreference: runtimeState.read,
   writeAgentRuntimePreference: runtimeState.write,
 }));
 
 vi.mock("@/lib/ai/user-llm-api-settings", () => ({
-  getUserLlmProviderConfig: vi.fn(async () => llmSettingsState.config),
+  getUserLlmProviderConfig: llmSettingsState.get,
 }));
 
-const { GET, PUT } =
+const { DELETE, GET, PUT } =
   await import("@/app/(chat)/api/preferences/agent-runtime/route");
 
 function request(method = "GET", body?: unknown, query = "") {
@@ -63,8 +68,13 @@ beforeEach(() => {
   modeState.tauri = true;
   runtimeState.get.mockReset();
   runtimeState.get.mockResolvedValue(runtimeState.response);
+  runtimeState.read.mockReset();
+  runtimeState.read.mockReturnValue(undefined);
   runtimeState.write.mockReset();
+  runtimeState.clear.mockReset();
   llmSettingsState.config = undefined;
+  llmSettingsState.get.mockReset();
+  llmSettingsState.get.mockImplementation(async () => llmSettingsState.config);
 });
 
 describe("agent runtime preferences route", () => {
@@ -109,14 +119,85 @@ describe("agent runtime preferences route", () => {
     expect(runtimeState.write).not.toHaveBeenCalled();
   });
 
-  test("persists the choice before returning the resolved state", async () => {
+  test("persists the choice and returns the selected effective state", async () => {
+    const savedResponse = {
+      ...runtimeState.response,
+      preference: "codex",
+      effective: { provider: "codex", source: "preference" },
+    };
     const response = await PUT(request("PUT", { provider: "codex" }));
 
     expect(response.status).toBe(200);
+    expect(await response.json()).toEqual(savedResponse);
     expect(runtimeState.write).toHaveBeenCalledWith("codex");
-    expect(runtimeState.write.mock.invocationCallOrder[0]).toBeLessThan(
-      runtimeState.get.mock.invocationCallOrder[1],
-    );
+    expect(runtimeState.get).toHaveBeenCalledOnce();
+  });
+
+  test("rechecks Claude API readiness when configuration changes during the probe", async () => {
+    const configured = {
+      apiKey: "decrypted-key",
+      baseUrl: "https://api.example.test",
+      model: "claude-test",
+    };
+    llmSettingsState.get
+      .mockResolvedValueOnce(configured)
+      .mockResolvedValueOnce(undefined);
+    runtimeState.get
+      .mockResolvedValueOnce(runtimeState.response)
+      .mockResolvedValueOnce({
+        ...runtimeState.response,
+        runtimes: {
+          claude: { ready: false },
+          codex: { ready: true },
+        },
+      });
+
+    const response = await PUT(request("PUT", { provider: "claude" }));
+
+    expect(response.status).toBe(409);
+    expect(runtimeState.get).toHaveBeenNthCalledWith(2, {
+      claudeApiConfigured: false,
+    });
+    expect(runtimeState.write).not.toHaveBeenCalled();
+  });
+
+  test("clears the desktop preference and returns environment/default state", async () => {
+    const restoredResponse = {
+      ...runtimeState.response,
+      preference: null,
+      effective: { provider: "opencode", source: "environment" },
+    };
+    runtimeState.get.mockResolvedValueOnce(restoredResponse);
+
+    const response = await DELETE(request("DELETE"));
+
+    expect(response.status).toBe(200);
+    expect(runtimeState.clear).toHaveBeenCalledOnce();
+    expect(runtimeState.get).toHaveBeenCalledWith({
+      forceRefresh: true,
+      claudeApiConfigured: false,
+    });
+    expect(await response.json()).toEqual(restoredResponse);
+  });
+
+  test("rejects clearing the desktop preference outside the desktop app", async () => {
+    modeState.tauri = false;
+
+    const response = await DELETE(request("DELETE"));
+
+    expect(response.status).toBe(403);
+    expect(runtimeState.clear).not.toHaveBeenCalled();
+  });
+
+  test("restores the previous preference when reset state cannot be loaded", async () => {
+    runtimeState.read.mockReturnValue("codex");
+    runtimeState.get.mockRejectedValueOnce(new Error("invalid environment"));
+
+    const response = await DELETE(request("DELETE"));
+
+    expect(response.status).toBe(500);
+    expect(runtimeState.clear).toHaveBeenCalledOnce();
+    expect(runtimeState.write).toHaveBeenCalledWith("codex");
   });
 
   test("passes a complete saved Claude API configuration into readiness", async () => {

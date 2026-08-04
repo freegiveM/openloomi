@@ -9,6 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
+  clearAgentRuntimePreference,
   readAgentRuntimePreference,
   writeAgentRuntimePreference,
 } from "@/lib/ai/native-agent/runtime-preference";
@@ -42,6 +43,15 @@ describe("agent runtime preference", () => {
       provider: "codex",
     });
     expect(readdirSync(directory)).toEqual(["agent-runtime.json"]);
+  });
+
+  it("clears a desktop preference without failing when it is already absent", () => {
+    writeAgentRuntimePreference("codex", filePath);
+
+    clearAgentRuntimePreference(filePath);
+    expect(readAgentRuntimePreference(filePath)).toBeUndefined();
+
+    expect(() => clearAgentRuntimePreference(filePath)).not.toThrow();
   });
 
   it("ignores malformed or unsupported preferences", () => {

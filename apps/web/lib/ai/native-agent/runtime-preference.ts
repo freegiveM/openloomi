@@ -76,6 +76,12 @@ export function writeAgentRuntimePreference(
   }
 }
 
+export function clearAgentRuntimePreference(
+  filePath = getAgentRuntimePreferencePath(),
+): void {
+  rmSync(filePath, { force: true });
+}
+
 function isRuntimePreference(
   value: unknown,
 ): value is { provider: SelectableAgentRuntime } {

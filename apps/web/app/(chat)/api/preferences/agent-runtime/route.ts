@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { writeAgentRuntimePreference } from "@/lib/ai/native-agent/runtime-preference";
+import {
+  clearAgentRuntimePreference,
+  readAgentRuntimePreference,
+  writeAgentRuntimePreference,
+} from "@/lib/ai/native-agent/runtime-preference";
 import { getAgentRuntimeSettings } from "@/lib/ai/native-agent/runtime-settings";
 import { getUserLlmProviderConfig } from "@/lib/ai/user-llm-api-settings";
 import { getAuthUser } from "@/lib/auth/dual-auth";
@@ -70,11 +74,25 @@ export async function PUT(request: Request) {
   }
 
   try {
-    const claudeApiConfigured = await hasUsableClaudeApiConfiguration(user.id);
-    const readiness = await getAgentRuntimeSettings({
+    let claudeApiConfigured = await hasUsableClaudeApiConfiguration(user.id);
+    let readiness = await getAgentRuntimeSettings({
       forceRefresh: true,
       claudeApiConfigured,
     });
+
+    // The runtime probe can take several seconds. If the user saves or removes
+    // the Claude API configuration while it is running, remap readiness against
+    // the latest setting before persisting the choice.
+    if (parsed.data.provider === "claude") {
+      const latestClaudeApiConfigured = await hasUsableClaudeApiConfiguration(
+        user.id,
+      );
+      if (latestClaudeApiConfigured !== claudeApiConfigured) {
+        claudeApiConfigured = latestClaudeApiConfigured;
+        readiness = await getAgentRuntimeSettings({ claudeApiConfigured });
+      }
+    }
+
     if (!readiness.runtimes?.[parsed.data.provider].ready) {
       return NextResponse.json(
         { error: "runtime_not_ready", settings: readiness },
@@ -83,12 +101,63 @@ export async function PUT(request: Request) {
     }
 
     writeAgentRuntimePreference(parsed.data.provider);
-    const settings = await getAgentRuntimeSettings({ claudeApiConfigured });
+    const settings = {
+      ...readiness,
+      preference: parsed.data.provider,
+      effective: {
+        provider: parsed.data.provider,
+        source: "preference" as const,
+      },
+    };
     return NextResponse.json(settings, { headers: noStoreHeaders });
   } catch (error) {
     console.error("[Agent Runtime Preferences] Failed to save state", error);
     return NextResponse.json(
       { error: "runtime_preference_save_failed" },
+      { status: 500 },
+    );
+  }
+}
+
+export async function DELETE(request: Request) {
+  const user = await getAuthUser(request).catch(() => null);
+  if (!user) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+  if (!isTauriMode()) {
+    return NextResponse.json(
+      { error: "runtime_selection_not_editable" },
+      { status: 403 },
+    );
+  }
+
+  try {
+    const previousPreference = readAgentRuntimePreference();
+    clearAgentRuntimePreference();
+    try {
+      const claudeApiConfigured = await hasUsableClaudeApiConfiguration(
+        user.id,
+      );
+      const settings = await getAgentRuntimeSettings({
+        forceRefresh: true,
+        claudeApiConfigured,
+      });
+      return NextResponse.json(settings, { headers: noStoreHeaders });
+    } catch (error) {
+      // Keep the API result and the on-disk state consistent. A failed refresh
+      // must not leave the preference cleared while the UI reports failure.
+      if (previousPreference) {
+        writeAgentRuntimePreference(previousPreference);
+      }
+      throw error;
+    }
+  } catch (error) {
+    console.error(
+      "[Agent Runtime Preferences] Failed to clear desktop preference",
+      error,
+    );
+    return NextResponse.json(
+      { error: "runtime_preference_clear_failed" },
       { status: 500 },
     );
   }
