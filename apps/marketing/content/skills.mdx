@@ -62,6 +62,20 @@ To get started, type `/skill-creator` in any chat.
 
 OpenLoomi's core capabilities are packaged as standalone, open-source Skills. Integrate them into any Agent that supports MCP — Claude Code, Codex, OpenClaw, Hermes, and more.
 
+### Install via Skills.sh
+
+For agents that consume the [skills.sh](https://skills.sh/) skill protocol, install the OpenLoomi skill set directly from this repository:
+
+```bash
+npx skills add https://github.com/melandlabs/openloomi/tree/main/skills \
+  --skill openloomi openloomi-setup openloomi-memory openloomi-connectors openloomi-loop openloomi-api openloomi-feature-guide composio \
+  -y
+```
+
+Start with the `openloomi` or `openloomi-setup` skill — it verifies the local OpenLoomi runtime is reachable and walks you through first-use setup. For other runtimes, see the [Plugins](/docs/plugins) page.
+
+### What's included
+
 | Skill                                                                                                                                                | Description                                                                                                                                                                                   |
 | ---------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **[openloomi-memory](#openloomi-memory)** ([GitHub](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi-memory/SKILL.md))             | Search memory files, knowledge base, and chat insights. Memory search, knowledge base, documents, insights                                                                                    |
