@@ -23,6 +23,8 @@ For one-shot tasks, the problem is usually inaccuracy in the result; for long-ru
 
 This kind of "state drift" cannot be solved by simply stretching the context window. Stuffing all conversation history, documents, and tool logs into the context only yields a pile of fragmented information with no hierarchy, temporal order, or causal logic. The model still has to re-identify goals, evidence, decisions, expired information, and pending actions on every turn, and each round of ad hoc judgment drifts and distorts further across long iterations.
 
+![State Drift vs Context Stuffing — Patent No. 2026-0513](/img/blogs/openloomi-context-runtime/state-drift.png)
+
 The key to long-horizon intelligent operation is not that the agent is always online, but that it can "resume precisely after a pause." Whether the task is interrupted for days, the session window changes, new tools are added, or the user reprioritizes, the system can always recalibrate three core questions in real time: has the goal changed, what is new in the real-world situation, and what is the optimal path forward based on the latest state.
 
 > The harness should not carry the entire workflow and all logs in context; instead, it should persist state in the file system rather than in context.
@@ -41,7 +43,9 @@ Therefore, OpenLoomi's memory system does not store redundant history — it onl
 
 This makes OpenLoomi's memory far beyond ordinary retrieval: retrieval only "finds similar content," while executable memory "participates in the decision loop." It supports state updates, conflict checks, expiration invalidation, and revocation backtracking, cleanly distinguishing four categories of information: objective fact, user cognition, agent inference, and unverified hypothesis. The core value of memory is not to let the agent retell the past, but to let it, amid real-world iteration, precisely filter effective history and avoid outdated judgments.
 
-OpenLoomi's four-layer memory architecture ([raw messages / lifecycle summaries / interpretation layer / knowledge layer](https://openloomi.ai/docs/memory)) is the concrete realization of this idea: abandoning the inefficient "stacking text" pattern and building a structured, iterable playbook. The three core components of the industry ACE model translate into actionable product capabilities in OpenLoomi: the Generator corresponds to the ability to read, write, and update memory on every loop tick; the Reflector corresponds to the traceability record after human review; the Curator corresponds to the interpretation layer's automatic merging of information, dispute handling, and pruning of expired decisions. This abstract intelligence logic ultimately lands as a user-perceivable, traceable local file system; all terminology is unified in the glossary.
+OpenLoomi's four-layer memory architecture ([raw messages / lifecycle summaries / interpretation layer / knowledge layer](https://openloomi.ai/docs/memory)) is the concrete realization of this idea: abandoning the inefficient "stacking text" pattern and building a structured, iterable playbook.
+
+![Four-Layer Memory Architecture — Patent No. 2026-0514](/img/blogs/openloomi-context-runtime/four-layer-memory.png) The three core components of the industry ACE model translate into actionable product capabilities in OpenLoomi: the Generator corresponds to the ability to read, write, and update memory on every loop tick; the Reflector corresponds to the traceability record after human review; the Curator corresponds to the interpretation layer's automatic merging of information, dispute handling, and pruning of expired decisions. This abstract intelligence logic ultimately lands as a user-perceivable, traceable local file system; all terminology is unified in the glossary.
 
 ## Context Runtime: Not Concatenating Prompts, but Rebuilding a World for Every Action
 
@@ -56,6 +60,8 @@ This is the essential difference between OpenLoomi and ordinary "long-memory cha
 > The harness is the system that wraps around the base model, orchestrates execution, decides how the model thinks and plans, invokes tools and acts, perceives and manages context, stores artifacts, and evaluates results.
 
 OpenLoomi implements this architecture as the [Loop core cycle](https://openloomi.ai/docs/loop) — a Read → Judge → Write decision loop. The system auto-triggers a tick inspection every 10 minutes: it reads valid memory state (Read), combines the current task boundary to judge the optimal action (Judge), waits for the user's human ruling through one of four gestures — Approve / Edit / Later / Skip — and finally writes the decision along with its supporting evidence back into the interpretation layer to solidify state (Write). Beyond scheduled inspection, automated tasks such as morning briefings, evening reviews, and weekly summaries, as well as inline drafting during conversation, all reuse the same loop rules, differing only in trigger mode.
+
+![Read Judge Write Loop — Patent No. 2026-0515](/img/blogs/openloomi-context-runtime/read-judge-write-loop.png)
 
 ## A Typical Use Case: From One Strategic Judgment to a Continuously Running Work Chain
 
