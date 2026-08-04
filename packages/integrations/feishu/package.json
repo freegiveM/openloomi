@@ -1,18 +1,42 @@
 {
   "name": "@openloomi/integrations-feishu",
   "version": "0.8.8",
-  "private": true,
   "type": "module",
-  "exports": {
-    ".": "./src/index.ts",
-    "./app-registration": "./src/app-registration.ts",
-    "./registration-cookie": "./src/registration-cookie.ts",
-    "./conversation-store": "./src/conversation-store.ts",
-    "./state": "./src/state.ts"
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
   },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js",
+    "./app-registration": "./dist/app-registration.js",
+    "./registration-cookie": "./dist/registration-cookie.js",
+    "./conversation-store": "./dist/conversation-store.js",
+    "./state": "./dist/state.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/melandlabs/openloomi.git",
+    "directory": "packages/integrations/feishu"
+  },
+  "homepage": "https://github.com/melandlabs/openloomi/tree/main/packages/integrations/feishu",
+  "bugs": {
+    "url": "https://github.com/melandlabs/openloomi/issues"
+  },
+  "license": "Apache-2.0",
+  "description": "OpenLoomi \u00b7 integrations/feishu module",
+  "keywords": [
+    "openloomi"
+  ],
   "dependencies": {
-    "@openloomi/integrations-channels": "workspace:*",
-    "@larksuiteoapi/node-sdk": "^1.11.0"
+    "@larksuiteoapi/node-sdk": "^1.11.0",
+    "@openloomi/integrations": "workspace:*",
+    "@openloomi/integrations-channels": "workspace:*"
   },
   "devDependencies": {
     "@openloomi/config": "workspace:*",
@@ -20,7 +44,8 @@
     "vitest": "^4.0.6"
   },
   "scripts": {
-    "build": "echo no build needed",
-    "test": "vitest run"
+    "build": "tsup",
+    "test": "vitest run",
+    "prepublishOnly": "pnpm build"
   }
 }

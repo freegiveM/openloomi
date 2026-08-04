@@ -1,11 +1,30 @@
 {
   "name": "@openloomi/shared",
   "version": "0.8.8",
-  "private": true,
   "type": "module",
-  "exports": {
-    ".": "./src/index.ts"
+  "files": ["dist", "README.md", "LICENSE"],
+  "publishConfig": {
+    "access": "public"
   },
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js",
+    "./errors": "./dist/errors.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/melandlabs/openloomi.git",
+    "directory": "packages/shared"
+  },
+  "homepage": "https://github.com/melandlabs/openloomi/tree/main/packages/shared",
+  "bugs": {
+    "url": "https://github.com/melandlabs/openloomi/issues"
+  },
+  "license": "Apache-2.0",
+  "description": "Shared utility primitives used across OpenLoomi packages.",
+  "keywords": ["openloomi", "shared", "utilities"],
   "dependencies": {
     "clsx": "^2.1.1",
     "tailwind-merge": "^2.5.2",
@@ -23,6 +42,7 @@
     "typescript": "^5.6.3"
   },
   "scripts": {
-    "build": "echo no build needed"
+    "build": "tsup",
+    "prepublishOnly": "pnpm build"
   }
 }

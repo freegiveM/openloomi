@@ -1,17 +1,40 @@
 {
   "name": "@openloomi/storage",
   "version": "0.8.8",
-  "private": true,
   "type": "module",
-  "exports": {
-    ".": "./src/local.ts",
-    "./provider": "./src/provider.ts",
-    "./local": "./src/local.ts",
-    "./memory": "./src/memory.ts",
-    "./adapters": "./src/adapters/index.ts",
-    "./adapters/local-fs": "./src/adapters/local-fs.ts",
-    "./adapters/vercel-blob": "./src/adapters/vercel-blob.ts"
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
   },
+  "main": "./dist/local.js",
+  "types": "./dist/local.d.ts",
+  "exports": {
+    ".": "./dist/local.js",
+    "./provider": "./dist/provider.js",
+    "./local": "./dist/local.js",
+    "./memory": "./dist/memory.js",
+    "./adapters": "./dist/adapters/index.js",
+    "./adapters/local-fs": "./dist/adapters/local-fs.js",
+    "./adapters/vercel-blob": "./dist/adapters/vercel-blob.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/melandlabs/openloomi.git",
+    "directory": "packages/storage"
+  },
+  "homepage": "https://github.com/melandlabs/openloomi/tree/main/packages/storage",
+  "bugs": {
+    "url": "https://github.com/melandlabs/openloomi/issues"
+  },
+  "license": "Apache-2.0",
+  "description": "OpenLoomi · storage module",
+  "keywords": [
+    "openloomi"
+  ],
   "dependencies": {
     "@vercel/blob": "^0.27.1"
   },
@@ -20,6 +43,7 @@
     "typescript": "^5.6.3"
   },
   "scripts": {
-    "build": "echo no build needed"
+    "build": "tsup",
+    "prepublishOnly": "pnpm build"
   }
 }
