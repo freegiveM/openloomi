@@ -65,8 +65,6 @@ export function Footer({
     variant !== undefined ? false : (showBackgroundImage ?? false);
   const useUnifiedStyle = true;
 
-  const [showWechatQR, setShowWechatQR] = useState(false);
-
   const detectPlatform = () => {
     if (typeof window === "undefined") {
       return "unknown";
@@ -341,7 +339,6 @@ export function Footer({
                   <ul className="space-y-3">
                     {column.items.map((item, itemIdx) => {
                       const isExternal = item.href.startsWith("http");
-                      const isWechat = item.name === "Wechat";
                       /**
                        * Link style class names
                        * Landing variant: 80% opacity foreground-primary
@@ -353,10 +350,7 @@ export function Footer({
                           : "text-sm text-foreground-muted hover:text-foreground transition-colors flex items-center gap-2";
                       const hasIcon = "icon" in item && item.icon;
                       return (
-                        <li
-                          key={itemIdx}
-                          className={isWechat ? "group relative" : ""}
-                        >
+                        <li key={itemIdx}>
                           {isExternal ? (
                             <a
                               href={item.href}
@@ -367,16 +361,6 @@ export function Footer({
                               {hasIcon && item.icon}
                               <span>{item.name}</span>
                             </a>
-                          ) : isWechat ? (
-                            <>
-                              <div
-                                className={`${linkClasses} cursor-pointer`}
-                                onClick={() => setShowWechatQR(!showWechatQR)}
-                              >
-                                {hasIcon && item.icon}
-                                <span>{item.name}</span>
-                              </div>
-                            </>
                           ) : (
                             <Link href={item.href} className={linkClasses}>
                               {hasIcon && item.icon}
