@@ -5,7 +5,7 @@ description: "Choose and configure the agent runtime used for OpenLoomi native a
 
 # Agent Runtimes
 
-OpenLoomi can delegate native agent tasks to its built-in Claude Agent SDK runtime or to locally installed CLI runtimes. Runtime selection is deployment configuration: set `OPENLOOMI_AGENT_PROVIDER` before starting OpenLoomi, then restart the process after changing it. The runtime cannot be selected or reconfigured from a chat/API request.
+OpenLoomi can delegate native agent tasks to its built-in Claude Agent SDK runtime or to locally installed CLI runtimes. Desktop users can select Claude or Codex CLI under **Settings → Agent runtime**. Claude's runtime is bundled with the desktop app and accepts a complete saved Anthropic-compatible API configuration or supported existing Claude authentication; Codex requires a local installation and CLI login. The app performs read-only version and authentication checks before enabling a switch. Server/headless deployments and the other runtimes use `OPENLOOMI_AGENT_PROVIDER`. A chat/API request cannot change the runtime.
 
 ## Overview
 
@@ -13,19 +13,19 @@ OpenLoomi can delegate native agent tasks to its built-in Claude Agent SDK runti
 
 The supported runtimes sit at different layers:
 
-- **Claude** runs in-process via the Agent SDK — OpenLoomi owns the lifecycle.
+- **Claude** is controlled through the Agent SDK, which launches the Claude runtime bundled with OpenLoomi Desktop as a child process.
 - **Codex, OpenCode, Hermes** are CLI subprocesses that OpenLoomi spawns per task and reads a JSON event stream from.
 - **OpenClaw** adds a Gateway that brokers sessions and device pairing.
 
 Selecting a runtime chooses the `AgentPlugin`/`IAgent` implementation that executes a task; it does not turn that runtime into an OpenLoomi sandbox provider. The host and selected runtime still enforce their own filesystem, process, network, and approval boundaries.
 
-| Provider                                            | Role      | Runtime path                          | Configuration source         |
-| --------------------------------------------------- | --------- | ------------------------------------- | ---------------------------- |
-| [Claude](/docs/reference/agent-runtimes/claude)     | Default   | Claude Agent SDK `query()`            | OpenLoomi API settings / env |
-| [Codex](/docs/reference/agent-runtimes/codex)       | Secondary | `codex exec --json`                   | Environment and Codex CLI    |
-| [OpenCode](/docs/reference/agent-runtimes/opencode) | Optional  | `opencode run --format json`          | Environment and OpenCode     |
-| [Hermes](/docs/reference/agent-runtimes/hermes)     | Optional  | `hermes acp`                          | Environment and Hermes       |
-| [OpenClaw](/docs/reference/agent-runtimes/openclaw) | Optional  | `openclaw acp` plus a running Gateway | Environment and OpenClaw     |
+| Provider                                            | Role      | Runtime path                          | Configuration source        |
+| --------------------------------------------------- | --------- | ------------------------------------- | --------------------------- |
+| [Claude](/docs/reference/agent-runtimes/claude)     | Default   | Agent SDK + bundled Claude runtime    | Desktop setting / API / env |
+| [Codex](/docs/reference/agent-runtimes/codex)       | Secondary | `codex exec --json`                   | Desktop setting / Codex CLI |
+| [OpenCode](/docs/reference/agent-runtimes/opencode) | Optional  | `opencode run --format json`          | Environment and OpenCode    |
+| [Hermes](/docs/reference/agent-runtimes/hermes)     | Optional  | `hermes acp`                          | Environment and Hermes      |
+| [OpenClaw](/docs/reference/agent-runtimes/openclaw) | Optional  | `openclaw acp` plus a running Gateway | Environment and OpenClaw    |
 
 Each runtime guide covers installation, authentication, OpenLoomi environment variables, permission behavior, verification, and troubleshooting:
 
@@ -34,6 +34,14 @@ Each runtime guide covers installation, authentication, OpenLoomi environment va
 - **[OpenCode CLI runtime](/docs/reference/agent-runtimes/opencode)** — Direct non-interactive CLI integration with JSON events.
 - **[Hermes ACP runtime](/docs/reference/agent-runtimes/hermes)** — Local ACP server integration with profile and model selection.
 - **[OpenClaw ACP runtime](/docs/reference/agent-runtimes/openclaw)** — Gateway-backed ACP integration with session and device pairing.
+
+Desktop runtime selection resolves in this order:
+
+1. The device preference saved from Settings (Claude or Codex)
+2. `OPENLOOMI_AGENT_PROVIDER`
+3. Claude as the default
+
+The device preference is local to that desktop installation. It does not alter deployment environment variables and only affects tasks started after the change. Select **Use environment/default** in Settings to delete the desktop override and return to the environment/default resolution path.
 
 Agent runtimes and sandboxes are separate layers. Selecting a runtime chooses the `AgentPlugin`/`IAgent` implementation that executes a task; it does not turn that runtime into an OpenLoomi sandbox provider. The host and selected runtime still enforce their own filesystem, process, network, and approval boundaries.
 

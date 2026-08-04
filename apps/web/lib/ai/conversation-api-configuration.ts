@@ -26,10 +26,10 @@ export type ConversationApiSettingsResponse = {
    */
   defaultAgent?: string;
   /**
-   * Probe of the user's local Claude CLI, surfaced by
-   * `/api/preferences/ai`. `authenticated: true` means `claude auth
-   * login` succeeded and the runtime can talk to Anthropic without
-   * any per-user key.
+   * Probe of the Claude runtime bundled with OpenLoomi Desktop, surfaced by
+   * `/api/preferences/ai`. `authenticated: true` means it found supported
+   * Claude authentication for the same OS account, so no per-user API setting
+   * is required.
    */
   nativeRuntime?: { ready?: boolean; authenticated?: boolean } | null;
 };
@@ -60,8 +60,8 @@ export function hasUsableConversationApiConfiguration(
     return true;
   }
 
-  // Built-in Claude agent: if the user's local `claude` CLI is
-  // authenticated (probed server-side), no per-user key is needed.
+  // Built-in Claude agent: if the bundled runtime finds supported existing
+  // authentication (probed server-side), no per-user key is needed.
   // `systemDefaults.anthropic_compatible.hasApiKey` is intentionally
   // NOT consulted here — it was a stale env-var mirror and would
   // falsely mark the user as configured in Tauri builds launched

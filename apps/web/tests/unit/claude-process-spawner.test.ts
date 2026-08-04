@@ -102,7 +102,7 @@ describe("createClaudeCodeProcessSpawner", () => {
       platform: "win32",
       command: "C:/app/cli-bundle/claude.cmd",
       expectedCommand: "node",
-      expectedArgumentPrefix: "C:/app/cli-bundle/cli.js",
+      expectedArgumentPrefix: "--max-old-space-size=8192",
       clearsChildMarker: true,
       killsWindowsTree: true,
     },
@@ -278,8 +278,32 @@ describe("createClaudeCodeProcessSpawner", () => {
     const [spawnedCommand, spawnedArguments] =
       childProcessMocks.spawn.mock.calls[0];
     expect(spawnedCommand).toBe("node");
-    expect(normalizePath(spawnedArguments[0])).toBe(
+    expect(normalizePath(spawnedArguments[1])).toBe(
       "D:/real-claude-bundle/cli.js",
     );
+  });
+
+  it("prefers the bundled Node executable for a Windows legacy bundle", () => {
+    operatingSystemMocks.platform.mockReturnValue("win32");
+    fileSystemMocks.existsSync.mockImplementation(
+      (path) => normalizePath(path) === "C:/app/cli-bundle/node.exe",
+    );
+    childProcessMocks.spawn.mockReturnValue(createFakeChildProcess());
+
+    createClaudeCodeProcessSpawner(vi.fn())({
+      command: "C:/app/cli-bundle/claude.cmd",
+      args: ["--version"],
+      env: {},
+      signal: new AbortController().signal,
+    });
+
+    const [spawnedCommand, spawnedArguments] =
+      childProcessMocks.spawn.mock.calls[0];
+    expect(normalizePath(spawnedCommand)).toBe("C:/app/cli-bundle/node.exe");
+    expect(spawnedArguments).toEqual([
+      "--max-old-space-size=8192",
+      join("C:/app/cli-bundle", "cli.js"),
+      "--version",
+    ]);
   });
 });

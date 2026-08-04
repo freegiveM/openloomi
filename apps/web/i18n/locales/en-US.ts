@@ -310,6 +310,72 @@ const en = {
       "Loop is on — Loomi reads your mail, calendar, code, and chat through your connectors in the background and combines that with screen memory to fill your morning brief. Toggle off here if you'd rather not.",
     aiSettingsDescription:
       "Configure per-user API settings for compatible AI providers.",
+    agentRuntimeTitle: "Agent runtime",
+    agentRuntimeDescription:
+      "Choose the agent runtime OpenLoomi uses for new tasks. Claude is built in; Codex uses its local CLI. Running tasks are not interrupted.",
+    agentRuntimeClaudeDescription:
+      "Powered by Claude Agent SDK with its runtime bundled in OpenLoomi—no separate Claude CLI installation required. Use a saved Anthropic-compatible API configuration or existing Claude authentication.",
+    agentRuntimeCodexDescription:
+      "Use your local Codex CLI installation and account.",
+    agentRuntimeChecking: "Checking local runtimes…",
+    agentRuntimeBuiltIn: "Built in",
+    agentRuntimeReady: "Ready",
+    agentRuntimeAuthenticationRequired: "Authentication required",
+    agentRuntimeLoginRequired: "Sign-in required",
+    agentRuntimeNotInstalled: "Not installed",
+    agentRuntimeBuiltInUnavailable: "Built-in runtime unavailable",
+    agentRuntimeUnverifiedShort: "Could not verify",
+    agentRuntimeInUse: "In use",
+    agentRuntimeReadyDescription:
+      "{{runtime}} is installed and signed in. This check does not start a model request.",
+    agentRuntimeClaudeApiReadyDescription:
+      "The built-in Claude runtime will use your saved Anthropic-compatible configuration. Test the connection below, then confirm it with a new task.",
+    agentRuntimeClaudeAuthReadyDescription:
+      "The built-in Claude runtime found existing Claude authentication. This check does not start a model request.",
+    agentRuntimeClaudeAuthenticationDescription:
+      "Save an Anthropic-compatible API configuration below. If this OS account already has Claude authentication, check again to reuse it.",
+    agentRuntimeLoginDescription:
+      "Run this command in a terminal, finish signing in, then check again.",
+    agentRuntimeCodexInstallTitle: "Install and sign in to Codex CLI",
+    agentRuntimeCodexInstallOpenTerminal: "Open {{terminal}}.",
+    agentRuntimeCodexInstallRunInstaller:
+      "Copy and run the official install command.",
+    agentRuntimeCodexInstallSkipLaunch:
+      'When "Start Codex now? [y/N]" appears at the end, press Enter to keep the default N. Do not start Codex yet.',
+    agentRuntimeCodexInstallExitAccidentalLaunch:
+      'If you already selected y and see "Hooks need review", select "3. Continue without trusting". After Codex opens, enter /exit or press Ctrl+C to close it.',
+    agentRuntimeCodexInstallSignIn:
+      "After the installer returns to {{terminal}}, close that window and open a new one. Run this command and finish signing in in your browser. When sign-in succeeds, you can close the browser page and {{terminal}}.",
+    agentRuntimeCodexInstallReturn:
+      "Return here and select {{checkAction}}. Once Codex CLI is ready, select {{useAction}} if it does not already show {{inUse}}. You do not need to restart OpenLoomi.",
+    agentRuntimeTerminal: "Terminal",
+    agentRuntimeClaudeUnavailableDescription:
+      "OpenLoomi could not load its built-in Claude runtime. Update or repair the desktop app, then check again.",
+    agentRuntimeUnverified: "OpenLoomi could not verify the local runtimes.",
+    agentRuntimeUnverifiedDescription:
+      "OpenLoomi could not verify this CLI. Confirm it runs in your terminal, then check again.",
+    agentRuntimeClaudeUnverifiedDescription:
+      "OpenLoomi could not verify the built-in Claude runtime. Open the troubleshooting guide, then check again.",
+    agentRuntimeManagedByEnvironment:
+      "The current runtime is managed by the environment: {{provider}}. Choose Claude or Codex to create a desktop preference.",
+    agentRuntimePreferenceOverrideDescription:
+      "This desktop preference overrides the environment/default runtime for new tasks.",
+    agentRuntimeUseManagedSetting: "Use environment/default",
+    agentRuntimePreferenceCleared: "Desktop runtime preference cleared.",
+    agentRuntimeClearError: "Failed to restore the managed runtime setting.",
+    agentRuntimeOfficialInstructions: "Official instructions",
+    agentRuntimeSetupGuide: "Setup guide",
+    agentRuntimeTroubleshootingGuide: "Troubleshooting guide",
+    agentRuntimeCheckAgain: "Check again",
+    agentRuntimeTryAgain: "Try again",
+    agentRuntimeUse: "Use {{runtime}}",
+    agentRuntimeCopy: "Copy",
+    agentRuntimeCopied: "Copied",
+    agentRuntimeSaved: "Agent runtime updated for new tasks.",
+    agentRuntimeLoadError: "Failed to check agent runtimes.",
+    agentRuntimeSaveError: "Failed to update the agent runtime.",
+    agentRuntimeNotReadyError:
+      "The selected runtime is no longer ready. Complete setup and check again.",
     conversationModelsTitle: "Conversation models",
     aiSettingsOpenAiTitle: "OpenAI compatible",
     aiSettingsOpenAiDescription:

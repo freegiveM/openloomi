@@ -18,6 +18,15 @@ import {
   registerNativeAgentPermission,
 } from "./permissions";
 
+// The HTTP route resolves provider selection at its trust boundary before it
+// reaches this wrapper. Do not resolve it again inside the package runner: the
+// desktop preference is mutable, so two reads could select different runtimes
+// for execution and usage attribution within one request.
+const preparedNativeAgentHost = {
+  ...nativeAgentHost,
+  prepareRequest: undefined,
+};
+
 export type { NativeAgentRequest, NativeAgentRun };
 export { NativeAgentRequestError };
 
@@ -40,24 +49,24 @@ export interface NativeAgentRunnerContext extends Omit<
  * @openloomi/ai/agent/native-runner directly with nativeAgentHost.
  */
 export async function runNativeAgentRequest(
-  body: NativeAgentRequest,
+  preparedBody: NativeAgentRequest,
   context: NativeAgentRunnerContext,
 ): Promise<NativeAgentRun> {
   return runPackageNativeAgentRequest(
-    body,
+    preparedBody,
     {
       ...context,
       permissionHandler:
         context.permissionHandler ??
         createNativeAgentPermissionHandler(
-          body.permissionMode,
+          preparedBody.permissionMode,
           context.userId,
           context.abortController.signal,
         ),
       emitPermissionRequestEvents:
         context.emitPermissionRequestEvents ?? !context.permissionHandler,
     },
-    nativeAgentHost,
+    preparedNativeAgentHost,
   );
 }
 

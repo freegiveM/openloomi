@@ -1,7 +1,9 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { platform } from "node:os";
+import { type ChildProcess, spawn } from "node:child_process";
+import { existsSync, readdirSync } from "node:fs";
+import { homedir, platform } from "node:os";
+import { delimiter, join } from "node:path";
 
-const terminatingProcesses = new WeakSet<ChildProcessWithoutNullStreams>();
+const terminatingProcesses = new WeakSet<ChildProcess>();
 const POSIX_TERMINATION_GRACE_MS = 2_000;
 export const MAX_CLI_PROTOCOL_LINE_CHARS = 16 * 1024 * 1024;
 const MAX_CAPTURED_OUTPUT_CHARS = 1024 * 1024;
@@ -35,6 +37,88 @@ const RUNTIME_ENV_PREFIXES = ["OPENCODE_", "HERMES_", "OPENCLAW_", "CODEX_"];
 
 export function shouldDetachCliProcess(): boolean {
   return platform() !== "win32";
+}
+
+/**
+ * Desktop apps inherit a much shorter PATH than an interactive shell. Keep
+ * runtime probes and actual CLI execution on the same search path so a CLI
+ * reported as ready is also launchable when a task starts.
+ */
+export function buildAgentCliSearchPath(
+  basePath = process.env.PATH ?? "",
+  options: {
+    platform?: NodeJS.Platform;
+    homeDirectory?: string;
+    localAppData?: string;
+  } = {},
+): string {
+  const currentPlatform = options.platform ?? platform();
+  const home = options.homeDirectory ?? homedir();
+  const paths = basePath
+    .split(delimiter)
+    .map((entry) => entry.replace(/^"|"$/g, "").trim())
+    .filter(Boolean);
+
+  if (currentPlatform === "win32") {
+    const localAppData =
+      options.localAppData?.trim() ||
+      process.env.LOCALAPPDATA?.trim() ||
+      join(home, "AppData", "Local");
+    paths.push(
+      join(home, ".local", "bin"),
+      join(home, "AppData", "Roaming", "npm"),
+      join(home, "AppData", "Local", "Programs", "nodejs"),
+      join(localAppData, "Programs", "OpenAI", "Codex", "bin"),
+      join(home, ".volta", "bin"),
+      "C:\\Program Files\\nodejs",
+      "C:\\Program Files (x86)\\nodejs",
+    );
+  } else {
+    paths.push(
+      "/usr/local/bin",
+      "/opt/homebrew/bin",
+      join(home, ".local", "bin"),
+      join(home, ".npm-global", "bin"),
+      join(home, ".volta", "bin"),
+      join(home, ".bun", "bin"),
+      join(home, "Library", "pnpm"),
+      join(home, ".local", "share", "pnpm"),
+      join(home, "code", "node", "npm_global", "bin"),
+    );
+
+    const nvmDirectory = join(home, ".nvm", "versions", "node");
+    try {
+      if (existsSync(nvmDirectory)) {
+        for (const version of readdirSync(nvmDirectory)) {
+          paths.push(join(nvmDirectory, version, "bin"));
+        }
+      }
+    } catch {
+      // nvm is optional and may be unreadable in hardened desktop installs.
+    }
+  }
+
+  return Array.from(new Set(paths)).join(delimiter);
+}
+
+/** Resolve commands in the same directory-first order used by PATH lookup. */
+export function findCliExecutableOnSearchPath(
+  searchPath: string,
+  candidates: readonly string[],
+): string | null {
+  const directories = searchPath
+    .split(delimiter)
+    .map((directory) => directory.replace(/^"|"$/g, "").trim())
+    .filter(Boolean);
+
+  for (const directory of directories) {
+    for (const candidate of candidates) {
+      const command = join(directory, candidate);
+      if (existsSync(command)) return command;
+    }
+  }
+
+  return null;
 }
 
 /**
@@ -83,9 +167,7 @@ export function appendCapturedCliOutput(
  * Stop the CLI and descendants it launched. POSIX children are spawned as a
  * process-group leader so a disconnect cannot leave tool processes running.
  */
-export function terminateCliProcessTree(
-  proc: ChildProcessWithoutNullStreams,
-): void {
+export function terminateCliProcessTree(proc: ChildProcess): void {
   if (
     terminatingProcesses.has(proc) ||
     proc.exitCode !== null ||
@@ -116,7 +198,7 @@ export function terminateCliProcessTree(
 }
 
 function signalPosixProcessGroup(
-  proc: ChildProcessWithoutNullStreams,
+  proc: ChildProcess,
   signal: NodeJS.Signals,
 ): void {
   try {

@@ -84,6 +84,7 @@ describe("packaged native-agent CLI bundle", () => {
 
     const childEnv: NodeJS.ProcessEnv = {
       ...process.env,
+      HOME: workDir,
       NODE_OPTIONS: "--conditions=react-server",
       OPENLOOMI_AGENT_PROVIDER: "codex",
       OPENLOOMI_AGENT_CODEX_COMMAND: process.execPath,
@@ -93,6 +94,7 @@ describe("packaged native-agent CLI bundle", () => {
       TAURI_MODE: "1",
       TAURI_DATA_DIR: join(workDir, "data"),
       TAURI_DB_PATH: join(workDir, "data", "data.db"),
+      USERPROFILE: workDir,
     };
     childEnv.ANTHROPIC_API_KEY = undefined;
     childEnv.ANTHROPIC_AUTH_TOKEN = undefined;

@@ -296,6 +296,69 @@ const zh = {
       "Loop 已开启 —— Loomi 在后台通过连接器读取你的邮件、日历、代码与聊天等来源，并结合屏幕记忆来填你的早安简报。如果你不希望这样，可以在这里关掉。",
     aiSettingsDescription:
       "为当前用户配置兼容的 AI 服务商接口，保存后会优先使用用户配置。",
+    agentRuntimeTitle: "Agent 运行时",
+    agentRuntimeDescription:
+      "选择 OpenLoomi 在新任务中使用的 Agent 运行时。Claude 已内置，Codex 使用本机 CLI；正在运行的任务不会被中断。",
+    agentRuntimeClaudeDescription:
+      "由 Claude Agent SDK 驱动，运行组件已随 OpenLoomi 内置，无需另装 Claude CLI。可使用已保存的 Anthropic 兼容 API 配置或已有 Claude 认证。",
+    agentRuntimeCodexDescription: "使用本机 Codex CLI 及其登录账号。",
+    agentRuntimeChecking: "正在检查本地运行时…",
+    agentRuntimeBuiltIn: "内置",
+    agentRuntimeReady: "已就绪",
+    agentRuntimeAuthenticationRequired: "需要认证",
+    agentRuntimeLoginRequired: "需要登录",
+    agentRuntimeNotInstalled: "尚未安装",
+    agentRuntimeBuiltInUnavailable: "内置运行组件不可用",
+    agentRuntimeUnverifiedShort: "无法验证",
+    agentRuntimeInUse: "使用中",
+    agentRuntimeReadyDescription:
+      "{{runtime}} 已安装并登录；此检查不会实际发起模型请求。",
+    agentRuntimeClaudeApiReadyDescription:
+      "内置 Claude 运行时将使用已保存的 Anthropic 兼容配置；请先在下方测试连接，再通过一个新任务确认实际运行。",
+    agentRuntimeClaudeAuthReadyDescription:
+      "内置 Claude 运行时已检测到当前系统账号的 Claude 认证；此检查不会实际发起模型请求。",
+    agentRuntimeClaudeAuthenticationDescription:
+      "请在下方保存 Anthropic 兼容 API 配置；如果当前系统账号已有 Claude 认证，请重新检查以复用它。",
+    agentRuntimeLoginDescription:
+      "请在终端运行以下命令并完成登录，然后重新检查。",
+    agentRuntimeCodexInstallTitle: "安装并登录 Codex CLI",
+    agentRuntimeCodexInstallOpenTerminal: "打开 {{terminal}}。",
+    agentRuntimeCodexInstallRunInstaller: "复制并运行以下官方安装命令。",
+    agentRuntimeCodexInstallSkipLaunch:
+      "安装结束时如果出现“Start Codex now? [y/N]”，直接按 Enter，保持默认选项 N；此时不要启动 Codex。",
+    agentRuntimeCodexInstallExitAccidentalLaunch:
+      "如果已经误选 y，并看到“Hooks need review”，请选择“3. Continue without trusting”。进入 Codex 后输入 /exit（或按 Ctrl+C）将其关闭。",
+    agentRuntimeCodexInstallSignIn:
+      "安装程序返回 {{terminal}} 后，关闭这个窗口，再打开一个新的 {{terminal}}。运行以下命令并在浏览器中完成登录；提示登录成功后，可以关闭浏览器页面和 {{terminal}}。",
+    agentRuntimeCodexInstallReturn:
+      "回到这里点击“{{checkAction}}”。确认 Codex CLI 已就绪后，如果尚未显示“{{inUse}}”，再点击“{{useAction}}”。无需重启 OpenLoomi。",
+    agentRuntimeTerminal: "终端",
+    agentRuntimeClaudeUnavailableDescription:
+      "OpenLoomi 无法加载内置 Claude 运行组件。请更新或修复桌面应用，然后重新检查。",
+    agentRuntimeUnverified: "OpenLoomi 无法验证本地运行时。",
+    agentRuntimeUnverifiedDescription:
+      "OpenLoomi 无法验证此 CLI。请确认它能在终端运行，然后重新检查。",
+    agentRuntimeClaudeUnverifiedDescription:
+      "OpenLoomi 无法验证内置 Claude 运行组件。请打开故障排查指南，然后重新检查。",
+    agentRuntimeManagedByEnvironment:
+      "当前运行时由环境变量管理：{{provider}}。选择 Claude 或 Codex 后将创建桌面偏好。",
+    agentRuntimePreferenceOverrideDescription:
+      "此桌面偏好会覆盖环境变量或默认运行时，并用于新任务。",
+    agentRuntimeUseManagedSetting: "使用环境变量/默认值",
+    agentRuntimePreferenceCleared: "已清除桌面运行时偏好。",
+    agentRuntimeClearError: "恢复环境变量或默认运行时失败。",
+    agentRuntimeOfficialInstructions: "查看官方说明",
+    agentRuntimeSetupGuide: "配置指南",
+    agentRuntimeTroubleshootingGuide: "故障排查指南",
+    agentRuntimeCheckAgain: "重新检查",
+    agentRuntimeTryAgain: "重试",
+    agentRuntimeUse: "使用 {{runtime}}",
+    agentRuntimeCopy: "复制",
+    agentRuntimeCopied: "已复制",
+    agentRuntimeSaved: "Agent 运行时已更新，将用于新任务。",
+    agentRuntimeLoadError: "Agent 运行时检查失败。",
+    agentRuntimeSaveError: "Agent 运行时更新失败。",
+    agentRuntimeNotReadyError: "所选运行时已不再就绪，请完成配置后重新检查。",
     conversationModelsTitle: "对话模型",
     aiSettingsOpenAiTitle: "OpenAI 兼容",
     aiSettingsOpenAiDescription:

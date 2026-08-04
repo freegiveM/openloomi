@@ -133,18 +133,16 @@ function spawnClaudeCodeProcess(
     }
     const cliJsPath = join(bundleDir, "cli.js");
 
-    let nodeToUse: string;
-    if (os === "win32") {
+    const bundledNode = join(bundleDir, os === "win32" ? "node.exe" : "node");
+    let nodeToUse = existsSync(bundledNode) ? bundledNode : "node";
+    if (nodeToUse === "node" && os === "win32") {
       const openloomiNode = join(homedir(), ".openloomi", "node", "node.exe");
       nodeToUse = existsSync(openloomiNode) ? openloomiNode : "node";
-    } else {
-      const nodeBinPath = join(bundleDir, "node");
-      nodeToUse = existsSync(nodeBinPath) ? nodeBinPath : "node";
     }
 
     const childProcess = spawnRegistered(
       nodeToUse,
-      [cliJsPath, ...options.args],
+      ["--max-old-space-size=8192", cliJsPath, ...options.args],
       { ...options.env, CLAUDECODE: "" },
     );
 

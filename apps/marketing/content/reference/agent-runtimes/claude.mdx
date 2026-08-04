@@ -11,13 +11,15 @@ Unlike the direct OpenCode and Codex CLI adapters, the Claude integration is an 
 
 ## Runtime availability
 
-Packaged OpenLoomi builds can include a bundled Claude runtime. When resolving the executable, OpenLoomi checks these sources in order:
+OpenLoomi Desktop builds include a bundled Claude runtime. When resolving the executable, OpenLoomi checks these sources in order:
 
 1. The Claude runtime bundled with OpenLoomi
 2. `CLAUDE_CODE_PATH`
 3. A user-installed `claude` executable
 
-If the packaged runtime is present, no separate Claude Code installation is required. Development checkouts and server deployments without the bundle must make Claude Code available to the operating-system user that starts OpenLoomi.
+Desktop users do not install Claude Code separately. Development checkouts and server deployments without the bundle must make Claude Code available to the operating-system user that starts OpenLoomi.
+
+The following installation steps are only for development or server builds that do not contain the desktop runtime bundle.
 
 Official native installation:
 
@@ -42,9 +44,13 @@ claude doctor
 
 See the official [Claude Code installation guide](https://code.claude.com/docs/en/installation) for current system requirements, Homebrew, WinGet, package-manager, and platform-specific instructions.
 
+### Select it in the desktop app
+
+Open **Settings → Agent runtime** and choose **Claude**. Save a complete Anthropic-compatible configuration in **Conversation models**, or reuse supported Claude authentication already available to the same OS account, then select **Check again**. Once the status is **Ready**, use it for new tasks. If the built-in runtime is unavailable, update or repair OpenLoomi Desktop rather than installing a second copy of Claude Code.
+
 ## Authentication and model configuration
 
-For normal OpenLoomi use, configure the model in the application's API Settings. A saved `anthropic_compatible` setting supplies the endpoint, credential, and model for that user and takes precedence over request defaults.
+For normal OpenLoomi use, configure the model in the application's Conversation models settings. A saved `anthropic_compatible` setting supplies the endpoint, credential, and model for that user and takes precedence over existing Claude authentication. Use the connection test as an endpoint check, then start a new task to confirm that the provider supports the complete Agent SDK request and tool-use path.
 
 Server deployments can provide the same configuration through environment variables. For direct Anthropic API access:
 
@@ -109,19 +115,19 @@ See the official [Agent SDK permissions documentation](https://code.claude.com/d
 
 ## Verify the integration
 
-For a development or server installation, first verify the same operating-system user can authenticate and run a non-interactive Claude request:
+For a development or server installation without the bundled runtime, first verify the same operating-system user can authenticate and run a non-interactive Claude request:
 
 ```bash
 claude -p "Reply with exactly: CLAUDE_READY"
 ```
 
-Then leave `OPENLOOMI_AGENT_PROVIDER` unset—or set it to `claude`—start OpenLoomi, and submit a read-only prompt. A healthy run emits a session, streamed text and reasoning where available, tool events when used, a result containing usage information, and a final done event.
+For OpenLoomi Desktop, select Claude in Settings and submit a small read-only prompt; no standalone CLI verification is required. A healthy run emits a session, streamed text and reasoning where available, tool events when used, a result containing usage information, and a final done event.
 
 To verify a custom Anthropic-compatible provider, use the same endpoint, token, and model in both the direct command environment and OpenLoomi API Settings. The provider must support the Anthropic Messages behavior required by the Claude Agent SDK and the tools used by the task.
 
 ## Troubleshooting
 
-- **Claude runtime not found:** run `claude --version` as the OpenLoomi service user, set `CLAUDE_CODE_PATH` to an absolute executable path, or rebuild/package OpenLoomi with its Claude runtime bundle.
+- **Built-in runtime unavailable in OpenLoomi Desktop:** update or repair the desktop installation, then select **Check again**. For a development/server build only, run `claude --version` as the service user, set `CLAUDE_CODE_PATH` to an absolute executable path, or build with the runtime bundle.
 - **Authentication fails:** check the saved OpenLoomi API setting and environment for conflicting credentials. `ANTHROPIC_AUTH_TOKEN` takes precedence over `ANTHROPIC_API_KEY`; use `/status` inside Claude Code or the official authentication guide to confirm the active method.
 - **Model not found:** verify the saved model or `ANTHROPIC_MODEL` is valid for the selected endpoint. Custom gateways may use model identifiers that differ from Anthropic's public IDs.
 - **Compatible endpoint rejects a request:** confirm it implements the Anthropic Messages and tool-use behavior required by the Agent SDK. Some text-only compatibility layers cannot run the Claude agent loop.

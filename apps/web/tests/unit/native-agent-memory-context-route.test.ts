@@ -450,6 +450,7 @@ describe("native agent memory-context route", () => {
       await response.text();
 
       expect(response.status).toBe(200);
+      expect(mocks.resolveProviderRequest).toHaveBeenCalledTimes(1);
       expect(mocks.capturedPrompts).toHaveLength(1);
       expect(mocks.capturedPrompts[0]).toContain(
         "Use my stored preference for concise answers",

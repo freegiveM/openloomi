@@ -10,6 +10,7 @@ import type { NativeAgentRequest } from "@openloomi/ai/agent/native-runner";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 const AGENT_ENV_KEYS = [
+  "IS_TAURI",
   "OPENLOOMI_AGENT_PROVIDER",
   "OPENLOOMI_AGENT_OPENCODE_COMMAND",
   "OPENLOOMI_AGENT_OPENCODE_MODEL",
@@ -39,6 +40,7 @@ const AGENT_ENV_KEYS = [
   "OPENLOOMI_AGENT_CODEX_SKIP_GIT_REPO_CHECK",
   "OPENLOOMI_AGENT_CODEX_FULL_AUTO",
   "OPENLOOMI_AGENT_CODEX_TIMEOUT_MS",
+  "TAURI_MODE",
 ];
 
 let originalEnv: NodeJS.ProcessEnv;
