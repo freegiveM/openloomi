@@ -34,7 +34,6 @@
 		"db:up": "drizzle-kit up",
 		"pretest:unit": "node -e \"const fs=require('node:fs');fs.mkdirSync('coverage/unit/.tmp',{recursive:true});\"",
 		"test": "vitest run --coverage",
-		"test:benchmark": "tsx tests/benchmark/run-live.ts",
 		"tsc": "node ./scripts/run-cross-env.cjs NODE_OPTIONS=--max-old-space-size=16384 node ../../node_modules/typescript/bin/tsc",
 		"tauri:dev": "node ./scripts/run-cross-env.cjs IS_TAURI=true PORT=3515 pnpm tauri dev --config src-tauri/tauri.conf.dev.json",
 		"tauri:build": "pnpm tauri build && node scripts/check-cli-bundled.js . && node scripts/optimize-tauri-bundle.js",

@@ -497,7 +497,6 @@ export default defineConfig({
       "tests/unit/*/*.test.ts",
       "tests/api/*.test.ts",
       "tests/api/*.smoke.ts",
-      "tests/benchmark/*.test.ts",
     ],
     exclude: ["node_modules", ".next", "out"],
     globals: true,
