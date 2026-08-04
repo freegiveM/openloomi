@@ -2,6 +2,43 @@ const DEFAULT_SPEECH_ENDPOINT = "/api/ai/v1/audio/speech";
 const DEFAULT_FALLBACK_VOICE = "af_bella";
 const DEFAULT_WARMUP_TEXT = "Hi.";
 
+function stripFencedCodeBlocks(text: string): string {
+  const outputLines: string[] = [];
+  let activeFence: { marker: string; length: number } | null = null;
+
+  for (const line of text.split(/\r?\n/)) {
+    const fenceMatch = line.match(/^[ \t]{0,3}(`{3,}|~{3,})(.*)$/);
+
+    if (activeFence) {
+      const isClosingFence =
+        fenceMatch &&
+        fenceMatch[1][0] === activeFence.marker &&
+        fenceMatch[1].length >= activeFence.length &&
+        fenceMatch[2].trim().length === 0;
+
+      if (isClosingFence) {
+        activeFence = null;
+      }
+      continue;
+    }
+
+    if (fenceMatch) {
+      activeFence = {
+        marker: fenceMatch[1][0],
+        length: fenceMatch[1].length,
+      };
+      continue;
+    }
+
+    outputLines.push(line);
+  }
+
+  return outputLines
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 function isAbortError(error: unknown): boolean {
   return (
     (error instanceof DOMException && error.name === "AbortError") ||
@@ -88,7 +125,7 @@ export class KokoroPlugin {
       return;
     }
 
-    const input = text.trim();
+    const input = stripFencedCodeBlocks(text);
     if (!input) return;
 
     if (typeof window === "undefined") {
