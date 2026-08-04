@@ -788,6 +788,19 @@ OpenLoomi achieves **96%+ accuracy** on LoCoMo and LongMemEval-S500 benchmarks, 
 
 Memory is also available as a standalone **Skill** for integration with other Agent systems. This allows any AI agent to connect to OpenLoomi's memory capabilities and leverage the same tiered storage, vector search, and knowledge base features.
 
+### Install the Memory Skill
+
+Pick the runtime you live in:
+
+| Runtime                    | Install                                                                                                                                                                                                            |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Skills.sh / skill-only** | `npx skills add https://github.com/melandlabs/openloomi/tree/main/skills --skill openloomi openloomi-setup openloomi-memory openloomi-connectors openloomi-loop openloomi-api openloomi-feature-guide composio -y` |
+| **Claude Code**            | `/plugin marketplace add melandlabs/plugins` then `/plugin install openloomi`                                                                                                                                      |
+| **Codex CLI**              | `codex plugin marketplace add melandlabs/plugins` then `codex plugin add openloomi@openloomi`                                                                                                                      |
+| **MCP runtime**            | `pnpm --filter @openloomi/mcp build` then `node packages/ai/mcp/dist/cli.js`                                                                                                                                       |
+
+Start with the `openloomi` or `openloomi-setup` skill — it verifies the local OpenLoomi runtime is reachable, then routes you into `/openloomi:memory` (or the agent-native equivalent) for full read/write access to the three memory stores. See the [Plugins](/docs/plugins) page for the full runtime matrix.
+
 ### Skill Capabilities
 
 The Memory Skill exposes the following capabilities:
