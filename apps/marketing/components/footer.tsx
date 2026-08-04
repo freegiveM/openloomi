@@ -144,11 +144,6 @@ export function Footer({
           href: "https://xhslink.com/m/B3ZtFPMMke",
           icon: <RemixIcon name="book-3" variant="line" size="size-4" />,
         },
-        {
-          name: "Wechat",
-          href: "/wechat.jpg",
-          icon: <RemixIcon name="wechat" variant="line" size="size-4" />,
-        },
       ],
     },
   ];
@@ -380,25 +375,6 @@ export function Footer({
                               >
                                 {hasIcon && item.icon}
                                 <span>{item.name}</span>
-                              </div>
-                              {/* WeChat QR code - tap to toggle on mobile, hover on desktop */}
-                              <div
-                                className={`absolute bottom-full left-0 mb-3 z-50 ${
-                                  showWechatQR ? "block" : "hidden"
-                                } group-hover:block`}
-                              >
-                                <div
-                                  className="bg-white p-3 rounded-lg shadow-xl border border-gray-200 relative"
-                                  style={{ width: "200px", height: "200px" }}
-                                >
-                                  <Image
-                                    src="/wechat.jpg"
-                                    alt="Wechat QR Code"
-                                    fill
-                                    sizes="200px"
-                                    className="object-contain"
-                                  />
-                                </div>
                               </div>
                             </>
                           ) : (
