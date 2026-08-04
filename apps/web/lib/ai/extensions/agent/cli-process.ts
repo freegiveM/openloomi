@@ -1,7 +1,7 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { platform } from "node:os";
 
-const terminatingProcesses = new WeakSet<ChildProcessWithoutNullStreams>();
+const terminatingProcesses = new WeakSet<ChildProcess>();
 const POSIX_TERMINATION_GRACE_MS = 2_000;
 export const MAX_CLI_PROTOCOL_LINE_CHARS = 16 * 1024 * 1024;
 const MAX_CAPTURED_OUTPUT_CHARS = 1024 * 1024;
@@ -83,9 +83,7 @@ export function appendCapturedCliOutput(
  * Stop the CLI and descendants it launched. POSIX children are spawned as a
  * process-group leader so a disconnect cannot leave tool processes running.
  */
-export function terminateCliProcessTree(
-  proc: ChildProcessWithoutNullStreams,
-): void {
+export function terminateCliProcessTree(proc: ChildProcess): void {
   if (
     terminatingProcesses.has(proc) ||
     proc.exitCode !== null ||
@@ -116,7 +114,7 @@ export function terminateCliProcessTree(
 }
 
 function signalPosixProcessGroup(
-  proc: ChildProcessWithoutNullStreams,
+  proc: ChildProcess,
   signal: NodeJS.Signals,
 ): void {
   try {

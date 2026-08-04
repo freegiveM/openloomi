@@ -3,12 +3,21 @@ import {
   type NativeAgentRequest,
 } from "@openloomi/ai/agent/native-runner";
 import type { AgentProvider } from "@openloomi/ai/agent/types";
-import { readAgentRuntimePreference } from "./runtime-preference";
+import {
+  readAgentRuntimePreference,
+  type SelectableAgentRuntime,
+} from "./runtime-preference";
 
 type EnvSource = Record<string, string | undefined>;
 
 interface ProviderResolutionOptions {
   preferencePath?: string;
+}
+
+export interface ConfiguredAgentProviderResolution {
+  provider: AgentProvider;
+  preference?: SelectableAgentRuntime;
+  source: "preference" | "environment" | "default";
 }
 
 const DEFAULT_AGENT_PROVIDER: AgentProvider = "claude";
@@ -29,14 +38,24 @@ export function getConfiguredDefaultAgentProvider(
   env: EnvSource = process.env,
   options: ProviderResolutionOptions = {},
 ): AgentProvider {
+  return getConfiguredAgentProviderResolution(env, options).provider;
+}
+
+export function getConfiguredAgentProviderResolution(
+  env: EnvSource = process.env,
+  options: ProviderResolutionOptions = {},
+): ConfiguredAgentProviderResolution {
   if (isTauriEnvironment(env)) {
     const preference = readAgentRuntimePreference(options.preferencePath);
     if (preference) {
-      return preference;
+      return { provider: preference, preference, source: "preference" };
     }
   }
 
-  return resolveEnvAgentProvider(env) ?? DEFAULT_AGENT_PROVIDER;
+  const environmentProvider = resolveEnvAgentProvider(env);
+  return environmentProvider
+    ? { provider: environmentProvider, source: "environment" }
+    : { provider: DEFAULT_AGENT_PROVIDER, source: "default" };
 }
 
 export function resolveNativeAgentProviderRequest(

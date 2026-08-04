@@ -1,28 +1,29 @@
 /**
- * Server-side probe for the user's local Claude Code runtime.
+ * Server-side readiness probes for the local Claude Code and Codex CLIs.
  *
- * Single source of truth for "can the user talk to Claude right now". It
- * replaces the previous reliance on `process.env.ANTHROPIC_*` for
- * AI-provider readiness — the user's host-side `claude auth login` is the
- * actual signal, not whatever env vars happened to be set when the
- * OpenLoomi process started.
- *
- * The plugin (plugins/claude) reads this probe via `/api/preferences/ai`
- * rather than spawning its own copies of `claude --version` /
- * `claude auth status`. One probe per node process, cached briefly.
+ * Probes are deliberately read-only: they check the executable version and
+ * the CLI's own authentication status without starting a model request. Raw
+ * probe output stays server-side; UI routes must translate these structures
+ * into the safe summary exported by `runtime-settings.ts`.
  */
 
-import { spawn, type ChildProcess } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
-import { delimiter, join } from "node:path";
 import { homedir, platform } from "node:os";
+import { delimiter, dirname, join, parse } from "node:path";
+import spawn from "cross-spawn";
 
+import {
+  appendCapturedCliOutput,
+  shouldDetachCliProcess,
+  terminateCliProcessTree,
+} from "@/lib/ai/extensions/agent/cli-process";
 import { createLogger } from "@/lib/utils/logger";
 
 const PROBE_TIMEOUT_MS = 5000;
 const CACHE_TTL_MS = 30_000;
 
-const logger = createLogger("NativeClaudeRuntime");
+const logger = createLogger("NativeAgentRuntime");
 
 export type NativeRuntimeStatus =
   | "CLAUDE_CLI_AUTHENTICATED"
@@ -32,6 +33,15 @@ export type NativeRuntimeStatus =
   | "CLAUDE_CLI_VERSION_FAILED"
   | "CLAUDE_CLI_VERSION_TIMEOUT"
   | "CLAUDE_CLI_UNAVAILABLE";
+
+export type CodexRuntimeStatus =
+  | "CODEX_CLI_AUTHENTICATED"
+  | "CODEX_CLI_AUTH_REQUIRED"
+  | "CODEX_CLI_AUTH_STATUS_TIMEOUT"
+  | "CODEX_CLI_AUTH_STATUS_UNAVAILABLE"
+  | "CODEX_CLI_VERSION_FAILED"
+  | "CODEX_CLI_VERSION_TIMEOUT"
+  | "CODEX_CLI_UNAVAILABLE";
 
 export type ProbeResult = {
   ok: boolean;
@@ -43,46 +53,82 @@ export type ProbeResult = {
   timedOut: boolean;
 };
 
-export type NativeRuntimeProbe = {
+type CliPathSource =
+  | "BUNDLED"
+  | "PATH"
+  | "CLAUDE_CODE_PATH"
+  | "OPENLOOMI_AGENT_CODEX_COMMAND"
+  | "FALLBACK"
+  | null;
+
+type BaseRuntimeProbe<
+  Provider extends "claude" | "codex",
+  Status extends string,
+> = {
   checked: true;
+  provider: Provider;
   available: boolean;
   authenticated: boolean;
   active: boolean;
   ready: boolean;
-  reason: NativeRuntimeStatus;
-  defaultAgent: "claude";
+  reason: Status;
   cliPathPresent: boolean;
-  cliPathSource: "PATH" | "CLAUDE_CODE_PATH" | "FALLBACK" | null;
+  cliPathSource: CliPathSource;
   versionPresent: boolean;
+  version: string | null;
   probes: {
     version?: ProbeResult;
     auth?: ProbeResult;
   };
 };
 
-let cache: { at: number; value: NativeRuntimeProbe | null } | null = null;
+export type NativeRuntimeProbe = BaseRuntimeProbe<
+  "claude",
+  NativeRuntimeStatus
+> & {
+  // Kept for the existing `/api/preferences/ai` plugin contract.
+  defaultAgent: "claude";
+};
 
-function candidateBinaries(): string[] {
-  // On Windows the user's installer can drop `claude.exe` (native) or a
-  // `claude.cmd` shim; npm globals also produce `claude.ps1` + `claude.cmd`
-  // pairs. The portable `.exe` is what we want to spawn, but checking all
-  // three keeps us aligned with how Windows resolves PATH lookups.
+export type CodexRuntimeProbe = BaseRuntimeProbe<"codex", CodexRuntimeStatus>;
+
+type RuntimeDefinition<
+  Provider extends "claude" | "codex",
+  Status extends string,
+> = {
+  provider: Provider;
+  binary: Provider;
+  explicitCommand: string | undefined;
+  explicitSource: Exclude<CliPathSource, null>;
+  authArgs: readonly string[];
+  status: {
+    ready: Status;
+    authRequired: Status;
+    authTimeout: Status;
+    authUnavailable: Status;
+    versionFailed: Status;
+    versionTimeout: Status;
+    unavailable: Status;
+  };
+};
+
+let claudeCache: { at: number; value: NativeRuntimeProbe } | null = null;
+let codexCache: { at: number; value: CodexRuntimeProbe } | null = null;
+let claudeInFlight: Promise<NativeRuntimeProbe> | null = null;
+let codexInFlight: Promise<CodexRuntimeProbe> | null = null;
+
+function candidateBinaries(binary: string): string[] {
   if (platform() === "win32") {
-    return ["claude.exe", "claude.cmd", "claude"];
+    return [`${binary}.exe`, `${binary}.cmd`, binary];
   }
-  return ["claude"];
+  return [binary];
 }
 
-// GUI apps launched via `open -a` (or directly by launchd on macOS) inherit
-// a stripped PATH that usually drops user bin dirs like `~/Library/pnpm`,
-// `~/.nvm/versions/node/*/bin`, `~/.local/bin`, etc. The bridge plugin
-// works around this with its own `getClaudeCliProbePath()` — we mirror
-// that here and additionally glob the nvm versions dir, since nvm can't
-// be expressed as a single PATH entry. Without this, `claude auth status`
-// appears "missing" to the embedded Next.js server even though the user's
-// terminal can run it just fine, which makes the "API key needed" onboarding
-// card falsely appear.
-function buildClaudeSearchPath(): string {
+/**
+ * Desktop apps do not inherit the user's interactive shell PATH. Include the
+ * common package-manager locations used by both supported runtimes.
+ */
+function buildCliSearchPath(): string {
   const home = homedir();
   const dirs: string[] = [process.env.PATH || ""];
 
@@ -111,115 +157,166 @@ function buildClaudeSearchPath(): string {
   return Array.from(new Set(dirs.filter(Boolean))).join(delimiter);
 }
 
-// nvm bins aren't on PATH under launchd and can't be added as a single
-// entry, so we glob `~/.nvm/versions/node/*/bin/claude` and return the
-// newest version's binary. Empty list means no nvm-managed claude (or
-// no nvm at all).
-function listNvmClaudeBinaries(): string[] {
+function listNvmBinaries(binary: string): string[] {
   try {
     const nvmBase = join(homedir(), ".nvm", "versions", "node");
     if (!existsSync(nvmBase)) return [];
     return readdirSync(nvmBase)
       .sort()
-      .reverse() // newest version first
-      .map((version) => join(nvmBase, version, "bin", "claude"))
+      .reverse()
+      .map((version) => join(nvmBase, version, "bin", binary))
       .filter((candidate) => existsSync(candidate));
   } catch {
     return [];
   }
 }
 
-function resolveClaudeCliPath(): {
-  path: string | null;
-  source: "PATH" | "CLAUDE_CODE_PATH" | "FALLBACK" | null;
-} {
-  const explicit = process.env.CLAUDE_CODE_PATH;
-  if (explicit && existsSync(explicit)) {
-    return { path: explicit, source: "CLAUDE_CODE_PATH" };
+/** Current desktop bundles include a platform-native Claude executable. */
+function resolveBundledClaudePath(): string | null {
+  const executableDirectory = dirname(process.execPath);
+  const bundleDirectories = [
+    join(process.cwd(), "apps", "web", "cli-bundle"),
+    join(process.cwd(), "cli-bundle"),
+    join(process.cwd(), "..", "web", "cli-bundle"),
+    join(executableDirectory, "cli-bundle"),
+    join(executableDirectory, "..", "Resources", "cli-bundle"),
+    join(
+      executableDirectory,
+      "..",
+      "Resources",
+      "_up_",
+      "src-api",
+      "dist",
+      "cli-bundle",
+    ),
+    join(executableDirectory, "_up_", "src-api", "dist", "cli-bundle"),
+  ];
+  const executable = platform() === "win32" ? "claude.exe" : "claude";
+
+  for (const directory of bundleDirectories) {
+    const candidate = join(directory, executable);
+    if (existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
+function isBareCommand(command: string): boolean {
+  const parsed = parse(command);
+  return parsed.dir.length === 0 && parsed.base === command;
+}
+
+function resolveCliPath(
+  definition: RuntimeDefinition<"claude" | "codex", string>,
+): { path: string | null; source: CliPathSource; searchPath: string } {
+  const searchPath = buildCliSearchPath();
+
+  if (definition.provider === "claude") {
+    const bundled = resolveBundledClaudePath();
+    if (bundled) {
+      return { path: bundled, source: "BUNDLED", searchPath };
+    }
   }
 
-  // 1. Standard PATH walk, augmented with the common install dirs above.
-  const pathEnv = buildClaudeSearchPath();
-  const pathDirs = pathEnv.split(delimiter).filter(Boolean);
-  for (const bin of candidateBinaries()) {
-    for (const dir of pathDirs) {
-      const candidate = join(dir, bin);
+  const explicit = definition.explicitCommand?.trim();
+  if (explicit) {
+    if (existsSync(explicit) || isBareCommand(explicit)) {
+      return {
+        path: explicit,
+        source: definition.explicitSource,
+        searchPath,
+      };
+    }
+  }
+
+  const pathDirectories = searchPath
+    .split(delimiter)
+    .map((directory) => directory.replace(/^"|"$/g, ""))
+    .filter(Boolean);
+  for (const binary of candidateBinaries(definition.binary)) {
+    for (const directory of pathDirectories) {
+      const candidate = join(directory, binary);
       if (existsSync(candidate)) {
-        return { path: candidate, source: "PATH" };
+        return { path: candidate, source: "PATH", searchPath };
       }
     }
   }
 
-  // 2. nvm version glob — covers installs under `~/.nvm/versions/node/*`.
-  const nvmBins = listNvmClaudeBinaries();
-  if (nvmBins.length > 0) {
-    return { path: nvmBins[0], source: "FALLBACK" };
+  const [fallback] = listNvmBinaries(definition.binary);
+  if (fallback) {
+    return { path: fallback, source: "FALLBACK", searchPath };
   }
 
-  return { path: null, source: null };
+  return { path: null, source: null, searchPath };
 }
 
 function runCli(
   command: string,
   args: readonly string[],
   timeoutMs: number,
+  searchPath: string,
 ): Promise<ProbeResult> {
   const startedAt = Date.now();
   return new Promise((resolve) => {
-    let timedOut = false;
+    let stdout = "";
+    let stderr = "";
     let settled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
     const settle = (result: ProbeResult) => {
       if (settled) return;
       settled = true;
-      if (timer) {
-        clearTimeout(timer);
-      }
+      if (timer) clearTimeout(timer);
       resolve(result);
     };
 
-    let proc: ChildProcess;
+    let processHandle: ChildProcess;
     try {
-      proc = spawn(command, [...args], {
+      processHandle = spawn(command, [...args], {
         stdio: ["ignore", "pipe", "pipe"],
-        env: { ...process.env, CLAUDECODE: "" },
+        detached: shouldDetachCliProcess(),
+        env: { ...process.env, PATH: searchPath, CLAUDECODE: "" },
         windowsHide: true,
       });
     } catch (error) {
       settle({
         ok: false,
-        stdout: "",
-        stderr: "",
+        stdout,
+        stderr,
         exitCode: null,
         error: {
           code: "SPAWN_FAILED",
           message: error instanceof Error ? error.message : String(error),
         },
-        elapsedMs: 0,
+        elapsedMs: Date.now() - startedAt,
         timedOut: false,
       });
       return;
     }
 
-    const stdoutChunks: Buffer[] = [];
-    const stderrChunks: Buffer[] = [];
-    proc.stdout?.on("data", (chunk: Buffer) => stdoutChunks.push(chunk));
-    proc.stderr?.on("data", (chunk: Buffer) => stderrChunks.push(chunk));
+    processHandle.stdout?.on("data", (chunk: Buffer | string) => {
+      stdout = appendCapturedCliOutput(stdout, chunk.toString());
+    });
+    processHandle.stderr?.on("data", (chunk: Buffer | string) => {
+      stderr = appendCapturedCliOutput(stderr, chunk.toString());
+    });
 
     timer = setTimeout(() => {
-      timedOut = true;
-      try {
-        proc.kill("SIGKILL");
-      } catch {
-        // already dead
-      }
-    }, timeoutMs);
-
-    proc.on("error", (error) => {
+      terminateCliProcessTree(processHandle);
       settle({
         ok: false,
-        stdout: Buffer.concat(stdoutChunks).toString("utf-8"),
-        stderr: Buffer.concat(stderrChunks).toString("utf-8"),
+        stdout,
+        stderr,
+        exitCode: processHandle.exitCode,
+        error: null,
+        elapsedMs: Date.now() - startedAt,
+        timedOut: true,
+      });
+    }, timeoutMs);
+
+    processHandle.once("error", (error) => {
+      settle({
+        ok: false,
+        stdout,
+        stderr,
         exitCode: null,
         error: { code: "SPAWN_FAILED", message: error.message },
         elapsedMs: Date.now() - startedAt,
@@ -227,135 +324,231 @@ function runCli(
       });
     });
 
-    proc.on("close", (code) => {
+    processHandle.once("close", (code) => {
       settle({
-        ok: code === 0 && !timedOut,
-        stdout: Buffer.concat(stdoutChunks).toString("utf-8"),
-        stderr: Buffer.concat(stderrChunks).toString("utf-8"),
+        ok: code === 0,
+        stdout,
+        stderr,
         exitCode: code,
         error: null,
         elapsedMs: Date.now() - startedAt,
-        timedOut,
+        timedOut: false,
       });
     });
   });
 }
 
-function classifyAuthFailure(result: ProbeResult): NativeRuntimeStatus {
-  if (result.timedOut) return "CLAUDE_CLI_AUTH_STATUS_TIMEOUT";
-  const combined = `${result.stdout}\n${result.stderr}`.toLowerCase();
-  if (
-    combined.includes("not authenticated") ||
-    combined.includes("not logged") ||
-    combined.includes("not signed") ||
-    combined.includes("please login") ||
-    combined.includes("/login")
-  ) {
-    return "CLAUDE_CLI_AUTH_REQUIRED";
-  }
-  if (
-    combined.includes("unknown command") ||
-    combined.includes("invalid command")
-  ) {
-    return "CLAUDE_CLI_AUTH_STATUS_UNAVAILABLE";
-  }
-  return "CLAUDE_CLI_AUTH_REQUIRED";
+function cleanVersion(result: ProbeResult): string | null {
+  const line = `${result.stdout}\n${result.stderr}`
+    .split(/\r?\n/)
+    .map((value) => value.trim())
+    .find(Boolean);
+  if (!line) return null;
+  // Only publish the semantic version token. A CLI can print warnings,
+  // usernames, or local paths around it; those details stay server-side.
+  return (
+    line.match(/\bv?\d+(?:\.\d+){1,3}(?:[-+][0-9A-Za-z.-]+)?\b/)?.[0] ?? null
+  );
 }
 
-export async function probeNativeClaudeRuntime(): Promise<NativeRuntimeProbe | null> {
-  if (cache && Date.now() - cache.at < CACHE_TTL_MS) {
-    return cache.value;
-  }
+function isAuthCommandUnavailable(result: ProbeResult): boolean {
+  const combined = `${result.stdout}\n${result.stderr}`.toLowerCase();
+  return (
+    combined.includes("unknown command") ||
+    combined.includes("unrecognized subcommand") ||
+    combined.includes("invalid command")
+  );
+}
 
-  const resolved = resolveClaudeCliPath();
+async function probeCliRuntime<
+  Provider extends "claude" | "codex",
+  Status extends string,
+>(definition: RuntimeDefinition<Provider, Status>) {
+  const resolved = resolveCliPath(
+    definition as RuntimeDefinition<"claude" | "codex", string>,
+  );
+  const base = { checked: true as const, provider: definition.provider };
+
   if (!resolved.path) {
-    const probe: NativeRuntimeProbe = {
-      checked: true,
+    return {
+      ...base,
       available: false,
       authenticated: false,
       active: false,
       ready: false,
-      reason: "CLAUDE_CLI_UNAVAILABLE",
-      defaultAgent: "claude",
+      reason: definition.status.unavailable,
       cliPathPresent: false,
       cliPathSource: null,
       versionPresent: false,
+      version: null,
       probes: {},
     };
-    cache = { at: Date.now(), value: probe };
-    return probe;
   }
 
   const versionProbe = await runCli(
     resolved.path,
     ["--version"],
     PROBE_TIMEOUT_MS,
+    resolved.searchPath,
   );
   if (!versionProbe.ok) {
-    const probe: NativeRuntimeProbe = {
-      checked: true,
+    const result = {
+      ...base,
       available: true,
       authenticated: false,
       active: false,
       ready: false,
       reason: versionProbe.timedOut
-        ? "CLAUDE_CLI_VERSION_TIMEOUT"
-        : "CLAUDE_CLI_VERSION_FAILED",
-      defaultAgent: "claude",
+        ? definition.status.versionTimeout
+        : definition.status.versionFailed,
       cliPathPresent: true,
       cliPathSource: resolved.source,
       versionPresent: false,
+      version: null,
       probes: { version: versionProbe },
     };
     logger.warn(
-      `[NativeClaudeRuntime] version probe failed: ${probe.reason} (${resolved.path})`,
+      `[NativeAgentRuntime] ${definition.provider} version probe failed: ${result.reason}`,
     );
-    cache = { at: Date.now(), value: probe };
-    return probe;
+    return result;
   }
 
   const authProbe = await runCli(
     resolved.path,
-    ["auth", "status"],
+    definition.authArgs,
     PROBE_TIMEOUT_MS,
+    resolved.searchPath,
   );
-
   if (!authProbe.ok) {
-    const reason = classifyAuthFailure(authProbe);
-    const probe: NativeRuntimeProbe = {
-      checked: true,
+    const reason = authProbe.timedOut
+      ? definition.status.authTimeout
+      : isAuthCommandUnavailable(authProbe)
+        ? definition.status.authUnavailable
+        : definition.status.authRequired;
+    return {
+      ...base,
       available: true,
       authenticated: false,
       active: false,
       ready: false,
       reason,
-      defaultAgent: "claude",
       cliPathPresent: true,
       cliPathSource: resolved.source,
       versionPresent: true,
+      version: cleanVersion(versionProbe),
       probes: { version: versionProbe, auth: authProbe },
     };
-    cache = { at: Date.now(), value: probe };
-    return probe;
   }
 
-  const probe: NativeRuntimeProbe = {
-    checked: true,
+  return {
+    ...base,
     available: true,
     authenticated: true,
     active: true,
     ready: true,
-    reason: "CLAUDE_CLI_AUTHENTICATED",
-    defaultAgent: "claude",
+    reason: definition.status.ready,
     cliPathPresent: true,
     cliPathSource: resolved.source,
     versionPresent: true,
+    version: cleanVersion(versionProbe),
     probes: { version: versionProbe, auth: authProbe },
   };
-  cache = { at: Date.now(), value: probe };
-  return probe;
+}
+
+export async function probeNativeClaudeRuntime(
+  options: { force?: boolean } = {},
+): Promise<NativeRuntimeProbe | null> {
+  if (
+    !options.force &&
+    claudeCache &&
+    Date.now() - claudeCache.at < CACHE_TTL_MS
+  ) {
+    return claudeCache.value;
+  }
+  if (claudeInFlight) return claudeInFlight;
+
+  const operation = probeCliRuntime({
+    provider: "claude",
+    binary: "claude",
+    explicitCommand: process.env.CLAUDE_CODE_PATH,
+    explicitSource: "CLAUDE_CODE_PATH",
+    authArgs: ["auth", "status"],
+    status: {
+      ready: "CLAUDE_CLI_AUTHENTICATED",
+      authRequired: "CLAUDE_CLI_AUTH_REQUIRED",
+      authTimeout: "CLAUDE_CLI_AUTH_STATUS_TIMEOUT",
+      authUnavailable: "CLAUDE_CLI_AUTH_STATUS_UNAVAILABLE",
+      versionFailed: "CLAUDE_CLI_VERSION_FAILED",
+      versionTimeout: "CLAUDE_CLI_VERSION_TIMEOUT",
+      unavailable: "CLAUDE_CLI_UNAVAILABLE",
+    },
+  }).then((result) => {
+    const probe: NativeRuntimeProbe = { ...result, defaultAgent: "claude" };
+    claudeCache = { at: Date.now(), value: probe };
+    return probe;
+  });
+  claudeInFlight = operation;
+  try {
+    return await operation;
+  } finally {
+    if (claudeInFlight === operation) claudeInFlight = null;
+  }
+}
+
+export async function probeNativeCodexRuntime(
+  options: { force?: boolean } = {},
+): Promise<CodexRuntimeProbe | null> {
+  if (
+    !options.force &&
+    codexCache &&
+    Date.now() - codexCache.at < CACHE_TTL_MS
+  ) {
+    return codexCache.value;
+  }
+  if (codexInFlight) return codexInFlight;
+
+  const operation = probeCliRuntime({
+    provider: "codex",
+    binary: "codex",
+    explicitCommand: process.env.OPENLOOMI_AGENT_CODEX_COMMAND,
+    explicitSource: "OPENLOOMI_AGENT_CODEX_COMMAND",
+    authArgs: ["login", "status"],
+    status: {
+      ready: "CODEX_CLI_AUTHENTICATED",
+      authRequired: "CODEX_CLI_AUTH_REQUIRED",
+      authTimeout: "CODEX_CLI_AUTH_STATUS_TIMEOUT",
+      authUnavailable: "CODEX_CLI_AUTH_STATUS_UNAVAILABLE",
+      versionFailed: "CODEX_CLI_VERSION_FAILED",
+      versionTimeout: "CODEX_CLI_VERSION_TIMEOUT",
+      unavailable: "CODEX_CLI_UNAVAILABLE",
+    },
+  }).then((result) => {
+    codexCache = { at: Date.now(), value: result };
+    return result;
+  });
+  codexInFlight = operation;
+  try {
+    return await operation;
+  } finally {
+    if (codexInFlight === operation) codexInFlight = null;
+  }
 }
 
 export function clearNativeClaudeRuntimeCache(): void {
-  cache = null;
+  claudeCache = null;
+}
+
+export function clearNativeCodexRuntimeCache(): void {
+  codexCache = null;
+}
+
+export function clearNativeRuntimeCaches(): void {
+  clearNativeClaudeRuntimeCache();
+  clearNativeCodexRuntimeCache();
+}
+
+export function getRuntimePlatform(): "windows" | "macos" | "linux" {
+  if (platform() === "win32") return "windows";
+  if (platform() === "darwin") return "macos";
+  return "linux";
 }

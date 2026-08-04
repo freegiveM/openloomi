@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
+  getConfiguredAgentProviderResolution,
   getConfiguredDefaultAgentProvider,
   resolveNativeAgentProviderRequest,
 } from "@/lib/ai/native-agent/provider-env";
@@ -46,6 +47,19 @@ describe("desktop agent runtime selection", () => {
       modelConfig: { model: "gpt-5.4" },
       providerConfig: { codexPath: "codex-custom" },
     });
+    expect(
+      getConfiguredAgentProviderResolution(
+        {
+          TAURI_MODE: "1",
+          OPENLOOMI_AGENT_PROVIDER: "claude",
+        },
+        { preferencePath },
+      ),
+    ).toEqual({
+      provider: "codex",
+      preference: "codex",
+      source: "preference",
+    });
   });
 
   it("uses the saved Claude selection and clears request provider config", () => {
@@ -79,5 +93,11 @@ describe("desktop agent runtime selection", () => {
         { preferencePath },
       ),
     ).toBe("claude");
+    expect(
+      getConfiguredAgentProviderResolution(
+        { OPENLOOMI_AGENT_PROVIDER: "claude" },
+        { preferencePath },
+      ),
+    ).toEqual({ provider: "claude", source: "environment" });
   });
 });

@@ -9,10 +9,15 @@ import { randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 
 import { getAppDir } from "@/lib/env/config/constants";
+import {
+  SELECTABLE_AGENT_RUNTIMES,
+  type SelectableAgentRuntime,
+} from "./runtime-contract";
 
-export const SELECTABLE_AGENT_RUNTIMES = ["claude", "codex"] as const;
-
-export type SelectableAgentRuntime = (typeof SELECTABLE_AGENT_RUNTIMES)[number];
+export {
+  SELECTABLE_AGENT_RUNTIMES,
+  type SelectableAgentRuntime,
+} from "./runtime-contract";
 
 const RUNTIME_PREFERENCE_FILE_NAME = "agent-runtime.json";
 
