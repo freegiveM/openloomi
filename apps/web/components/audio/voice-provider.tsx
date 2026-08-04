@@ -1,6 +1,12 @@
 "use client";
 
-import React, { createContext, useContext, useState, useMemo } from "react";
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  useMemo,
+} from "react";
 import { KokoroPlugin } from "@openloomi/voice-kokoro";
 import { WhisperPlugin } from "@openloomi/voice-whisper";
 
@@ -36,8 +42,16 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
     () => new WhisperPlugin({ enabled: isWhisperEnabledByEnv }),
   );
 
-  // Dummy state updates to force re-renders if enabled flags change
-  const [, setTick] = useState(0);
+  // Bump this when runtime toggles change so effects can react.
+  const [voiceVersion, setVoiceVersion] = useState(0);
+
+  useEffect(() => {
+    if (!kokoro.enabled) return;
+
+    void kokoro.warmup().catch((error) => {
+      console.warn("[VoiceProvider] Kokoro warmup failed:", error);
+    });
+  }, [kokoro, voiceVersion]);
 
   const contextValue = useMemo(
     () => ({
@@ -45,11 +59,11 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
       whisper,
       setKokoroEnabled: (enabled: boolean) => {
         kokoro.enabled = isKokoroEnabledByEnv && enabled;
-        setTick((t) => t + 1);
+        setVoiceVersion((version) => version + 1);
       },
       setWhisperEnabled: (enabled: boolean) => {
         whisper.enabled = isWhisperEnabledByEnv && enabled;
-        setTick((t) => t + 1);
+        setVoiceVersion((version) => version + 1);
       },
     }),
     [kokoro, whisper],

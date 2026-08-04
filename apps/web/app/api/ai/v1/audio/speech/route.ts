@@ -131,7 +131,10 @@ async function readSpeechPayload(request: Request): Promise<SpeechPayload> {
       readPayloadResponseFormat(body.response_format ?? body.responseFormat) ??
       readResponseFormat(process.env.KOKORO_TTS_RESPONSE_FORMAT) ??
       DEFAULT_KOKORO_TTS_RESPONSE_FORMAT,
-    speed: readPositiveNumber(body.speed) ?? DEFAULT_KOKORO_TTS_SPEED,
+    speed:
+      readPositiveNumber(body.speed) ??
+      readPositiveNumber(process.env.KOKORO_TTS_SPEED) ??
+      DEFAULT_KOKORO_TTS_SPEED,
   };
 }
 
