@@ -1,11 +1,34 @@
 {
   "name": "@openloomi/integrations-jira",
   "version": "0.8.8",
-  "private": true,
   "type": "module",
-  "exports": {
-    ".": "./src/index.ts"
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
   },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/melandlabs/openloomi.git",
+    "directory": "packages/integrations/jira"
+  },
+  "homepage": "https://github.com/melandlabs/openloomi/tree/main/packages/integrations/jira",
+  "bugs": {
+    "url": "https://github.com/melandlabs/openloomi/issues"
+  },
+  "license": "Apache-2.0",
+  "description": "OpenLoomi \u00b7 integrations/jira module",
+  "keywords": [
+    "openloomi"
+  ],
   "dependencies": {
     "@openloomi/shared": "workspace:*"
   },
@@ -14,6 +37,7 @@
     "typescript": "^5.6.3"
   },
   "scripts": {
-    "build": "echo no build needed"
+    "build": "tsup",
+    "prepublishOnly": "pnpm build"
   }
 }

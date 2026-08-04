@@ -1,19 +1,42 @@
 {
   "name": "@openloomi/hooks",
   "version": "0.8.8",
-  "private": true,
   "type": "module",
-  "exports": {
-    ".": "./src/index.ts",
-    "./use-local-storage": "./src/use-local-storage.ts",
-    "./use-is-mobile": "./src/use-is-mobile.ts",
-    "./use-on-click-outside": "./src/use-on-click-outside.ts",
-    "./use-custom-event": "./src/use-custom-event.ts",
-    "./use-mobile-bottom-spacing": "./src/use-mobile-bottom-spacing.ts",
-    "./use-enter-send-ime": "./src/use-enter-send-ime.ts",
-    "./use-pull-to-refresh": "./src/use-pull-to-refresh.tsx",
-    "./use-scroll-to-bottom": "./src/use-scroll-to-bottom.tsx"
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
   },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js",
+    "./use-local-storage": "./dist/use-local-storage.js",
+    "./use-is-mobile": "./dist/use-is-mobile.js",
+    "./use-on-click-outside": "./dist/use-on-click-outside.js",
+    "./use-custom-event": "./dist/use-custom-event.js",
+    "./use-mobile-bottom-spacing": "./dist/use-mobile-bottom-spacing.js",
+    "./use-enter-send-ime": "./dist/use-enter-send-ime.js",
+    "./use-pull-to-refresh": "./dist/use-pull-to-refresh.js",
+    "./use-scroll-to-bottom": "./dist/use-scroll-to-bottom.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/melandlabs/openloomi.git",
+    "directory": "packages/hooks"
+  },
+  "homepage": "https://github.com/melandlabs/openloomi/tree/main/packages/hooks",
+  "bugs": {
+    "url": "https://github.com/melandlabs/openloomi/issues"
+  },
+  "license": "Apache-2.0",
+  "description": "OpenLoomi · hooks module",
+  "keywords": [
+    "openloomi"
+  ],
   "peerDependencies": {
     "react": ">=18.0.0",
     "swr": ">=2.0.0"
@@ -23,6 +46,7 @@
     "typescript": "^5.6.3"
   },
   "scripts": {
-    "build": "echo no build needed"
+    "build": "tsup",
+    "prepublishOnly": "pnpm build"
   }
 }

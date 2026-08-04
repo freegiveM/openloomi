@@ -1,8 +1,11 @@
 {
-  "extends": "@openloomi/config/tsconfig.json",
+  "extends": "../../config/src/tsconfig.json",
   "compilerOptions": {
-    "outDir": "./dist"
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "incremental": false,
+    "tsBuildInfoFile": "./dist/.tsbuildinfo",
+    "noEmit": false
   },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist"]
+  "include": ["src"]
 }

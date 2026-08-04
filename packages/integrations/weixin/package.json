@@ -1,20 +1,45 @@
 {
   "name": "@openloomi/integrations-weixin",
   "version": "0.8.8",
-  "private": true,
   "type": "module",
-  "exports": {
-    ".": "./src/index.ts",
-    "./ws-listener": "./src/ws-listener.ts",
-    "./conversation-store": "./src/conversation-store.ts",
-    "./ilink-client": "./src/ilink-client.ts",
-    "./cdn/aes-ecb": "./src/cdn/aes-ecb.ts",
-    "./cdn/cdn-upload": "./src/cdn/cdn-upload.ts",
-    "./cdn/cdn-url": "./src/cdn/cdn-url.ts",
-    "./cdn/pic-decrypt": "./src/cdn/pic-decrypt.ts",
-    "./qr-login": "./src/qr-login.ts"
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
   },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js",
+    "./ws-listener": "./dist/ws-listener.js",
+    "./conversation-store": "./dist/conversation-store.js",
+    "./ilink-client": "./dist/ilink-client.js",
+    "./cdn/aes-ecb": "./dist/cdn/aes-ecb.js",
+    "./cdn/cdn-upload": "./dist/cdn/cdn-upload.js",
+    "./cdn/cdn-url": "./dist/cdn/cdn-url.js",
+    "./cdn/pic-decrypt": "./dist/cdn/pic-decrypt.js",
+    "./qr-login": "./dist/qr-login.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/melandlabs/openloomi.git",
+    "directory": "packages/integrations/weixin"
+  },
+  "homepage": "https://github.com/melandlabs/openloomi/tree/main/packages/integrations/weixin",
+  "bugs": {
+    "url": "https://github.com/melandlabs/openloomi/issues"
+  },
+  "license": "Apache-2.0",
+  "description": "OpenLoomi \u00b7 integrations/weixin module",
+  "keywords": [
+    "openloomi"
+  ],
   "dependencies": {
+    "@openloomi/ai": "workspace:*",
+    "@openloomi/integrations": "workspace:*",
     "@tencent-weixin/openclaw-weixin": "^2.1.9"
   },
   "devDependencies": {
@@ -22,6 +47,7 @@
     "typescript": "^5.6.3"
   },
   "scripts": {
-    "build": "echo no build needed"
+    "build": "tsup",
+    "prepublishOnly": "pnpm build"
   }
 }

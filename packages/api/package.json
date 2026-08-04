@@ -1,16 +1,40 @@
 {
   "name": "@openloomi/api",
   "version": "0.8.8",
-  "private": true,
   "type": "module",
-  "exports": {
-    ".": "./src/index.ts"
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
   },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/melandlabs/openloomi.git",
+    "directory": "packages/api"
+  },
+  "homepage": "https://github.com/melandlabs/openloomi/tree/main/packages/api",
+  "bugs": {
+    "url": "https://github.com/melandlabs/openloomi/issues"
+  },
+  "license": "Apache-2.0",
+  "description": "OpenLoomi · api module",
+  "keywords": [
+    "openloomi"
+  ],
   "devDependencies": {
     "@openloomi/config": "workspace:*",
     "typescript": "^5.6.3"
   },
   "scripts": {
-    "build": "echo no build needed"
+    "build": "tsup",
+    "prepublishOnly": "pnpm build"
   }
 }

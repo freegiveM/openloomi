@@ -1,17 +1,40 @@
 {
   "name": "@openloomi/integrations-telegram",
   "version": "0.8.8",
-  "private": true,
   "type": "module",
-  "exports": {
-    ".": "./src/index.ts",
-    "./adapter": "./src/adapter.ts",
-    "./markdown": "./src/markdown.ts",
-    "./conversation-store": "./src/conversation-store.ts",
-    "./state": "./src/state.ts",
-    "./tdata-decrypter": "./src/tdata-decrypter/index.ts",
-    "./tdata-converter": "./src/tdata-converter.ts"
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
   },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js",
+    "./adapter": "./dist/adapter.js",
+    "./markdown": "./dist/markdown.js",
+    "./conversation-store": "./dist/conversation-store.js",
+    "./state": "./dist/state.js",
+    "./tdata-decrypter": "./dist/tdata-decrypter/index.js",
+    "./tdata-converter": "./dist/tdata-converter.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/melandlabs/openloomi.git",
+    "directory": "packages/integrations/telegram"
+  },
+  "homepage": "https://github.com/melandlabs/openloomi/tree/main/packages/integrations/telegram",
+  "bugs": {
+    "url": "https://github.com/melandlabs/openloomi/issues"
+  },
+  "license": "Apache-2.0",
+  "description": "OpenLoomi · integrations/telegram module",
+  "keywords": [
+    "openloomi"
+  ],
   "dependencies": {
     "@openloomi/ai": "workspace:*",
     "@openloomi/integrations": "workspace:*",
@@ -26,7 +49,8 @@
     "vitest": "^4.0.6"
   },
   "scripts": {
-    "build": "echo no build needed",
-    "test": "vitest run"
+    "build": "tsup",
+    "test": "vitest run",
+    "prepublishOnly": "pnpm build"
   }
 }
