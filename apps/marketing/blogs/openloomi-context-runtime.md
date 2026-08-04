@@ -1,10 +1,9 @@
 ---
-title: "OpenLoomi: Memory Is Not About Letting an Agent Remember the Past, but About Letting It Continuously Participate in a Person's Reality"
+title: "OpenLoomi: The Context Runtime Behind Long-Horizon Agents"
 date: 2026-08-04
 description: "OpenLoomi's memory system and context runtime engine"
+image: /img/blogs/openloomi-context-runtime.png
 ---
-
-# OpenLoomi: Memory Is Not About Letting an Agent Remember the Past, but About Letting It Continuously Participate in a Person's Reality
 
 ## OpenLoomi's Memory System and Context Runtime Engine
 
