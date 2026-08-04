@@ -12,11 +12,29 @@ interface VoiceContextValue {
 }
 
 const VoiceContext = createContext<VoiceContextValue | undefined>(undefined);
+const DISABLED_ENV_VALUES = new Set(["0", "false", "off", "no", "disabled"]);
+
+function isEnabledByEnv(value: string | undefined): boolean {
+  const normalized = value?.trim().toLowerCase();
+  if (!normalized) return true;
+  return !DISABLED_ENV_VALUES.has(normalized);
+}
+
+const isKokoroEnabledByEnv = isEnabledByEnv(
+  process.env.NEXT_PUBLIC_ENABLE_KOKORO,
+);
+const isWhisperEnabledByEnv = isEnabledByEnv(
+  process.env.NEXT_PUBLIC_ENABLE_WHISPER,
+);
 
 export function VoiceProvider({ children }: { children: React.ReactNode }) {
   // We initialize the plugins and allow toggling them dynamically via state
-  const [kokoro] = useState(() => new KokoroPlugin({ enabled: true }));
-  const [whisper] = useState(() => new WhisperPlugin({ enabled: true }));
+  const [kokoro] = useState(
+    () => new KokoroPlugin({ enabled: isKokoroEnabledByEnv }),
+  );
+  const [whisper] = useState(
+    () => new WhisperPlugin({ enabled: isWhisperEnabledByEnv }),
+  );
 
   // Dummy state updates to force re-renders if enabled flags change
   const [, setTick] = useState(0);
@@ -26,11 +44,11 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
       kokoro,
       whisper,
       setKokoroEnabled: (enabled: boolean) => {
-        kokoro.enabled = enabled;
+        kokoro.enabled = isKokoroEnabledByEnv && enabled;
         setTick((t) => t + 1);
       },
       setWhisperEnabled: (enabled: boolean) => {
-        whisper.enabled = enabled;
+        whisper.enabled = isWhisperEnabledByEnv && enabled;
         setTick((t) => t + 1);
       },
     }),

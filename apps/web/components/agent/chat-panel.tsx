@@ -21,6 +21,8 @@ import { useGlobalInsightDrawer } from "@/components/global-insight-drawer";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { useConversationApiConfiguration } from "@/components/conversation-api-onboarding-guard";
 import { ConversationApiSetup } from "@/components/conversation-api-setup";
+import { useVoice } from "@/components/audio/voice-provider";
+import { getTextFromMessage } from "@/lib/utils";
 
 interface AgentChatPanelProps {
   chatId?: string | null; // External chatId; if null, creates a new chat
@@ -51,6 +53,7 @@ export function AgentChatPanel({
   const [attachments, setAttachments] = useState<Array<Attachment>>([]);
   const apiConfigurationState = useConversationApiConfiguration();
   const requiresApiSetup = apiConfigurationState === "missing";
+  const { kokoro } = useVoice();
 
   // Note: previousChatIdRef is not needed because the component gets the latest messages from context
   // When chatId changes, useChat in parent AgentPageClient handles the message switch automatically
@@ -63,6 +66,9 @@ export function AgentChatPanel({
   const scrollButtonTimerRef = useRef<NodeJS.Timeout | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
+  const lastSpokenAssistantMessageIdRef = useRef<string | null>(null);
+  const wasAgentRunningRef = useRef(false);
+  const lastTtsChatIdRef = useRef<string | null>(null);
 
   // Get chat context (must be called before using status)
   const {
@@ -95,6 +101,38 @@ export function AgentChatPanel({
   // Get isAgentRunning for THIS chat panel's chatId (not the activeChatId)
   // This ensures the side panel shows correct status even when activeChatId changes
   const isAgentRunningForChat = getIsAgentRunningByChatId(chatId);
+
+  useEffect(() => {
+    if (lastTtsChatIdRef.current !== chatId) {
+      lastTtsChatIdRef.current = chatId;
+      wasAgentRunningRef.current = isAgentRunningForChat;
+      lastSpokenAssistantMessageIdRef.current = null;
+      return;
+    }
+
+    const wasRunning = wasAgentRunningRef.current;
+    wasAgentRunningRef.current = isAgentRunningForChat;
+
+    if (!wasRunning || isAgentRunningForChat || !kokoro.enabled) {
+      return;
+    }
+
+    const latestAssistantMessage = [...messages]
+      .reverse()
+      .find((message) => message.role === "assistant" && message.id);
+    if (!latestAssistantMessage?.id) return;
+    if (lastSpokenAssistantMessageIdRef.current === latestAssistantMessage.id) {
+      return;
+    }
+
+    const text = getTextFromMessage(latestAssistantMessage).trim();
+    if (!text) return;
+
+    lastSpokenAssistantMessageIdRef.current = latestAssistantMessage.id;
+    void kokoro.speak(text).catch((error) => {
+      console.error("[AgentChatPanel] Failed to play TTS:", error);
+    });
+  }, [isAgentRunningForChat, kokoro, messages]);
 
   // Per-chat input persistence: track previous chat for saving input on switch
   const prevChatIdForInputRef = useRef<string | null>(null);
