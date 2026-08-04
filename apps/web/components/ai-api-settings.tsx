@@ -8,11 +8,10 @@ import { RemixIcon } from "@/components/remix-icon";
 import { toast } from "@/components/toast";
 import { fetchWithAuth } from "@/lib/utils";
 import { cn } from "@/lib/utils";
-import {
-  AI_SETTINGS_CHANGED_EVENT,
-  MISSING_API_KEY_REASON,
-} from "@/lib/ai/conversation-api-configuration";
+import { MISSING_API_KEY_REASON } from "@/lib/ai/conversation-api-configuration";
 import { EmbeddingApiSettings } from "@/components/embedding-api-settings";
+import { AgentRuntimeSettings } from "@/components/agent-runtime-settings";
+import { notifyAiSettingsChanged } from "@/lib/ai/notify-ai-settings-changed";
 
 type ProviderType = "openai_compatible" | "anthropic_compatible";
 
@@ -301,23 +300,7 @@ export function AiApiSettings() {
         apiKey: "",
       });
       // Notify listeners in the same webview (kept for backwards compat).
-      window.dispatchEvent(new Event(AI_SETTINGS_CHANGED_EVENT));
-      // Mirror as a Tauri event so the pet card webview (separate origin
-      // and therefore a separate window — `window.dispatchEvent` doesn't
-      // cross webviews in Tauri 2.x) re-evaluates its no-api-key layout,
-      // and the Rust watcher re-emits a natural idle/sleeping state so
-      // the pet sprite leaves the "needs-setup" mode. Without this the
-      // pet card kept showing the missing-key CTA even after a
-      // successful save. See loomi-card.html:3789 and
-      // apps/web/src-tauri/src/pet/watcher.rs.
-      const tauriEvent = (
-        window as unknown as {
-          __TAURI__?: { event?: { emit?: (name: string) => unknown } };
-        }
-      ).__TAURI__;
-      if (tauriEvent?.event?.emit) {
-        tauriEvent.event.emit(AI_SETTINGS_CHANGED_EVENT);
-      }
+      notifyAiSettingsChanged();
       if (
         showMissingApiKeyNotice &&
         providerType === "anthropic_compatible" &&
@@ -374,15 +357,7 @@ export function AiApiSettings() {
       // Same rationale as the save path above — fire both the DOM event
       // (legacy listeners in the same webview) and the Tauri event
       // (pet card webview + Rust watcher).
-      window.dispatchEvent(new Event(AI_SETTINGS_CHANGED_EVENT));
-      const tauriEvent = (
-        window as unknown as {
-          __TAURI__?: { event?: { emit?: (name: string) => unknown } };
-        }
-      ).__TAURI__;
-      if (tauriEvent?.event?.emit) {
-        tauriEvent.event.emit(AI_SETTINGS_CHANGED_EVENT);
-      }
+      notifyAiSettingsChanged();
       toast({
         type: "success",
         description: t(
@@ -462,7 +437,7 @@ export function AiApiSettings() {
       <div className="w-full px-1 sm:px-0 space-y-8">
         {showMissingApiKeyNotice && (
           <div
-            role="status"
+            aria-live="polite"
             className="flex gap-3 rounded-lg border border-primary/25 bg-primary/5 p-4 text-sm"
           >
             <RemixIcon
@@ -486,6 +461,7 @@ export function AiApiSettings() {
             </div>
           </div>
         )}
+        <AgentRuntimeSettings />
         <div className="flex flex-col gap-2">
           <p className="text-base font-semibold text-foreground-secondary">
             {t("settings.conversationModelsTitle", "Conversation models")}

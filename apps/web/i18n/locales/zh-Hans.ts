@@ -296,6 +296,36 @@ const zh = {
       "Loop 已开启 —— Loomi 在后台通过连接器读取你的邮件、日历、代码与聊天等来源，并结合屏幕记忆来填你的早安简报。如果你不希望这样，可以在这里关掉。",
     aiSettingsDescription:
       "为当前用户配置兼容的 AI 服务商接口，保存后会优先使用用户配置。",
+    agentRuntimeTitle: "Agent 运行时",
+    agentRuntimeDescription:
+      "选择 OpenLoomi 在新任务中使用的本地 CLI；正在运行的任务不会被中断。",
+    agentRuntimeClaudeDescription: "使用本机 Claude Code 及其登录账号。",
+    agentRuntimeCodexDescription: "使用本机 Codex CLI 及其登录账号。",
+    agentRuntimeChecking: "正在检查本地运行时…",
+    agentRuntimeReady: "已就绪",
+    agentRuntimeLoginRequired: "需要登录",
+    agentRuntimeNotInstalled: "尚未安装",
+    agentRuntimeUnverifiedShort: "无法验证",
+    agentRuntimeInUse: "使用中",
+    agentRuntimeReadyDescription: "{{runtime}} 已安装并登录，可以用于新任务。",
+    agentRuntimeLoginDescription:
+      "请在终端运行以下命令并完成登录，然后重新检查。",
+    agentRuntimeInstallDescription:
+      "请按官方指南安装 {{runtime}}，完成登录后重新检查。",
+    agentRuntimeUnverified: "OpenLoomi 无法验证本地运行时。",
+    agentRuntimeUnverifiedDescription:
+      "OpenLoomi 无法验证此 CLI。请确认它能在终端运行，然后重新检查。",
+    agentRuntimeManagedByEnvironment:
+      "当前运行时由环境变量管理：{{provider}}。选择 Claude 或 Codex 后将创建桌面偏好。",
+    agentRuntimeInstallGuide: "安装指南",
+    agentRuntimeCheckAgain: "重新检查",
+    agentRuntimeTryAgain: "重试",
+    agentRuntimeUse: "使用 {{runtime}}",
+    agentRuntimeCopy: "复制",
+    agentRuntimeCopied: "已复制",
+    agentRuntimeSaved: "Agent 运行时已更新，将用于新任务。",
+    agentRuntimeLoadError: "Agent 运行时检查失败。",
+    agentRuntimeSaveError: "Agent 运行时更新失败。",
     conversationModelsTitle: "对话模型",
     aiSettingsOpenAiTitle: "OpenAI 兼容",
     aiSettingsOpenAiDescription:

@@ -36,3 +36,15 @@ export type AgentRuntimeSettingsResponse = {
   platform: "windows" | "macos" | "linux";
   runtimes: Record<SelectableAgentRuntime, AgentRuntimePublicProbe> | null;
 };
+
+export function canSaveAgentRuntime(
+  state: AgentRuntimeSettingsResponse,
+  draft: SelectableAgentRuntime | null,
+): boolean {
+  return Boolean(
+    state.editable &&
+    draft &&
+    draft !== state.effective.provider &&
+    state.runtimes?.[draft].ready,
+  );
+}

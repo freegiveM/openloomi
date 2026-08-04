@@ -1,5 +1,9 @@
 import { describe, expect, test } from "vitest";
 
+import {
+  canSaveAgentRuntime,
+  type AgentRuntimeSettingsResponse,
+} from "@/lib/ai/native-agent/runtime-contract";
 import { toPublicProbe } from "@/lib/ai/native-agent/runtime-settings";
 import type {
   CodexRuntimeProbe,
@@ -123,5 +127,34 @@ describe("agent runtime public probe", () => {
       reason: "AUTH_UNAVAILABLE",
       version: "2.1.3",
     });
+  });
+});
+
+describe("agent runtime selection", () => {
+  test("only enables a ready runtime that is not already active", () => {
+    const state: AgentRuntimeSettingsResponse = {
+      editable: true,
+      preference: "claude",
+      effective: { provider: "claude", source: "preference" },
+      platform: "windows",
+      runtimes: {
+        claude: toPublicProbe("claude", null),
+        codex: toPublicProbe(
+          "codex",
+          codexProbe({
+            authenticated: true,
+            active: true,
+            ready: true,
+            reason: "CODEX_CLI_AUTHENTICATED",
+          }),
+        ),
+      },
+    };
+
+    expect(canSaveAgentRuntime(state, "codex")).toBe(true);
+    expect(canSaveAgentRuntime(state, "claude")).toBe(false);
+    if (!state.runtimes) throw new Error("expected runtime probes");
+    state.runtimes.codex.ready = false;
+    expect(canSaveAgentRuntime(state, "codex")).toBe(false);
   });
 });

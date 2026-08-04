@@ -310,6 +310,39 @@ const en = {
       "Loop is on — Loomi reads your mail, calendar, code, and chat through your connectors in the background and combines that with screen memory to fill your morning brief. Toggle off here if you'd rather not.",
     aiSettingsDescription:
       "Configure per-user API settings for compatible AI providers.",
+    agentRuntimeTitle: "Agent runtime",
+    agentRuntimeDescription:
+      "Choose the local CLI OpenLoomi uses for new agent tasks. Running tasks are not interrupted.",
+    agentRuntimeClaudeDescription:
+      "Use your local Claude Code installation and account.",
+    agentRuntimeCodexDescription:
+      "Use your local Codex CLI installation and account.",
+    agentRuntimeChecking: "Checking local runtimes…",
+    agentRuntimeReady: "Ready",
+    agentRuntimeLoginRequired: "Sign-in required",
+    agentRuntimeNotInstalled: "Not installed",
+    agentRuntimeUnverifiedShort: "Could not verify",
+    agentRuntimeInUse: "In use",
+    agentRuntimeReadyDescription:
+      "{{runtime}} is installed and signed in. It is ready for new tasks.",
+    agentRuntimeLoginDescription:
+      "Run this command in a terminal, finish signing in, then check again.",
+    agentRuntimeInstallDescription:
+      "Install {{runtime}} from its official guide, sign in, then check again.",
+    agentRuntimeUnverified: "OpenLoomi could not verify the local runtimes.",
+    agentRuntimeUnverifiedDescription:
+      "OpenLoomi could not verify this CLI. Confirm it runs in your terminal, then check again.",
+    agentRuntimeManagedByEnvironment:
+      "The current runtime is managed by the environment: {{provider}}. Choose Claude or Codex to create a desktop preference.",
+    agentRuntimeInstallGuide: "Installation guide",
+    agentRuntimeCheckAgain: "Check again",
+    agentRuntimeTryAgain: "Try again",
+    agentRuntimeUse: "Use {{runtime}}",
+    agentRuntimeCopy: "Copy",
+    agentRuntimeCopied: "Copied",
+    agentRuntimeSaved: "Agent runtime updated for new tasks.",
+    agentRuntimeLoadError: "Failed to check agent runtimes.",
+    agentRuntimeSaveError: "Failed to update the agent runtime.",
     conversationModelsTitle: "Conversation models",
     aiSettingsOpenAiTitle: "OpenAI compatible",
     aiSettingsOpenAiDescription:
