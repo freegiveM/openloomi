@@ -1,5 +1,6 @@
 const DEFAULT_SPEECH_ENDPOINT = "/api/ai/v1/audio/speech";
 const DEFAULT_FALLBACK_VOICE = "af_bella";
+const DEFAULT_WARMUP_TEXT = "Hi.";
 
 function isAbortError(error: unknown): boolean {
   return (
@@ -20,21 +21,29 @@ export class KokoroPlugin {
 
   private speechEndpoint: string;
   private currentRequestController: AbortController | null;
+  private currentWarmupController: AbortController | null;
   private currentAudio: HTMLAudioElement | null;
   private currentObjectUrl: string | null;
+  private hasWarmedUp: boolean;
+  private warmupPromise: Promise<void> | null;
 
   constructor(options?: { enabled?: boolean; voice?: string }) {
     this.enabled = options?.enabled ?? true;
     this.voice = options?.voice ?? DEFAULT_FALLBACK_VOICE;
     this.speechEndpoint = DEFAULT_SPEECH_ENDPOINT;
     this.currentRequestController = null;
+    this.currentWarmupController = null;
     this.currentAudio = null;
     this.currentObjectUrl = null;
+    this.hasWarmedUp = false;
+    this.warmupPromise = null;
   }
 
   public stop(): void {
     this.currentRequestController?.abort();
     this.currentRequestController = null;
+    this.currentWarmupController?.abort();
+    this.currentWarmupController = null;
 
     if (this.currentAudio) {
       this.currentAudio.pause();
@@ -52,6 +61,25 @@ export class KokoroPlugin {
     if (synthesis) {
       synthesis.cancel();
     }
+  }
+
+  public async warmup(text: string = DEFAULT_WARMUP_TEXT): Promise<void> {
+    if (!this.enabled || this.hasWarmedUp) return;
+
+    const input = text.trim();
+    if (!input) return;
+
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    if (this.warmupPromise) {
+      return this.warmupPromise;
+    }
+
+    const warmupPromise = this.runWarmup(input);
+    this.warmupPromise = warmupPromise;
+    return warmupPromise;
   }
 
   public async speak(text: string): Promise<void> {
@@ -96,33 +124,65 @@ export class KokoroPlugin {
     this.currentRequestController = controller;
 
     try {
-      const response = await fetch(this.speechEndpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          input: text,
-          voice: this.voice === DEFAULT_FALLBACK_VOICE ? undefined : this.voice,
-        }),
-        signal: controller.signal,
-      });
-
-      if (!response.ok) {
-        throw new Error(await this.readProviderError(response));
-      }
-
-      const audioBlob = await response.blob();
-      if (audioBlob.size <= 0) {
-        throw new Error("Kokoro TTS response was empty.");
-      }
-
+      const audioBlob = await this.fetchSpeechBlob(text, controller.signal);
       await this.playAudioBlob(audioBlob);
     } finally {
       if (this.currentRequestController === controller) {
         this.currentRequestController = null;
       }
     }
+  }
+
+  private async runWarmup(text: string): Promise<void> {
+    const controller = new AbortController();
+    this.currentWarmupController = controller;
+
+    try {
+      await this.fetchSpeechBlob(text, controller.signal);
+      this.hasWarmedUp = true;
+    } catch (error) {
+      if (isAbortError(error)) {
+        return;
+      }
+      throw error;
+    } finally {
+      if (this.currentWarmupController === controller) {
+        this.currentWarmupController = null;
+      }
+      this.warmupPromise = null;
+    }
+  }
+
+  private async fetchSpeechBlob(
+    text: string,
+    signal: AbortSignal,
+  ): Promise<Blob> {
+    if (typeof fetch !== "function") {
+      throw new Error("Fetch is not available for Kokoro TTS.");
+    }
+
+    const response = await fetch(this.speechEndpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        input: text,
+        voice: this.voice === DEFAULT_FALLBACK_VOICE ? undefined : this.voice,
+      }),
+      signal,
+    });
+
+    if (!response.ok) {
+      throw new Error(await this.readProviderError(response));
+    }
+
+    const audioBlob = await response.blob();
+    if (audioBlob.size <= 0) {
+      throw new Error("Kokoro TTS response was empty.");
+    }
+
+    return audioBlob;
   }
 
   private async playAudioBlob(audioBlob: Blob): Promise<void> {
