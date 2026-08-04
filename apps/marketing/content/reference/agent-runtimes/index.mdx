@@ -5,7 +5,7 @@ description: "Choose and configure the agent runtime used for OpenLoomi native a
 
 # Agent Runtimes
 
-OpenLoomi can delegate native agent tasks to its built-in Claude Agent SDK runtime or to locally installed CLI runtimes. Desktop users can select Claude Code or Codex CLI under **Settings → Agent runtime**; the app verifies installation and sign-in before enabling a switch. Server/headless deployments and the other runtimes use `OPENLOOMI_AGENT_PROVIDER`. A chat/API request cannot change the runtime.
+OpenLoomi can delegate native agent tasks to its built-in Claude Agent SDK runtime or to locally installed CLI runtimes. Desktop users can select Claude Code or Codex CLI under **Settings → Agent runtime**; the app verifies installation and authentication before enabling a switch. Claude accepts either its CLI login or a complete saved Anthropic-compatible API configuration; Codex uses its CLI login. Server/headless deployments and the other runtimes use `OPENLOOMI_AGENT_PROVIDER`. A chat/API request cannot change the runtime.
 
 ## Overview
 

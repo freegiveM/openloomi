@@ -1,18 +1,19 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
 import { Badge, Button, Separator } from "@openloomi/ui";
+import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { RemixIcon } from "@/components/remix-icon";
 import { toast } from "@/components/toast";
-import { notifyAiSettingsChanged } from "@/lib/ai/notify-ai-settings-changed";
+import { AI_SETTINGS_CHANGED_EVENT } from "@/lib/ai/conversation-api-configuration";
 import {
-  canSaveAgentRuntime,
   type AgentRuntimePublicProbe,
   type AgentRuntimeSettingsResponse,
   type SelectableAgentRuntime,
+  canSaveAgentRuntime,
 } from "@/lib/ai/native-agent/runtime-contract";
+import { notifyAiSettingsChanged } from "@/lib/ai/notify-ai-settings-changed";
 import { isTauri, openUrl } from "@/lib/tauri";
 import { cn, fetchWithAuth } from "@/lib/utils";
 
@@ -28,7 +29,8 @@ const runtimeOptions: Array<{
     provider: "claude",
     name: "Claude Code",
     descriptionKey: "settings.agentRuntimeClaudeDescription",
-    descriptionFallback: "Use your local Claude Code installation and account.",
+    descriptionFallback:
+      "Use local Claude Code with its CLI login or your saved API configuration.",
     docsUrl: "https://code.claude.com/docs/en/installation",
     loginCommand: "claude auth login",
   },
@@ -100,6 +102,17 @@ export function AgentRuntimeSettings() {
     if (inDesktop) void loadState();
   }, [loadState]);
 
+  useEffect(() => {
+    if (desktop !== true) return;
+    const handleSettingsChanged = () => void loadState();
+    window.addEventListener(AI_SETTINGS_CHANGED_EVENT, handleSettingsChanged);
+    return () =>
+      window.removeEventListener(
+        AI_SETTINGS_CHANGED_EVENT,
+        handleSettingsChanged,
+      );
+  }, [desktop, loadState]);
+
   const saveSelection = async () => {
     if (!state || !draft || !canSaveAgentRuntime(state, draft)) return;
     setSaving(true);
@@ -108,8 +121,33 @@ export function AgentRuntimeSettings() {
         method: "PUT",
         body: JSON.stringify({ provider: draft }),
       });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const nextState = (await response.json()) as AgentRuntimeSettingsResponse;
+      const payload = (await response.json().catch(() => null)) as
+        | AgentRuntimeSettingsResponse
+        | { error?: string; settings?: AgentRuntimeSettingsResponse }
+        | null;
+      if (!response.ok) {
+        if (
+          response.status === 409 &&
+          payload &&
+          "settings" in payload &&
+          payload.settings
+        ) {
+          setState(payload.settings);
+          toast({
+            type: "error",
+            description: t(
+              "settings.agentRuntimeNotReadyError",
+              "The selected runtime is no longer ready. Complete setup and check again.",
+            ),
+          });
+          return;
+        }
+        throw new Error(`HTTP ${response.status}`);
+      }
+      if (!payload || !("editable" in payload)) {
+        throw new Error("Invalid runtime settings response");
+      }
+      const nextState = payload;
       setState(nextState);
       setDraft(draft);
       notifyAiSettingsChanged();
@@ -193,7 +231,11 @@ export function AgentRuntimeSettings() {
                 </p>
               )}
 
-            <div className="grid gap-3 sm:grid-cols-2" role="radiogroup">
+            <div
+              className="grid gap-3 sm:grid-cols-2"
+              role="radiogroup"
+              aria-labelledby="agent-runtime-title"
+            >
               {runtimeOptions.map((option) => {
                 const selected = draft === option.provider;
                 const active = state.effective.provider === option.provider;
@@ -202,7 +244,7 @@ export function AgentRuntimeSettings() {
                   <label
                     key={option.provider}
                     className={cn(
-                      "flex cursor-pointer items-start gap-3 rounded-lg border p-4 text-left transition-colors",
+                      "flex cursor-pointer items-start gap-3 rounded-lg border p-4 text-left transition-colors focus-within:outline-none focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2",
                       selected
                         ? "border-primary/50 bg-primary/5 ring-1 ring-primary/15"
                         : "border-border bg-background hover:border-foreground/20 hover:bg-muted/30",
@@ -323,11 +365,17 @@ function RuntimeSetupPanel({
       <div className="space-y-3">
         {probe.status === "ready" ? (
           <p className="text-sm text-muted-foreground">
-            {t(
-              "settings.agentRuntimeReadyDescription",
-              "{{runtime}} is installed and signed in. It is ready for new tasks.",
-              { runtime: option.name },
-            )}
+            {probe.readyVia === "api"
+              ? t(
+                  "settings.agentRuntimeApiReadyDescription",
+                  "{{runtime}} is installed and your saved API configuration is ready for new tasks.",
+                  { runtime: option.name },
+                )
+              : t(
+                  "settings.agentRuntimeReadyDescription",
+                  "{{runtime}} is installed and signed in. It is ready for new tasks.",
+                  { runtime: option.name },
+                )}
           </p>
         ) : probe.status === "login_required" ? (
           <div className="space-y-2">
@@ -343,7 +391,7 @@ function RuntimeSetupPanel({
           <p className="text-sm text-muted-foreground">
             {t(
               "settings.agentRuntimeInstallDescription",
-              "Install {{runtime}} from its official guide, sign in, then check again.",
+              "Install {{runtime}} from its official guide, then check again.",
               { runtime: option.name },
             )}
           </p>

@@ -1,5 +1,6 @@
-import { EventEmitter } from "node:events";
 import type { ChildProcess } from "node:child_process";
+import { EventEmitter } from "node:events";
+import { join } from "node:path";
 import { PassThrough } from "node:stream";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
@@ -87,6 +88,7 @@ describe("native agent runtime probes", () => {
     clearNativeRuntimeCaches();
     Reflect.deleteProperty(process.env, "CLAUDE_CODE_PATH");
     Reflect.deleteProperty(process.env, "OPENLOOMI_AGENT_CODEX_COMMAND");
+    vi.unstubAllEnvs();
   });
 
   test("returns a structured failure when spawning Claude fails synchronously", async () => {
@@ -135,6 +137,31 @@ describe("native agent runtime probes", () => {
     expect(spawnMock.mock.calls[1]?.[1]).toEqual(["auth", "status"]);
   });
 
+  test("uses a least-privilege environment for readiness commands", async () => {
+    process.env.CLAUDE_CODE_PATH = "C:\\fake\\claude.exe";
+    existingPaths.add(process.env.CLAUDE_CODE_PATH);
+    vi.stubEnv("DATABASE_URL", "postgres://must-not-leak");
+    vi.stubEnv("CLAUDE_CONFIG_DIR", "C:\\fake\\claude-config");
+    vi.stubEnv("ANTHROPIC_AUTH_TOKEN", "claude-auth-token");
+    vi.stubEnv("OPENAI_API_KEY", "must-not-reach-claude");
+    vi.stubEnv("CODEX_API_KEY", "must-not-reach-claude");
+    spawnMock
+      .mockImplementationOnce(() => completedProcess({ stdout: "2.1.3" }))
+      .mockImplementationOnce(() => completedProcess({ stdout: "ok" }));
+
+    await probeNativeClaudeRuntime();
+
+    const spawnedEnvironment = spawnMock.mock.calls[0]?.[2]?.env;
+    expect(spawnedEnvironment).not.toHaveProperty("DATABASE_URL");
+    expect(spawnedEnvironment).not.toHaveProperty("OPENAI_API_KEY");
+    expect(spawnedEnvironment).not.toHaveProperty("CODEX_API_KEY");
+    expect(spawnedEnvironment).toMatchObject({
+      ANTHROPIC_AUTH_TOKEN: "claude-auth-token",
+      CLAUDE_CONFIG_DIR: "C:\\fake\\claude-config",
+      CLAUDECODE: "",
+    });
+  });
+
   test("distinguishes a Claude sign-in requirement from an unavailable CLI", async () => {
     process.env.CLAUDE_CODE_PATH = "C:\\fake\\claude.exe";
     existingPaths.add(process.env.CLAUDE_CODE_PATH);
@@ -156,9 +183,43 @@ describe("native agent runtime probes", () => {
     expect(unavailable?.available).toBe(false);
   });
 
+  test("probes a bundled legacy cli.js with its bundled Node runtime", async () => {
+    const bundleDirectory = join(process.cwd(), "apps", "web", "cli-bundle");
+    const cliPath = join(bundleDirectory, "cli.js");
+    const nodePath = join(
+      bundleDirectory,
+      process.platform === "win32" ? "node.exe" : "node",
+    );
+    existingPaths.add(cliPath);
+    existingPaths.add(join(bundleDirectory, "vendor"));
+    existingPaths.add(nodePath);
+    spawnMock
+      .mockImplementationOnce(() => completedProcess({ stdout: "2.1.3" }))
+      .mockImplementationOnce(() => completedProcess({ stdout: "ok" }));
+
+    const probe = await probeNativeClaudeRuntime();
+
+    expect(probe).toMatchObject({
+      ready: true,
+      cliPathSource: "BUNDLED",
+    });
+    expect(spawnMock.mock.calls[0]?.slice(0, 2)).toEqual([
+      nodePath,
+      ["--max-old-space-size=8192", cliPath, "--version"],
+    ]);
+    expect(spawnMock.mock.calls[1]?.[1]).toEqual([
+      "--max-old-space-size=8192",
+      cliPath,
+      "auth",
+      "status",
+    ]);
+  });
+
   test("checks Codex with login status and supports a forced refresh", async () => {
     process.env.OPENLOOMI_AGENT_CODEX_COMMAND = "C:\\fake\\codex.cmd";
     existingPaths.add(process.env.OPENLOOMI_AGENT_CODEX_COMMAND);
+    vi.stubEnv("OPENAI_API_KEY", "codex-model-key");
+    vi.stubEnv("ANTHROPIC_AUTH_TOKEN", "must-not-reach-codex");
     spawnMock
       .mockImplementationOnce(() =>
         completedProcess({ stdout: "codex-cli 1.2.0" }),
@@ -184,6 +245,12 @@ describe("native agent runtime probes", () => {
     });
     expect(refreshed?.version).toBe("1.2.1");
     expect(spawnMock.mock.calls[1]?.[1]).toEqual(["login", "status"]);
+    expect(spawnMock.mock.calls[0]?.[2]?.env).toMatchObject({
+      OPENAI_API_KEY: "codex-model-key",
+    });
+    expect(spawnMock.mock.calls[0]?.[2]?.env).not.toHaveProperty(
+      "ANTHROPIC_AUTH_TOKEN",
+    );
     expect(spawnMock).toHaveBeenCalledTimes(4);
   });
 });

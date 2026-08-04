@@ -299,7 +299,8 @@ const zh = {
     agentRuntimeTitle: "Agent 运行时",
     agentRuntimeDescription:
       "选择 OpenLoomi 在新任务中使用的本地 CLI；正在运行的任务不会被中断。",
-    agentRuntimeClaudeDescription: "使用本机 Claude Code 及其登录账号。",
+    agentRuntimeClaudeDescription:
+      "使用本机 Claude Code，可通过 CLI 登录或已保存的 API 配置完成认证。",
     agentRuntimeCodexDescription: "使用本机 Codex CLI 及其登录账号。",
     agentRuntimeChecking: "正在检查本地运行时…",
     agentRuntimeReady: "已就绪",
@@ -308,10 +309,12 @@ const zh = {
     agentRuntimeUnverifiedShort: "无法验证",
     agentRuntimeInUse: "使用中",
     agentRuntimeReadyDescription: "{{runtime}} 已安装并登录，可以用于新任务。",
+    agentRuntimeApiReadyDescription:
+      "{{runtime}} 已安装，且已保存的 API 配置可用于新任务。",
     agentRuntimeLoginDescription:
       "请在终端运行以下命令并完成登录，然后重新检查。",
     agentRuntimeInstallDescription:
-      "请按官方指南安装 {{runtime}}，完成登录后重新检查。",
+      "请按官方指南安装 {{runtime}}，然后重新检查。",
     agentRuntimeUnverified: "OpenLoomi 无法验证本地运行时。",
     agentRuntimeUnverifiedDescription:
       "OpenLoomi 无法验证此 CLI。请确认它能在终端运行，然后重新检查。",
@@ -326,6 +329,7 @@ const zh = {
     agentRuntimeSaved: "Agent 运行时已更新，将用于新任务。",
     agentRuntimeLoadError: "Agent 运行时检查失败。",
     agentRuntimeSaveError: "Agent 运行时更新失败。",
+    agentRuntimeNotReadyError: "所选运行时已不再就绪，请完成配置后重新检查。",
     conversationModelsTitle: "对话模型",
     aiSettingsOpenAiTitle: "OpenAI 兼容",
     aiSettingsOpenAiDescription:

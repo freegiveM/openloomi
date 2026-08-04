@@ -1,5 +1,7 @@
-import { spawn, type ChildProcess } from "node:child_process";
-import { platform } from "node:os";
+import { type ChildProcess, spawn } from "node:child_process";
+import { existsSync, readdirSync } from "node:fs";
+import { homedir, platform } from "node:os";
+import { delimiter, join } from "node:path";
 
 const terminatingProcesses = new WeakSet<ChildProcess>();
 const POSIX_TERMINATION_GRACE_MS = 2_000;
@@ -35,6 +37,57 @@ const RUNTIME_ENV_PREFIXES = ["OPENCODE_", "HERMES_", "OPENCLAW_", "CODEX_"];
 
 export function shouldDetachCliProcess(): boolean {
   return platform() !== "win32";
+}
+
+/**
+ * Desktop apps inherit a much shorter PATH than an interactive shell. Keep
+ * runtime probes and actual CLI execution on the same search path so a CLI
+ * reported as ready is also launchable when a task starts.
+ */
+export function buildAgentCliSearchPath(
+  basePath = process.env.PATH ?? "",
+): string {
+  const home = homedir();
+  const paths = basePath
+    .split(delimiter)
+    .map((entry) => entry.replace(/^"|"$/g, "").trim())
+    .filter(Boolean);
+
+  if (platform() === "win32") {
+    paths.push(
+      join(home, ".local", "bin"),
+      join(home, "AppData", "Roaming", "npm"),
+      join(home, "AppData", "Local", "Programs", "nodejs"),
+      join(home, ".volta", "bin"),
+      "C:\\Program Files\\nodejs",
+      "C:\\Program Files (x86)\\nodejs",
+    );
+  } else {
+    paths.push(
+      "/usr/local/bin",
+      "/opt/homebrew/bin",
+      join(home, ".local", "bin"),
+      join(home, ".npm-global", "bin"),
+      join(home, ".volta", "bin"),
+      join(home, ".bun", "bin"),
+      join(home, "Library", "pnpm"),
+      join(home, ".local", "share", "pnpm"),
+      join(home, "code", "node", "npm_global", "bin"),
+    );
+
+    const nvmDirectory = join(home, ".nvm", "versions", "node");
+    try {
+      if (existsSync(nvmDirectory)) {
+        for (const version of readdirSync(nvmDirectory)) {
+          paths.push(join(nvmDirectory, version, "bin"));
+        }
+      }
+    } catch {
+      // nvm is optional and may be unreadable in hardened desktop installs.
+    }
+  }
+
+  return Array.from(new Set(paths)).join(delimiter);
 }
 
 /**

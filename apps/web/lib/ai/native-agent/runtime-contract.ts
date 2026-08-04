@@ -13,6 +13,7 @@ export type AgentRuntimePublicProbe = {
   installed: boolean;
   authenticated: boolean | null;
   ready: boolean;
+  readyVia: "cli" | "api" | null;
   status: AgentRuntimeSetupStatus;
   version: string | null;
   reason:

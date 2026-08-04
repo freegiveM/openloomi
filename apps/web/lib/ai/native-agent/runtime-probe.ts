@@ -8,22 +8,39 @@
  */
 
 import type { ChildProcess } from "node:child_process";
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { homedir, platform } from "node:os";
-import { delimiter, dirname, join, parse } from "node:path";
+import { delimiter, join, parse } from "node:path";
 import spawn from "cross-spawn";
 
+import { getClaudeBundleDirectories } from "@/lib/ai/extensions/agent/claude/cli-locations";
 import {
   appendCapturedCliOutput,
+  buildAgentCliSearchPath,
+  buildCliEnvironment,
   shouldDetachCliProcess,
   terminateCliProcessTree,
 } from "@/lib/ai/extensions/agent/cli-process";
 import { createLogger } from "@/lib/utils/logger";
+import { APP_DIR_NAME } from "@/lib/env/config/constants";
 
 const PROBE_TIMEOUT_MS = 5000;
 const CACHE_TTL_MS = 30_000;
 
 const logger = createLogger("NativeAgentRuntime");
+
+const PROBE_CREDENTIAL_KEYS = new Set([
+  "OPENAI_API_KEY",
+  "ANTHROPIC_API_KEY",
+  "ANTHROPIC_AUTH_TOKEN",
+  "ANTHROPIC_BASE_URL",
+  "CLAUDE_CONFIG_DIR",
+  "CLAUDE_CODE_OAUTH_TOKEN",
+  "OPENROUTER_API_KEY",
+  "GEMINI_API_KEY",
+  "GOOGLE_GENERATIVE_AI_API_KEY",
+]);
+const PROBE_RUNTIME_PREFIXES = ["OPENCODE_", "HERMES_", "OPENCLAW_", "CODEX_"];
 
 export type NativeRuntimeStatus =
   | "CLAUDE_CLI_AUTHENTICATED"
@@ -112,6 +129,13 @@ type RuntimeDefinition<
   };
 };
 
+type ResolvedCliPath = {
+  path: string | null;
+  source: CliPathSource;
+  searchPath: string;
+  argsPrefix: string[];
+};
+
 let claudeCache: { at: number; value: NativeRuntimeProbe } | null = null;
 let codexCache: { at: number; value: CodexRuntimeProbe } | null = null;
 let claudeInFlight: Promise<NativeRuntimeProbe> | null = null;
@@ -124,78 +148,35 @@ function candidateBinaries(binary: string): string[] {
   return [binary];
 }
 
-/**
- * Desktop apps do not inherit the user's interactive shell PATH. Include the
- * common package-manager locations used by both supported runtimes.
- */
-function buildCliSearchPath(): string {
-  const home = homedir();
-  const dirs: string[] = [process.env.PATH || ""];
-
-  if (platform() === "win32") {
-    dirs.push(
-      join(home, "AppData", "Roaming", "npm"),
-      join(home, "AppData", "Local", "Programs", "nodejs"),
-      join(home, ".volta", "bin"),
-      "C:\\Program Files\\nodejs",
-      "C:\\Program Files (x86)\\nodejs",
-    );
-  } else {
-    dirs.push(
-      "/usr/local/bin",
-      "/opt/homebrew/bin",
-      join(home, ".local", "bin"),
-      join(home, ".npm-global", "bin"),
-      join(home, ".volta", "bin"),
-      join(home, ".bun", "bin"),
-      join(home, "Library", "pnpm"),
-      join(home, ".local", "share", "pnpm"),
-      join(home, "code", "node", "npm_global", "bin"),
-    );
-  }
-
-  return Array.from(new Set(dirs.filter(Boolean))).join(delimiter);
-}
-
-function listNvmBinaries(binary: string): string[] {
-  try {
-    const nvmBase = join(homedir(), ".nvm", "versions", "node");
-    if (!existsSync(nvmBase)) return [];
-    return readdirSync(nvmBase)
-      .sort()
-      .reverse()
-      .map((version) => join(nvmBase, version, "bin", binary))
-      .filter((candidate) => existsSync(candidate));
-  } catch {
-    return [];
-  }
-}
-
-/** Current desktop bundles include a platform-native Claude executable. */
-function resolveBundledClaudePath(): string | null {
-  const executableDirectory = dirname(process.execPath);
-  const bundleDirectories = [
-    join(process.cwd(), "apps", "web", "cli-bundle"),
-    join(process.cwd(), "cli-bundle"),
-    join(process.cwd(), "..", "web", "cli-bundle"),
-    join(executableDirectory, "cli-bundle"),
-    join(executableDirectory, "..", "Resources", "cli-bundle"),
-    join(
-      executableDirectory,
-      "..",
-      "Resources",
-      "_up_",
-      "src-api",
-      "dist",
-      "cli-bundle",
-    ),
-    join(executableDirectory, "_up_", "src-api", "dist", "cli-bundle"),
-  ];
+/** Resolve both current native bundles and legacy cli.js bundles. */
+function resolveBundledClaudeCommand(): {
+  path: string;
+  argsPrefix: string[];
+} | null {
   const executable = platform() === "win32" ? "claude.exe" : "claude";
 
-  for (const directory of bundleDirectories) {
+  for (const directory of getClaudeBundleDirectories()) {
     const candidate = join(directory, executable);
-    if (existsSync(candidate)) return candidate;
+    if (existsSync(candidate)) return { path: candidate, argsPrefix: [] };
+
+    const cliPath = join(directory, "cli.js");
+    const vendorDirectory = join(directory, "vendor");
+    if (!(existsSync(cliPath) && existsSync(vendorDirectory))) continue;
+
+    const bundledNode = join(
+      directory,
+      platform() === "win32" ? "node.exe" : "node",
+    );
+    const openLoomiNode = join(homedir(), APP_DIR_NAME, "node", "node.exe");
+    const nodePath = existsSync(bundledNode)
+      ? bundledNode
+      : platform() === "win32" && existsSync(openLoomiNode)
+        ? openLoomiNode
+        : "node";
+    return {
+      path: nodePath,
+      argsPrefix: ["--max-old-space-size=8192", cliPath],
+    };
   }
   return null;
 }
@@ -207,13 +188,13 @@ function isBareCommand(command: string): boolean {
 
 function resolveCliPath(
   definition: RuntimeDefinition<"claude" | "codex", string>,
-): { path: string | null; source: CliPathSource; searchPath: string } {
-  const searchPath = buildCliSearchPath();
+): ResolvedCliPath {
+  const searchPath = buildAgentCliSearchPath();
 
   if (definition.provider === "claude") {
-    const bundled = resolveBundledClaudePath();
+    const bundled = resolveBundledClaudeCommand();
     if (bundled) {
-      return { path: bundled, source: "BUNDLED", searchPath };
+      return { ...bundled, source: "BUNDLED", searchPath };
     }
   }
 
@@ -224,6 +205,7 @@ function resolveCliPath(
         path: explicit,
         source: definition.explicitSource,
         searchPath,
+        argsPrefix: [],
       };
     }
   }
@@ -236,24 +218,26 @@ function resolveCliPath(
     for (const directory of pathDirectories) {
       const candidate = join(directory, binary);
       if (existsSync(candidate)) {
-        return { path: candidate, source: "PATH", searchPath };
+        return {
+          path: candidate,
+          source: "PATH",
+          searchPath,
+          argsPrefix: [],
+        };
       }
     }
   }
 
-  const [fallback] = listNvmBinaries(definition.binary);
-  if (fallback) {
-    return { path: fallback, source: "FALLBACK", searchPath };
-  }
-
-  return { path: null, source: null, searchPath };
+  return { path: null, source: null, searchPath, argsPrefix: [] };
 }
 
 function runCli(
+  provider: "claude" | "codex",
   command: string,
   args: readonly string[],
   timeoutMs: number,
   searchPath: string,
+  argsPrefix: readonly string[] = [],
 ): Promise<ProbeResult> {
   const startedAt = Date.now();
   return new Promise((resolve) => {
@@ -270,10 +254,13 @@ function runCli(
 
     let processHandle: ChildProcess;
     try {
-      processHandle = spawn(command, [...args], {
+      processHandle = spawn(command, [...argsPrefix, ...args], {
         stdio: ["ignore", "pipe", "pipe"],
         detached: shouldDetachCliProcess(),
-        env: { ...process.env, PATH: searchPath, CLAUDECODE: "" },
+        env: buildRuntimeProbeEnvironment(provider, {
+          PATH: searchPath,
+          CLAUDECODE: "",
+        }),
         windowsHide: true,
       });
     } catch (error) {
@@ -338,6 +325,44 @@ function runCli(
   });
 }
 
+function buildRuntimeProbeEnvironment(
+  provider: "claude" | "codex",
+  overrides: Record<string, string>,
+): NodeJS.ProcessEnv {
+  const providerOverrides: Record<string, string> = {};
+  if (provider === "claude") {
+    for (const key of [
+      "ANTHROPIC_AUTH_TOKEN",
+      "ANTHROPIC_BASE_URL",
+      "CLAUDE_CONFIG_DIR",
+      "CLAUDE_CODE_OAUTH_TOKEN",
+    ]) {
+      const value = process.env[key];
+      if (value !== undefined) providerOverrides[key] = value;
+    }
+  }
+
+  const env = buildCliEnvironment({ ...providerOverrides, ...overrides });
+  for (const key of Object.keys(env)) {
+    const normalized = key.toUpperCase();
+    const isRuntimeCredential =
+      PROBE_CREDENTIAL_KEYS.has(normalized) ||
+      PROBE_RUNTIME_PREFIXES.some((prefix) => normalized.startsWith(prefix));
+    if (!isRuntimeCredential) continue;
+
+    const isProviderCredential =
+      provider === "claude"
+        ? normalized.startsWith("ANTHROPIC_") ||
+          normalized === "CLAUDE_CONFIG_DIR" ||
+          normalized === "CLAUDE_CODE_OAUTH_TOKEN"
+        : normalized === "OPENAI_API_KEY" || normalized.startsWith("CODEX_");
+    if (!isProviderCredential) {
+      delete env[key];
+    }
+  }
+  return env;
+}
+
 function cleanVersion(result: ProbeResult): string | null {
   const line = `${result.stdout}\n${result.stderr}`
     .split(/\r?\n/)
@@ -386,10 +411,12 @@ async function probeCliRuntime<
   }
 
   const versionProbe = await runCli(
+    definition.provider,
     resolved.path,
     ["--version"],
     PROBE_TIMEOUT_MS,
     resolved.searchPath,
+    resolved.argsPrefix,
   );
   if (!versionProbe.ok) {
     const result = {
@@ -414,10 +441,12 @@ async function probeCliRuntime<
   }
 
   const authProbe = await runCli(
+    definition.provider,
     resolved.path,
     definition.authArgs,
     PROBE_TIMEOUT_MS,
     resolved.searchPath,
+    resolved.argsPrefix,
   );
   if (!authProbe.ok) {
     const reason = authProbe.timedOut

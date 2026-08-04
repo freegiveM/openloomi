@@ -237,7 +237,7 @@ OpenLoomi automatically detects an existing Claude Code configuration. For serve
 | OpenClaw   | ✅ Supported   | Gateway-backed `openclaw acp` bridge                    |
 | DeepAgents | 🔜 Coming Soon | Metadata exists; a production adapter is not registered |
 
-In the desktop app, open **Settings → Agent runtime** to choose Claude Code or Codex CLI. OpenLoomi checks whether the selected CLI is installed and signed in, then enables the switch once it is ready. The saved device preference applies to new tasks and takes precedence over `OPENLOOMI_AGENT_PROVIDER`; running tasks are not interrupted.
+In the desktop app, open **Settings → Agent runtime** to choose Claude Code or Codex CLI. OpenLoomi checks whether the selected CLI is installed and authenticated, then enables the switch once it is ready. Claude can authenticate through its CLI login or a complete Anthropic-compatible configuration saved in API Settings; Codex uses its CLI login. The saved device preference applies to new tasks and takes precedence over `OPENLOOMI_AGENT_PROVIDER`; running tasks are not interrupted.
 
 Server/headless deployments—and the OpenCode, Hermes, and OpenClaw runtimes—remain environment-controlled. Claude is used when neither a desktop preference nor `OPENLOOMI_AGENT_PROVIDER` is set; supported environment values are `claude`, `codex`, `opencode`, `hermes`, and `openclaw`.
 

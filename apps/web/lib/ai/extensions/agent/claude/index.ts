@@ -9,7 +9,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { arch, homedir, platform } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import {
   createSdkMcpServer,
   query,
@@ -67,6 +67,7 @@ import { syncSkillsToClaude } from "@/lib/ai/skills/loader";
 // Logging - uses shared logger (writes to ~/.openloomi/logs/openloomi.log)
 // ============================================================================
 import { createLogger, LOG_FILE_PATH } from "@/lib/utils/logger";
+import { getClaudeBundleDirectories } from "./cli-locations";
 import {
   buildClaudeEnvConfig,
   buildClaudeSettingsConfig,
@@ -343,49 +344,8 @@ export function getTargetTriple(): string {
  */
 function getSidecarClaudeCodePath(): string | undefined {
   const os = platform();
-  const execDir = dirname(process.execPath);
 
-  // Possible locations for the bundled Claude Code (cli-bundle directory)
-  const bundleLocations = [
-    // Dev mode: check apps/web/cli-bundle (monorepo structure)
-    join(process.cwd(), "apps", "web", "cli-bundle"),
-    join(process.cwd(), "cli-bundle"),
-    join(process.cwd(), "..", "web", "cli-bundle"),
-    // Same directory as openloomi-api
-    join(execDir, "cli-bundle"),
-    // macOS: Tauri places resources in Resources
-    join(execDir, "..", "Resources", "cli-bundle"),
-    // macOS: Tauri places resources with preserved path structure
-    join(execDir, "..", "Resources", "_up_", "src-api", "dist", "cli-bundle"),
-    // Windows: Tauri places resources relative to exe
-    join(execDir, "_up_", "src-api", "dist", "cli-bundle"),
-    // Linux: Tauri deb/rpm places resources in /usr/lib/<AppName>/
-    join(
-      execDir,
-      "..",
-      "lib",
-      "openloomi",
-      "_up_",
-      "src-api",
-      "dist",
-      "cli-bundle",
-    ),
-    join(
-      execDir,
-      "..",
-      "lib",
-      "openloomi",
-      "_up_",
-      "src-api",
-      "dist",
-      "cli-bundle",
-    ),
-    // Legacy claude-bundle for backward compatibility
-    join(execDir, "claude-bundle"),
-    join(execDir, "..", "Resources", "claude-bundle"),
-  ];
-
-  for (const bundleDir of bundleLocations) {
+  for (const bundleDir of getClaudeBundleDirectories()) {
     if (!existsSync(bundleDir)) continue;
 
     // Current bundle structure: a platform-native Claude Code executable.

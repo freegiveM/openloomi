@@ -12,10 +12,18 @@ const runtimeState = vi.hoisted(() => ({
     preference: null,
     effective: { provider: "claude", source: "default" },
     platform: "windows",
-    runtimes: null,
+    runtimes: {
+      claude: { ready: true },
+      codex: { ready: true },
+    },
   },
   get: vi.fn(),
   write: vi.fn(),
+}));
+const llmSettingsState = vi.hoisted(() => ({
+  config: undefined as
+    | { apiKey: string; baseUrl: string; model: string }
+    | undefined,
 }));
 
 vi.mock("@/lib/auth/dual-auth", () => ({
@@ -32,6 +40,10 @@ vi.mock("@/lib/ai/native-agent/runtime-settings", () => ({
 
 vi.mock("@/lib/ai/native-agent/runtime-preference", () => ({
   writeAgentRuntimePreference: runtimeState.write,
+}));
+
+vi.mock("@/lib/ai/user-llm-api-settings", () => ({
+  getUserLlmProviderConfig: vi.fn(async () => llmSettingsState.config),
 }));
 
 const { GET, PUT } =
@@ -52,6 +64,7 @@ beforeEach(() => {
   runtimeState.get.mockReset();
   runtimeState.get.mockResolvedValue(runtimeState.response);
   runtimeState.write.mockReset();
+  llmSettingsState.config = undefined;
 });
 
 describe("agent runtime preferences route", () => {
@@ -69,7 +82,10 @@ describe("agent runtime preferences route", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("cache-control")).toBe("no-store");
-    expect(runtimeState.get).toHaveBeenCalledWith({ forceRefresh: true });
+    expect(runtimeState.get).toHaveBeenCalledWith({
+      forceRefresh: true,
+      claudeApiConfigured: false,
+    });
     expect(await response.json()).toEqual(runtimeState.response);
   });
 
@@ -99,8 +115,40 @@ describe("agent runtime preferences route", () => {
     expect(response.status).toBe(200);
     expect(runtimeState.write).toHaveBeenCalledWith("codex");
     expect(runtimeState.write.mock.invocationCallOrder[0]).toBeLessThan(
-      runtimeState.get.mock.invocationCallOrder[0],
+      runtimeState.get.mock.invocationCallOrder[1],
     );
+  });
+
+  test("passes a complete saved Claude API configuration into readiness", async () => {
+    llmSettingsState.config = {
+      apiKey: "decrypted-key",
+      baseUrl: "https://api.example.test",
+      model: "claude-test",
+    };
+
+    const response = await GET(request());
+
+    expect(response.status).toBe(200);
+    expect(runtimeState.get).toHaveBeenCalledWith({
+      forceRefresh: false,
+      claudeApiConfigured: true,
+    });
+  });
+
+  test("does not persist a runtime that fails the server readiness check", async () => {
+    runtimeState.get.mockResolvedValueOnce({
+      ...runtimeState.response,
+      runtimes: {
+        claude: { ready: true },
+        codex: { ready: false },
+      },
+    });
+
+    const response = await PUT(request("PUT", { provider: "codex" }));
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ error: "runtime_not_ready" });
+    expect(runtimeState.write).not.toHaveBeenCalled();
   });
 
   test("does not claim success when the atomic preference write fails", async () => {
@@ -114,6 +162,6 @@ describe("agent runtime preferences route", () => {
     expect(await response.json()).toEqual({
       error: "runtime_preference_save_failed",
     });
-    expect(runtimeState.get).not.toHaveBeenCalled();
+    expect(runtimeState.get).toHaveBeenCalledTimes(1);
   });
 });

@@ -1,6 +1,11 @@
+import { homedir } from "node:os";
+import { delimiter, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { buildCliEnvironment } from "@/lib/ai/extensions/agent/cli-process";
+import {
+  buildAgentCliSearchPath,
+  buildCliEnvironment,
+} from "@/lib/ai/extensions/agent/cli-process";
 
 const originalEnv = process.env;
 
@@ -16,6 +21,9 @@ describe("CLI process environment", () => {
       DATABASE_URL: "postgres://secret",
       AUTH_SECRET: "auth-secret",
       OPENAI_API_KEY: "model-secret",
+      ANTHROPIC_AUTH_TOKEN: "claude-token",
+      CLAUDE_CONFIG_DIR: "/tmp/claude-config",
+      CLAUDE_UNRELATED_SECRET: "hidden-claude-secret",
       OPENCLAW_GATEWAY_TOKEN: "gateway-secret",
       CODEX_API_KEY: "codex-secret",
       CODEX_HOME: "/tmp/codex-home",
@@ -31,6 +39,16 @@ describe("CLI process environment", () => {
     });
     expect(buildCliEnvironment()).not.toHaveProperty("DATABASE_URL");
     expect(buildCliEnvironment()).not.toHaveProperty("AUTH_SECRET");
+    expect(buildCliEnvironment()).not.toHaveProperty("ANTHROPIC_AUTH_TOKEN");
+    expect(buildCliEnvironment()).not.toHaveProperty("CLAUDE_CONFIG_DIR");
+    expect(buildCliEnvironment()).not.toHaveProperty("CLAUDE_UNRELATED_SECRET");
+  });
+
+  it("adds native installer locations to the shared desktop CLI path", () => {
+    const searchPath = buildAgentCliSearchPath("custom-bin").split(delimiter);
+
+    expect(searchPath).toContain("custom-bin");
+    expect(searchPath).toContain(join(homedir(), ".local", "bin"));
   });
 
   it("supports an explicit server-controlled allowlist and trusted overrides", () => {

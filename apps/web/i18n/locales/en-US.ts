@@ -314,7 +314,7 @@ const en = {
     agentRuntimeDescription:
       "Choose the local CLI OpenLoomi uses for new agent tasks. Running tasks are not interrupted.",
     agentRuntimeClaudeDescription:
-      "Use your local Claude Code installation and account.",
+      "Use local Claude Code with its CLI login or your saved API configuration.",
     agentRuntimeCodexDescription:
       "Use your local Codex CLI installation and account.",
     agentRuntimeChecking: "Checking local runtimes…",
@@ -325,10 +325,12 @@ const en = {
     agentRuntimeInUse: "In use",
     agentRuntimeReadyDescription:
       "{{runtime}} is installed and signed in. It is ready for new tasks.",
+    agentRuntimeApiReadyDescription:
+      "{{runtime}} is installed and your saved API configuration is ready for new tasks.",
     agentRuntimeLoginDescription:
       "Run this command in a terminal, finish signing in, then check again.",
     agentRuntimeInstallDescription:
-      "Install {{runtime}} from its official guide, sign in, then check again.",
+      "Install {{runtime}} from its official guide, then check again.",
     agentRuntimeUnverified: "OpenLoomi could not verify the local runtimes.",
     agentRuntimeUnverifiedDescription:
       "OpenLoomi could not verify this CLI. Confirm it runs in your terminal, then check again.",
@@ -343,6 +345,8 @@ const en = {
     agentRuntimeSaved: "Agent runtime updated for new tasks.",
     agentRuntimeLoadError: "Failed to check agent runtimes.",
     agentRuntimeSaveError: "Failed to update the agent runtime.",
+    agentRuntimeNotReadyError:
+      "The selected runtime is no longer ready. Complete setup and check again.",
     conversationModelsTitle: "Conversation models",
     aiSettingsOpenAiTitle: "OpenAI compatible",
     aiSettingsOpenAiDescription:

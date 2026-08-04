@@ -1,14 +1,14 @@
 import { describe, expect, test } from "vitest";
 
 import {
-  canSaveAgentRuntime,
   type AgentRuntimeSettingsResponse,
+  canSaveAgentRuntime,
 } from "@/lib/ai/native-agent/runtime-contract";
-import { toPublicProbe } from "@/lib/ai/native-agent/runtime-settings";
 import type {
   CodexRuntimeProbe,
   NativeRuntimeProbe,
 } from "@/lib/ai/native-agent/runtime-probe";
+import { toPublicProbe } from "@/lib/ai/native-agent/runtime-settings";
 
 function codexProbe(overrides: Partial<CodexRuntimeProbe>): CodexRuntimeProbe {
   return {
@@ -56,6 +56,7 @@ describe("agent runtime public probe", () => {
       installed: true,
       authenticated: true,
       ready: true,
+      readyVia: "cli",
       status: "ready",
       version: "1.2.0",
       reason: "READY",
@@ -99,6 +100,7 @@ describe("agent runtime public probe", () => {
       installed: false,
       authenticated: null,
       ready: false,
+      readyVia: null,
       status: "unverified",
       version: null,
       reason: "PROBE_FAILED",
@@ -126,6 +128,35 @@ describe("agent runtime public probe", () => {
       status: "unverified",
       reason: "AUTH_UNAVAILABLE",
       version: "2.1.3",
+    });
+  });
+
+  test("accepts a complete saved API configuration instead of CLI login for Claude", () => {
+    const probe: NativeRuntimeProbe = {
+      checked: true,
+      provider: "claude",
+      defaultAgent: "claude",
+      available: true,
+      authenticated: false,
+      active: false,
+      ready: false,
+      reason: "CLAUDE_CLI_AUTH_REQUIRED",
+      cliPathPresent: true,
+      cliPathSource: "PATH",
+      versionPresent: true,
+      version: "2.1.3",
+      probes: {},
+    };
+
+    expect(
+      toPublicProbe("claude", probe, { claudeApiConfigured: true }),
+    ).toMatchObject({
+      installed: true,
+      authenticated: false,
+      ready: true,
+      readyVia: "api",
+      status: "ready",
+      reason: "READY",
     });
   });
 });

@@ -5,9 +5,10 @@ import spawn from "cross-spawn";
 
 import type { AgentOptions } from "@openloomi/ai/agent/types";
 import {
-  appendCapturedCliOutput,
-  buildCliEnvironment,
   MAX_CLI_PROTOCOL_LINE_CHARS,
+  appendCapturedCliOutput,
+  buildAgentCliSearchPath,
+  buildCliEnvironment,
   shouldDetachCliProcess,
   terminateCliProcessTree,
 } from "../cli-process";
@@ -268,7 +269,10 @@ export async function* runCodexCli(
   try {
     proc = spawn(command, args, {
       cwd: options.cwd,
-      env: buildCliEnvironment(options.env),
+      env: buildCliEnvironment({
+        ...options.env,
+        PATH: buildAgentCliSearchPath(options.env?.PATH),
+      }),
       detached: shouldDetachCliProcess(),
       windowsHide: true,
     }) as ChildProcessWithoutNullStreams;

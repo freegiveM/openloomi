@@ -1,11 +1,8 @@
-import { existsSync, readdirSync } from "node:fs";
-import { homedir, platform } from "node:os";
-import { join } from "node:path";
-
 import type { AgentConfig } from "@openloomi/ai/agent/types";
 
 import { DEFAULT_AI_MODEL } from "@/lib/env/constants";
 import { createLogger } from "@/lib/utils/logger";
+import { buildAgentCliSearchPath } from "../cli-process";
 
 import { prepareClaudeCodeTempDirectory } from "./runtime-preflight";
 
@@ -23,45 +20,7 @@ export function isUsingCustomApi(config: AgentConfig): boolean {
  * Build extended PATH that includes common package manager bin locations.
  */
 export function getExtendedPath(): string {
-  const home = homedir();
-  const os = platform();
-  const isWindows = os === "win32";
-  const pathSeparator = isWindows ? ";" : ":";
-
-  const paths = [process.env.PATH || ""];
-
-  if (isWindows) {
-    paths.push(
-      join(home, "AppData", "Roaming", "npm"),
-      join(home, "AppData", "Local", "Programs", "nodejs"),
-      join(home, ".volta", "bin"),
-      "C:\\Program Files\\nodejs",
-      "C:\\Program Files (x86)\\nodejs",
-    );
-  } else {
-    paths.push(
-      "/usr/local/bin",
-      "/opt/homebrew/bin",
-      `${home}/.local/bin`,
-      `${home}/.npm-global/bin`,
-      `${home}/.volta/bin`,
-      `${home}/code/node/npm_global/bin`,
-    );
-
-    const nvmDir = join(home, ".nvm", "versions", "node");
-    try {
-      if (existsSync(nvmDir)) {
-        const versions = readdirSync(nvmDir);
-        for (const version of versions) {
-          paths.push(join(nvmDir, version, "bin"));
-        }
-      }
-    } catch {
-      // nvm not installed.
-    }
-  }
-
-  return paths.join(pathSeparator);
+  return buildAgentCliSearchPath();
 }
 
 /**

@@ -7,8 +7,8 @@ import type {
 } from "./runtime-contract";
 import {
   type CodexRuntimeProbe,
-  getRuntimePlatform,
   type NativeRuntimeProbe,
+  getRuntimePlatform,
   probeNativeClaudeRuntime,
   probeNativeCodexRuntime,
 } from "./runtime-probe";
@@ -18,6 +18,7 @@ type RuntimeProbe = NativeRuntimeProbe | CodexRuntimeProbe;
 export async function getAgentRuntimeSettings(
   options: {
     forceRefresh?: boolean;
+    claudeApiConfigured?: boolean;
   } = {},
 ): Promise<AgentRuntimeSettingsResponse> {
   const resolution = getConfiguredAgentProviderResolution();
@@ -36,7 +37,7 @@ export async function getAgentRuntimeSettings(
   }
 
   const [claude, codex] = await Promise.all([
-    safelyProbe("claude", options.forceRefresh),
+    safelyProbe("claude", options.forceRefresh, options.claudeApiConfigured),
     safelyProbe("codex", options.forceRefresh),
   ]);
 
@@ -55,13 +56,14 @@ export async function getAgentRuntimeSettings(
 async function safelyProbe(
   provider: SelectableAgentRuntime,
   forceRefresh = false,
+  claudeApiConfigured = false,
 ): Promise<AgentRuntimePublicProbe> {
   try {
     const probe =
       provider === "claude"
         ? await probeNativeClaudeRuntime({ force: forceRefresh })
         : await probeNativeCodexRuntime({ force: forceRefresh });
-    return toPublicProbe(provider, probe);
+    return toPublicProbe(provider, probe, { claudeApiConfigured });
   } catch (error) {
     console.warn(`[AgentRuntimeSettings] ${provider} probe failed`, error);
     return unverifiedProbe(provider);
@@ -71,6 +73,7 @@ async function safelyProbe(
 export function toPublicProbe(
   provider: SelectableAgentRuntime,
   probe: RuntimeProbe | null,
+  options: { claudeApiConfigured?: boolean } = {},
 ): AgentRuntimePublicProbe {
   if (!probe) return unverifiedProbe(provider);
 
@@ -80,6 +83,7 @@ export function toPublicProbe(
       installed: false,
       authenticated: null,
       ready: false,
+      readyVia: null,
       status: "not_installed",
       version: null,
       reason: "CLI_UNAVAILABLE",
@@ -92,6 +96,26 @@ export function toPublicProbe(
       installed: true,
       authenticated: true,
       ready: true,
+      readyVia: "cli",
+      status: "ready",
+      version: probe.version,
+      reason: "READY",
+    };
+  }
+
+  // Claude still needs an installed CLI, but a complete saved Anthropic-
+  // compatible configuration is a valid alternative to `claude auth login`.
+  if (
+    provider === "claude" &&
+    options.claudeApiConfigured &&
+    probe.versionPresent
+  ) {
+    return {
+      provider,
+      installed: true,
+      authenticated: probe.authenticated,
+      ready: true,
+      readyVia: "api",
       status: "ready",
       version: probe.version,
       reason: "READY",
@@ -104,6 +128,7 @@ export function toPublicProbe(
       installed: true,
       authenticated: false,
       ready: false,
+      readyVia: null,
       status: "login_required",
       version: probe.version,
       reason: "AUTH_REQUIRED",
@@ -125,6 +150,7 @@ export function toPublicProbe(
     installed: true,
     authenticated: null,
     ready: false,
+    readyVia: null,
     status: "unverified",
     version: probe.version,
     reason,
@@ -139,6 +165,7 @@ function unverifiedProbe(
     installed: false,
     authenticated: null,
     ready: false,
+    readyVia: null,
     status: "unverified",
     version: null,
     reason: "PROBE_FAILED",
