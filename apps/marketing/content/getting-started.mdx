@@ -237,7 +237,9 @@ OpenLoomi automatically detects an existing Claude Code configuration. For serve
 | OpenClaw   | ✅ Supported   | Gateway-backed `openclaw acp` bridge                    |
 | DeepAgents | 🔜 Coming Soon | Metadata exists; a production adapter is not registered |
 
-Runtime selection is intentionally server-controlled and is not shown as an in-app setting yet. Claude is used when `OPENLOOMI_AGENT_PROVIDER` is unset; supported explicit values are `claude`, `codex`, `opencode`, `hermes`, and `openclaw`.
+In the desktop app, open **Settings → Agent runtime** to choose Claude Code or Codex CLI. OpenLoomi checks whether the selected CLI is installed and signed in, then enables the switch once it is ready. The saved device preference applies to new tasks and takes precedence over `OPENLOOMI_AGENT_PROVIDER`; running tasks are not interrupted.
+
+Server/headless deployments—and the OpenCode, Hermes, and OpenClaw runtimes—remain environment-controlled. Claude is used when neither a desktop preference nor `OPENLOOMI_AGENT_PROVIDER` is set; supported environment values are `claude`, `codex`, `opencode`, `hermes`, and `openclaw`.
 
 ```bash
 # OpenCode
@@ -263,7 +265,7 @@ OPENLOOMI_AGENT_CODEX_COMMAND=codex
 OPENLOOMI_AGENT_CODEX_SANDBOX=workspace-write
 ```
 
-OpenLoomi does not install or authenticate these CLIs. CLI subprocesses receive a restricted environment; use `OPENLOOMI_AGENT_ENV_ALLOWLIST` only when a runtime needs an additional named variable. Executable paths, runtime models, profiles, Gateway targets, and approval policy cannot be overridden by chat/API request bodies.
+OpenLoomi guides desktop users to the official installer and CLI login flow, but does not run either one automatically. CLI subprocesses receive a restricted environment; use `OPENLOOMI_AGENT_ENV_ALLOWLIST` only when a runtime needs an additional named variable. Executable paths, runtime models, profiles, Gateway targets, and approval policy cannot be overridden by chat/API request bodies.
 
 Agent runtimes and sandboxes are separate layers: OpenCode, Hermes, OpenClaw, and Codex are registered through `AgentPlugin` and do not pretend to be sandbox providers. Filesystem or process isolation must still be selected and enforced independently by the host.
 
