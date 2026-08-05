@@ -140,6 +140,52 @@ interface RubricJudgeResult {
 }
 
 /**
+ * Extract the first balanced {...} JSON object from a free-form string.
+ * Handles nested objects, strings with embedded braces, and escapes correctly.
+ *
+ * This replaces the naive greedy regex /\{[\s\S]*\}/ which would over-match
+ * across multiple objects or fail when the JSON was wrapped in markdown
+ * code fences, causing spurious "Could not parse JSON" fallbacks.
+ */
+function extractFirstBalancedJson(text: string): string | null {
+  let start = -1;
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    if (ch === "\\") {
+      escape = true;
+      continue;
+    }
+    if (ch === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+
+    if (ch === "{") {
+      if (start === -1) start = i;
+      depth++;
+    } else if (ch === "}") {
+      if (start !== -1) {
+        depth--;
+        if (depth === 0) {
+          return text.slice(start, i + 1);
+        }
+      }
+    }
+  }
+  return null;
+}
+
+/**
  * Evaluate rubrics using GPT-5.1 judge via OpenRouter.
  */
 export async function evaluateRubrics(
@@ -188,48 +234,35 @@ export async function evaluateRubrics(
           throw new Error(`OpenRouter API error: ${fetchResponse.status}`);
         }
 
-        const data = await fetchResponse.json();
+        const data = (await fetchResponse.json()) as {
+          choices?: Array<{
+            message?: { content?: string; reasoning?: string };
+          }>;
+        };
         const text =
           data.choices?.[0]?.message?.content ||
           data.choices?.[0]?.message?.reasoning ||
           "";
 
-        // Try to extract JSON from the response (in case there's extra text)
-        let jsonStr = text;
-        const jsonMatch = text.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          jsonStr = jsonMatch[0];
+        // Try to extract the first balanced JSON object from the response.
+        // This handles markdown code fences (```json ... ```) and nested
+        // objects correctly, unlike the previous greedy /\{[\s\S]*\}/.
+        const balanced = extractFirstBalancedJson(text);
+        if (!balanced) {
+          // No balanced JSON object found in the response.
+          throw new Error(
+            `[Rubric] No JSON object found in judge response: ${text.slice(0, 100)}`,
+          );
         }
 
         // Parse JSON response
         let result: RubricJudgeResult;
         try {
-          result = JSON.parse(jsonStr);
-        } catch {
-          // Try to extract passed/failed from text
-          const lowerText = text.toLowerCase();
-          if (
-            lowerText.includes('"passed": true') ||
-            lowerText.includes('"passed":true') ||
-            lowerText.includes('"passed" : true')
-          ) {
-            passed = true;
-          } else if (
-            lowerText.includes('"passed": false') ||
-            lowerText.includes('"passed":false') ||
-            lowerText.includes('"passed" : false')
-          ) {
-            passed = false;
-          } else if (
-            lowerText.includes("passed") &&
-            !lowerText.includes("failed")
-          ) {
-            passed = true;
-          } else {
-            passed = false;
-          }
-          reasoning = `Could not parse JSON. Raw response: ${text.slice(0, 100)}`;
-          break;
+          result = JSON.parse(balanced);
+        } catch (parseError) {
+          throw new Error(
+            `[Rubric] JSON parse failed: ${parseError instanceof Error ? parseError.message : String(parseError)}. Raw: ${balanced.slice(0, 100)}`,
+          );
         }
 
         passed = result.passed ?? false;
@@ -255,6 +288,10 @@ export async function evaluateRubrics(
         `[Rubric] All attempts failed for rubric: ${rubric.substring(0, 50)}...`,
       );
       reasoning = `Evaluation failed: ${lastError.message}`;
+      // Mark as failed to avoid contaminating statistics; do NOT silently
+      // fall back to passed=false here — the caller treats `passed` as a
+      // definitive judgement, so we leave it as initialized false only when
+      // every retry truly failed to return any signal.
     }
 
     results.push({

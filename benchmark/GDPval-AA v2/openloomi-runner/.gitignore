@@ -1,0 +1,8 @@
+.env
+results/*.json
+results/*.jsonl
+results/submissions/*
+!results/submissions/.gitkeep
+results/artifacts/*
+!results/artifacts/.gitkeep
+results/workdirs/

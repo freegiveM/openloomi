@@ -1,2 +1,4 @@
-﻿checkpoints/
-
+checkpoints/
+results/
+*_result.json
+*_results.json
