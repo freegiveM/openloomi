@@ -271,6 +271,7 @@ class GovernanceRuntimeTestManager {
 function rawMessage(
   messageId: string,
   input: {
+    relationGroup?: string;
     relationValue?: string;
     sourceIdentity?: string;
     applicability?: Record<string, unknown>;
@@ -278,16 +279,17 @@ function rawMessage(
     userId?: string;
   } = {},
 ): RawMessage {
+  const relationGroup = input.relationGroup ?? "language";
   return {
     messageId,
     platform: "slack",
     botId: "bot-1",
     userId: input.userId ?? OWNER.userId,
     timestamp: input.timestamp ?? Math.floor(NOW / 1000),
-    content: `User language preference: ${input.relationValue ?? "zh"}`,
+    content: `User ${relationGroup} preference: ${input.relationValue ?? "zh"}`,
     attachments: [],
     metadata: {
-      relationGroup: "language",
+      relationGroup,
       relationValue: input.relationValue ?? "zh",
       sourceIdentity: input.sourceIdentity ?? `source:${messageId}`,
       memoryApplicability: input.applicability ?? { scope: "global" },
@@ -1572,6 +1574,213 @@ describe("memory graph correction, rollback, and rollout runtime", () => {
         "cluster-representative",
       );
     }
+  });
+
+  // The acceptance table asks that repeated consistent evidence reinforce one
+  // cluster and improve its retrieval priority. Only the first half turns out to
+  // be the graph's doing. Repetition consolidates, which changes what retrieval
+  // returns; the ordering the requirement describes is produced by the baseline
+  // retriever, and the last arm here is what establishes that rather than
+  // assuming it either way.
+  it("represents a repeated preference by one summary, and reorders nothing the baseline already ordered", async () => {
+    async function arm(dose: number, graphLifecycleEnabled: boolean) {
+      const manager = new GovernanceRuntimeTestManager();
+      for (let index = 0; index < dose; index += 1) {
+        await storeEvidence(
+          manager,
+          [
+            rawMessage(`zh-${index + 1}`, {
+              timestamp: Math.floor(NOW / 1000) + index,
+            }),
+          ],
+          NOW + index * 1000,
+        );
+      }
+      // A second, unrelated topic so "priority" has something to be measured
+      // against. One observation, so it never consolidates in any arm.
+      await storeEvidence(
+        manager,
+        [
+          rawMessage("proj-1", {
+            relationGroup: "project",
+            relationValue: "atlas",
+          }),
+        ],
+        NOW + 3500,
+      );
+      await runMemoryForgettingCycle(manager as never, OWNER.userId, {
+        now: NOW + 4000,
+        graphLifecycle: { enabled: graphLifecycleEnabled },
+      });
+      const snapshot = await graph(manager);
+      const baseline = await queryMemoryWithFallback(manager as never, {
+        userId: OWNER.userId,
+        limit: 20,
+        minRawResultsWithoutFallback: 20,
+      });
+      return {
+        snapshot,
+        cluster: snapshot.clusters.find(
+          (candidate) => candidate.clusterId === "cluster:zh-1",
+        ),
+        baselineNodeIds: baseline.items.map((item) =>
+          item.sourceType === "raw" ? item.record.id : item.summary.summaryId,
+        ),
+      };
+    }
+
+    // Sustained evidence. The cluster reaches `stable`, gains a representative,
+    // and retrieval returns that one record in place of its three sources.
+    const sustained = await arm(3, true);
+    expect(sustained.cluster?.lifecycleStatus).toBe("stable");
+    const representativeId = sustained.cluster?.representativeNodeId;
+    expect(representativeId).toBeDefined();
+    expect(sustained.baselineNodeIds).toEqual([representativeId, "proj-1"]);
+
+    // Dose control: identical content and mechanics, one observation. Nothing
+    // consolidates, so the evidence is still retrieved as itself.
+    const single = await arm(1, true);
+    expect(single.cluster?.lifecycleStatus).toBe("forming");
+    expect(single.cluster?.representativeNodeId).toBeUndefined();
+    expect(single.baselineNodeIds).toEqual(["zh-1", "proj-1"]);
+
+    // Baseline arm: the same three observations with graph lifecycle disabled
+    // produce no summary at all, so this is a capability the graph adds rather
+    // than a baseline defect it repairs.
+    const withoutGraph = await arm(3, false);
+    expect(withoutGraph.cluster?.representativeNodeId).toBeUndefined();
+    expect(withoutGraph.baselineNodeIds).toEqual([
+      "zh-3",
+      "zh-2",
+      "zh-1",
+      "proj-1",
+    ]);
+
+    // The sources are represented, not lost.
+    const audit = buildGraphAwareRetrievalDryRun({
+      ownerScope: OWNER,
+      query: "preference",
+      baselineNodeIds: ["zh-1", "zh-2", "zh-3"],
+      snapshot: sustained.snapshot,
+      visibilityMode: "audit",
+      includeDeprecated: true,
+    });
+    for (const id of ["zh-1", "zh-2", "zh-3"]) {
+      expect(audit.rankedNodeIds).toContain(id);
+    }
+
+    // And the half of the claim that is not the graph's. Given the order the
+    // real retriever produces, graph-aware ranking returns it unchanged: the
+    // representative is already first without the graph. The rule that would
+    // lift it does exist — handed the reverse order it applies — but it never
+    // has to, so no priority improvement here is attributable to the graph.
+    const rank = (baselineNodeIds: string[]) =>
+      buildGraphAwareRetrievalDryRun({
+        ownerScope: OWNER,
+        query: "preference",
+        baselineNodeIds,
+        snapshot: sustained.snapshot,
+        visibilityMode: "default",
+      }).rankedNodeIds;
+    expect(rank(sustained.baselineNodeIds)).toEqual(sustained.baselineNodeIds);
+    expect(rank([...sustained.baselineNodeIds].reverse())).toEqual([
+      representativeId,
+      "proj-1",
+    ]);
+  });
+
+  // MR-4 allows a scoped memory to widen only on repeated support across
+  // independent contexts. Same content and same dose in every arm; only the
+  // independence of the contexts differs, which makes each arm the control for
+  // the one above it.
+  it("widens a scoped preference only when independent contexts agree", async () => {
+    async function contexts(
+      entries: Array<{
+        scope: "task" | "conversation";
+        key: string;
+        source: string;
+        validUntil?: number;
+      }>,
+    ) {
+      const manager = new GovernanceRuntimeTestManager();
+      const { summary } = await seedConsolidated(manager);
+      for (const [index, entry] of entries.entries()) {
+        await storeEvidence(
+          manager,
+          [
+            rawMessage(`en-${index + 1}`, {
+              relationValue: "en",
+              applicability: {
+                scope: entry.scope,
+                key: entry.key,
+                ...(entry.validUntil === undefined
+                  ? {}
+                  : { validUntil: entry.validUntil }),
+              },
+              sourceIdentity: entry.source,
+              timestamp: Math.floor(NOW / 1000) + 10 + index,
+            }),
+          ],
+          NOW + 4000 + index * 1000,
+        );
+      }
+      const snapshot = await graph(manager);
+      const scoped = snapshot.clusters.filter((cluster) =>
+        cluster.clusterId.startsWith("cluster:en-"),
+      );
+      return {
+        standing: snapshot.clusters.find(
+          (cluster) => cluster.clusterId === "cluster:zh-1",
+        ),
+        summaryId: summary.summaryId,
+        scopes: scoped.map((cluster) => cluster.applicability?.scope),
+        broadened: scoped.filter((cluster) =>
+          cluster.reasonCodes.includes(
+            "applicability_broadened_across_contexts",
+          ),
+        ).length,
+      };
+    }
+
+    // Three contexts, three distinct sources. The scoped memory widens, and the
+    // standing global preference is challenged rather than replaced: it is still
+    // `stable` and still the active representative.
+    const independent = await contexts([
+      { scope: "task", key: "t1", source: "src-a" },
+      { scope: "task", key: "t2", source: "src-b" },
+      { scope: "conversation", key: "c3", source: "src-c" },
+    ]);
+    expect(independent.scopes).toEqual(["global", "global", "global"]);
+    expect(independent.broadened).toBe(3);
+    expect(independent.standing?.lifecycleStatus).toBe("stable");
+    expect(independent.standing?.representativeNodeId).toBe(
+      independent.summaryId,
+    );
+
+    // Two contexts is not repeated support across independent contexts. Same
+    // sources, same content, one fewer context.
+    const two = await contexts([
+      { scope: "task", key: "t1", source: "src-a" },
+      { scope: "task", key: "t2", source: "src-b" },
+    ]);
+    expect(two.scopes).toEqual(["task", "task"]);
+    expect(two.broadened).toBe(0);
+
+    // Time-limited evidence keeps its window. Widening the scope of something
+    // that expires would outlive the evidence, so these do not widen at any
+    // count.
+    const timeLimited = await contexts([
+      { scope: "task", key: "t1", source: "src-a", validUntil: NOW + 100_000 },
+      { scope: "task", key: "t2", source: "src-b", validUntil: NOW + 100_000 },
+      {
+        scope: "conversation",
+        key: "c3",
+        source: "src-c",
+        validUntil: NOW + 100_000,
+      },
+    ]);
+    expect(timeLimited.scopes).toEqual(["task", "task", "conversation"]);
+    expect(timeLimited.broadened).toBe(0);
   });
 
   it("keeps the summary active when restore capability is missing or fails", async () => {

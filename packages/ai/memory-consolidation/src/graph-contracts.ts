@@ -95,6 +95,7 @@ export type MemoryGraphOperationKind =
   | "reinforce-edge"
   | "weaken-edge"
   | "upsert-cluster"
+  | "broaden-cluster-applicability"
   | "set-cluster-lifecycle"
   | "set-cluster-representative"
   | "supersede-node"

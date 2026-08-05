@@ -1,30 +1,24 @@
 # Memory Graph Handoff
 
-Status: `PHASE_0_3_SHIPPED_PHASE_4_G1_REMAINING`
+Status: `PHASE_0_3_SHIPPED_PHASE_4_GATES_MET`
 
 ## Authority
 
-- Branch: `codex/memory-graph-value-demonstrations`, based on upstream `main`.
-- The [execution plan](./memory-graph-evolution-execution-plan.md) is the sole
-  authority for status, phase numbering, and scope. This handoff never widens
-  what that plan authorizes.
+The [execution plan](./memory-graph-evolution-execution-plan.md) is the sole
+authority for status, phase numbering, and scope. This handoff summarizes; it
+never widens what that plan authorizes.
 
 ## Where the work stands
 
-Phases 0-3 are merged upstream and ship default-off. Phase 4 has been
-redefined: it now decides whether the defaults may be turned on, judged by
-demonstrated behaviour and safety rather than by an aggregate retrieval metric.
-The reasoning and the six gates are in the execution plan under Deferred
-Phases.
-
-This branch carries the demonstrations that survived that redefinition, plus
-the archive restructure. It does not carry the evaluation apparatus built for
-the previous definition.
+Phases 0-3 are merged and ship default-off. Phase 4 has been redefined: it now
+decides whether the defaults may be turned on, judged by demonstrated behaviour
+and safety rather than by an aggregate retrieval metric. The reasoning and the
+six gates are in the execution plan under Deferred Phases.
 
 ## What is demonstrated
 
-Four acceptance scenarios have two-armed demonstrations with controls and
-mutation testing. In order of how much they establish:
+Seven claims have two-armed demonstrations with controls and mutation testing.
+In order of how much they establish:
 
 - Corrections and rollbacks take effect. Baseline retrieval returns a summary a
   rollback already retired; the graph withholds it and audit retrieval still
@@ -42,18 +36,29 @@ mutation testing. In order of how much they establish:
 - A readiness claim names what it observed. A rollout report built from dry-run
   scenarios and validated commands is blocked rather than declared ready, and
   gates say whether an applied operation or a validated command backed them.
+- A scoped memory widens only on independent agreement. Three contexts agreeing,
+  each backed by a source no other supplies, widen a task-scoped preference to
+  global; two do not, and evidence with an end date never does. The widened
+  memory then competes with the standing preference rather than replacing it.
+- Repetition changes what is recalled. Three consistent observations consolidate
+  into one representative where one observation consolidates nothing and the
+  graph-disabled baseline produces no summary at all. It does not change the
+  order results come back in; that half of the acceptance row was the baseline's
+  doing and has been corrected rather than claimed.
 
-Classification matters here. Of fourteen acceptance scenarios, roughly one is a
-value claim, four are capability claims, nine are safety claims that cannot be
-demonstrated against a baseline that lacks the mechanism, and one is
-unimplemented. Two scenarios were reclassified downward after testing and none
-moved up, so the untested rows should be read as optimistic.
+Classification matters here. Of fourteen acceptance scenarios, one is a value
+claim, four are capability claims, and nine are safety claims that cannot be
+demonstrated against a baseline that lacks the mechanism. No row is unimplemented
+any more. Three scenarios were reclassified downward after testing and none moved
+up, so the untested rows should be read as optimistic. One acceptance row was
+also narrowed, because half of what it asked for turned out to be the baseline's
+work rather than the graph's.
 
 ## Standing against the redefined gate
 
 | Gate | Status                                                               |
 | ---- | -------------------------------------------------------------------- |
-| G1   | Four of five value/capability claims demonstrated                    |
+| G1   | Met. Five of five, with one acceptance row corrected to match        |
 | G2   | Met. The gap it found is closed and the fix is asserted              |
 | G3   | Met at the enabled path; one qualifier below                         |
 | G4   | Met for cross-user and cross-applicability; the rest has no path     |
@@ -84,29 +89,15 @@ runtime never populates those scopes.
 
 ## Next bounded step
 
-G1's last claim, and it is a decision before it is a task. The acceptance table
-says repeated consistent evidence should improve retrieval priority. That is
-gradual rather than a state change, so a two-armed demonstration may not exist:
-the baseline reorders by similarity and the graph reorders by cluster state, and
-neither is wrong at a given dose. Decide whether to attempt it or reclassify it
-as a capability claim before spending time there. Every other gate is met.
+All six gates are met and every acceptance scenario has an implementation, so
+Phase 4 has nothing substantive left.
 
-One product decision is still open and is not a gate: the requirements say
-consistent evidence across independent contexts can broaden applicability, and
-no implementation exists. Applicability is inherited from evidence and never
-widened. Either the implementation or the acceptance row has to change.
-
-Do not start from the archived apparatus. Its numbers do not yet mean what its
-gates claimed, which is why it is archived.
-
-## Held work
-
-The Phase 4 evaluation apparatus is preserved at tag
-`phase4-apparatus-archived`: paired comparison collection, labeled
-observations, closure reporting, label-evidence repair tooling, and a
-graph-delta negative control. Roughly eight thousand lines, tested, and not
-proposed. The execution plan records why. Retrieve it if the redefined gate
-turns out to need parts of it; do not resume it wholesale.
+Phase 5 needs one decision before any rollout begins: graph write and
+graph-aware retrieval share a single policy, so the behaviour with the strongest
+evidence cannot be enabled without the ones that have none. Accept the bundle and
+gate on the whole of it, or add a retrieval seam first. That choice is open, and
+it is not authorized here — enabling a default, expanding a cohort, or beginning
+Phase 5 each still require explicit approval.
 
 ## Required reading
 
@@ -128,6 +119,16 @@ threshold. Both rules caught real errors here: a baseline arm whose assertions
 held whether or not the graph was enabled, a positive result that a control
 reproduced with the graph's ranking discarded entirely, and a G2 arm that
 asserted over an empty set and so would have passed against any implementation.
+
+One pattern recurred often enough to name. A mutation that leaves a test green
+does not always mean the test is weak; it can mean the behaviour is
+over-determined, with two independent mechanisms producing the same result so
+that disabling either changes nothing. That happened three times here: two
+ranking rules both lift a consolidated summary, two thresholds both gate
+consolidation, and two justifications both admit an added record. Each time the
+useful move was to disable both and record the redundancy, because a reader of
+the ranking code needs to know that changing one rule will not change the
+output.
 
 The second rule earned its keep again in a subtler way. G2's first version let
 the test infer from the snapshot why a record had been added, which meant a

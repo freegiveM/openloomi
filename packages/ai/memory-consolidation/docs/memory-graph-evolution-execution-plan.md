@@ -192,6 +192,60 @@ decision and exactly wrong for a scope one: a record withheld because it belongs
 to another owner must stay unreachable in every mode. The two are now asserted
 apart.
 
+**A scoped memory widens only on independent agreement.** The one acceptance
+scenario that described absent behaviour now has an implementation. Applicability
+was inherited from evidence and never widened, so nothing could satisfy MR-4's
+allowance for broadening on repeated support across independent contexts.
+
+Building it found the reason nothing could. A support judgment between two
+contexts that do not overlap — task A and task B — was dropped as `uncertain`
+before any relation was recorded, so cross-context agreement left no trace
+anywhere in the graph and there was nothing for broadening to read. That
+judgment now records `related` with a distinct reason code, which also gives
+MR-1 the outcome it asks for: a topical relation that is not enough to merge is
+now distinguishable from no relation at all. Recording it is not merging it, and
+clusters stay separate.
+
+Broadening reads that record. Three contexts agreeing, each backed by a source
+no other context supplies, widen the scoped clusters to global; two do not, and
+the widened memory then competes with the standing global preference under the
+ordinary rules rather than replacing it — the preference is still `stable` and
+still the active representative. Evidence carrying an end date never widens,
+because a global preference outlives it.
+
+Two limits are worth stating. The independence rule cannot be reached through
+ingestion, where source-identity deduplication already collapses repeats, so it
+is asserted against a snapshot that carries the duplication directly; it is
+defence for restored or externally produced state rather than a path the write
+loop takes. And three is a threshold, configurable per call: it says repeated
+agreement rather than two coincidences, and no measurement chose it.
+
+**Repetition changes what is recalled, not the order it is recalled in.** The
+acceptance table asked that consistent observations reinforce one cluster and
+improve its retrieval priority. The first half holds and is dose-dependent: with
+three consistent observations the cluster reaches `stable`, gains a
+representative, and retrieval returns that one record where it previously
+returned three sources, which stay reachable through audit. One observation
+consolidates nothing, and the same three observations with graph lifecycle
+disabled produce no summary at all, so this is a capability the graph adds.
+
+The second half is not the graph's. Given the order the real retriever produces,
+graph-aware ranking returns it unchanged — the representative is already first
+without the graph. The rule that would lift it exists and applies when handed the
+reverse order, but it never has to. Claiming a priority improvement here would be
+claiming credit for the baseline's ordering, which is the same error the recall
+delta turned out to be, so the acceptance row now states only what the graph
+does. Ordering results by how much evidence supports them has no implementation:
+`rankNodeIds` orders by kind, and cluster support score reaches retrieval
+nowhere.
+
+Two over-determinations surfaced while mutation testing this, both worth knowing
+before touching the ranking code. The consolidated summary's first position is
+produced independently by representative expansion and by the summary-before-raw
+kind split, so disabling either alone changes nothing. And consolidation is
+gated by both an evidence count and a support score, of which only the support
+score binds at three observations.
+
 **A readiness claim names what it observed.** G6 asked what a
 `ready-for-limited-rollout` decision was founded on, and the answer was: not
 necessarily anything. The rollout report reached that decision with no runtime
@@ -282,30 +336,27 @@ commands that merely validated. A gate that could not be evaluated is
 distinguishable from one that passed, and a gate satisfied by a validated
 command rather than an applied operation says which of the two backed it.
 
-An earlier draft of this section claimed G3 and G4 were covered only against the
-default-off configuration and had to be re-run enabled. That was wrong, and the
-correction matters more than the claim did. `chat-memory-write-route.test.ts`
-sets `OPENLOOMI_MEMORY_GRAPH_WRITE_ENABLED`, cohort membership, and a released
-kill switch in `beforeEach`, so every test in it already runs the real route
-under the enabled policy. Between it and the native-agent context route the
-enabled path covers adapter-missing fallback, partial write with retry
+G3 and G4 are evidenced against the enabled path already, and it is worth being
+precise about why rather than asking for a re-run.
+`chat-memory-write-route.test.ts` sets the enable flag, cohort membership, and a
+released kill switch in `beforeEach`, so every test in it drives the real route
+under the enabled policy: adapter-missing fallback, partial write with retry
 convergence, replay without duplicate reinforcement, cross-store deprecation
-divergence, kill-switch fallback, four cross-user ownership races, and
-applicability derived only from an owned server-side chat.
+divergence, kill-switch fallback, and four cross-user ownership races. The
+native-agent context route adds applicability derived only from an owned
+server-side chat.
 
-The premise was also wrong in a more useful way. `resolveMemoryGraphWritePolicy`
-is consumed as a pure gate — every caller returns a no-op when it is disabled
-and otherwise proceeds unchanged — so the policy decides whether the graph path
-runs, not how it behaves. Evidence gathered by calling the library directly is
-therefore evidence about the enabled path, and "run it again with the flag on"
-would test the flag rather than the behaviour. What that leaves is one honest
-qualifier: interrupted staged publication is proven at the library level and not
-through the route, which is sufficient for the reason just given but is a
-distinction worth stating rather than smoothing over.
+Beyond that, `resolveMemoryGraphWritePolicy` is consumed as a pure gate — every
+caller returns a no-op when it is disabled and otherwise proceeds unchanged — so
+the policy decides whether the graph path runs, not how it behaves. Evidence
+gathered by calling the library directly is therefore evidence about the enabled
+path, and re-running it with the flag on would test the flag. One qualifier
+follows honestly from that: interrupted staged publication is proven at the
+library level rather than through the route.
 
-Cross-workspace and cross-tenant isolation have no enabled path to test. The
-runtime never populates either scope, which matches the requirement that they
-are optional and do not replace user identity. Both remain covered where they
+Cross-workspace and cross-tenant isolation have no enabled path to test, because
+the runtime never populates either scope. That matches the requirement that they
+are optional and do not replace user identity, and both stay covered where they
 can be constructed, at the library level.
 
 **What this gate deliberately excludes.** Aggregate retrieval quality. A local
@@ -325,29 +376,21 @@ This is a change of scope and not a lowered bar. Retrieval quality needs its
 own workstream and its own evidence, and Phase 5 must not read this gate's
 passing as a statement about it.
 
-An evaluation apparatus for an earlier definition of this phase was built
-locally and is deliberately
-not proposed here. It collects paired baseline-versus-graph evidence, labels it
-against a single owner's real query history, and reduces both to a fail-closed
-closure verdict. It is complete and tested, and it is held back for two
-reasons.
+An evaluation apparatus for the earlier definition of this phase was built and is
+deliberately not proposed. It collected paired baseline-versus-graph evidence,
+labelled it against one owner's real query history, and reduced both to a
+fail-closed verdict. It is complete and tested, and it is held back because it
+did not establish that the capability is valuable.
 
-It did not establish that the capability is valuable. Its verdict is blocked,
-and the one positive signal it produced — a mean graph recall delta above
-budget — was refuted by a negative control: discarding the graph's ranking and
-keeping only its record-removal decision reproduces the same recall exactly, so
-the delta carries no ranking contribution. Two design faults surfaced with it.
-The paired comparison issues no query, so it never measured per-query retrieval
-quality; and the recall gate scores the product semantic path rather than the
-graph-aware path it was read as scoring.
-
-It is also too large to review against so little settled meaning: roughly eight
-thousand lines whose central numbers cannot yet be explained. Proposing it in
-that state would ask reviewers to accept an instrument before its readings mean
-anything.
-
-What that work did produce is in this candidate: the demonstrations recorded
-under Candidate Scope, and the method behind them.
+That conclusion is worth keeping even though the instrument is not. Its verdict
+was blocked, and its one positive signal — a mean graph recall delta above budget
+— was refuted by a negative control: discarding the graph's ranking and keeping
+only its record-removal decision reproduces the same recall exactly, so the delta
+carried no ranking contribution. Two design faults explain it. The paired
+comparison issues no query, so it never measured per-query retrieval quality, and
+the recall gate scores the product semantic path rather than the graph-aware path
+it was read as scoring. What survived is what this candidate carries: the
+demonstrations above, and the method behind them.
 
 ### Phase 5: gradual rollout
 

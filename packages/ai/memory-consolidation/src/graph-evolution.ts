@@ -16,6 +16,13 @@ import {
   judgeMemoryRelationCandidates,
 } from "./pipeline";
 
+/**
+ * Three rather than two: two agreeing contexts is thin evidence that a
+ * preference is general, and MR-4 asks for repeated support across independent
+ * contexts before a scoped memory may claim to be global.
+ */
+const DEFAULT_BROADEN_MIN_INDEPENDENT_CONTEXTS = 3;
+
 export interface MemoryGraphEvolutionEvidence {
   id: string;
   ownerScope: OwnerScope;
@@ -38,6 +45,12 @@ export interface BuildMemoryGraphEvolutionPlanInput {
   snapshot: MemoryGraphSnapshot;
   now: number;
   persistence: { mode: "dry-run" | "write"; enabled: boolean };
+  /**
+   * How much independent agreement widens a context-specific memory to global.
+   * MR-4 allows broadening only on repeated support across independent
+   * contexts, so this is a count of contexts and not of observations.
+   */
+  applicabilityBroadening?: { minIndependentContexts?: number };
 }
 
 export type MemoryGraphEvolutionRunStatus =
@@ -398,6 +411,28 @@ export function buildMemoryGraphEvolutionPlan(
           reasonCodes: ["uncertain_candidate"],
         };
       }
+      // Agreement that only differing applicability prevents. Checked ahead of
+      // the overlap rule on purpose: two disjoint contexts never overlap, so
+      // dropping that pair as uncertain is what left cross-context agreement
+      // with no record anywhere in the graph. Expired evidence still falls
+      // through to uncertain. The extra code is kept distinct from an ordinary
+      // `related` judgment because broadening reads exactly this, and a weak
+      // topical relation must not be mistaken for it.
+      if (
+        applicabilityActive(left.applicability, input.now) &&
+        applicabilityActive(right.applicability, input.now) &&
+        context.defaultDecision.relation === "support" &&
+        !applicabilityEquivalent(left.applicability, right.applicability)
+      ) {
+        return {
+          relation: "related",
+          weight: 0.45,
+          reasonCodes: [
+            "candidate_related",
+            "candidate_related_applicability_mismatch",
+          ],
+        };
+      }
       if (
         !applicabilityOverlaps(
           left.applicability,
@@ -409,16 +444,6 @@ export function buildMemoryGraphEvolutionPlan(
           relation: "uncertain",
           weight: 0,
           reasonCodes: ["uncertain_candidate"],
-        };
-      }
-      if (
-        context.defaultDecision.relation === "support" &&
-        !applicabilityEquivalent(left.applicability, right.applicability)
-      ) {
-        return {
-          relation: "related",
-          weight: 0.45,
-          reasonCodes: ["candidate_related"],
         };
       }
       return context.defaultDecision;
@@ -600,6 +625,126 @@ export function buildMemoryGraphEvolutionPlan(
     (map, edge) => map.set(edge.id, edge),
     new Map<string, MemoryGraphEdge>(),
   );
+  // MR-4. Context-specific evidence must not become a global preference merely
+  // by being newer, which is why a support judgment across differing
+  // applicability was downgraded to `related` above. That downgrade is the only
+  // record of agreement that applicability alone prevented, so it is what
+  // broadening reads. When the same claim is supported from enough independent
+  // contexts — and by distinct sources rather than one source repeated, which
+  // MR-3 forbids counting as independent confirmation — the memory widens to
+  // global and from there competes with the standing global preference under the
+  // ordinary competition rules rather than replacing it outright.
+  const minIndependentContexts = Math.max(
+    2,
+    Math.floor(
+      input.applicabilityBroadening?.minIndependentContexts ??
+        DEFAULT_BROADEN_MIN_INDEPENDENT_CONTEXTS,
+    ),
+  );
+  const broadeningNodesById = new Map(
+    [...input.snapshot.nodes, ...candidateNodes].map((node) => [node.id, node]),
+  );
+  const broadeningPeers = new Map<string, Set<string>>();
+  for (const edge of allEdges.values()) {
+    if (
+      edge.kind !== "related" ||
+      !edge.reasonCodes.includes("candidate_related_applicability_mismatch")
+    ) {
+      continue;
+    }
+    const leftId = clusterByNode.get(edge.fromNodeId);
+    const rightId = clusterByNode.get(edge.toNodeId);
+    if (!leftId || !rightId || leftId === rightId) continue;
+    for (const [from, to] of [
+      [leftId, rightId],
+      [rightId, leftId],
+    ]) {
+      const peers = broadeningPeers.get(from) ?? new Set<string>();
+      peers.add(to);
+      broadeningPeers.set(from, peers);
+    }
+  }
+
+  const visitedForBroadening = new Set<string>();
+  for (const startClusterId of broadeningPeers.keys()) {
+    if (visitedForBroadening.has(startClusterId)) continue;
+    const component: string[] = [];
+    const queue = [startClusterId];
+    visitedForBroadening.add(startClusterId);
+    while (queue.length > 0) {
+      const clusterId = queue.shift() as string;
+      component.push(clusterId);
+      for (const peer of broadeningPeers.get(clusterId) ?? []) {
+        if (visitedForBroadening.has(peer)) continue;
+        visitedForBroadening.add(peer);
+        queue.push(peer);
+      }
+    }
+
+    // Evidence with an end date keeps its window: a global preference outlives
+    // it, so such a cluster is left out rather than broadened. Only `validUntil`
+    // bounds the future — a `validFrom` already past does not, and one still
+    // ahead never produced the record above, because the judgment requires both
+    // sides to be active.
+    const contextSources = new Map<string, Set<string>>();
+    for (const clusterId of component) {
+      const cluster = clusters.get(clusterId);
+      if (!cluster) continue;
+      const key = applicabilityKey(cluster.applicability);
+      if (key === "global") continue;
+      if (cluster.applicability?.validUntil !== undefined) continue;
+      const sources = contextSources.get(key) ?? new Set<string>();
+      for (const nodeId of cluster.nodeIds) {
+        const node = broadeningNodesById.get(nodeId);
+        if (node) sources.add(node.sourceId ?? node.id);
+      }
+      contextSources.set(key, sources);
+    }
+
+    // A context counts as independent only if it contributes a source no other
+    // context does. One source echoed into three tasks is one observation.
+    const contextsPerSource = new Map<string, number>();
+    for (const sources of contextSources.values()) {
+      for (const source of sources) {
+        contextsPerSource.set(source, (contextsPerSource.get(source) ?? 0) + 1);
+      }
+    }
+    const independentContextKeys = [...contextSources.entries()]
+      .filter(([, sources]) =>
+        [...sources].some((source) => contextsPerSource.get(source) === 1),
+      )
+      .map(([key]) => key)
+      .sort();
+    if (independentContextKeys.length < minIndependentContexts) continue;
+
+    for (const clusterId of component) {
+      const cluster = clusters.get(clusterId);
+      if (!cluster) continue;
+      const key = applicabilityKey(cluster.applicability);
+      if (key === "global" || !independentContextKeys.includes(key)) continue;
+      cluster.applicability = { scope: "global" };
+      cluster.updatedAt = input.now;
+      cluster.reasonCodes = unique([
+        ...cluster.reasonCodes,
+        "applicability_broadened_across_contexts",
+      ]);
+      touchedClusterIds.add(clusterId);
+      operations.push({
+        operationId: operationId(
+          planId,
+          "broaden-cluster-applicability",
+          clusterId,
+        ),
+        ownerScope: input.ownerScope,
+        kind: "broaden-cluster-applicability",
+        nodeIds: [...cluster.nodeIds],
+        clusterId,
+        reasonCodes: ["applicability_broadened_across_contexts"],
+        metadata: { independentContextKeys, broadenedFrom: key },
+      });
+    }
+  }
+
   for (const clusterId of touchedClusterIds) {
     const cluster = clusters.get(clusterId);
     if (!cluster) continue;
