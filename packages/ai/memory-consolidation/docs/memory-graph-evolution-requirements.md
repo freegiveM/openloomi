@@ -10,6 +10,7 @@ Related documents:
 - [Architecture](./memory-graph-evolution-architecture.md)
 - [ADR index](./adr/README.md)
 - [Execution plan](./memory-graph-evolution-execution-plan.md)
+- [Current handoff](./HANDOFF.md)
 
 ## Product Intent
 

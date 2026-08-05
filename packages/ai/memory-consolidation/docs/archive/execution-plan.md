@@ -5,7 +5,7 @@ Status: Superseded for Dynamic Memory Cluster Evolution.
 This historical helper-first queue is retained only as package background. It is
 not an implementation authorization and must not be used to create new work.
 The active, integrated delivery plan is
-[memory-graph-evolution-execution-plan.md](./memory-graph-evolution-execution-plan.md).
+[memory-graph-evolution-execution-plan.md](../memory-graph-evolution-execution-plan.md).
 Only that plan and its linked requirements, architecture, ADRs, and governance
 documents may authorize current work.
 

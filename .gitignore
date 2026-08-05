@@ -131,6 +131,11 @@ apps/skills/
 # Local notes
 Note.md
 
+# P4-T2 real historical owner queries - must never be committed (raw query
+# text is prohibited from persistence by ADR-0008 / requirements MR-10)
+apps/web/scripts/lib/p4t2-scenario-queries.local.json
+apps/web/scripts/lib/p4t2-scenario-queries-expansion.local.json
+
 # Loomi pet design sources
 apps/web/public/loomi-pet/design/
 

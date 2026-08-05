@@ -3,10 +3,10 @@
 Status: Historical package context, not an active execution plan.
 
 For active Dynamic Memory Cluster Evolution work, use the
-[requirements](./memory-graph-evolution-requirements.md),
-[architecture](./memory-graph-evolution-architecture.md),
-[ADR index](./adr/README.md), and
-[execution plan](./memory-graph-evolution-execution-plan.md). This roadmap
+[requirements](../memory-graph-evolution-requirements.md),
+[architecture](../memory-graph-evolution-architecture.md),
+[ADR index](../adr/README.md), and
+[execution plan](../memory-graph-evolution-execution-plan.md). This roadmap
 preserves broader package history and direction. The linked documents are
 authoritative for the local integrated delivery track; do not derive scope,
 task order, or implementation authorization from this historical roadmap.
@@ -314,7 +314,7 @@ Future changes should follow these principles:
 The core direction is not to remember more. It is to gradually build a long-term
 memory formation process that can explain, compete, consolidate, and forget.
 
-See [memory-graph-evolution-architecture.md](./memory-graph-evolution-architecture.md)
+See [memory-graph-evolution-architecture.md](../memory-graph-evolution-architecture.md)
 for the higher-level architecture that frames relation graph work, cluster
 lifecycle, graph-aware forgetting, retrieval, and observability as one dynamic
 memory graph.
