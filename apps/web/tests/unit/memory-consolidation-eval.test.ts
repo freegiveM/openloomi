@@ -5175,6 +5175,8 @@ describe("memory consolidation evaluation scenarios", () => {
       ownerScope,
       rankedNodeIds: ["summary:language", "raw:fresh"],
       hiddenDeprecatedNodeIds: ["raw:deprecated"],
+      withheldBaselineNodes: [],
+      addedBeyondBaselineNodes: [],
       expandedClusterIds: ["cluster:language-stable"],
       reasonCodes: ["graph_retrieval_dry_run", "default_hides_deprecated_raw"],
     } satisfies GraphAwareRetrievalResult;
@@ -5182,6 +5184,8 @@ describe("memory consolidation evaluation scenarios", () => {
       ownerScope,
       rankedNodeIds: ["summary:language", "raw:deprecated", "raw:fresh"],
       hiddenDeprecatedNodeIds: [],
+      withheldBaselineNodes: [],
+      addedBeyondBaselineNodes: [],
       expandedClusterIds: ["cluster:language-stable"],
       auditTrail: [
         {
@@ -5277,39 +5281,93 @@ describe("memory consolidation evaluation scenarios", () => {
       commandReport: commands,
     });
 
-    const report = buildMemoryGraphRolloutGovernanceReport({
+    // G6. Every gate above this point is satisfiable without anything having
+    // run: dry-run retrieval scenarios and commands that merely validated. The
+    // two arms differ only in whether runtime evidence is supplied, so the
+    // decision is the thing under test rather than the inputs.
+    function buildReport(
+      runtimeEvidence?: Parameters<
+        typeof buildMemoryGraphRolloutGovernanceReport
+      >[0]["runtimeEvidence"],
+    ) {
+      return buildMemoryGraphRolloutGovernanceReport({
+        scenarioId: "memory-graph-rollout",
+        consolidationMetrics,
+        graphRetrievalScenarios: [
+          {
+            scenarioId: "default-hides-deprecated",
+            result: defaultGraphRetrieval,
+            expectedRankedNodeIds: ["summary:language"],
+            expectedHiddenDeprecatedNodeIds: ["raw:deprecated"],
+            forbiddenNodeIds: ["raw:deprecated"],
+            crossScopeNodeIds: ["raw:foreign"],
+          },
+          {
+            scenarioId: "audit-recovers-source-chain",
+            result: auditGraphRetrieval,
+            expectedRankedNodeIds: ["summary:language", "raw:deprecated"],
+            expectedAuditTrailNodeIds: ["summary:language", "raw:deprecated"],
+            crossScopeNodeIds: ["raw:foreign"],
+          },
+        ],
+        semanticRetrievalScenarios: [semanticRetrievalScenario],
+        auditScenarioReport: auditScenario,
+        commandReport: commands,
+        runtimeEvidence,
+        metadata: {
+          stage: "limited-rollout-gate",
+        },
+      });
+    }
+
+    // Nothing observed. Every other gate passes, and the report still must not
+    // call this ready — otherwise a dry run authorizes a rollout.
+    const dryRun = buildReport();
+    expect(dryRun.summary).toEqual({
       scenarioId: "memory-graph-rollout",
-      consolidationMetrics,
-      graphRetrievalScenarios: [
-        {
-          scenarioId: "default-hides-deprecated",
-          result: defaultGraphRetrieval,
-          expectedRankedNodeIds: ["summary:language"],
-          expectedHiddenDeprecatedNodeIds: ["raw:deprecated"],
-          forbiddenNodeIds: ["raw:deprecated"],
-          crossScopeNodeIds: ["raw:foreign"],
-        },
-        {
-          scenarioId: "audit-recovers-source-chain",
-          result: auditGraphRetrieval,
-          expectedRankedNodeIds: ["summary:language", "raw:deprecated"],
-          expectedAuditTrailNodeIds: ["summary:language", "raw:deprecated"],
-          crossScopeNodeIds: ["raw:foreign"],
-        },
-      ],
-      semanticRetrievalScenarios: [semanticRetrievalScenario],
-      auditScenarioReport: auditScenario,
-      commandReport: commands,
-      metadata: {
-        stage: "limited-rollout-gate",
-      },
+      decision: "blocked",
+      gateCount: 13,
+      passedGateCount: 12,
+      failedGateCount: 1,
+      graphRetrievalScenarioCount: 2,
+      graphRetrievalPassedCount: 2,
+      semanticRetrievalScenarioCount: 1,
+      semanticRetrievalPassedCount: 1,
+      dryRun: true,
+    });
+    expect(
+      dryRun.gates.filter((gate) => !gate.passed).map((gate) => gate.gateId),
+    ).toEqual(["runtime.observed-evidence"]);
+    // The correction and rollback gates passed off commands that validated
+    // rather than operations that ran, and they say so.
+    for (const gateId of [
+      "governance.correction-command",
+      "governance.rollback-command",
+    ]) {
+      expect(
+        dryRun.gates.find((gate) => gate.gateId === gateId)?.metadata,
+      ).toEqual({ evidenceSource: "command-dry-run" });
+    }
+
+    const report = buildReport({
+      ownerScopeKey: "|:|eval-user",
+      snapshotVersion: "v3",
+      operationIds: ["op:summary-language"],
+      correctionOperationIds: ["op:correct-language"],
+      rollbackOperationIds: ["op:rollback-language"],
+      defaultRetrievedNodeIds: ["summary:language", "raw:fresh"],
+      auditRetrievedNodeIds: ["summary:language", "raw:deprecated"],
+      semanticDefaultRecordIds: ["raw:fresh"],
+      semanticAuditRecordIds: ["raw:deprecated"],
+      sourceRecordIds: ["raw:deprecated", "raw:fresh"],
+      summaryIds: ["summary:language"],
     });
 
     expect(report.summary).toEqual({
       scenarioId: "memory-graph-rollout",
       decision: "ready-for-limited-rollout",
-      gateCount: 12,
-      passedGateCount: 12,
+      gateCount: 14,
+      passedGateCount: 14,
       failedGateCount: 0,
       graphRetrievalScenarioCount: 2,
       graphRetrievalPassedCount: 2,
@@ -5330,7 +5388,17 @@ describe("memory consolidation evaluation scenarios", () => {
       "governance.polluted-memory-unresolved",
       "governance.correction-command",
       "governance.rollback-command",
+      "runtime.observed-evidence",
+      "runtime.publication-convergence",
     ]);
+    for (const gateId of [
+      "governance.correction-command",
+      "governance.rollback-command",
+    ]) {
+      expect(
+        report.gates.find((gate) => gate.gateId === gateId)?.metadata,
+      ).toEqual({ evidenceSource: "runtime-observed" });
+    }
     expect(report.graphRetrievalScenarios).toEqual([
       expect.objectContaining({
         scenarioId: "default-hides-deprecated",
@@ -5361,9 +5429,27 @@ describe("memory consolidation evaluation scenarios", () => {
         "rollback_command_gate_passed",
       ]),
     );
-    expect(report.metadata).toEqual({
-      stage: "limited-rollout-gate",
-    });
+    // A readiness claim has to carry what it rested on. The dry-run report has
+    // nothing to carry, which is the difference the gate exists to make.
+    expect(dryRun.metadata).toEqual({ stage: "limited-rollout-gate" });
+    expect(report.metadata).toEqual(
+      expect.objectContaining({ stage: "limited-rollout-gate" }),
+    );
+    expect(
+      (
+        report.metadata as {
+          runtimeEvidence?: {
+            operationIds: string[];
+            snapshotVersion?: string;
+          };
+        }
+      ).runtimeEvidence,
+    ).toEqual(
+      expect.objectContaining({
+        operationIds: ["op:summary-language"],
+        snapshotVersion: "v3",
+      }),
+    );
     expect(staleEnglish.revisionStatus).toBe("deprecated");
     expect(activeChinese.revisionStatus).toBe("active");
   });
@@ -5416,9 +5502,9 @@ describe("memory consolidation evaluation scenarios", () => {
     expect(report.summary).toEqual({
       scenarioId: "missing-required-rollout-artifacts",
       decision: "blocked",
-      gateCount: 6,
+      gateCount: 7,
       passedGateCount: 2,
-      failedGateCount: 4,
+      failedGateCount: 5,
       graphRetrievalScenarioCount: 0,
       graphRetrievalPassedCount: 0,
       semanticRetrievalScenarioCount: 0,
@@ -5432,6 +5518,7 @@ describe("memory consolidation evaluation scenarios", () => {
       "retrieval.graph-scenarios",
       "retrieval.semantic-eval-scenarios",
       "governance.polluted-memory-unresolved",
+      "runtime.observed-evidence",
     ]);
     expect(
       report.gates.filter((gate) => gate.passed).map((gate) => gate.gateId),
@@ -5454,6 +5541,8 @@ describe("memory consolidation evaluation scenarios", () => {
       ownerScope,
       rankedNodeIds: ["raw:deprecated", "raw:foreign"],
       hiddenDeprecatedNodeIds: [],
+      withheldBaselineNodes: [],
+      addedBeyondBaselineNodes: [],
       expandedClusterIds: [],
       reasonCodes: ["graph_retrieval_dry_run"],
     } satisfies GraphAwareRetrievalResult;
@@ -5537,6 +5626,7 @@ describe("memory consolidation evaluation scenarios", () => {
       "governance.polluted-memory-unresolved",
       "governance.correction-command",
       "governance.rollback-command",
+      "runtime.observed-evidence",
     ]);
     expect(report.reasonCodes).toEqual(
       expect.arrayContaining([

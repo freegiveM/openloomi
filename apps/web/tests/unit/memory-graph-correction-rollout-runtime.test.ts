@@ -1397,6 +1397,183 @@ describe("memory graph correction, rollback, and rollout runtime", () => {
     expect(withoutDeprecationRecord.hiddenDeprecatedNodeIds).toHaveLength(0);
   });
 
+  // G2. The demonstrations above each show something the graph does. This asks
+  // the opposite question over the same machinery: of everything the baseline
+  // would have returned, does the enabled path drop anything without being able
+  // to say which record and under which rule. A silent drop is the failure mode
+  // that makes turning defaults on unsafe, and no test that checks only what
+  // survived can see it.
+  it("accounts for every baseline result the enabled path withholds", async () => {
+    const manager = new GovernanceRuntimeTestManager();
+    const { summary: supersededSummary } = await seedConsolidated(manager);
+    for (const [index, id] of ["en-1", "en-2", "en-3"].entries()) {
+      await storeEvidence(
+        manager,
+        [rawMessage(id, { relationValue: "en" })],
+        NOW + 4000 + index * 1000,
+      );
+    }
+    await runMemoryForgettingCycle(manager as never, OWNER.userId, {
+      now: NOW + 7000,
+      graphLifecycle: { enabled: true },
+    });
+    await storeEvidence(
+      manager,
+      [
+        rawMessage("scoped-1", {
+          applicability: { scope: "task", key: "task-x" },
+        }),
+      ],
+      NOW + 8000,
+    );
+    await storeEvidence(
+      manager,
+      [rawMessage("stale-1", { relationValue: "fr" })],
+      NOW + 8500,
+    );
+    const other = { userId: "user-2" } satisfies OwnerScope;
+    await storeEvidence(
+      manager,
+      [rawMessage("foreign-1", { userId: other.userId })],
+      NOW + 9000,
+      other,
+    );
+
+    // A candidate index shared across owners can surface a foreign record, and
+    // a graph that lags ingestion has never seen some of what the baseline
+    // finds. Both are handed in so the retrieval path has to refuse them rather
+    // than be shielded from them by the fixture.
+    const ownerSnapshot = await graph(manager);
+    const otherSnapshot = await graph(manager, other);
+    expect(otherSnapshot.nodes.map((node) => node.id)).toContain("foreign-1");
+    const snapshot = {
+      ...ownerSnapshot,
+      // `deprecated` is a state the visibility type allows and the retrieval
+      // rules treat distinctly, but no write path in the repository produces
+      // it. Setting it here is the only way to reach that rule.
+      nodes: [...ownerSnapshot.nodes, ...otherSnapshot.nodes].map((node) =>
+        node.id === "stale-1"
+          ? { ...node, visibility: "deprecated" as const }
+          : node,
+      ),
+    };
+
+    const baseline = await queryMemoryWithFallback(manager as never, {
+      userId: OWNER.userId,
+      limit: 20,
+      minRawResultsWithoutFallback: 20,
+      includeDeprecated: true,
+    });
+    const baselineNodeIds = [
+      ...baseline.items.map((item) =>
+        item.sourceType === "raw" ? item.record.id : item.summary.summaryId,
+      ),
+      "foreign-1",
+      "absent-1",
+    ];
+    for (const id of ["zh-1", "scoped-1", supersededSummary.summaryId]) {
+      expect(baselineNodeIds).toContain(id);
+    }
+
+    const withGraph = buildGraphAwareRetrievalDryRun({
+      ownerScope: OWNER,
+      query: "language preference",
+      baselineNodeIds,
+      snapshot,
+      visibilityMode: "default",
+    });
+
+    const withheld = baselineNodeIds.filter(
+      (nodeId) => !withGraph.rankedNodeIds.includes(nodeId),
+    );
+    for (const id of [
+      "zh-1",
+      "stale-1",
+      "scoped-1",
+      "foreign-1",
+      "absent-1",
+      supersededSummary.summaryId,
+    ]) {
+      expect(withheld).toContain(id);
+    }
+
+    // Nothing is dropped anonymously, and each drop names a rule rather than
+    // just a count.
+    const accounted = new Map(
+      withGraph.withheldBaselineNodes.map((entry) => [
+        entry.nodeId,
+        entry.reason,
+      ]),
+    );
+    expect(withheld.filter((nodeId) => !accounted.has(nodeId))).toEqual([]);
+    expect([...accounted.values()]).not.toContain("unexplained");
+    expect(withGraph.reasonCodes).not.toContain(
+      "baseline_withheld_without_reason",
+    );
+    expect(accounted.get("zh-1")).toBe("audit-only");
+    expect(accounted.get(supersededSummary.summaryId)).toBe("audit-only");
+    expect(accounted.get("stale-1")).toBe("deprecated");
+    expect(accounted.get("scoped-1")).toBe("out-of-applicability");
+    expect(accounted.get("foreign-1")).toBe("out-of-owner-scope");
+    expect(accounted.get("absent-1")).toBe("absent-from-graph");
+
+    // A visibility decision hides a record; it must not remove it. A scope or
+    // applicability decision has to do the opposite and stay unreachable in
+    // every mode, so the two are asserted apart rather than folded into one
+    // "still reachable" claim. Audit mode alone does not restore a `deprecated`
+    // node, so the recovery path G2 relies on is audit mode plus
+    // `includeDeprecated` rather than audit mode by itself.
+    const audit = buildGraphAwareRetrievalDryRun({
+      ownerScope: OWNER,
+      query: "language preference",
+      baselineNodeIds,
+      snapshot,
+      visibilityMode: "audit",
+      includeDeprecated: true,
+    });
+    for (const [nodeId, reason] of accounted) {
+      if (reason === "deprecated" || reason === "audit-only") {
+        expect(audit.rankedNodeIds, `${nodeId} lost to audit`).toContain(
+          nodeId,
+        );
+      } else {
+        expect(audit.rankedNodeIds, `${nodeId} leaked to audit`).not.toContain(
+          nodeId,
+        );
+      }
+    }
+
+    // The other direction. Over that candidate set the graph adds nothing, so
+    // asserting on it would prove nothing. The case where it does add is a
+    // baseline that surfaced a cluster member without its representative,
+    // which is what a semantic hit on one raw record looks like.
+    const narrow = buildGraphAwareRetrievalDryRun({
+      ownerScope: OWNER,
+      query: "language preference",
+      baselineNodeIds: ["en-1"],
+      snapshot,
+      visibilityMode: "default",
+    });
+    const added = narrow.rankedNodeIds.filter((nodeId) => nodeId !== "en-1");
+    expect(added.length).toBeGreaterThan(0);
+    // Nothing enters the result the baseline did not surface unless the graph
+    // itself can say why. Inferring the justification from the snapshot would
+    // let the test do the explaining that G2 asks the graph to do.
+    const admitted = new Map(
+      narrow.addedBeyondBaselineNodes.map((entry) => [
+        entry.nodeId,
+        entry.reason,
+      ]),
+    );
+    expect(added.filter((nodeId) => !admitted.has(nodeId))).toEqual([]);
+    expect([...admitted.values()]).not.toContain("unexplained");
+    for (const nodeId of added) {
+      expect(admitted.get(nodeId), `unjustified addition: ${nodeId}`).toBe(
+        "cluster-representative",
+      );
+    }
+  });
+
   it("keeps the summary active when restore capability is missing or fails", async () => {
     const missing = new GovernanceRuntimeTestManager({
       supportsRestore: false,

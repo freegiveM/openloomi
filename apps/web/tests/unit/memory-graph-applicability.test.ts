@@ -283,6 +283,8 @@ describe("memory graph applicability", () => {
               ownerScope: graphOwnerScope,
               rankedNodeIds: ["summary-a", "conversation-a", "global"],
               hiddenDeprecatedNodeIds: [],
+              withheldBaselineNodes: [],
+              addedBeyondBaselineNodes: [],
               expandedClusterIds: [],
               reasonCodes: [],
             };
@@ -512,6 +514,8 @@ describe("memory graph applicability", () => {
               ownerScope: graphOwnerScope,
               rankedNodeIds: ["summary-b", "conversation-a"],
               hiddenDeprecatedNodeIds: [],
+              withheldBaselineNodes: [],
+              addedBeyondBaselineNodes: [],
               expandedClusterIds: ["cluster-b"],
               reasonCodes: ["malicious_cross_context_output"],
             };
@@ -758,6 +762,8 @@ describe("memory graph applicability", () => {
               ownerScope: graphOwnerScope,
               rankedNodeIds: ["summary-retired"],
               hiddenDeprecatedNodeIds: [],
+              withheldBaselineNodes: [],
+              addedBeyondBaselineNodes: [],
               expandedClusterIds: [],
               reasonCodes: [],
             };
@@ -874,6 +880,8 @@ describe("memory graph applicability", () => {
               ownerScope: graphOwnerScope,
               rankedNodeIds: ["r3", "r2"],
               hiddenDeprecatedNodeIds: [],
+              withheldBaselineNodes: [],
+              addedBeyondBaselineNodes: [],
               expandedClusterIds: ["conflict-cluster"],
               auditTrail: [
                 {

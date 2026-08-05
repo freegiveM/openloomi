@@ -159,6 +159,63 @@ shape of the query. Nothing about result quality is in question here — the two
 arms agree on the answer and differ on whether the answer can be explained,
 which is what MR-10 asks for.
 
+**Nothing is withheld anonymously.** The demonstrations above each show
+something the capability does. G2 asks the opposite question over the same
+machinery: of everything the baseline would have returned, is there anything the
+enabled path drops without being able to say which record and under which rule.
+Asking it found that there was. Retrieval named only deprecated raw records, so
+a summary a rollback retired — the one case where the baseline is simply wrong,
+and the most valuable behaviour demonstrated here — was withheld correctly and
+reported nowhere. Records dropped for owner scope, applicability, or absence
+from the graph were reported as a count with no identities at all.
+
+Retrieval now derives both differences between the baseline candidates and its
+own result: `withheldBaselineNodes` names every candidate it dropped with the
+rule behind it, and `addedBeyondBaselineNodes` names everything it introduced
+with the rule that admitted it. Both are computed from the difference rather
+than reported by each filtering path, so a filter added later surfaces as
+`unexplained` instead of disappearing, and `unexplained` raises a reason code a
+rollout can alert on. The accounting is carried through to the runtime retrieval
+type rather than left in the library, so what a rollout can monitor is what the
+gate checked.
+
+Two findings came out of building it, both recorded because they change what the
+gate means. Audit mode alone does not restore a `deprecated` node — only
+`includeDeprecated` does — so the recovery path G2 relies on is audit mode plus
+that flag rather than audit mode by itself. And `deprecated` visibility is
+readable and distinctly handled but written by nothing in the repository; the
+rule is reachable only by constructing that state.
+
+The gate's own wording needed correcting too. It asked that every withheld
+result stay reachable through audit retrieval, which is right for a visibility
+decision and exactly wrong for a scope one: a record withheld because it belongs
+to another owner must stay unreachable in every mode. The two are now asserted
+apart.
+
+**A readiness claim names what it observed.** G6 asked what a
+`ready-for-limited-rollout` decision was founded on, and the answer was: not
+necessarily anything. The rollout report reached that decision with no runtime
+evidence at all — its retrieval scenarios were dry runs, its correction and
+rollback gates were satisfied by commands that validated rather than operations
+that ran, and the one gate that reads runtime evidence was added only when such
+evidence existed, so its absence lowered the gate count instead of failing
+anything. The existing test asserted that outcome as correct: twelve gates, all
+passed, `dryRun: true`, ready for rollout.
+
+Readiness is now gated on observation. `runtime.observed-evidence` is added
+unconditionally and passes only when the report carries operations that actually
+ran, so a report built from dry-run inputs is blocked with a nameable reason
+rather than declared ready. The correction and rollback gates record whether an
+applied operation or a validated command backed them, because those establish
+different things and reported the same pass. The runtime evaluation path already
+supplies this evidence, so the change blocks fabricated readiness rather than
+real evaluation.
+
+The general defect is worth stating separately from its instance: a gate that is
+only added when its evidence exists cannot fail, and a decision computed from
+`failedGateCount === 0` reads its absence as success. Any gate added later has
+to be present whether or not it can be evaluated.
+
 One result is recorded for what it rules out. Deduplication of repeated imports
 has a real downstream effect inside the graph — one node instead of three, a
 `forming` cluster instead of `stable`, no summary instead of one — but with the
@@ -200,12 +257,14 @@ baseline arm shows no failure is recorded as a safety claim rather than
 converted into a comparison.
 
 **G2 — No regression on the path being enabled.** Every result the baseline
-would have returned is either still returned, or withheld for a reason the
-graph can name — superseded, audit-only, out of applicability, or out of owner
-scope — and every withheld result stays reachable through audit retrieval.
-Nothing appears that the baseline would not have surfaced and the graph cannot
-justify. This is a set relation with stated justifications and needs no
-threshold.
+would have returned is either still returned, or withheld for a reason the graph
+names per record: deprecated, audit-only, out of applicability, out of owner
+scope, or absent from the graph. A record withheld by a visibility rule stays
+reachable through audit retrieval; a record withheld by a scope or applicability
+rule must stay unreachable in every mode, which is why the two are asserted
+apart rather than under one "still reachable" claim. Nothing appears that the
+baseline would not have surfaced unless the graph names the rule that admitted
+it. This is a set relation with stated justifications and needs no threshold.
 
 **G3 — Failure and recovery hold when enabled.** Partial writes, cross-store
 divergence, interrupted publication, and replayed operations converge or fail
@@ -217,11 +276,37 @@ cross-tenant, or cross-applicability result is reachable.
 **G5 — Cost within budget.** Graph-incremental latency and payload stay within
 the recorded budgets.
 
-**G6 — Runtime readiness.** Established by trusted observed behaviour rather
-than configuration strings.
+**G6 — Runtime readiness.** A `ready-for-limited-rollout` decision rests on
+behaviour observed in the runtime being enabled, not on dry-run scenarios or
+commands that merely validated. A gate that could not be evaluated is
+distinguishable from one that passed, and a gate satisfied by a validated
+command rather than an applied operation says which of the two backed it.
 
-G3 and G4 are already covered by tests, but those run against the default-off
-configuration; the gate requires them against the enabled one.
+An earlier draft of this section claimed G3 and G4 were covered only against the
+default-off configuration and had to be re-run enabled. That was wrong, and the
+correction matters more than the claim did. `chat-memory-write-route.test.ts`
+sets `OPENLOOMI_MEMORY_GRAPH_WRITE_ENABLED`, cohort membership, and a released
+kill switch in `beforeEach`, so every test in it already runs the real route
+under the enabled policy. Between it and the native-agent context route the
+enabled path covers adapter-missing fallback, partial write with retry
+convergence, replay without duplicate reinforcement, cross-store deprecation
+divergence, kill-switch fallback, four cross-user ownership races, and
+applicability derived only from an owned server-side chat.
+
+The premise was also wrong in a more useful way. `resolveMemoryGraphWritePolicy`
+is consumed as a pure gate — every caller returns a no-op when it is disabled
+and otherwise proceeds unchanged — so the policy decides whether the graph path
+runs, not how it behaves. Evidence gathered by calling the library directly is
+therefore evidence about the enabled path, and "run it again with the flag on"
+would test the flag rather than the behaviour. What that leaves is one honest
+qualifier: interrupted staged publication is proven at the library level and not
+through the route, which is sufficient for the reason just given but is a
+distinction worth stating rather than smoothing over.
+
+Cross-workspace and cross-tenant isolation have no enabled path to test. The
+runtime never populates either scope, which matches the requirement that they
+are optional and do not replace user identity. Both remain covered where they
+can be constructed, at the library level.
 
 **What this gate deliberately excludes.** Aggregate retrieval quality. A local
 cohort's recall against a fixed similarity threshold measures the embedding

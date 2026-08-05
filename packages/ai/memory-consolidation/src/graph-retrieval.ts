@@ -6,7 +6,11 @@ import type {
   MemoryGraphAuditTrail,
   MemoryGraphClusterSnapshot,
   MemoryGraphEdge,
+  MemoryGraphAddedBeyondBaselineNode,
+  MemoryGraphAddedBeyondBaselineReason,
   MemoryGraphNode,
+  MemoryGraphWithheldBaselineNode,
+  MemoryGraphWithheldBaselineReason,
   OwnerScope,
 } from "./graph-contracts";
 import {
@@ -444,6 +448,90 @@ function buildAuditTrails(input: {
     .filter((trail): trail is MemoryGraphAuditTrail => trail !== undefined);
 }
 
+/**
+ * Names the rule that withheld one baseline candidate. Order matters: scope and
+ * applicability are decided before visibility, because a node the request may
+ * not see at all is never reached by a visibility rule.
+ */
+function withheldBaselineReason(input: {
+  nodeId: string;
+  nodesById: Map<string, MemoryGraphNode>;
+  snapshotNodes: MemoryGraphNode[];
+  ownerScope: OwnerScope;
+  applicabilityContexts: MemoryApplicabilityContext[] | undefined;
+  now: number;
+}): MemoryGraphWithheldBaselineReason {
+  const node = input.snapshotNodes.find(
+    (candidate) => candidate.id === input.nodeId,
+  );
+  if (node === undefined) {
+    return "absent-from-graph";
+  }
+  if (!sameOwnerScope(node.ownerScope, input.ownerScope)) {
+    return "out-of-owner-scope";
+  }
+  if (
+    !applicabilityMatchesTrustedContexts(
+      node.applicability,
+      input.applicabilityContexts,
+      input.now,
+    )
+  ) {
+    return "out-of-applicability";
+  }
+  if (node.visibility === "audit-only") {
+    return "audit-only";
+  }
+  if (node.visibility === "deprecated") {
+    return "deprecated";
+  }
+  return "unexplained";
+}
+
+function withheldBaselineNodes(input: {
+  baselineNodeIds: string[];
+  rankedNodeIds: string[];
+  nodesById: Map<string, MemoryGraphNode>;
+  snapshotNodes: MemoryGraphNode[];
+  ownerScope: OwnerScope;
+  applicabilityContexts: MemoryApplicabilityContext[] | undefined;
+  now: number;
+}): MemoryGraphWithheldBaselineNode[] {
+  const ranked = new Set(input.rankedNodeIds);
+  return uniqueValues(input.baselineNodeIds)
+    .filter((nodeId) => !ranked.has(nodeId))
+    .map((nodeId) => ({
+      nodeId,
+      reason: withheldBaselineReason({ ...input, nodeId }),
+    }));
+}
+
+function addedBeyondBaselineNodes(input: {
+  baselineNodeIds: string[];
+  rankedNodeIds: string[];
+  representativeNodeIds: string[];
+  conflictNodeIds: string[];
+  supersedeTargetNodeIds: string[];
+}): MemoryGraphAddedBeyondBaselineNode[] {
+  const baseline = new Set(input.baselineNodeIds);
+  const conflicts = new Set(input.conflictNodeIds);
+  const representatives = new Set(input.representativeNodeIds);
+  const supersedes = new Set(input.supersedeTargetNodeIds);
+  return input.rankedNodeIds
+    .filter((nodeId) => !baseline.has(nodeId))
+    .map((nodeId) => {
+      let reason: MemoryGraphAddedBeyondBaselineReason = "unexplained";
+      if (conflicts.has(nodeId)) {
+        reason = "competing-alternative";
+      } else if (representatives.has(nodeId)) {
+        reason = "cluster-representative";
+      } else if (supersedes.has(nodeId)) {
+        reason = "supersedes-withheld";
+      }
+      return { nodeId, reason };
+    });
+}
+
 function reasonCodesForResult(input: {
   hiddenDeprecatedNodeIds: string[];
   expandedClusterIds: string[];
@@ -451,9 +539,13 @@ function reasonCodesForResult(input: {
   includeDeprecated: boolean;
   conflictAlternativesExposed: boolean;
   filteredMissingOrCrossScopeCount: number;
+  unexplainedWithheldCount: number;
 }): string[] {
   return uniqueValues([
     "graph_retrieval_dry_run",
+    ...(input.unexplainedWithheldCount > 0
+      ? ["baseline_withheld_without_reason"]
+      : []),
     ...(input.hiddenDeprecatedNodeIds.length > 0
       ? ["default_hides_deprecated_raw"]
       : []),
@@ -586,10 +678,30 @@ export function buildGraphAwareRetrievalDryRun(
         })
       : undefined;
 
+  // Derived from the difference between what came in and what goes out, so it
+  // stays complete without every filtering path having to remember to report.
+  const withheld = withheldBaselineNodes({
+    baselineNodeIds: input.baselineNodeIds,
+    rankedNodeIds,
+    nodesById,
+    snapshotNodes: input.snapshot.nodes,
+    ownerScope: input.ownerScope,
+    applicabilityContexts: input.applicabilityContexts,
+    now: applicabilityNow,
+  });
+
   return {
     ownerScope: input.ownerScope,
     rankedNodeIds,
     hiddenDeprecatedNodeIds: includeDeprecated ? [] : hiddenDeprecatedNodeIds,
+    withheldBaselineNodes: withheld,
+    addedBeyondBaselineNodes: addedBeyondBaselineNodes({
+      baselineNodeIds: input.baselineNodeIds,
+      rankedNodeIds,
+      representativeNodeIds: representativeExpansion.nodeIds,
+      conflictNodeIds: conflictExpansion.nodeIds,
+      supersedeTargetNodeIds,
+    }),
     expandedClusterIds: uniqueValues([
       ...representativeExpansion.clusterIds,
       ...conflictExpansion.clusterIds,
@@ -605,6 +717,9 @@ export function buildGraphAwareRetrievalDryRun(
       includeDeprecated,
       conflictAlternativesExposed: conflictExpansion.nodeIds.length > 0,
       filteredMissingOrCrossScopeCount,
+      unexplainedWithheldCount: withheld.filter(
+        (entry) => entry.reason === "unexplained",
+      ).length,
     }),
     metadata: {
       ...(input.metadata ?? {}),

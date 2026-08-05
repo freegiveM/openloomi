@@ -364,6 +364,12 @@ function toMemorySearchGraphRetrievalResult(
     ownerScope: { ...result.ownerScope },
     rankedNodeIds: [...result.rankedNodeIds],
     hiddenDeprecatedNodeIds: [...result.hiddenDeprecatedNodeIds],
+    withheldBaselineNodes: result.withheldBaselineNodes.map((entry) => ({
+      ...entry,
+    })),
+    addedBeyondBaselineNodes: result.addedBeyondBaselineNodes.map((entry) => ({
+      ...entry,
+    })),
     expandedClusterIds: [...result.expandedClusterIds],
     auditTrail: result.auditTrail?.map((trail) => ({
       ownerScope: { ...trail.ownerScope },
