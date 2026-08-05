@@ -947,10 +947,12 @@ process.exit(7);
   });
 
   it("forces read-only sandbox during planning and never opts into --full-auto", async () => {
-    const workDir = await createFakeCodexWorkDir(`
+    const workDir = await createFakeCodexWorkDir(
+      fakeCodexScriptAfterPrompt(`
 require("node:fs").writeFileSync("args.json", JSON.stringify(process.argv.slice(2)));
 console.log(JSON.stringify({ type: "text", text: JSON.stringify({ type: "direct_answer", answer: "ok" }) }));
-`);
+`),
+    );
     const agent = new CodexAgent({
       provider: "codex",
       workDir,
@@ -973,14 +975,16 @@ console.log(JSON.stringify({ type: "text", text: JSON.stringify({ type: "direct_
   });
 
   it("retains and deletes plans across successful executions", async () => {
-    const workDir = await createFakeCodexWorkDir(`
+    const workDir = await createFakeCodexWorkDir(
+      fakeCodexScriptAfterPrompt(`
 require("node:fs").writeFileSync("args.json", JSON.stringify(process.argv.slice(2)));
 console.log(JSON.stringify({ type: "text", text: JSON.stringify({
   type: "plan",
   goal: "Do work",
   steps: [{ id: "1", description: "Complete implementation" }]
 }) }));
-`);
+`),
+    );
 
     const agent = new CodexAgent({
       provider: "codex",
@@ -1000,19 +1004,23 @@ console.log(JSON.stringify({ type: "text", text: JSON.stringify({
 
     await writeFakeCodexScript(
       workDir,
-      `console.log(JSON.stringify({ type: "text", text: "done" }));`,
+      fakeCodexScriptAfterPrompt(
+        `console.log(JSON.stringify({ type: "text", text: "done" }));`,
+      ),
     );
     await collectMessages(agent.execute({ planId, originalPrompt: "do work" }));
     expect(agent.getPlan(planId)).toBeUndefined();
   });
 
   it("decodes UTF-8 JSON events split across stdout chunks", async () => {
-    const workDir = await createFakeCodexWorkDir(`
+    const workDir = await createFakeCodexWorkDir(
+      fakeCodexScriptAfterPrompt(`
 const payload = Buffer.from(JSON.stringify({ type: "item.completed", item: { type: "agent_message", id: "msg-1", text: "你好" } }) + "\\n");
 const split = payload.indexOf(Buffer.from("你")) + 1;
 process.stdout.write(payload.subarray(0, split));
 setTimeout(() => process.stdout.write(payload.subarray(split)), 10);
-`);
+`),
+    );
     const agent = new CodexAgent({
       provider: "codex",
       workDir,
@@ -1034,7 +1042,8 @@ setTimeout(() => process.stdout.write(payload.subarray(split)), 10);
   // invariant to avoid rendering duplicate Agent Execution Timeout cards
   // above a successful reply.
   it("treats Codex retry events as transient and still yields a success result", async () => {
-    const workDir = await createFakeCodexWorkDir(`
+    const workDir = await createFakeCodexWorkDir(
+      fakeCodexScriptAfterPrompt(`
 require("node:fs").writeFileSync("args.json", JSON.stringify(process.argv.slice(2)));
 console.log(JSON.stringify({ type: "thread.started", thread_id: "thread-1" }));
 // Non-terminal transport-fallback notices that used to be projected as
@@ -1060,7 +1069,8 @@ console.log(JSON.stringify({
   type: "turn.completed",
   usage: { input_tokens: 7, output_tokens: 3 }
 }));
-`);
+`),
+    );
 
     const agent = new CodexAgent({
       provider: "codex",
@@ -1275,6 +1285,22 @@ async function writeFakeCodexScript(
   filename = "exec",
 ) {
   await writeFile(join(workDir, filename), script, "utf8");
+}
+
+// Real Codex reads its prompt from stdin, so runCodexCommand writes the prompt
+// and treats a failed delivery on an otherwise-successful exit as fatal. A fake
+// that emits its events and exits without draining stdin races that write and
+// intermittently kills it with EPIPE once the runner is loaded enough to delay
+// the parent's flush. Consume stdin first — like defaultFakeCodexScript and the
+// real CLI — so the prompt always lands. Fakes that exit non-zero or hang until
+// the timeout are unaffected and stay as-is.
+function fakeCodexScriptAfterPrompt(body: string) {
+  return `
+process.stdin.resume();
+process.stdin.on("end", () => {
+${body}
+});
+`;
 }
 
 function defaultFakeCodexScript() {
