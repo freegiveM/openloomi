@@ -311,10 +311,37 @@ export interface MemorySearchGraphRetrievalAuditTrail {
   metadata?: Record<string, unknown>;
 }
 
+export interface MemorySearchGraphRetrievalWithheldNode {
+  nodeId: string;
+  reason:
+    | "deprecated"
+    | "audit-only"
+    | "out-of-applicability"
+    | "out-of-owner-scope"
+    | "absent-from-graph"
+    | "unexplained";
+}
+
+export interface MemorySearchGraphRetrievalAddedNode {
+  nodeId: string;
+  reason:
+    | "cluster-representative"
+    | "competing-alternative"
+    | "supersedes-withheld"
+    | "unexplained";
+}
+
 export interface MemorySearchGraphRetrievalResult {
   ownerScope: MemorySearchGraphRetrievalOwnerScope;
   rankedNodeIds: string[];
   hiddenDeprecatedNodeIds: string[];
+  /**
+   * The difference between the baseline candidates and this result, with the
+   * rule behind each change. Carried to the runtime rather than left in the
+   * library so what a rollout monitors is what the gate checked.
+   */
+  withheldBaselineNodes: MemorySearchGraphRetrievalWithheldNode[];
+  addedBeyondBaselineNodes: MemorySearchGraphRetrievalAddedNode[];
   expandedClusterIds: string[];
   auditTrail?: MemorySearchGraphRetrievalAuditTrail[];
   reasonCodes: string[];

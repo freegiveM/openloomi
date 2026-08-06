@@ -95,6 +95,7 @@ export type MemoryGraphOperationKind =
   | "reinforce-edge"
   | "weaken-edge"
   | "upsert-cluster"
+  | "broaden-cluster-applicability"
   | "set-cluster-lifecycle"
   | "set-cluster-representative"
   | "supersede-node"
@@ -292,10 +293,56 @@ export interface GraphAwareRetrievalInput {
   metadata?: Record<string, unknown>;
 }
 
+/**
+ * Why a baseline candidate did not reach the graph-aware result. `unexplained`
+ * is deliberately representable: a drop no rule accounts for has to be visible
+ * rather than absorbed into the nearest plausible label.
+ */
+export type MemoryGraphWithheldBaselineReason =
+  | "deprecated"
+  | "audit-only"
+  | "out-of-applicability"
+  | "out-of-owner-scope"
+  | "absent-from-graph"
+  | "unexplained";
+
+export interface MemoryGraphWithheldBaselineNode {
+  nodeId: string;
+  reason: MemoryGraphWithheldBaselineReason;
+}
+
+/**
+ * Why a node the baseline did not surface reached the graph-aware result. Same
+ * contract as the withheld side: an addition no rule accounts for is reported
+ * rather than assumed benign.
+ */
+export type MemoryGraphAddedBeyondBaselineReason =
+  | "cluster-representative"
+  | "competing-alternative"
+  | "supersedes-withheld"
+  | "unexplained";
+
+export interface MemoryGraphAddedBeyondBaselineNode {
+  nodeId: string;
+  reason: MemoryGraphAddedBeyondBaselineReason;
+}
+
 export interface GraphAwareRetrievalResult {
   ownerScope: OwnerScope;
   rankedNodeIds: string[];
   hiddenDeprecatedNodeIds: string[];
+  /**
+   * Every baseline candidate absent from `rankedNodeIds`, with the rule that
+   * withheld it. Complete by construction: it is derived from the difference
+   * between the baseline input and the ranked output, so a new filtering path
+   * surfaces here as `unexplained` instead of disappearing.
+   */
+  withheldBaselineNodes: MemoryGraphWithheldBaselineNode[];
+  /**
+   * Every node in `rankedNodeIds` the baseline did not surface, with the rule
+   * that admitted it. Derived the same way as `withheldBaselineNodes`.
+   */
+  addedBeyondBaselineNodes: MemoryGraphAddedBeyondBaselineNode[];
   expandedClusterIds: string[];
   auditTrail?: MemoryGraphAuditTrail[];
   reasonCodes: string[];

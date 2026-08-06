@@ -107,6 +107,12 @@ function runtimeGraphRetrievalResult(input: {
     ownerScope: graphResult?.ownerScope ?? { ...input.ownerScope },
     rankedNodeIds: runtimeRetrievalNodeIds(input.result),
     hiddenDeprecatedNodeIds: [...(graphResult?.hiddenDeprecatedNodeIds ?? [])],
+    withheldBaselineNodes: (graphResult?.withheldBaselineNodes ?? []).map(
+      (entry) => ({ ...entry }),
+    ),
+    addedBeyondBaselineNodes: (graphResult?.addedBeyondBaselineNodes ?? []).map(
+      (entry) => ({ ...entry }),
+    ),
     expandedClusterIds: [...(graphResult?.expandedClusterIds ?? [])],
     auditTrail: graphResult?.auditTrail?.map((trail) => ({
       ...trail,

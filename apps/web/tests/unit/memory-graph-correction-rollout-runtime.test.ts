@@ -271,6 +271,7 @@ class GovernanceRuntimeTestManager {
 function rawMessage(
   messageId: string,
   input: {
+    relationGroup?: string;
     relationValue?: string;
     sourceIdentity?: string;
     applicability?: Record<string, unknown>;
@@ -278,16 +279,17 @@ function rawMessage(
     userId?: string;
   } = {},
 ): RawMessage {
+  const relationGroup = input.relationGroup ?? "language";
   return {
     messageId,
     platform: "slack",
     botId: "bot-1",
     userId: input.userId ?? OWNER.userId,
     timestamp: input.timestamp ?? Math.floor(NOW / 1000),
-    content: `User language preference: ${input.relationValue ?? "zh"}`,
+    content: `User ${relationGroup} preference: ${input.relationValue ?? "zh"}`,
     attachments: [],
     metadata: {
-      relationGroup: "language",
+      relationGroup,
       relationValue: input.relationValue ?? "zh",
       sourceIdentity: input.sourceIdentity ?? `source:${messageId}`,
       memoryApplicability: input.applicability ?? { scope: "global" },
@@ -1090,6 +1092,695 @@ describe("memory graph correction, rollback, and rollout runtime", () => {
     for (const id of ["en-1", "en-2", "en-3"]) {
       expect(manager.messages.get(id)?.deprecatedAt).toBeUndefined();
     }
+  });
+
+  // Both arms of one claim: what baseline retrieval does without the graph,
+  // and what changes with it. Raw records can be hidden without the graph
+  // because they carry `deprecatedAt`; summaries carry no such field, so a
+  // superseded summary is only distinguishable from a live one in the graph.
+  it("keeps a superseded summary in baseline retrieval that only the graph can hide", async () => {
+    const manager = new GovernanceRuntimeTestManager();
+    const { summary: supersededSummary } = await seedConsolidated(manager);
+    for (const [index, id] of ["en-1", "en-2", "en-3"].entries()) {
+      await storeEvidence(
+        manager,
+        [rawMessage(id, { relationValue: "en" })],
+        NOW + 4000 + index * 1000,
+      );
+    }
+    await runMemoryForgettingCycle(manager as never, OWNER.userId, {
+      now: NOW + 7000,
+      graphLifecycle: { enabled: true },
+    });
+
+    const snapshot = await graph(manager);
+    const replacementSummaryId = snapshot.nodes.find(
+      (node) =>
+        node.type === "summary" &&
+        node.id !== supersededSummary.summaryId &&
+        node.visibility === "default",
+    )?.id;
+    expect(replacementSummaryId).toBeDefined();
+    expect(
+      snapshot.nodes.find((node) => node.id === supersededSummary.summaryId)
+        ?.visibility,
+    ).toBe("audit-only");
+
+    // Without the graph. Storage cannot express that the old summary was
+    // superseded, so baseline retrieval returns it beside its replacement.
+    const baseline = await queryMemoryWithFallback(manager as never, {
+      userId: OWNER.userId,
+      limit: 10,
+      minRawResultsWithoutFallback: 10,
+    });
+    const baselineSummaryIds = baseline.items
+      .filter((item) => item.sourceType === "summary")
+      .map((item) => item.summary.summaryId);
+    expect(baselineSummaryIds).toContain(supersededSummary.summaryId);
+    expect(baselineSummaryIds).toContain(replacementSummaryId);
+    expect(manager.summaries.get(supersededSummary.summaryId)).toBeDefined();
+
+    // With the graph, over the very same baseline candidates.
+    const baselineNodeIds = baseline.items.map((item) =>
+      item.sourceType === "raw" ? item.record.id : item.summary.summaryId,
+    );
+    const withGraph = buildGraphAwareRetrievalDryRun({
+      ownerScope: OWNER,
+      query: "language preference",
+      baselineNodeIds,
+      snapshot,
+      visibilityMode: "default",
+    });
+    expect(withGraph.rankedNodeIds).not.toContain(supersededSummary.summaryId);
+    expect(withGraph.rankedNodeIds).toContain(replacementSummaryId);
+
+    // Suppressed, not destroyed: audit retrieval still reaches it.
+    const audit = buildGraphAwareRetrievalDryRun({
+      ownerScope: OWNER,
+      query: "language preference",
+      baselineNodeIds,
+      snapshot,
+      visibilityMode: "audit",
+    });
+    expect(audit.rankedNodeIds).toContain(supersededSummary.summaryId);
+
+    // Negative control. Same retrieval, same mechanics, with only the graph's
+    // record of the supersession removed. If the summary still disappeared,
+    // something other than that knowledge would be doing the work.
+    const withoutSupersessionKnowledge = buildGraphAwareRetrievalDryRun({
+      ownerScope: OWNER,
+      query: "language preference",
+      baselineNodeIds,
+      snapshot: {
+        ...snapshot,
+        nodes: snapshot.nodes.map((node) =>
+          node.id === supersededSummary.summaryId
+            ? { ...node, visibility: "default" as const }
+            : node,
+        ),
+      },
+      visibilityMode: "default",
+    });
+    expect(withoutSupersessionKnowledge.rankedNodeIds).toContain(
+      supersededSummary.summaryId,
+    );
+  });
+
+  // MR-4 requires supersession to follow sustained evidence, not recency. The
+  // one-off arm is the control: identical mechanics, less evidence. If the
+  // graph simply retired whatever was contradicted, it would fire there too.
+  it("supersedes a stable preference only when the contradiction is sustained", async () => {
+    async function contradict(englishCount: number) {
+      const manager = new GovernanceRuntimeTestManager();
+      const seeded = await seedConsolidated(manager);
+      for (let index = 0; index < englishCount; index += 1) {
+        await storeEvidence(
+          manager,
+          [rawMessage(`en-${index}`, { relationValue: "en" })],
+          NOW + 4000 + index * 1000,
+        );
+      }
+      await runMemoryForgettingCycle(manager as never, OWNER.userId, {
+        now: NOW + 9000,
+        graphLifecycle: { enabled: true },
+      });
+      const snapshot = await graph(manager);
+      return {
+        manager,
+        snapshot,
+        stablePreferenceId: seeded.summary.summaryId,
+        visibility: snapshot.nodes.find(
+          (node) => node.id === seeded.summary.summaryId,
+        )?.visibility,
+      };
+    }
+
+    // A single contradicting record must not retire the stable preference.
+    const oneOff = await contradict(1);
+    expect(oneOff.visibility).toBe("default");
+    expect(
+      oneOff.snapshot.clusters.map((cluster) => cluster.lifecycleStatus),
+    ).not.toContain("superseded");
+
+    // Sustained contradiction retires it, and records why.
+    const sustained = await contradict(3);
+    expect(sustained.visibility).toBe("audit-only");
+    expect(
+      sustained.snapshot.clusters.some(
+        (cluster) => cluster.lifecycleStatus === "superseded",
+      ),
+    ).toBe(true);
+
+    // The same evidence, the same two phases, with the graph disabled. The
+    // baseline does not produce a wrong answer about supersession — it never
+    // forms a representative at all, so it has nothing to supersede. This is a
+    // capability the graph adds, not a defect it repairs.
+    const baseline = new GovernanceRuntimeTestManager();
+    async function ingest(prefix: string, value: string, offset: number) {
+      for (const index of [0, 1, 2]) {
+        await storeRawMessagesWithGraphEvolution({
+          storage: baseline,
+          messages: [
+            rawMessage(`${prefix}-${index}`, { relationValue: value }),
+          ],
+          graphEvolution: { enabled: false },
+          now: NOW + offset + index * 1000,
+        });
+      }
+      await runMemoryForgettingCycle(baseline as never, OWNER.userId, {
+        now: NOW + offset + 3000,
+      });
+    }
+    await ingest("base-zh", "zh", 0);
+    await ingest("base-en", "en", 4000);
+
+    expect(baseline.summaries.size).toBe(0);
+    expect(
+      [...baseline.messages.values()].filter(
+        (message) => message.deprecatedAt !== undefined,
+      ),
+    ).toHaveLength(0);
+    const baselineHits = await queryMemoryWithFallback(baseline as never, {
+      userId: OWNER.userId,
+      limit: 10,
+      minRawResultsWithoutFallback: 10,
+    });
+    const baselineRawIds = baselineHits.items
+      .filter((item) => item.sourceType === "raw")
+      .map((item) => item.record.id);
+    for (const index of [0, 1, 2]) {
+      expect(baselineRawIds).toContain(`base-zh-${index}`);
+      expect(baselineRawIds).toContain(`base-en-${index}`);
+    }
+  });
+
+  // MR-4 again, on the other axis: the same sustained contradiction must retire
+  // a global preference or leave it alone depending only on whether the new
+  // evidence claims global validity. The global arm doubles as the control —
+  // identical mechanics and dose with the applicability removed. The baseline
+  // has no applicability and forms no representative at all, which the sibling
+  // test above already establishes.
+  it("lets a task-scoped exception coexist with the preference it contradicts", async () => {
+    async function contradictWith(applicability?: Record<string, unknown>) {
+      const manager = new GovernanceRuntimeTestManager();
+      const seeded = await seedConsolidated(manager);
+      for (const index of [0, 1, 2]) {
+        await storeEvidence(
+          manager,
+          [rawMessage(`en-${index}`, { relationValue: "en", applicability })],
+          NOW + 4000 + index * 1000,
+        );
+      }
+      await runMemoryForgettingCycle(manager as never, OWNER.userId, {
+        now: NOW + 9000,
+        graphLifecycle: { enabled: true },
+      });
+      const snapshot = await graph(manager);
+      return {
+        preferenceVisibility: snapshot.nodes.find(
+          (node) => node.id === seeded.summary.summaryId,
+        )?.visibility,
+        lifecycles: snapshot.clusters
+          .map((cluster) => cluster.lifecycleStatus)
+          .sort(),
+      };
+    }
+
+    // Claiming global validity retires the standing preference.
+    const global = await contradictWith(undefined);
+    expect(global.preferenceVisibility).toBe("audit-only");
+    expect(global.lifecycles).toContain("superseded");
+
+    // The same three records scoped to one task leave it standing, and the
+    // exception is kept as its own stable structure rather than merged away.
+    const scoped = await contradictWith({ scope: "task", key: "task-1" });
+    expect(scoped.preferenceVisibility).toBe("default");
+    expect(scoped.lifecycles).not.toContain("superseded");
+    expect(scoped.lifecycles).toEqual(["stable", "stable"]);
+  });
+
+  // MR-10 asks for retrieval changes to be explainable. Both arms here reach
+  // the same result, so nothing about quality is in question — what differs is
+  // whether the system can say what it withheld and under which rule.
+  it("names the records it withheld, which the baseline cannot", async () => {
+    const manager = new GovernanceRuntimeTestManager();
+    await seedConsolidated(manager);
+    const snapshot = await graph(manager);
+
+    // One candidate set for both arms: ask for the deprecated sources too, so
+    // the comparison is about accounting rather than about what was searched.
+    const candidates = await queryMemoryWithFallback(manager as never, {
+      userId: OWNER.userId,
+      limit: 10,
+      minRawResultsWithoutFallback: 10,
+      includeDeprecated: true,
+    });
+    const candidateIds = candidates.items.map((item) =>
+      item.sourceType === "raw" ? item.record.id : item.summary.summaryId,
+    );
+    for (const id of ["zh-1", "zh-2", "zh-3"]) {
+      expect(candidateIds).toContain(id);
+    }
+
+    const withGraph = buildGraphAwareRetrievalDryRun({
+      ownerScope: OWNER,
+      query: "language preference",
+      baselineNodeIds: candidateIds,
+      snapshot,
+      visibilityMode: "default",
+    });
+    for (const id of ["zh-1", "zh-2", "zh-3"]) {
+      expect(withGraph.hiddenDeprecatedNodeIds).toContain(id);
+      expect(withGraph.rankedNodeIds).not.toContain(id);
+    }
+    expect(withGraph.reasonCodes).toContain("default_hides_deprecated_raw");
+    expect(withGraph.reasonCodes).toContain(
+      "cluster_representative_prioritized",
+    );
+
+    // The baseline reaches the same result set and drops the same three
+    // records without a trace: its response mentions neither the records nor a
+    // rule, so nothing downstream can report what was withheld.
+    const baseline = await queryMemoryWithFallback(manager as never, {
+      userId: OWNER.userId,
+      limit: 10,
+      minRawResultsWithoutFallback: 10,
+    });
+    expect(baseline.items).toHaveLength(withGraph.rankedNodeIds.length);
+    expect(
+      baseline.items.filter((item) => item.sourceType === "raw"),
+    ).toHaveLength(0);
+    // Apart from the results themselves the response carries only counters,
+    // so there is no field a withheld-record list could occupy.
+    const listFields = Object.entries(
+      baseline as unknown as Record<string, unknown>,
+    )
+      .filter(([key, value]) => key !== "items" && Array.isArray(value))
+      .map(([key]) => key);
+    expect(listFields).toHaveLength(0);
+
+    // Negative control: with the deprecation record removed from the snapshot
+    // the accounting disappears, so it follows that record rather than the
+    // shape of the query.
+    const withoutDeprecationRecord = buildGraphAwareRetrievalDryRun({
+      ownerScope: OWNER,
+      query: "language preference",
+      baselineNodeIds: candidateIds,
+      snapshot: {
+        ...snapshot,
+        nodes: snapshot.nodes.map((node) =>
+          node.type === "raw"
+            ? { ...node, visibility: "default" as const }
+            : node,
+        ),
+      },
+      visibilityMode: "default",
+    });
+    expect(withoutDeprecationRecord.hiddenDeprecatedNodeIds).toHaveLength(0);
+  });
+
+  // G2. The demonstrations above each show something the graph does. This asks
+  // the opposite question over the same machinery: of everything the baseline
+  // would have returned, does the enabled path drop anything without being able
+  // to say which record and under which rule. A silent drop is the failure mode
+  // that makes turning defaults on unsafe, and no test that checks only what
+  // survived can see it.
+  it("accounts for every baseline result the enabled path withholds", async () => {
+    const manager = new GovernanceRuntimeTestManager();
+    const { summary: supersededSummary } = await seedConsolidated(manager);
+    for (const [index, id] of ["en-1", "en-2", "en-3"].entries()) {
+      await storeEvidence(
+        manager,
+        [rawMessage(id, { relationValue: "en" })],
+        NOW + 4000 + index * 1000,
+      );
+    }
+    await runMemoryForgettingCycle(manager as never, OWNER.userId, {
+      now: NOW + 7000,
+      graphLifecycle: { enabled: true },
+    });
+    await storeEvidence(
+      manager,
+      [
+        rawMessage("scoped-1", {
+          applicability: { scope: "task", key: "task-x" },
+        }),
+      ],
+      NOW + 8000,
+    );
+    await storeEvidence(
+      manager,
+      [rawMessage("stale-1", { relationValue: "fr" })],
+      NOW + 8500,
+    );
+    const other = { userId: "user-2" } satisfies OwnerScope;
+    await storeEvidence(
+      manager,
+      [rawMessage("foreign-1", { userId: other.userId })],
+      NOW + 9000,
+      other,
+    );
+
+    // A candidate index shared across owners can surface a foreign record, and
+    // a graph that lags ingestion has never seen some of what the baseline
+    // finds. Both are handed in so the retrieval path has to refuse them rather
+    // than be shielded from them by the fixture.
+    const ownerSnapshot = await graph(manager);
+    const otherSnapshot = await graph(manager, other);
+    expect(otherSnapshot.nodes.map((node) => node.id)).toContain("foreign-1");
+    const snapshot = {
+      ...ownerSnapshot,
+      // `deprecated` is a state the visibility type allows and the retrieval
+      // rules treat distinctly, but no write path in the repository produces
+      // it. Setting it here is the only way to reach that rule.
+      nodes: [...ownerSnapshot.nodes, ...otherSnapshot.nodes].map((node) =>
+        node.id === "stale-1"
+          ? { ...node, visibility: "deprecated" as const }
+          : node,
+      ),
+    };
+
+    const baseline = await queryMemoryWithFallback(manager as never, {
+      userId: OWNER.userId,
+      limit: 20,
+      minRawResultsWithoutFallback: 20,
+      includeDeprecated: true,
+    });
+    const baselineNodeIds = [
+      ...baseline.items.map((item) =>
+        item.sourceType === "raw" ? item.record.id : item.summary.summaryId,
+      ),
+      "foreign-1",
+      "absent-1",
+    ];
+    for (const id of ["zh-1", "scoped-1", supersededSummary.summaryId]) {
+      expect(baselineNodeIds).toContain(id);
+    }
+
+    const withGraph = buildGraphAwareRetrievalDryRun({
+      ownerScope: OWNER,
+      query: "language preference",
+      baselineNodeIds,
+      snapshot,
+      visibilityMode: "default",
+    });
+
+    const withheld = baselineNodeIds.filter(
+      (nodeId) => !withGraph.rankedNodeIds.includes(nodeId),
+    );
+    for (const id of [
+      "zh-1",
+      "stale-1",
+      "scoped-1",
+      "foreign-1",
+      "absent-1",
+      supersededSummary.summaryId,
+    ]) {
+      expect(withheld).toContain(id);
+    }
+
+    // Nothing is dropped anonymously, and each drop names a rule rather than
+    // just a count.
+    const accounted = new Map(
+      withGraph.withheldBaselineNodes.map((entry) => [
+        entry.nodeId,
+        entry.reason,
+      ]),
+    );
+    expect(withheld.filter((nodeId) => !accounted.has(nodeId))).toEqual([]);
+    expect([...accounted.values()]).not.toContain("unexplained");
+    expect(withGraph.reasonCodes).not.toContain(
+      "baseline_withheld_without_reason",
+    );
+    expect(accounted.get("zh-1")).toBe("audit-only");
+    expect(accounted.get(supersededSummary.summaryId)).toBe("audit-only");
+    expect(accounted.get("stale-1")).toBe("deprecated");
+    expect(accounted.get("scoped-1")).toBe("out-of-applicability");
+    expect(accounted.get("foreign-1")).toBe("out-of-owner-scope");
+    expect(accounted.get("absent-1")).toBe("absent-from-graph");
+
+    // A visibility decision hides a record; it must not remove it. A scope or
+    // applicability decision has to do the opposite and stay unreachable in
+    // every mode, so the two are asserted apart rather than folded into one
+    // "still reachable" claim. Audit mode alone does not restore a `deprecated`
+    // node, so the recovery path G2 relies on is audit mode plus
+    // `includeDeprecated` rather than audit mode by itself.
+    const audit = buildGraphAwareRetrievalDryRun({
+      ownerScope: OWNER,
+      query: "language preference",
+      baselineNodeIds,
+      snapshot,
+      visibilityMode: "audit",
+      includeDeprecated: true,
+    });
+    for (const [nodeId, reason] of accounted) {
+      if (reason === "deprecated" || reason === "audit-only") {
+        expect(audit.rankedNodeIds, `${nodeId} lost to audit`).toContain(
+          nodeId,
+        );
+      } else {
+        expect(audit.rankedNodeIds, `${nodeId} leaked to audit`).not.toContain(
+          nodeId,
+        );
+      }
+    }
+
+    // The other direction. Over that candidate set the graph adds nothing, so
+    // asserting on it would prove nothing. The case where it does add is a
+    // baseline that surfaced a cluster member without its representative,
+    // which is what a semantic hit on one raw record looks like.
+    const narrow = buildGraphAwareRetrievalDryRun({
+      ownerScope: OWNER,
+      query: "language preference",
+      baselineNodeIds: ["en-1"],
+      snapshot,
+      visibilityMode: "default",
+    });
+    const added = narrow.rankedNodeIds.filter((nodeId) => nodeId !== "en-1");
+    expect(added.length).toBeGreaterThan(0);
+    // Nothing enters the result the baseline did not surface unless the graph
+    // itself can say why. Inferring the justification from the snapshot would
+    // let the test do the explaining that G2 asks the graph to do.
+    const admitted = new Map(
+      narrow.addedBeyondBaselineNodes.map((entry) => [
+        entry.nodeId,
+        entry.reason,
+      ]),
+    );
+    expect(added.filter((nodeId) => !admitted.has(nodeId))).toEqual([]);
+    expect([...admitted.values()]).not.toContain("unexplained");
+    for (const nodeId of added) {
+      expect(admitted.get(nodeId), `unjustified addition: ${nodeId}`).toBe(
+        "cluster-representative",
+      );
+    }
+  });
+
+  // The acceptance table asks that repeated consistent evidence reinforce one
+  // cluster and improve its retrieval priority. Only the first half turns out to
+  // be the graph's doing. Repetition consolidates, which changes what retrieval
+  // returns; the ordering the requirement describes is produced by the baseline
+  // retriever, and the last arm here is what establishes that rather than
+  // assuming it either way.
+  it("represents a repeated preference by one summary, and reorders nothing the baseline already ordered", async () => {
+    async function arm(dose: number, graphLifecycleEnabled: boolean) {
+      const manager = new GovernanceRuntimeTestManager();
+      for (let index = 0; index < dose; index += 1) {
+        await storeEvidence(
+          manager,
+          [
+            rawMessage(`zh-${index + 1}`, {
+              timestamp: Math.floor(NOW / 1000) + index,
+            }),
+          ],
+          NOW + index * 1000,
+        );
+      }
+      // A second, unrelated topic so "priority" has something to be measured
+      // against. One observation, so it never consolidates in any arm.
+      await storeEvidence(
+        manager,
+        [
+          rawMessage("proj-1", {
+            relationGroup: "project",
+            relationValue: "atlas",
+          }),
+        ],
+        NOW + 3500,
+      );
+      await runMemoryForgettingCycle(manager as never, OWNER.userId, {
+        now: NOW + 4000,
+        graphLifecycle: { enabled: graphLifecycleEnabled },
+      });
+      const snapshot = await graph(manager);
+      const baseline = await queryMemoryWithFallback(manager as never, {
+        userId: OWNER.userId,
+        limit: 20,
+        minRawResultsWithoutFallback: 20,
+      });
+      return {
+        snapshot,
+        cluster: snapshot.clusters.find(
+          (candidate) => candidate.clusterId === "cluster:zh-1",
+        ),
+        baselineNodeIds: baseline.items.map((item) =>
+          item.sourceType === "raw" ? item.record.id : item.summary.summaryId,
+        ),
+      };
+    }
+
+    // Sustained evidence. The cluster reaches `stable`, gains a representative,
+    // and retrieval returns that one record in place of its three sources.
+    const sustained = await arm(3, true);
+    expect(sustained.cluster?.lifecycleStatus).toBe("stable");
+    const representativeId = sustained.cluster?.representativeNodeId;
+    expect(representativeId).toBeDefined();
+    expect(sustained.baselineNodeIds).toEqual([representativeId, "proj-1"]);
+
+    // Dose control: identical content and mechanics, one observation. Nothing
+    // consolidates, so the evidence is still retrieved as itself.
+    const single = await arm(1, true);
+    expect(single.cluster?.lifecycleStatus).toBe("forming");
+    expect(single.cluster?.representativeNodeId).toBeUndefined();
+    expect(single.baselineNodeIds).toEqual(["zh-1", "proj-1"]);
+
+    // Baseline arm: the same three observations with graph lifecycle disabled
+    // produce no summary at all, so this is a capability the graph adds rather
+    // than a baseline defect it repairs.
+    const withoutGraph = await arm(3, false);
+    expect(withoutGraph.cluster?.representativeNodeId).toBeUndefined();
+    expect(withoutGraph.baselineNodeIds).toEqual([
+      "zh-3",
+      "zh-2",
+      "zh-1",
+      "proj-1",
+    ]);
+
+    // The sources are represented, not lost.
+    const audit = buildGraphAwareRetrievalDryRun({
+      ownerScope: OWNER,
+      query: "preference",
+      baselineNodeIds: ["zh-1", "zh-2", "zh-3"],
+      snapshot: sustained.snapshot,
+      visibilityMode: "audit",
+      includeDeprecated: true,
+    });
+    for (const id of ["zh-1", "zh-2", "zh-3"]) {
+      expect(audit.rankedNodeIds).toContain(id);
+    }
+
+    // And the half of the claim that is not the graph's. Given the order the
+    // real retriever produces, graph-aware ranking returns it unchanged: the
+    // representative is already first without the graph. The rule that would
+    // lift it does exist — handed the reverse order it applies — but it never
+    // has to, so no priority improvement here is attributable to the graph.
+    const rank = (baselineNodeIds: string[]) =>
+      buildGraphAwareRetrievalDryRun({
+        ownerScope: OWNER,
+        query: "preference",
+        baselineNodeIds,
+        snapshot: sustained.snapshot,
+        visibilityMode: "default",
+      }).rankedNodeIds;
+    expect(rank(sustained.baselineNodeIds)).toEqual(sustained.baselineNodeIds);
+    expect(rank([...sustained.baselineNodeIds].reverse())).toEqual([
+      representativeId,
+      "proj-1",
+    ]);
+  });
+
+  // MR-4 allows a scoped memory to widen only on repeated support across
+  // independent contexts. Same content and same dose in every arm; only the
+  // independence of the contexts differs, which makes each arm the control for
+  // the one above it.
+  it("widens a scoped preference only when independent contexts agree", async () => {
+    async function contexts(
+      entries: Array<{
+        scope: "task" | "conversation";
+        key: string;
+        source: string;
+        validUntil?: number;
+      }>,
+    ) {
+      const manager = new GovernanceRuntimeTestManager();
+      const { summary } = await seedConsolidated(manager);
+      for (const [index, entry] of entries.entries()) {
+        await storeEvidence(
+          manager,
+          [
+            rawMessage(`en-${index + 1}`, {
+              relationValue: "en",
+              applicability: {
+                scope: entry.scope,
+                key: entry.key,
+                ...(entry.validUntil === undefined
+                  ? {}
+                  : { validUntil: entry.validUntil }),
+              },
+              sourceIdentity: entry.source,
+              timestamp: Math.floor(NOW / 1000) + 10 + index,
+            }),
+          ],
+          NOW + 4000 + index * 1000,
+        );
+      }
+      const snapshot = await graph(manager);
+      const scoped = snapshot.clusters.filter((cluster) =>
+        cluster.clusterId.startsWith("cluster:en-"),
+      );
+      return {
+        standing: snapshot.clusters.find(
+          (cluster) => cluster.clusterId === "cluster:zh-1",
+        ),
+        summaryId: summary.summaryId,
+        scopes: scoped.map((cluster) => cluster.applicability?.scope),
+        broadened: scoped.filter((cluster) =>
+          cluster.reasonCodes.includes(
+            "applicability_broadened_across_contexts",
+          ),
+        ).length,
+      };
+    }
+
+    // Three contexts, three distinct sources. The scoped memory widens, and the
+    // standing global preference is challenged rather than replaced: it is still
+    // `stable` and still the active representative.
+    const independent = await contexts([
+      { scope: "task", key: "t1", source: "src-a" },
+      { scope: "task", key: "t2", source: "src-b" },
+      { scope: "conversation", key: "c3", source: "src-c" },
+    ]);
+    expect(independent.scopes).toEqual(["global", "global", "global"]);
+    expect(independent.broadened).toBe(3);
+    expect(independent.standing?.lifecycleStatus).toBe("stable");
+    expect(independent.standing?.representativeNodeId).toBe(
+      independent.summaryId,
+    );
+
+    // Two contexts is not repeated support across independent contexts. Same
+    // sources, same content, one fewer context.
+    const two = await contexts([
+      { scope: "task", key: "t1", source: "src-a" },
+      { scope: "task", key: "t2", source: "src-b" },
+    ]);
+    expect(two.scopes).toEqual(["task", "task"]);
+    expect(two.broadened).toBe(0);
+
+    // Time-limited evidence keeps its window. Widening the scope of something
+    // that expires would outlive the evidence, so these do not widen at any
+    // count.
+    const timeLimited = await contexts([
+      { scope: "task", key: "t1", source: "src-a", validUntil: NOW + 100_000 },
+      { scope: "task", key: "t2", source: "src-b", validUntil: NOW + 100_000 },
+      {
+        scope: "conversation",
+        key: "c3",
+        source: "src-c",
+        validUntil: NOW + 100_000,
+      },
+    ]);
+    expect(timeLimited.scopes).toEqual(["task", "task", "conversation"]);
+    expect(timeLimited.broadened).toBe(0);
   });
 
   it("keeps the summary active when restore capability is missing or fails", async () => {

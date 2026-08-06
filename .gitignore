@@ -131,6 +131,11 @@ apps/skills/
 # Local notes
 Note.md
 
+# Real historical owner queries - must never be committed. Requirements MR-10
+# allows reason codes and identifiers to be explained, not query text retained.
+apps/web/scripts/lib/p4t2-scenario-queries.local.json
+apps/web/scripts/lib/p4t2-scenario-queries-expansion.local.json
+
 # Loomi pet design sources
 apps/web/public/loomi-pet/design/
 

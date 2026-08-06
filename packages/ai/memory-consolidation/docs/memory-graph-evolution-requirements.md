@@ -10,6 +10,7 @@ Related documents:
 - [Architecture](./memory-graph-evolution-architecture.md)
 - [ADR index](./adr/README.md)
 - [Execution plan](./memory-graph-evolution-execution-plan.md)
+- [Current handoff](./HANDOFF.md)
 
 ## Product Intent
 
@@ -45,7 +46,10 @@ enable graph mutation for a wider cohort before the later delivery gates pass.
 
 The completed capability must produce these outcomes:
 
-- Repeated consistent evidence makes a memory more stable and easier to recall.
+- Repeated consistent evidence makes a memory more stable, and once stable it is
+  recalled as one representative rather than as scattered sources. Ordering
+  retrieved results by how much evidence supports them is deliberately not
+  claimed; see the execution plan's note on where retrieval priority comes from.
 - A temporary instruction does not silently replace a long-term preference.
 - Sustained contradictory evidence can gradually supersede an older memory.
 - Unrelated evidence remains separate instead of polluting an existing cluster.
@@ -237,7 +241,7 @@ handling, retrieval noise, audit completeness, and runtime cost.
 
 | Scenario                      | Required outcome                                                                                                                |
 | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| Repeated language preference  | Consistent observations reinforce one cluster and improve its retrieval priority.                                               |
+| Repeated language preference  | Consistent observations reinforce one cluster until retrieval represents it by one summary instead of its sources.              |
 | Temporary language override   | A task-specific exception remains contextual and does not replace the stable preference.                                        |
 | Repeated cross-context change | Consistent evidence across independent contexts can broaden applicability and challenge the stable preference.                  |
 | Sustained preference change   | Repeated contradictory evidence creates competition and can eventually supersede the old cluster.                               |
