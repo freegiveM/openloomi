@@ -26,7 +26,6 @@ import {
 } from "@openloomi/ui";
 import { RemixIcon } from "@/components/remix-icon";
 import { Spinner } from "@/components/spinner";
-import type { ModelType } from "@/components/agent/model-selector";
 
 type CronPreset = "daily" | "weekly" | "monthly" | "custom";
 type CronScheduleSelectValue =
@@ -50,7 +49,6 @@ interface EditFormState {
   intervalMinutes: number;
   intervalHours: number;
   scheduledAt: string;
-  selectedModel: ModelType;
   enabled: boolean;
 }
 
@@ -194,7 +192,6 @@ export default function ScheduledJobCreatePage() {
     intervalMinutes: 60,
     intervalHours: 1,
     scheduledAt: "",
-    selectedModel: "default",
     enabled: true,
   });
 
@@ -302,9 +299,6 @@ export default function ScheduledJobCreatePage() {
           ? {
               baseUrl: AI_PROXY_BASE_URL,
               apiKey: cloudAuthToken,
-              ...(form.selectedModel !== "default"
-                ? { model: form.selectedModel }
-                : {}),
             }
           : undefined;
 

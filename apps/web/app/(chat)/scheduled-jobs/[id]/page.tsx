@@ -31,7 +31,6 @@ import {
 import { MarkdownWithCitations } from "@/components/markdown-with-citations";
 import "@/i18n";
 import { TwoPaneSidebarLayout } from "@/components/layout/two-panel-sidebar-layout";
-import { MODELS, type ModelType } from "@/components/agent/model-selector";
 
 interface ScheduledJobDetail {
   id: string;
@@ -93,7 +92,6 @@ interface EditFormState {
   intervalMinutes: number;
   intervalHours: number;
   scheduledAt: string;
-  selectedModel: ModelType;
   enabled: boolean;
 }
 
@@ -210,8 +208,6 @@ function mapJobToForm(job: ScheduledJobDetail): EditFormState {
   );
   const cronPreset: CronPreset = parsedCron?.cronPreset ?? "custom";
   const rawModelId = job.jobConfig?.modelConfig?.model;
-  const selectedModel: ModelType =
-    rawModelId && rawModelId in MODELS ? (rawModelId as ModelType) : "default";
   return {
     name: job.name,
     description: job.description ?? "",
@@ -233,7 +229,6 @@ function mapJobToForm(job: ScheduledJobDetail): EditFormState {
       ? Math.floor(job.intervalMinutes / 60)
       : 1,
     scheduledAt: dateTimeInputFromValue(job.scheduledAt),
-    selectedModel,
     enabled: job.enabled,
   };
 }
@@ -257,20 +252,12 @@ function mapFormToJob(
 
   const existingJobConfig = job.jobConfig ?? { type: "custom", handler: "" };
   const existingModelConfig = existingJobConfig.modelConfig;
-
-  // selectedModel === "default" means: keep auth/baseUrl but omit model field (system default model).
-  const nextModelConfig =
-    form.selectedModel === "default"
-      ? existingModelConfig
+  const nextModelConfig = existingModelConfig
         ? (() => {
             const { model: _existingModel, ...rest } = existingModelConfig;
             return rest;
           })()
         : undefined
-      : {
-          ...(existingModelConfig ?? {}),
-          model: form.selectedModel,
-        };
 
   return {
     ...job,
@@ -848,20 +835,13 @@ export default function ScheduledJobDetailPage() {
         };
         const existingModelConfig = existingJobConfig.modelConfig;
 
-        // selectedModel === "default": omit model field, but keep apiKey/baseUrl for Tauri/local API.
-        const nextModelConfig =
-          effectiveForm.selectedModel === "default"
-            ? existingModelConfig
+        const nextModelConfig = existingModelConfig
               ? (() => {
                   const { model: _existingModel, ...rest } =
                     existingModelConfig;
                   return rest;
                 })()
               : undefined
-            : {
-                ...(existingModelConfig ?? {}),
-                model: effectiveForm.selectedModel,
-              };
 
         // Validate scheduledAt for "once" type
         if (effectiveForm.scheduleType === "once") {
