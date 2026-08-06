@@ -12,7 +12,7 @@ import {
 import { registerOpenLoomiTools } from "./tools";
 
 const DEFAULT_SERVER_NAME = "@openloomi/mcp";
-const DEFAULT_SERVER_VERSION = "0.8.8";
+const DEFAULT_SERVER_VERSION = "0.9.0";
 
 export interface CreateOpenLoomiMcpServerOptions extends OpenLoomiClientOptions {
   name?: string;
