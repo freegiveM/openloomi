@@ -1,25 +1,44 @@
-import {
-  type AgentGoal,
-  type AgentGoalEvaluationStatePort,
-  type AgentGoalLifecycleTransition,
-  type AgentGoalReplacement,
-  AgentGoalSchema,
-  type AgentGoalStatePort,
-  type GoalCommandIdentity,
-  type GoalEvaluationTransitionCommit,
-  type GoalInstructionCommit,
-  type GoalLifecycleTransitionAction,
-  type GoalLifecycleTransitionCommit,
-  type GoalReplacementCommit,
-  type GoalStatus,
-  type PersistedAgentGoal,
-  type RuntimeInstruction,
-  type RuntimeInstructionDraft,
-  RuntimeInstructionSchema,
-  assertGoalStatusTransition,
-  canonicalJson,
+import type {
+  AgentGoal,
+  AgentGoalEvaluationStatePort,
+  AgentGoalLifecycleTransition,
+  AgentGoalReplacement,
+  AgentGoalStatePort,
+  GoalCommandIdentity,
+  GoalEvaluationTransitionCommit,
+  GoalInstructionCommit,
+  GoalLifecycleTransitionAction,
+  GoalLifecycleTransitionCommit,
+  GoalReplacementCommit,
+  PersistedAgentGoal,
+  RuntimeInstruction,
+  RuntimeInstructionDraft,
 } from "@openloomi/ai/agent/runtime-instructions";
 
+import {
+  AgentGoalStateError as InMemoryGoalStateError,
+  type AgentGoalStateErrorCode as InMemoryGoalStateErrorCode,
+} from "./goal-state-error";
+import {
+  assertGoalActivationCommit as assertActivationCommit,
+  assertGoalContinuationCommit as assertContinuationCommit,
+  assertGoalEvaluationTransition as assertEvaluationTransition,
+  assertGoalLifecyclePreparation as assertLifecycleTransitionPreparation,
+  assertGoalReplacementActivation as assertReplacementActivation,
+  assertGoalReplacementPreparation as assertReplacementPreparation,
+  assertGoalRevisionCommit as assertRevisionCommit,
+  assertGoalResumeCommit as assertTransitionCommit,
+  assertLifecycleEpochAdvance,
+  assertReplacementEpochAdvance,
+  goalOccupiesPrimarySlot as occupiesPrimarySlot,
+  materializeGoalInstruction as materializeInstruction,
+  parseGoalState as parseGoal,
+  requireGoalStateIdentifier as requiredIdentifier,
+  requireNonNegativeGoalStateInteger as nonNegativeInteger,
+  requirePositiveGoalStateInteger as positiveInteger,
+  validateGoalCommandIdentity as validateCommand,
+  validateLifecycleTransitionAction as lifecycleTransitionAction,
+} from "./goal-state-validation";
 import { KeyedSerialExecutor } from "./keyed-serial-executor";
 
 interface StoredGoalInstructionCommit {
@@ -60,29 +79,8 @@ interface GoalSessionSnapshot {
   runEpoch: number;
 }
 
-export type InMemoryGoalStateErrorCode =
-  | "active_primary_goal_conflict"
-  | "goal_conflict"
-  | "goal_not_found"
-  | "idempotency_conflict"
-  | "invalid_commit"
-  | "lifecycle_transition_in_progress"
-  | "lifecycle_transition_not_found"
-  | "replacement_in_progress"
-  | "replacement_not_found"
-  | "run_epoch_conflict"
-  | "revision_conflict";
-
-export class InMemoryGoalStateError extends Error {
-  constructor(
-    public readonly code: InMemoryGoalStateErrorCode,
-    message: string,
-    public readonly cause?: unknown,
-  ) {
-    super(message);
-    this.name = "InMemoryGoalStateError";
-  }
-}
+export { InMemoryGoalStateError };
+export type { InMemoryGoalStateErrorCode };
 
 /**
  * In-memory authoritative Goal state and immutable instruction outbox.
@@ -332,19 +330,6 @@ export class InMemoryAgentGoalState
           `Expected Goal revision ${expectedRevision}, received ${persisted.goal.revision}`,
         );
       }
-      if (
-        goal.revision !== expectedRevision + 1 ||
-        goal.createdAt !== persisted.goal.createdAt ||
-        goal.status !== "active" ||
-        canonicalJson(goal.source) !== canonicalJson(persisted.goal.source) ||
-        Date.parse(goal.updatedAt) < Date.parse(persisted.goal.updatedAt)
-      ) {
-        throw new InMemoryGoalStateError(
-          "invalid_commit",
-          "A Goal revision commit must advance the active Goal exactly once without changing immutable state or moving time backwards",
-        );
-      }
-
       const instruction = materializeInstruction(
         input.instruction,
         command,
@@ -529,7 +514,6 @@ export class InMemoryAgentGoalState
         command,
         current.lastInstructionSequence + 1,
       );
-      assertContinuationCriteria(persisted.goal, instruction);
       assertContinuationCommit(
         persisted.goal,
         instruction,
@@ -1286,479 +1270,6 @@ function throwIdempotencyNamespaceConflict(
   );
 }
 
-function materializeInstruction(
-  draft: RuntimeInstructionDraft,
-  command: GoalCommandIdentity,
-  sequence: number,
-): RuntimeInstruction {
-  if (draft.idempotencyKey !== command.idempotencyKey) {
-    throw new InMemoryGoalStateError(
-      "invalid_commit",
-      "Instruction and Goal command idempotency keys must match",
-    );
-  }
-  try {
-    return RuntimeInstructionSchema.parse({ ...draft, sequence });
-  } catch (cause) {
-    throw new InMemoryGoalStateError(
-      "invalid_commit",
-      "Runtime Instruction draft is invalid",
-      cause,
-    );
-  }
-}
-
-function assertActivationCommit(
-  goal: AgentGoal,
-  instruction: RuntimeInstruction,
-  runtimeSessionId: string,
-): void {
-  if (
-    goal.revision !== 1 ||
-    goal.status !== "active" ||
-    instruction.kind !== "goal.activate" ||
-    instruction.targetSessionId !== runtimeSessionId ||
-    instruction.goalId !== goal.id ||
-    instruction.goalRevision !== goal.revision ||
-    canonicalJson(instruction.payload.goal) !== canonicalJson(goal)
-  ) {
-    throw new InMemoryGoalStateError(
-      "invalid_commit",
-      "Activation must atomically commit an active revision-one Goal and its matching instruction",
-    );
-  }
-}
-
-function assertReplacementPreparation(
-  previousGoal: AgentGoal,
-  supersededGoal: AgentGoal,
-  replacementGoal: AgentGoal,
-  instruction: RuntimeInstruction,
-  runtimeSessionId: string,
-  expectedRevision: number,
-  expectedRunEpoch: number,
-): void {
-  try {
-    assertGoalStatusTransition(previousGoal.status, "cancelled");
-  } catch (cause) {
-    throw new InMemoryGoalStateError(
-      "invalid_commit",
-      `Goal replacement cannot supersede a ${previousGoal.status} Goal`,
-      cause,
-    );
-  }
-
-  const expectedSupersededGoal: AgentGoal = {
-    ...previousGoal,
-    revision: expectedRevision + 1,
-    status: "cancelled",
-    updatedAt: supersededGoal.updatedAt,
-  };
-  if (
-    supersededGoal.id === replacementGoal.id ||
-    supersededGoal.revision !== expectedRevision + 1 ||
-    Date.parse(supersededGoal.updatedAt) < Date.parse(previousGoal.updatedAt) ||
-    canonicalJson(expectedSupersededGoal) !== canonicalJson(supersededGoal) ||
-    replacementGoal.revision !== 1 ||
-    replacementGoal.status !== "active"
-  ) {
-    throw new InMemoryGoalStateError(
-      "invalid_commit",
-      "Replacement preparation must only cancel the current Goal and reserve a distinct active revision-one Goal",
-    );
-  }
-  if (
-    instruction.kind !== "control.interrupt" ||
-    instruction.deliveryMode !== "interrupt_replace" ||
-    instruction.targetSessionId !== runtimeSessionId ||
-    instruction.goalId !== supersededGoal.id ||
-    instruction.goalRevision !== supersededGoal.revision ||
-    instruction.payload.replacementGoalId !== replacementGoal.id ||
-    instruction.payload.expectedRunEpoch !== expectedRunEpoch
-  ) {
-    throw new InMemoryGoalStateError(
-      "invalid_commit",
-      "Replacement preparation requires a matching control.interrupt instruction and run epoch",
-    );
-  }
-}
-
-function assertReplacementActivation(
-  replacement: AgentGoalReplacement,
-  instruction: RuntimeInstruction,
-  runtimeSessionId: string,
-): void {
-  assertActivationCommit(
-    replacement.replacementGoal.goal,
-    instruction,
-    runtimeSessionId,
-  );
-  if (
-    canonicalJson(instruction.source) !==
-      canonicalJson(replacement.controlInstruction.source) ||
-    Date.parse(instruction.issuedAt) <
-      Date.parse(replacement.controlInstruction.issuedAt)
-  ) {
-    throw new InMemoryGoalStateError(
-      "invalid_commit",
-      "Replacement activation must preserve command authority and monotonic instruction time",
-    );
-  }
-}
-
-function assertRevisionCommit(
-  previousGoal: AgentGoal,
-  goal: AgentGoal,
-  instruction: RuntimeInstruction,
-  runtimeSessionId: string,
-  expectedRevision: number,
-): void {
-  const supportedKind =
-    instruction.kind === "goal.update" ||
-    instruction.kind === "context.upsert" ||
-    instruction.kind === "context.remove";
-  if (
-    !supportedKind ||
-    instruction.targetSessionId !== runtimeSessionId ||
-    instruction.goalId !== goal.id ||
-    instruction.goalRevision !== goal.revision
-  ) {
-    throw new InMemoryGoalStateError(
-      "invalid_commit",
-      "Goal revision commits must use a supported update instruction with matching identity",
-    );
-  }
-
-  switch (instruction.kind) {
-    case "goal.update":
-      if (
-        instruction.payload.previousRevision !== expectedRevision ||
-        canonicalJson(instruction.payload.goal) !== canonicalJson(goal) ||
-        canonicalJson(previousGoal.contextRefs) !==
-          canonicalJson(goal.contextRefs)
-      ) {
-        throw new InMemoryGoalStateError(
-          "invalid_commit",
-          "A Goal update instruction must contain the authoritative Goal revision, preserve context, and identify its exact previous revision",
-        );
-      }
-      return;
-    case "context.upsert":
-      assertContextUpsertTransition(
-        previousGoal,
-        goal,
-        instruction.payload.contextRef,
-      );
-      return;
-    case "context.remove":
-      assertContextRemoveTransition(
-        previousGoal,
-        goal,
-        instruction.payload.contextRefId,
-      );
-      return;
-  }
-}
-
-function assertTransitionCommit(
-  previousGoal: AgentGoal,
-  goal: AgentGoal,
-  instruction: RuntimeInstruction,
-  runtimeSessionId: string,
-  expectedRevision: number,
-): void {
-  if (
-    previousGoal.status !== "paused" ||
-    goal.status !== "active" ||
-    goal.revision !== expectedRevision + 1 ||
-    instruction.kind !== "goal.resume" ||
-    instruction.deliveryMode !== "steer" ||
-    instruction.targetSessionId !== runtimeSessionId ||
-    instruction.goalId !== goal.id ||
-    instruction.goalRevision !== goal.revision
-  ) {
-    throw new InMemoryGoalStateError(
-      "invalid_commit",
-      "An ordinary Goal transition may only resume a paused Goal with its matching steer instruction",
-    );
-  }
-
-  try {
-    assertGoalStatusTransition(previousGoal.status, goal.status);
-  } catch (cause) {
-    throw new InMemoryGoalStateError(
-      "invalid_commit",
-      `Goal lifecycle transition ${previousGoal.status} -> ${goal.status} is invalid`,
-      cause,
-    );
-  }
-
-  const expected: AgentGoal = {
-    ...previousGoal,
-    revision: expectedRevision + 1,
-    status: goal.status,
-    updatedAt: goal.updatedAt,
-  };
-  if (
-    Date.parse(goal.updatedAt) < Date.parse(previousGoal.updatedAt) ||
-    canonicalJson(expected) !== canonicalJson(goal)
-  ) {
-    throw new InMemoryGoalStateError(
-      "invalid_commit",
-      "A Goal lifecycle commit may change only status, revision, and updatedAt",
-    );
-  }
-}
-
-function assertContinuationCriteria(
-  goal: AgentGoal,
-  instruction: RuntimeInstruction,
-): void {
-  if (instruction.kind !== "goal.continue") {
-    throw new InMemoryGoalStateError(
-      "invalid_commit",
-      "A Goal continuation must use a goal.continue instruction",
-    );
-  }
-
-  const requiredCriteria = new Map(
-    goal.successCriteria
-      .filter((criterion) => criterion.required)
-      .map((criterion) => [criterion.id, criterion.description] as const),
-  );
-  const seenCriteria = new Set<string>();
-  const hasInvalidCriterion = instruction.payload.missingCriteria.some(
-    (criterion) => {
-      if (seenCriteria.has(criterion.id)) return true;
-      seenCriteria.add(criterion.id);
-      return requiredCriteria.get(criterion.id) !== criterion.description;
-    },
-  );
-
-  if (instruction.payload.missingCriteria.length === 0 || hasInvalidCriterion) {
-    throw new InMemoryGoalStateError(
-      "invalid_commit",
-      "A Goal continuation may reference only unique, current required success criteria with their exact descriptions",
-    );
-  }
-}
-
-function assertContinuationCommit(
-  goal: AgentGoal,
-  instruction: RuntimeInstruction,
-  runtimeSessionId: string,
-  expectedRevision: number,
-): void {
-  if (
-    goal.status !== "active" ||
-    goal.revision !== expectedRevision ||
-    instruction.kind !== "goal.continue" ||
-    instruction.deliveryMode !== "steer" ||
-    instruction.targetSessionId !== runtimeSessionId ||
-    instruction.goalId !== goal.id ||
-    instruction.goalRevision !== expectedRevision
-  ) {
-    throw new InMemoryGoalStateError(
-      "invalid_commit",
-      "A Goal continuation must append a matching steer instruction without revising the active Goal",
-    );
-  }
-
-  const requiredCriteria = new Map(
-    goal.successCriteria
-      .filter((criterion) => criterion.required)
-      .map((criterion) => [criterion.id, criterion.description]),
-  );
-  if (
-    instruction.payload.missingCriteria.some(
-      (criterion) =>
-        requiredCriteria.get(criterion.id) !== criterion.description,
-    )
-  ) {
-    throw new InMemoryGoalStateError(
-      "invalid_commit",
-      "A Goal continuation may reference only missing required criteria from the active Goal revision",
-    );
-  }
-}
-
-function assertEvaluationTransition(
-  previousGoal: AgentGoal,
-  goal: AgentGoal,
-  expectedRevision: number,
-): void {
-  const allowedStatus =
-    goal.status === "blocked" ||
-    goal.status === "completed" ||
-    goal.status === "expired" ||
-    goal.status === "budget_limited" ||
-    goal.status === "failed";
-  if (
-    previousGoal.status !== "active" ||
-    !allowedStatus ||
-    goal.revision !== expectedRevision + 1
-  ) {
-    throw new InMemoryGoalStateError(
-      "invalid_commit",
-      "An evaluator transition must advance an active Goal exactly once to an evaluator-owned outcome",
-    );
-  }
-  try {
-    assertGoalStatusTransition(previousGoal.status, goal.status);
-  } catch (cause) {
-    throw new InMemoryGoalStateError(
-      "invalid_commit",
-      `Goal evaluation transition ${previousGoal.status} -> ${goal.status} is invalid`,
-      cause,
-    );
-  }
-
-  const expected: AgentGoal = {
-    ...previousGoal,
-    revision: expectedRevision + 1,
-    status: goal.status,
-    updatedAt: goal.updatedAt,
-  };
-  if (
-    Date.parse(goal.updatedAt) < Date.parse(previousGoal.updatedAt) ||
-    canonicalJson(expected) !== canonicalJson(goal)
-  ) {
-    throw new InMemoryGoalStateError(
-      "invalid_commit",
-      "A Goal evaluation transition may change only status, revision, and updatedAt",
-    );
-  }
-}
-
-function assertLifecycleTransitionPreparation(
-  previousGoal: AgentGoal,
-  goal: AgentGoal,
-  instruction: RuntimeInstruction,
-  action: GoalLifecycleTransitionAction,
-  runtimeSessionId: string,
-  expectedRevision: number,
-  expectedRunEpoch: number,
-): void {
-  const expectedStatus = action === "pause" ? "paused" : "cancelled";
-  const instructionExpectedRunEpoch =
-    instruction.kind === "goal.pause" || instruction.kind === "goal.cancel"
-      ? instruction.payload.expectedRunEpoch
-      : undefined;
-  const validSourceStatus =
-    action === "pause"
-      ? previousGoal.status === "active"
-      : previousGoal.status === "active" || previousGoal.status === "paused";
-  if (
-    !validSourceStatus ||
-    goal.status !== expectedStatus ||
-    goal.revision !== expectedRevision + 1 ||
-    instruction.kind !== `goal.${action}` ||
-    instruction.deliveryMode !== "interrupt_replace" ||
-    instruction.targetSessionId !== runtimeSessionId ||
-    instruction.goalId !== goal.id ||
-    instruction.goalRevision !== goal.revision ||
-    instructionExpectedRunEpoch !== expectedRunEpoch
-  ) {
-    throw new InMemoryGoalStateError(
-      "invalid_commit",
-      `A Goal ${action} barrier must advance the authoritative Goal exactly once with its matching interrupting steer instruction`,
-    );
-  }
-
-  try {
-    assertGoalStatusTransition(previousGoal.status, goal.status);
-  } catch (cause) {
-    throw new InMemoryGoalStateError(
-      "invalid_commit",
-      `Goal lifecycle transition ${previousGoal.status} -> ${goal.status} is invalid`,
-      cause,
-    );
-  }
-
-  const expected: AgentGoal = {
-    ...previousGoal,
-    revision: expectedRevision + 1,
-    status: expectedStatus,
-    updatedAt: goal.updatedAt,
-  };
-  if (
-    Date.parse(goal.updatedAt) < Date.parse(previousGoal.updatedAt) ||
-    canonicalJson(expected) !== canonicalJson(goal)
-  ) {
-    throw new InMemoryGoalStateError(
-      "invalid_commit",
-      `A Goal ${action} barrier may change only status, revision, and updatedAt`,
-    );
-  }
-}
-
-function assertContextUpsertTransition(
-  previousGoal: AgentGoal,
-  goal: AgentGoal,
-  contextRef: AgentGoal["contextRefs"][number],
-): void {
-  const contextRefs = clone(previousGoal.contextRefs);
-  const existingIndex = contextRefs.findIndex(
-    (candidate) => candidate.id === contextRef.id,
-  );
-  if (
-    existingIndex >= 0 &&
-    canonicalJson(contextRefs[existingIndex]) === canonicalJson(contextRef)
-  ) {
-    throw new InMemoryGoalStateError(
-      "invalid_commit",
-      `Context upsert ${contextRef.id} does not change authoritative Goal context`,
-    );
-  }
-  if (existingIndex >= 0) contextRefs[existingIndex] = clone(contextRef);
-  else contextRefs.push(clone(contextRef));
-
-  assertExactContextTransition(previousGoal, goal, contextRefs, "upsert");
-}
-
-function assertContextRemoveTransition(
-  previousGoal: AgentGoal,
-  goal: AgentGoal,
-  contextRefId: string,
-): void {
-  if (
-    !previousGoal.contextRefs.some((candidate) => candidate.id === contextRefId)
-  ) {
-    throw new InMemoryGoalStateError(
-      "invalid_commit",
-      `Context remove ${contextRefId} does not reference existing authoritative Goal context`,
-    );
-  }
-  assertExactContextTransition(
-    previousGoal,
-    goal,
-    previousGoal.contextRefs.filter(
-      (candidate) => candidate.id !== contextRefId,
-    ),
-    "remove",
-  );
-}
-
-function assertExactContextTransition(
-  previousGoal: AgentGoal,
-  goal: AgentGoal,
-  contextRefs: AgentGoal["contextRefs"],
-  operation: "upsert" | "remove",
-): void {
-  const expected: AgentGoal = {
-    ...previousGoal,
-    revision: goal.revision,
-    updatedAt: goal.updatedAt,
-    contextRefs,
-  };
-  if (canonicalJson(expected) !== canonicalJson(goal)) {
-    throw new InMemoryGoalStateError(
-      "invalid_commit",
-      `Context ${operation} must change only the referenced authoritative Goal context`,
-    );
-  }
-}
-
 function createStoredCommit(
   goal: PersistedAgentGoal,
   instruction: RuntimeInstruction,
@@ -1863,32 +1374,6 @@ function toLifecycleTransitionCommit(
     transition: clone(stored.transition),
     deduplicated,
   };
-}
-
-function parseGoal(candidate: AgentGoal): AgentGoal {
-  try {
-    return AgentGoalSchema.parse(candidate);
-  } catch (cause) {
-    throw new InMemoryGoalStateError(
-      "invalid_commit",
-      "Goal state is invalid",
-      cause,
-    );
-  }
-}
-
-function validateCommand(command: GoalCommandIdentity): GoalCommandIdentity {
-  const idempotencyKey = requiredIdentifier(
-    command.idempotencyKey,
-    "idempotencyKey",
-  );
-  if (!/^[a-f0-9]{64}$/i.test(command.requestFingerprint)) {
-    throw new InMemoryGoalStateError(
-      "invalid_commit",
-      "Goal command request fingerprint must be a SHA-256 digest",
-    );
-  }
-  return { idempotencyKey, requestFingerprint: command.requestFingerprint };
 }
 
 function requireReplacement(
@@ -2011,24 +1496,11 @@ function assertReplacementEpochRequest(
   expectedRunEpoch: number,
   nextRunEpoch: number,
 ): void {
-  if (
-    expectedRunEpoch !== stored.replacement.expectedRunEpoch ||
-    nextRunEpoch !== expectedRunEpoch + 1
-  ) {
-    throw new InMemoryGoalStateError(
-      "run_epoch_conflict",
-      `Replacement must advance Runtime Session epoch ${stored.replacement.expectedRunEpoch} exactly once`,
-    );
-  }
-  if (
-    stored.replacement.phase !== "prepared" &&
-    stored.replacement.runEpoch !== nextRunEpoch
-  ) {
-    throw new InMemoryGoalStateError(
-      "run_epoch_conflict",
-      `Replacement already observed Runtime Session epoch ${stored.replacement.runEpoch}`,
-    );
-  }
+  assertReplacementEpochAdvance(
+    stored.replacement,
+    expectedRunEpoch,
+    nextRunEpoch,
+  );
 }
 
 function assertLifecycleEpochRequest(
@@ -2036,32 +1508,11 @@ function assertLifecycleEpochRequest(
   expectedRunEpoch: number,
   nextRunEpoch: number,
 ): void {
-  const requiredNextRunEpoch =
-    stored.transition.action === "pause"
-      ? stored.transition.expectedRunEpoch
-      : stored.transition.expectedRunEpoch + 1;
-  if (
-    expectedRunEpoch !== stored.transition.expectedRunEpoch ||
-    nextRunEpoch !== requiredNextRunEpoch
-  ) {
-    throw new InMemoryGoalStateError(
-      "run_epoch_conflict",
-      `Goal ${stored.transition.action} must finalize Runtime Session epoch ${stored.transition.expectedRunEpoch} as epoch ${requiredNextRunEpoch}`,
-    );
-  }
-  if (
-    stored.transition.phase === "finalized" &&
-    stored.transition.runEpoch !== nextRunEpoch
-  ) {
-    throw new InMemoryGoalStateError(
-      "run_epoch_conflict",
-      `Goal ${stored.transition.action} already finalized Runtime Session epoch ${stored.transition.runEpoch}`,
-    );
-  }
-}
-
-function occupiesPrimarySlot(status: GoalStatus): boolean {
-  return status === "active" || status === "paused" || status === "blocked";
+  assertLifecycleEpochAdvance(
+    stored.transition,
+    expectedRunEpoch,
+    nextRunEpoch,
+  );
 }
 
 function validatedScope(ownerId: string, runtimeSessionId: string) {
@@ -2075,59 +1526,6 @@ function validatedScope(ownerId: string, runtimeSessionId: string) {
     runtimeSessionId: normalizedSessionId,
     key: sessionScope(normalizedOwnerId, normalizedSessionId),
   };
-}
-
-function requiredIdentifier(value: unknown, field: string): string {
-  if (typeof value !== "string") {
-    throw new InMemoryGoalStateError(
-      "invalid_commit",
-      `${field} must be a string`,
-    );
-  }
-  const normalized = value.trim();
-  if (
-    normalized.length === 0 ||
-    normalized.length > 256 ||
-    normalized !== value
-  ) {
-    throw new InMemoryGoalStateError(
-      "invalid_commit",
-      `${field} must contain 1 to 256 characters without surrounding whitespace`,
-    );
-  }
-  return value;
-}
-
-function positiveInteger(value: unknown, field: string): number {
-  if (!Number.isInteger(value) || (value as number) <= 0) {
-    throw new InMemoryGoalStateError(
-      "invalid_commit",
-      `${field} must be a positive integer`,
-    );
-  }
-  return value as number;
-}
-
-function nonNegativeInteger(value: unknown, field: string): number {
-  if (!Number.isInteger(value) || (value as number) < 0) {
-    throw new InMemoryGoalStateError(
-      "invalid_commit",
-      `${field} must be a non-negative integer`,
-    );
-  }
-  return value as number;
-}
-
-function lifecycleTransitionAction(
-  value: unknown,
-): GoalLifecycleTransitionAction {
-  if (value !== "pause" && value !== "cancel") {
-    throw new InMemoryGoalStateError(
-      "invalid_commit",
-      "Lifecycle transition action must be pause or cancel",
-    );
-  }
-  return value;
 }
 
 function sessionScope(ownerId: string, runtimeSessionId: string): string {

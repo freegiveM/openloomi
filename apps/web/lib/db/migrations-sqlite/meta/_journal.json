@@ -246,6 +246,13 @@
                         "when": 1784236800000,
                         "tag": "0106_llm_usage",
                         "breakpoints":  true
+                    },
+                    {
+                        "idx": 35,
+                        "version": "7",
+                        "when": 1785917494363,
+                        "tag": "0107_agent_goal_runtime",
+                        "breakpoints": true
                     }
                 ]
 }

@@ -17,8 +17,34 @@ import {
   primaryKey,
   uniqueIndex,
   index,
+  check,
+  foreignKey,
 } from "drizzle-orm/sqlite-core";
 import type { DetailData, TimelineData } from "../ai/subagents/insights";
+import type {
+  AgentGoalCommandCheckpoint,
+  AgentGoalCommandPhase,
+  AgentGoalCommandType,
+  AgentGoalEvaluationSnapshot,
+  AgentGoalEvidencePayload,
+  AgentGoalSlot,
+  AgentGoalSlotState,
+  AgentGoalSnapshot,
+  AgentGoalSourceType,
+  AgentRuntimeInstructionPayload,
+  AgentRuntimeInstructionSnapshot,
+  AgentRuntimePendingOperation,
+  DeliveryState,
+  GoalCompletionPolicy,
+  GoalEvidenceType,
+  GoalRunStatus,
+  GoalStatus,
+  RuntimeInstructionDeliveryMode,
+  RuntimeInstructionKind,
+  RuntimeInstructionSource,
+  RuntimeProvider,
+  RuntimeSessionState,
+} from "./agent-goal-runtime-schema-types";
 
 // ============================================================================
 // Core Tables
@@ -2852,3 +2878,689 @@ export const insightEntities = sqliteTable(
 
 export type InsightEntity = InferSelectModel<typeof insightEntities>;
 export type InsertInsightEntity = InferInsertModel<typeof insightEntities>;
+
+// ============================================================================
+// Agent Goal Runtime
+// ============================================================================
+
+export const agentRuntimeSessions = sqliteTable(
+  "agent_runtime_sessions",
+  {
+    id: text("id").primaryKey(),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    provider: text("provider")
+      .$type<RuntimeProvider>()
+      .notNull()
+      .default("claude"),
+    providerSessionId: text("provider_session_id"),
+    workingDirectory: text("working_directory"),
+    state: text("state")
+      .$type<RuntimeSessionState>()
+      .notNull()
+      .default("starting"),
+    runEpoch: integer("run_epoch").notNull().default(0),
+    lastInstructionSequence: integer("last_instruction_sequence")
+      .notNull()
+      .default(0),
+    pendingOperation: text("pending_operation", {
+      mode: "json",
+    }).$type<AgentRuntimePendingOperation | null>(),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+    updatedAt: integer("updated_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => ({
+    ownerSessionUnique: uniqueIndex(
+      "agent_runtime_sessions_owner_id_id_key",
+    ).on(table.ownerId, table.id),
+    providerSessionUnique: uniqueIndex(
+      "agent_runtime_sessions_provider_session_idx",
+    )
+      .on(table.provider, table.providerSessionId)
+      .where(sql`${table.providerSessionId} is not null`),
+    recoveryIdx: index("agent_runtime_sessions_recovery_idx")
+      .on(table.ownerId, table.state, table.updatedAt)
+      .where(sql`${table.state} not in ('closed', 'failed')`),
+    providerCheck: check(
+      "agent_runtime_sessions_provider_check",
+      sql`${table.provider} in ('claude')`,
+    ),
+    stateCheck: check(
+      "agent_runtime_sessions_state_check",
+      sql`${table.state} in ('starting', 'idle', 'running', 'evaluating', 'interrupted', 'closed', 'failed')`,
+    ),
+    epochCheck: check(
+      "agent_runtime_sessions_run_epoch_check",
+      sql`${table.runEpoch} >= 0`,
+    ),
+    sequenceCheck: check(
+      "agent_runtime_sessions_instruction_sequence_check",
+      sql`${table.lastInstructionSequence} >= 0`,
+    ),
+    pendingOperationCheck: check(
+      "agent_runtime_sessions_pending_operation_check",
+      sql`${table.pendingOperation} is null or (json_valid(${table.pendingOperation}) and json_type(${table.pendingOperation}) = 'object')`,
+    ),
+    timestampsCheck: check(
+      "agent_runtime_sessions_timestamps_check",
+      sql`${table.updatedAt} >= ${table.createdAt}`,
+    ),
+  }),
+);
+
+export type AgentRuntimeSessionRecord = InferSelectModel<
+  typeof agentRuntimeSessions
+>;
+export type InsertAgentRuntimeSessionRecord = InferInsertModel<
+  typeof agentRuntimeSessions
+>;
+
+export const agentGoals = sqliteTable(
+  "agent_goals",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    ownerId: text("owner_id").notNull(),
+    runtimeSessionId: text("runtime_session_id").notNull(),
+    slot: text("slot").$type<AgentGoalSlot>().notNull().default("primary"),
+    slotState: text("slot_state")
+      .$type<AgentGoalSlotState>()
+      .notNull()
+      .default("assigned"),
+    revision: integer("revision").notNull(),
+    objective: text("objective").notNull(),
+    priority: integer("priority").notNull(),
+    status: text("status").$type<GoalStatus>().notNull(),
+    deadline: integer("deadline", { mode: "timestamp" }),
+    maxTurns: integer("max_turns"),
+    maxTokens: integer("max_tokens"),
+    maxDurationSeconds: integer("max_duration_seconds"),
+    completionPolicy: text("completion_policy")
+      .$type<GoalCompletionPolicy>()
+      .notNull(),
+    sourceType: text("source_type").$type<AgentGoalSourceType>().notNull(),
+    sourceId: text("source_id"),
+    goalSnapshot: text("goal_snapshot", { mode: "json" })
+      .$type<AgentGoalSnapshot>()
+      .notNull(),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => ({
+    ownerSessionGoalUnique: uniqueIndex("agent_goals_owner_session_id_key").on(
+      table.ownerId,
+      table.runtimeSessionId,
+      table.id,
+    ),
+    assignedPrimaryUnique: uniqueIndex("agent_goals_assigned_primary_idx")
+      .on(table.ownerId, table.runtimeSessionId)
+      .where(
+        sql`${table.slot} = 'primary' and ${table.slotState} = 'assigned'`,
+      ),
+    reservedPrimaryUnique: uniqueIndex("agent_goals_reserved_primary_idx")
+      .on(table.ownerId, table.runtimeSessionId)
+      .where(
+        sql`${table.slot} = 'primary' and ${table.slotState} = 'reserved'`,
+      ),
+    sessionStatusIdx: index("agent_goals_session_status_idx").on(
+      table.ownerId,
+      table.runtimeSessionId,
+      table.status,
+    ),
+    deadlineIdx: index("agent_goals_active_deadline_idx")
+      .on(table.ownerId, table.deadline)
+      .where(
+        sql`${table.slotState} = 'assigned' and ${table.status} = 'active' and ${table.deadline} is not null`,
+      ),
+    sessionForeignKey: foreignKey({
+      columns: [table.ownerId, table.runtimeSessionId],
+      foreignColumns: [agentRuntimeSessions.ownerId, agentRuntimeSessions.id],
+      name: "agent_goals_owner_session_fkey",
+    }).onDelete("cascade"),
+    slotCheck: check("agent_goals_slot_check", sql`${table.slot} = 'primary'`),
+    slotStateCheck: check(
+      "agent_goals_slot_state_check",
+      sql`${table.slotState} in ('assigned', 'reserved', 'released')`,
+    ),
+    revisionCheck: check(
+      "agent_goals_revision_check",
+      sql`${table.revision} > 0`,
+    ),
+    priorityCheck: check(
+      "agent_goals_priority_check",
+      sql`${table.priority} between 0 and 100`,
+    ),
+    objectiveCheck: check(
+      "agent_goals_objective_check",
+      sql`length(trim(${table.objective})) between 1 and 8000`,
+    ),
+    statusCheck: check(
+      "agent_goals_status_check",
+      sql`${table.status} in ('active', 'paused', 'blocked', 'completed', 'cancelled', 'expired', 'budget_limited', 'failed')`,
+    ),
+    budgetCheck: check(
+      "agent_goals_budgets_check",
+      sql`(${table.deadline} is not null or ${table.maxTurns} is not null or ${table.maxTokens} is not null or ${table.maxDurationSeconds} is not null) and (${table.maxTurns} is null or ${table.maxTurns} > 0) and (${table.maxTokens} is null or ${table.maxTokens} > 0) and (${table.maxDurationSeconds} is null or ${table.maxDurationSeconds} > 0)`,
+    ),
+    completionPolicyCheck: check(
+      "agent_goals_completion_policy_check",
+      sql`${table.completionPolicy} in ('model_evaluator', 'tool_evidence', 'manual')`,
+    ),
+    sourceCheck: check(
+      "agent_goals_source_check",
+      sql`${table.sourceType} in ('user', 'loop', 'scheduled_job', 'insight', 'connector') and (${table.sourceType} = 'user' or ${table.sourceId} is not null)`,
+    ),
+    snapshotCheck: check(
+      "agent_goals_snapshot_check",
+      sql`json_valid(${table.goalSnapshot}) and json_type(${table.goalSnapshot}) = 'object'`,
+    ),
+    timestampsCheck: check(
+      "agent_goals_timestamps_check",
+      sql`${table.updatedAt} >= ${table.createdAt}`,
+    ),
+  }),
+);
+
+export type AgentGoalRecord = InferSelectModel<typeof agentGoals>;
+export type InsertAgentGoalRecord = InferInsertModel<typeof agentGoals>;
+
+export const agentGoalRuns = sqliteTable(
+  "agent_goal_runs",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    ownerId: text("owner_id").notNull(),
+    runtimeSessionId: text("runtime_session_id").notNull(),
+    goalId: text("goal_id").notNull(),
+    goalRevision: integer("goal_revision").notNull(),
+    runEpoch: integer("run_epoch").notNull(),
+    providerSessionId: text("provider_session_id"),
+    status: text("status").$type<GoalRunStatus>().notNull(),
+    turnsUsed: integer("turns_used").notNull().default(0),
+    tokensUsed: integer("tokens_used").notNull().default(0),
+    startedAt: integer("started_at", { mode: "timestamp" }).notNull(),
+    lastActivityAt: integer("last_activity_at", {
+      mode: "timestamp",
+    }).notNull(),
+    completedAt: integer("completed_at", { mode: "timestamp" }),
+    lastEvaluation: text("last_evaluation", {
+      mode: "json",
+    }).$type<AgentGoalEvaluationSnapshot | null>(),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+    updatedAt: integer("updated_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => ({
+    sessionForeignKey: foreignKey({
+      columns: [table.ownerId, table.runtimeSessionId],
+      foreignColumns: [agentRuntimeSessions.ownerId, agentRuntimeSessions.id],
+      name: "agent_goal_runs_owner_session_fkey",
+    }).onDelete("cascade"),
+    ownerSessionRunUnique: uniqueIndex(
+      "agent_goal_runs_owner_session_id_key",
+    ).on(table.ownerId, table.runtimeSessionId, table.id),
+    ownerSessionRunEpochUnique: uniqueIndex(
+      "agent_goal_runs_owner_session_id_epoch_key",
+    ).on(table.ownerId, table.runtimeSessionId, table.id, table.runEpoch),
+    goalEpochUnique: uniqueIndex("agent_goal_runs_goal_epoch_key").on(
+      table.ownerId,
+      table.goalId,
+      table.runEpoch,
+    ),
+    sessionStatusIdx: index("agent_goal_runs_session_status_idx").on(
+      table.ownerId,
+      table.runtimeSessionId,
+      table.status,
+      table.lastActivityAt,
+    ),
+    recoveryIdx: index("agent_goal_runs_recovery_idx")
+      .on(table.ownerId, table.status, table.lastActivityAt)
+      .where(
+        sql`${table.status} not in ('completed', 'cancelled', 'budget_limited', 'failed')`,
+      ),
+    goalForeignKey: foreignKey({
+      columns: [table.ownerId, table.runtimeSessionId, table.goalId],
+      foreignColumns: [
+        agentGoals.ownerId,
+        agentGoals.runtimeSessionId,
+        agentGoals.id,
+      ],
+      name: "agent_goal_runs_owner_session_goal_fkey",
+    }).onDelete("cascade"),
+    revisionCheck: check(
+      "agent_goal_runs_goal_revision_check",
+      sql`${table.goalRevision} > 0`,
+    ),
+    epochCheck: check(
+      "agent_goal_runs_run_epoch_check",
+      sql`${table.runEpoch} >= 0`,
+    ),
+    statusCheck: check(
+      "agent_goal_runs_status_check",
+      sql`${table.status} in ('queued', 'running', 'evaluating', 'continuing', 'paused', 'blocked', 'completed', 'cancelled', 'budget_limited', 'failed')`,
+    ),
+    completionCheck: check(
+      "agent_goal_runs_completion_check",
+      sql`(${table.status} in ('completed', 'cancelled', 'budget_limited', 'failed') and ${table.completedAt} is not null) or (${table.status} not in ('completed', 'cancelled', 'budget_limited', 'failed') and ${table.completedAt} is null)`,
+    ),
+    usageCheck: check(
+      "agent_goal_runs_usage_check",
+      sql`${table.turnsUsed} >= 0 and ${table.tokensUsed} >= 0`,
+    ),
+    evaluationCheck: check(
+      "agent_goal_runs_evaluation_check",
+      sql`${table.lastEvaluation} is null or (json_valid(${table.lastEvaluation}) and json_type(${table.lastEvaluation}) = 'object')`,
+    ),
+    activityCheck: check(
+      "agent_goal_runs_activity_check",
+      sql`${table.lastActivityAt} >= ${table.startedAt} and (${table.completedAt} is null or ${table.completedAt} >= ${table.lastActivityAt})`,
+    ),
+    timestampsCheck: check(
+      "agent_goal_runs_timestamps_check",
+      sql`${table.updatedAt} >= ${table.createdAt}`,
+    ),
+  }),
+);
+
+export type AgentGoalRunRecord = InferSelectModel<typeof agentGoalRuns>;
+export type InsertAgentGoalRunRecord = InferInsertModel<typeof agentGoalRuns>;
+
+export const agentRuntimeInstructions = sqliteTable(
+  "agent_runtime_instructions",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    ownerId: text("owner_id").notNull(),
+    runtimeSessionId: text("runtime_session_id").notNull(),
+    schemaVersion: text("schema_version").notNull().default("2"),
+    sequence: integer("sequence").notNull(),
+    runEpoch: integer("run_epoch").notNull(),
+    goalId: text("goal_id"),
+    goalRevision: integer("goal_revision"),
+    kind: text("kind").$type<RuntimeInstructionKind>().notNull(),
+    deliveryMode: text("delivery_mode")
+      .$type<RuntimeInstructionDeliveryMode>()
+      .notNull(),
+    payload: text("payload", { mode: "json" })
+      .$type<AgentRuntimeInstructionPayload>()
+      .notNull(),
+    sourceType: text("source_type")
+      .$type<RuntimeInstructionSource["type"]>()
+      .notNull(),
+    sourceAuthority: text("source_authority")
+      .$type<RuntimeInstructionSource["authority"]>()
+      .notNull(),
+    sourceRef: text("source_ref"),
+    idempotencyKey: text("idempotency_key").notNull(),
+    requestFingerprint: text("request_fingerprint").notNull(),
+    commandOrder: integer("command_order").notNull().default(0),
+    commandType: text("command_type").$type<AgentGoalCommandType>(),
+    commandPhase: text("command_phase").$type<AgentGoalCommandPhase>(),
+    commandCheckpoint: text("command_checkpoint", {
+      mode: "json",
+    }).$type<AgentGoalCommandCheckpoint | null>(),
+    instructionSnapshot: text("instruction_snapshot", { mode: "json" })
+      .$type<AgentRuntimeInstructionSnapshot>()
+      .notNull(),
+    issuedAt: integer("issued_at", { mode: "timestamp" }).notNull(),
+    expiresAt: integer("expires_at", { mode: "timestamp" }),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+    updatedAt: integer("updated_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => ({
+    ownerSessionInstructionUnique: uniqueIndex(
+      "agent_runtime_instructions_owner_session_id_key",
+    ).on(table.ownerId, table.runtimeSessionId, table.id),
+    ownerSessionInstructionEpochUnique: uniqueIndex(
+      "agent_runtime_instructions_owner_session_id_epoch_key",
+    ).on(table.ownerId, table.runtimeSessionId, table.id, table.runEpoch),
+    sessionSequenceUnique: uniqueIndex(
+      "agent_runtime_instructions_sequence_key",
+    ).on(table.ownerId, table.runtimeSessionId, table.sequence),
+    commandOrderUnique: uniqueIndex(
+      "agent_runtime_instructions_idempotency_key",
+    ).on(
+      table.ownerId,
+      table.runtimeSessionId,
+      table.idempotencyKey,
+      table.commandOrder,
+    ),
+    pendingCommandUnique: uniqueIndex(
+      "agent_runtime_instructions_pending_command_idx",
+    )
+      .on(table.ownerId, table.runtimeSessionId)
+      .where(sql`${table.commandPhase} in ('prepared', 'boundary_observed')`),
+    goalRevisionIdx: index("agent_runtime_instructions_goal_revision_idx").on(
+      table.ownerId,
+      table.goalId,
+      table.goalRevision,
+      table.sequence,
+    ),
+    expiryIdx: index("agent_runtime_instructions_expiry_idx").on(
+      table.expiresAt,
+    ),
+    sessionForeignKey: foreignKey({
+      columns: [table.ownerId, table.runtimeSessionId],
+      foreignColumns: [agentRuntimeSessions.ownerId, agentRuntimeSessions.id],
+      name: "agent_runtime_instructions_owner_session_fkey",
+    }).onDelete("cascade"),
+    goalForeignKey: foreignKey({
+      columns: [table.ownerId, table.runtimeSessionId, table.goalId],
+      foreignColumns: [
+        agentGoals.ownerId,
+        agentGoals.runtimeSessionId,
+        agentGoals.id,
+      ],
+      name: "agent_runtime_instructions_owner_session_goal_fkey",
+    }).onDelete("cascade"),
+    schemaVersionCheck: check(
+      "agent_runtime_instructions_schema_version_check",
+      sql`${table.schemaVersion} = '2'`,
+    ),
+    sequenceCheck: check(
+      "agent_runtime_instructions_sequence_check",
+      sql`${table.sequence} > 0 and ${table.runEpoch} >= 0`,
+    ),
+    goalPairCheck: check(
+      "agent_runtime_instructions_goal_revision_check",
+      sql`(${table.goalId} is null and ${table.goalRevision} is null) or (${table.goalId} is not null and ${table.goalRevision} is not null and ${table.goalRevision} > 0)`,
+    ),
+    kindCheck: check(
+      "agent_runtime_instructions_kind_check",
+      sql`${table.kind} in ('goal.activate', 'goal.update', 'goal.pause', 'goal.resume', 'goal.cancel', 'goal.continue', 'context.upsert', 'context.remove', 'constraint.upsert', 'constraint.remove', 'control.interrupt')`,
+    ),
+    deliveryModeCheck: check(
+      "agent_runtime_instructions_delivery_mode_check",
+      sql`${table.deliveryMode} in ('steer', 'next_boundary', 'interrupt_replace') and (${table.kind} not in ('goal.pause', 'goal.cancel', 'control.interrupt') or ${table.deliveryMode} = 'interrupt_replace')`,
+    ),
+    payloadCheck: check(
+      "agent_runtime_instructions_payload_check",
+      sql`json_valid(${table.payload}) and json_type(${table.payload}) = 'object'`,
+    ),
+    sourceCheck: check(
+      "agent_runtime_instructions_source_check",
+      sql`((${table.sourceType} = 'user' and ${table.sourceAuthority} = 'user') or (${table.sourceType} = 'automation' and ${table.sourceAuthority} = 'automation') or (${table.sourceType} = 'connector' and ${table.sourceAuthority} = 'untrusted_data') or (${table.sourceType} = 'policy' and ${table.sourceAuthority} = 'organization_policy')) and (${table.sourceType} not in ('connector', 'policy') or ${table.sourceRef} is not null) and (${table.sourceAuthority} <> 'untrusted_data' or ${table.kind} in ('context.upsert', 'context.remove'))`,
+    ),
+    fingerprintCheck: check(
+      "agent_runtime_instructions_fingerprint_check",
+      sql`length(${table.requestFingerprint}) = 64 and ${table.requestFingerprint} not glob '*[^0-9A-Fa-f]*'`,
+    ),
+    commandMetadataCheck: check(
+      "agent_runtime_instructions_command_root_check",
+      sql`(${table.commandOrder} = 0 and ${table.commandType} is not null and ${table.commandPhase} is not null and ${table.commandCheckpoint} is not null) or (${table.commandOrder} > 0 and ${table.commandType} is null and ${table.commandPhase} is null and ${table.commandCheckpoint} is null)`,
+    ),
+    commandPhaseCheck: check(
+      "agent_runtime_instructions_command_phase_check",
+      sql`(${table.commandType} is null and ${table.commandPhase} is null) or (${table.commandType} = 'goal_instruction' and ${table.commandPhase} = 'committed') or (${table.commandType} = 'lifecycle' and ${table.commandPhase} in ('prepared', 'boundary_observed', 'finalized')) or (${table.commandType} = 'replacement' and ${table.commandPhase} in ('prepared', 'boundary_observed', 'activated'))`,
+    ),
+    checkpointCheck: check(
+      "agent_runtime_instructions_checkpoint_check",
+      sql`${table.commandCheckpoint} is null or (json_valid(${table.commandCheckpoint}) and json_type(${table.commandCheckpoint}) = 'object')`,
+    ),
+    instructionSnapshotCheck: check(
+      "agent_runtime_instructions_snapshot_check",
+      sql`json_valid(${table.instructionSnapshot}) and json_type(${table.instructionSnapshot}) = 'object'`,
+    ),
+    expiryCheck: check(
+      "agent_runtime_instructions_expiry_check",
+      sql`${table.expiresAt} is null or ${table.expiresAt} >= ${table.issuedAt}`,
+    ),
+    timestampsCheck: check(
+      "agent_runtime_instructions_timestamps_check",
+      sql`${table.updatedAt} >= ${table.createdAt}`,
+    ),
+  }),
+);
+
+export type AgentRuntimeInstructionRecord = InferSelectModel<
+  typeof agentRuntimeInstructions
+>;
+export type InsertAgentRuntimeInstructionRecord = InferInsertModel<
+  typeof agentRuntimeInstructions
+>;
+
+export const agentRuntimeDeliveries = sqliteTable(
+  "agent_runtime_deliveries",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    ownerId: text("owner_id").notNull(),
+    runtimeSessionId: text("runtime_session_id").notNull(),
+    instructionId: text("instruction_id").notNull(),
+    goalRunId: text("goal_run_id"),
+    runEpoch: integer("run_epoch").notNull(),
+    state: text("state").$type<DeliveryState>().notNull().default("pending"),
+    attempt: integer("attempt").notNull(),
+    availableAt: integer("available_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+    leaseToken: text("lease_token"),
+    leaseOwner: text("lease_owner"),
+    leaseExpiresAt: integer("lease_expires_at", { mode: "timestamp" }),
+    providerEventId: text("provider_event_id"),
+    errorCode: text("error_code"),
+    errorMessage: text("error_message"),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+    updatedAt: integer("updated_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => ({
+    sessionForeignKey: foreignKey({
+      columns: [table.ownerId, table.runtimeSessionId],
+      foreignColumns: [agentRuntimeSessions.ownerId, agentRuntimeSessions.id],
+      name: "agent_runtime_deliveries_owner_session_fkey",
+    }).onDelete("cascade"),
+    instructionAttemptUnique: uniqueIndex(
+      "agent_runtime_deliveries_attempt_key",
+    ).on(table.instructionId, table.attempt),
+    activeAttemptUnique: uniqueIndex(
+      "agent_runtime_deliveries_active_attempt_idx",
+    )
+      .on(table.instructionId)
+      .where(
+        sql`${table.state} in ('pending', 'leased', 'queued', 'written_to_sdk', 'observed', 'applied')`,
+      ),
+    leaseIdx: index("agent_runtime_deliveries_lease_idx").on(
+      table.state,
+      table.availableAt,
+      table.leaseExpiresAt,
+    ),
+    sessionStateIdx: index("agent_runtime_deliveries_session_state_idx").on(
+      table.ownerId,
+      table.runtimeSessionId,
+      table.state,
+      table.updatedAt,
+    ),
+    goalRunIdx: index("agent_runtime_deliveries_goal_run_idx").on(
+      table.goalRunId,
+    ),
+    instructionForeignKey: foreignKey({
+      columns: [
+        table.ownerId,
+        table.runtimeSessionId,
+        table.instructionId,
+        table.runEpoch,
+      ],
+      foreignColumns: [
+        agentRuntimeInstructions.ownerId,
+        agentRuntimeInstructions.runtimeSessionId,
+        agentRuntimeInstructions.id,
+        agentRuntimeInstructions.runEpoch,
+      ],
+      name: "agent_runtime_deliveries_instruction_fkey",
+    }).onDelete("cascade"),
+    goalRunForeignKey: foreignKey({
+      columns: [
+        table.ownerId,
+        table.runtimeSessionId,
+        table.goalRunId,
+        table.runEpoch,
+      ],
+      foreignColumns: [
+        agentGoalRuns.ownerId,
+        agentGoalRuns.runtimeSessionId,
+        agentGoalRuns.id,
+        agentGoalRuns.runEpoch,
+      ],
+      name: "agent_runtime_deliveries_goal_run_fkey",
+    }).onDelete("cascade"),
+    stateCheck: check(
+      "agent_runtime_deliveries_state_check",
+      sql`${table.state} in ('pending', 'leased', 'queued', 'written_to_sdk', 'observed', 'applied', 'completed', 'rejected', 'expired', 'superseded', 'cancelled', 'failed')`,
+    ),
+    attemptCheck: check(
+      "agent_runtime_deliveries_attempt_check",
+      sql`${table.attempt} > 0 and ${table.runEpoch} >= 0`,
+    ),
+    leaseCheck: check(
+      "agent_runtime_deliveries_lease_check",
+      sql`(${table.state} = 'leased' and ${table.leaseToken} is not null and ${table.leaseOwner} is not null and ${table.leaseExpiresAt} is not null) or (${table.state} <> 'leased' and ${table.leaseToken} is null and ${table.leaseOwner} is null and ${table.leaseExpiresAt} is null)`,
+    ),
+    timestampsCheck: check(
+      "agent_runtime_deliveries_timestamps_check",
+      sql`${table.updatedAt} >= ${table.createdAt}`,
+    ),
+  }),
+);
+
+export type AgentRuntimeDeliveryRecord = InferSelectModel<
+  typeof agentRuntimeDeliveries
+>;
+export type InsertAgentRuntimeDeliveryRecord = InferInsertModel<
+  typeof agentRuntimeDeliveries
+>;
+
+export const agentGoalEvidence = sqliteTable(
+  "agent_goal_evidence",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    ownerId: text("owner_id").notNull(),
+    runtimeSessionId: text("runtime_session_id").notNull(),
+    goalId: text("goal_id").notNull(),
+    goalRunId: text("goal_run_id").notNull(),
+    instructionId: text("instruction_id"),
+    goalRevision: integer("goal_revision").notNull(),
+    runEpoch: integer("run_epoch").notNull(),
+    criterionId: text("criterion_id"),
+    type: text("type").$type<GoalEvidenceType>().notNull(),
+    sourceEventId: text("source_event_id").notNull(),
+    summary: text("summary").notNull(),
+    success: integer("success", { mode: "boolean" }),
+    payload: text("payload", { mode: "json" })
+      .$type<AgentGoalEvidencePayload>()
+      .notNull(),
+    observedAt: integer("observed_at", { mode: "timestamp" }).notNull(),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => ({
+    sourceEventUnique: uniqueIndex(
+      "agent_goal_evidence_run_source_event_key",
+    ).on(table.goalRunId, table.sourceEventId),
+    goalRevisionIdx: index("agent_goal_evidence_goal_revision_idx").on(
+      table.ownerId,
+      table.goalId,
+      table.goalRevision,
+      table.observedAt,
+    ),
+    criterionIdx: index("agent_goal_evidence_criterion_idx").on(
+      table.goalRunId,
+      table.criterionId,
+    ),
+    instructionIdx: index("agent_goal_evidence_instruction_idx").on(
+      table.instructionId,
+    ),
+    goalForeignKey: foreignKey({
+      columns: [table.ownerId, table.runtimeSessionId, table.goalId],
+      foreignColumns: [
+        agentGoals.ownerId,
+        agentGoals.runtimeSessionId,
+        agentGoals.id,
+      ],
+      name: "agent_goal_evidence_owner_session_goal_fkey",
+    }).onDelete("cascade"),
+    goalRunForeignKey: foreignKey({
+      columns: [
+        table.ownerId,
+        table.runtimeSessionId,
+        table.goalRunId,
+        table.runEpoch,
+      ],
+      foreignColumns: [
+        agentGoalRuns.ownerId,
+        agentGoalRuns.runtimeSessionId,
+        agentGoalRuns.id,
+        agentGoalRuns.runEpoch,
+      ],
+      name: "agent_goal_evidence_owner_session_run_fkey",
+    }).onDelete("cascade"),
+    instructionForeignKey: foreignKey({
+      columns: [
+        table.ownerId,
+        table.runtimeSessionId,
+        table.instructionId,
+        table.runEpoch,
+      ],
+      foreignColumns: [
+        agentRuntimeInstructions.ownerId,
+        agentRuntimeInstructions.runtimeSessionId,
+        agentRuntimeInstructions.id,
+        agentRuntimeInstructions.runEpoch,
+      ],
+      name: "agent_goal_evidence_owner_session_instruction_fkey",
+    }).onDelete("cascade"),
+    revisionCheck: check(
+      "agent_goal_evidence_revision_check",
+      sql`${table.goalRevision} > 0 and ${table.runEpoch} >= 0`,
+    ),
+    typeCheck: check(
+      "agent_goal_evidence_type_check",
+      sql`${table.type} in ('command_result', 'tool_result', 'test_result', 'file_change', 'agent_report', 'hook_result', 'manual_attestation', 'evaluation')`,
+    ),
+    payloadCheck: check(
+      "agent_goal_evidence_payload_check",
+      sql`json_valid(${table.payload})`,
+    ),
+    successCheck: check(
+      "agent_goal_evidence_success_check",
+      sql`${table.success} is null or ${table.success} in (0, 1)`,
+    ),
+    sourceEventCheck: check(
+      "agent_goal_evidence_source_event_check",
+      sql`length(trim(${table.sourceEventId})) between 1 and 256`,
+    ),
+    summaryCheck: check(
+      "agent_goal_evidence_summary_check",
+      sql`length(trim(${table.summary})) between 1 and 8000`,
+    ),
+  }),
+);
+
+export type AgentGoalEvidenceRecord = InferSelectModel<
+  typeof agentGoalEvidence
+>;
+export type InsertAgentGoalEvidenceRecord = InferInsertModel<
+  typeof agentGoalEvidence
+>;
