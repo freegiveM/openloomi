@@ -9,6 +9,10 @@ import {
   GoalEvaluator,
   type GoalSemanticEvaluatorPort,
 } from "./goal-evaluator";
+import {
+  AgentGoalQueryService,
+  type AgentGoalReadSource,
+} from "./goal-query-service";
 import { GoalLifecycleService } from "./goal-lifecycle-service";
 import { GoalReplacementCoordinator } from "./goal-replacement-coordinator";
 import { InMemoryAgentGoalState } from "./in-memory-goal-state";
@@ -26,6 +30,7 @@ export interface InMemoryAgentGoalRuntime {
   readonly controller: GoalController;
   readonly goals: GoalService;
   readonly replacements: GoalReplacementCoordinator;
+  readonly queries: AgentGoalQueryService;
 }
 
 export interface AgentGoalRuntime {
@@ -34,6 +39,7 @@ export interface AgentGoalRuntime {
   readonly controller: GoalController;
   readonly observations: RuntimeProviderObservationPort;
   readonly replacements: GoalReplacementCoordinator;
+  readonly queries: AgentGoalQueryService;
 }
 
 export function createInMemoryAgentGoalRuntime(
@@ -57,6 +63,10 @@ export function createInMemoryAgentGoalRuntime(
     state,
     clock,
     observationIdGenerator,
+  );
+  const queries = new AgentGoalQueryService(
+    inMemoryGoalReadSource(state, observations),
+    clock,
   );
   const dispatcher = new RuntimeInstructionDispatcher(
     sessions,
@@ -104,10 +114,37 @@ export function createInMemoryAgentGoalRuntime(
     controller,
     goals,
     replacements,
+    queries,
   };
 }
 
-let agentGoalRuntime: InMemoryAgentGoalRuntime | undefined;
+function inMemoryGoalReadSource(
+  state: InMemoryAgentGoalState,
+  observations: InMemoryRuntimeObservationJournal,
+): AgentGoalReadSource {
+  return {
+    listGoals: (ownerId, runtimeSessionId) =>
+      state.listGoals(ownerId, runtimeSessionId),
+    getGoal: async (ownerId, runtimeSessionId, goalId) => {
+      const goal = await state.getGoal(ownerId, goalId);
+      return goal?.runtimeSessionId === runtimeSessionId ? goal : null;
+    },
+    listRuns: (ownerId, runtimeSessionId) =>
+      observations.listGoalRuns(ownerId, runtimeSessionId),
+    listInstructions: (ownerId, runtimeSessionId) =>
+      state.listInstructions(ownerId, runtimeSessionId),
+    listDeliveries: (ownerId, runtimeSessionId) =>
+      observations.listDeliveries(ownerId, runtimeSessionId),
+    listEvidence: async (ownerId, runtimeSessionId, goalRunId, limit) =>
+      (await observations.listEvidence(ownerId, runtimeSessionId))
+        .filter((evidence) => evidence.goalRunId === goalRunId)
+        .slice(-limit),
+  };
+}
+
+type AgentGoalRuntimeGlobal = typeof globalThis & {
+  __openLoomiAgentGoalRuntimeV1?: InMemoryAgentGoalRuntime;
+};
 
 /**
  * Process-local composition root used by Claude sessions and future Goal
@@ -115,8 +152,10 @@ let agentGoalRuntime: InMemoryAgentGoalRuntime | undefined;
  * without changing callers.
  */
 export function getAgentGoalRuntime(): AgentGoalRuntime {
-  agentGoalRuntime ??= createInMemoryAgentGoalRuntime({
-    semanticEvaluator: new OpenLoomiGoalSemanticEvaluator(),
-  });
-  return agentGoalRuntime;
+  const processGlobal = globalThis as AgentGoalRuntimeGlobal;
+  processGlobal.__openLoomiAgentGoalRuntimeV1 ??=
+    createInMemoryAgentGoalRuntime({
+      semanticEvaluator: new OpenLoomiGoalSemanticEvaluator(),
+    });
+  return processGlobal.__openLoomiAgentGoalRuntimeV1;
 }
