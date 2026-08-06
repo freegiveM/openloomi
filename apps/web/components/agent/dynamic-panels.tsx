@@ -9,15 +9,6 @@ export const FilePreviewPanel = dynamic(
   { ssr: false },
 );
 
-// Insight detail drawer component - lazy load
-export const InsightDetailDrawer = dynamic(
-  () =>
-    import("@/components/insight-detail-drawer").then((m) => ({
-      default: m.default,
-    })),
-  { ssr: false },
-);
-
 // WebsitePreviewDrawer component - lazy load
 export const WebsitePreviewDrawer = dynamic(
   () =>

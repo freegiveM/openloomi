@@ -6,7 +6,6 @@ import { cn } from "@/lib/utils";
 import { RemixIcon } from "@/components/remix-icon";
 import { Button } from "@openloomi/ui";
 import type { ChatMessage } from "@openloomi/shared";
-import type { Insight } from "@/lib/db/schema";
 import { getToolDisplayName } from "@/lib/utils/tool-names";
 
 import { FilePreviewPanel } from "@/components/file-preview-panel";
@@ -32,8 +31,6 @@ interface WorkspaceFloatPanelProps {
   onClose: () => void;
   /** Callback when clicking a workspace file (optional, for opening in full workspace page) */
   onOpenWorkspace?: () => void;
-  /** Callback when clicking an insight (for opening insight drawer in chat) */
-  onOpenInsight: (insight: Insight) => void;
   /** Outer class name */
   className?: string;
 }
@@ -106,7 +103,6 @@ export function WorkspaceFloatPanel({
   open,
   onClose,
   onOpenWorkspace,
-  onOpenInsight,
   className,
 }: WorkspaceFloatPanelProps) {
   const { t } = useTranslation();
@@ -114,10 +110,7 @@ export function WorkspaceFloatPanel({
     Array<{ name: string; path: string; type?: string }>
   >([]);
   const [artifactsLoading, setArtifactsLoading] = useState(false);
-  const [linkedInsights, setLinkedInsights] = useState<Insight[]>([]);
-  const [linkedInsightsLoading, setLinkedInsightsLoading] = useState(false);
   const [todosOpen, setTodosOpen] = useState(true);
-  const [insightsOpen, setInsightsOpen] = useState(true);
   const [artifactsOpen, setArtifactsOpen] = useState(true);
   const [skillsOpen, setSkillsOpen] = useState(true);
   const [previewFile, setPreviewFile] = useState<{
@@ -125,10 +118,6 @@ export function WorkspaceFloatPanel({
     name: string;
     type: string;
   } | null>(null);
-
-  const handleOpenInsight = (insight: Insight) => {
-    onOpenInsight(insight);
-  };
 
   const todos = useMemo(() => parseTodosFromMessages(messages), [messages]);
   const toolNames = useMemo(
@@ -160,31 +149,6 @@ export function WorkspaceFloatPanel({
       })
       .finally(() => {
         if (!cancelled) setArtifactsLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [chatId, open]);
-
-  // Fetch historically linked insights
-  useEffect(() => {
-    if (!open || !chatId) {
-      setLinkedInsights([]);
-      return;
-    }
-    let cancelled = false;
-    setLinkedInsightsLoading(true);
-    fetch(`/api/chat-insights?chatId=${encodeURIComponent(chatId)}`)
-      .then((res) => (res.ok ? res.json() : { insights: [] }))
-      .then((data: { insights?: Insight[] }) => {
-        if (cancelled) return;
-        setLinkedInsights(data.insights ?? []);
-      })
-      .catch(() => {
-        if (!cancelled) setLinkedInsights([]);
-      })
-      .finally(() => {
-        if (!cancelled) setLinkedInsightsLoading(false);
       });
     return () => {
       cancelled = true;
@@ -238,71 +202,6 @@ export function WorkspaceFloatPanel({
 
         <div className="max-h-[min(60vh,400px)] overflow-y-auto">
           <div className="px-3 py-2 space-y-0">
-            {/* Historically linked Events section */}
-            <section className="py-1">
-              <button
-                type="button"
-                className="flex w-full items-center justify-between gap-2 py-1.5 text-left text-sm font-medium text-foreground hover:bg-muted/50 rounded-md px-1"
-                onClick={() => setInsightsOpen((o) => !o)}
-              >
-                <span>
-                  {t("agent.workspaceFloat.linkedInsights", "Linked events")}
-                </span>
-                {insightsOpen ? (
-                  <RemixIcon
-                    name="chevron_down"
-                    size="size-3.5"
-                    className="text-muted-foreground shrink-0"
-                  />
-                ) : (
-                  <RemixIcon
-                    name="chevron_right"
-                    size="size-3.5"
-                    className="text-muted-foreground shrink-0"
-                  />
-                )}
-              </button>
-              {insightsOpen && (
-                <div className="pl-1 mt-0.5">
-                  {linkedInsightsLoading ? (
-                    <p className="text-xs text-muted-foreground py-1">
-                      {t("common.loading", "Loading...")}
-                    </p>
-                  ) : linkedInsights.length === 0 ? (
-                    <p className="text-xs text-muted-foreground py-1">
-                      {t(
-                        "agent.workspaceFloat.noLinkedInsights",
-                        "No linked events",
-                      )}
-                    </p>
-                  ) : (
-                    <ul className="space-y-1">
-                      {linkedInsights.map((insight) => (
-                        <li
-                          key={insight.id}
-                          className="flex items-center gap-2 text-xs text-muted-foreground"
-                        >
-                          <RemixIcon
-                            name="briefcase"
-                            size="size-3.5"
-                            className="text-muted-foreground shrink-0"
-                          />
-                          <button
-                            type="button"
-                            className="truncate text-left hover:text-foreground hover:underline transition-colors"
-                            title={insight.title}
-                            onClick={() => handleOpenInsight(insight)}
-                          >
-                            {truncate(insight.title, MAX_TODO_TITLE_LEN)}
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              )}
-            </section>
-
             {/* Todos section */}
             <section className="py-1">
               <button

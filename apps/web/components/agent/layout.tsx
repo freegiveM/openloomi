@@ -18,16 +18,6 @@ interface AgentLayoutProps {
   centerHeaderActions?: ReactNode;
   /** Overlay floating above center card content area (absolute positioning, doesn't scroll with content) */
   centerOverlay?: ReactNode;
-  mobileActivePanel?:
-    | "insight"
-    | "brief"
-    | "chat"
-    | "todo"
-    | "favorite"
-    | "people"
-    | "assets"
-    | "messages"
-    | "files"; // Mobile currently active panel
   mobileHeaderTitle?: string; // Mobile header title
 }
 
@@ -39,13 +29,10 @@ interface AgentLayoutProps {
  */
 export function AgentLayout({
   children,
-  rightToolbar,
-  activeTools = [],
   centerTitle = "Workspace",
   hideCenterHeader = false,
   centerHeaderActions,
   centerOverlay,
-  mobileActivePanel,
   mobileHeaderTitle,
 }: AgentLayoutProps) {
   const isMobile = useIsMobile();
@@ -55,7 +42,7 @@ export function AgentLayout({
   // Determine whether to show mobile menu bar (only on mobile and insight/brief page)
   const showMobileToolbar = isMobile && !page;
   // Mobile standalone mode: only show currently active panel, fullscreen width
-  const isMobileStandaloneMode = isMobile && mobileActivePanel !== undefined;
+  const isMobileStandaloneMode = isMobile;
   const needMobileHeader = isMobileStandaloneMode && mobileHeaderTitle;
 
   const rootClasses = cn(

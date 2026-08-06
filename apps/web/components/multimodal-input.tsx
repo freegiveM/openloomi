@@ -21,7 +21,6 @@ import { RemixIcon } from "@/components/remix-icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 import { ScrollArea } from "./ui/scroll-area";
-import { EventSearchDialog } from "./event-search-dialog";
 import useSWR from "swr";
 import { fetcher, fetcherWithCloudAuth } from "@/lib/utils";
 import equal from "fast-deep-equal";
@@ -1202,7 +1201,6 @@ function PureMultimodalInput({
   >([]);
   const [isDraggingFile, setIsDraggingFile] = useState(false);
   const dragCounterRef = useRef(0);
-  const [isEventSearchDialogOpen, setIsEventSearchDialogOpen] = useState(false);
   const [uploadedRagDocuments, setUploadedRagDocuments] = useState<
     Array<{ id: string; name: string }>
   >([]);
@@ -2852,11 +2850,6 @@ function PureMultimodalInput({
           </div>
         </div>
       </div>
-
-      <EventSearchDialog
-        open={isEventSearchDialogOpen}
-        onOpenChange={setIsEventSearchDialogOpen}
-      />
 
       {/* Workspace file selection */}
       <Dialog

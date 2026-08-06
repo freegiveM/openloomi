@@ -5,7 +5,6 @@ import type { Vote } from "@/lib/db/schema";
 import type { UseChatHelpers } from "@ai-sdk/react";
 import { useMessages } from "@/hooks/use-messages";
 import type { ChatMessage } from "@openloomi/shared";
-import type { IntegrationId } from "@/hooks/use-integrations";
 import { useVirtualizer } from "@tanstack/react-virtual";
 
 interface MessagesProps {
@@ -14,15 +13,6 @@ interface MessagesProps {
   messages: ChatMessage[];
   sendMessage: UseChatHelpers<ChatMessage>["sendMessage"];
   setMessages: UseChatHelpers<ChatMessage>["setMessages"];
-  onRefresh: () => Promise<void>;
-  onClearFocus?: () => void;
-  onReplyRegenerateStart?: (
-    targetMessageId: string,
-    requestMessageId: string,
-  ) => void;
-  selectedAccountId?: string | null;
-  onAccountChange?: (accountId: string) => void;
-  accountSelectorPlatforms?: IntegrationId[];
   isAgentRunning?: boolean;
 }
 
@@ -40,12 +30,6 @@ function PureVirtualizedMessages({
   messages,
   sendMessage,
   setMessages,
-  onRefresh,
-  onClearFocus,
-  onReplyRegenerateStart,
-  selectedAccountId,
-  onAccountChange,
-  accountSelectorPlatforms,
   isAgentRunning = false,
 }: MessagesProps) {
   const {
@@ -166,11 +150,7 @@ function PureVirtualizedMessages({
                 vote={voteByMessageId.get(message.id)}
                 sendMessage={sendMessage}
                 setMessages={setMessages}
-                onRefresh={onRefresh}
-                requiresScrollPadding={
-                  hasSentMessage && originalIndex === messages.length - 1
-                }
-                isHighlighted={highlightedId === message.id}
+                isHighlighted={false}
                 isAgentRunning={isAgentRunning}
                 inVisibleLoadingIds={emptyVisibleLoadingIds}
               />
