@@ -59,7 +59,7 @@ export default function ConnectorsPage() {
   };
 
   return (
-    <div className="flex h-full min-h-0 min-h-[60vh] flex-1 flex-col">
+    <div className="flex h-full min-h-0 flex-1 flex-col">
       <div className="min-h-0 flex-1 overflow-hidden">
         <PersonalizationLinkedAccounts
           open={true}

@@ -16,35 +16,8 @@ import IntegrationIcon from "./integration-icon";
 import { RemixIcon } from "@/components/remix-icon";
 
 /**
- * Extract cited Insight IDs from message text
- */
-function extractCitationIds(message: ChatMessage): string[] {
-  const textFromParts = message.parts
-    ?.filter((part) => part.type === "text")
-    .map((part) => part.text)
-    .join("\n")
-    .trim();
-
-  if (!textFromParts) return [];
-
-  const citationRegex = /\^\[([^\]]+)\]\^/g;
-  const ids: string[] = [];
-  let match: RegExpExecArray | null = citationRegex.exec(textFromParts);
-
-  while (match !== null) {
-    const insightId = match[1].toString();
-    if (insightId && !ids.includes(insightId)) {
-      ids.push(insightId);
-    }
-    match = citationRegex.exec(textFromParts);
-  }
-
-  return ids;
-}
-
-/**
  * Platform icon group component
- * Displays the collection of cited Insight source platforms
+ * Displays the collection of cited source platforms
  */
 export function PlatformAvatarGroup({
   platforms,
@@ -107,13 +80,11 @@ export function PureMessageActions({
   message,
   vote,
   isLoading,
-  onSourcesClick,
 }: {
   chatId: string;
   message: ChatMessage;
   vote: Vote | undefined;
   isLoading: boolean;
-  onSourcesClick?: () => void;
 }) {
   const { mutate } = useSWRConfig();
   const [_, copyToClipboard] = useCopyToClipboard();
@@ -350,7 +321,6 @@ export const MessageActions = memo(
     if (!equal(prevProps.vote, nextProps.vote)) return false;
     if (prevProps.isLoading !== nextProps.isLoading) return false;
     if (!equal(prevProps.message, nextProps.message)) return false;
-    if (prevProps.onSourcesClick !== nextProps.onSourcesClick) return false;
 
     return true;
   },

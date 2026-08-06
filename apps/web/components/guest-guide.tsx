@@ -97,7 +97,7 @@ export default function GuestGuide({
           },
         });
 
-        // Register the live socket under accountId so self-listener and insight can find it
+        // Register the live socket under accountId so self-listener can find it
         try {
           await fetch("/api/whatsapp/register-socket", {
             method: "POST",
