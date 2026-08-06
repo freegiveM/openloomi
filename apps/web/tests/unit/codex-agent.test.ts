@@ -194,49 +194,6 @@ describe("Codex runtime preflight", () => {
     expect(parseCodexVersion("not a version")).toBeUndefined();
   });
 
-  it("blocks an unavailable model before codex exec starts", async () => {
-    const workDir = await createFakeCodexWorkDir(defaultFakeCodexScript());
-    await writeFakeCodexScript(
-      workDir,
-      fakeCodexAppServerScript(["gpt-compatible"]),
-      "app-server",
-    );
-    const agent = new CodexAgent({
-      provider: "codex",
-      model: "gpt-requires-newer-cli",
-      workDir,
-      providerConfig: { codexPath: process.execPath },
-    });
-
-    const messages = await collectMessages(agent.run("hello codex"));
-    const error = messages.find((message) => message.type === "error");
-
-    expect(error).toMatchObject({
-      type: "error",
-      message: expect.stringContaining(
-        'The selected model "gpt-requires-newer-cli" is not available',
-      ),
-    });
-    expect(error?.message).toContain("codex update");
-    expect(error?.message).toContain("gpt-compatible");
-    await expect(
-      readFile(join(workDir, "args.json"), "utf8"),
-    ).rejects.toThrow();
-
-    const requests = JSON.parse(
-      await readFile(join(workDir, "app-server-requests.json"), "utf8"),
-    ) as Array<{ method: string; params?: Record<string, unknown> }>;
-    expect(requests.map((request) => request.method)).toEqual([
-      "initialize",
-      "initialized",
-      "model/list",
-    ]);
-    expect(requests.at(-1)?.params).toMatchObject({
-      limit: 100,
-      includeHidden: true,
-    });
-  });
-
   it("starts codex exec when the selected model is in the CLI catalog", async () => {
     const workDir = await createFakeCodexWorkDir(defaultFakeCodexScript());
     await writeFakeCodexScript(

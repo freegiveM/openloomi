@@ -39,18 +39,6 @@ interface ChatHeaderPanelProps {
    * Toggle right history panel (controlled by parent whether to show)
    */
   onToggleHistoryPanel?: () => void;
-  /**
-   * Whether to show new insights panel (controls button selected state)
-   */
-  isNewInsightsPanelOpen?: boolean;
-  /**
-   * Toggle new insights panel (controlled by parent)
-   */
-  onToggleNewInsightsPanel?: () => void;
-  /**
-   * Count of new insights (to show badge on button)
-   */
-  newInsightsCount?: number;
 }
 
 /**
@@ -69,9 +57,6 @@ export function ChatHeaderPanel({
   children,
   isHistoryPanelOpen,
   onToggleHistoryPanel,
-  isNewInsightsPanelOpen,
-  onToggleNewInsightsPanel,
-  newInsightsCount,
 }: ChatHeaderPanelProps = {}) {
   const { t } = useTranslation();
 

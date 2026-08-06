@@ -82,7 +82,6 @@ The same memory layer feeds all three Loop surfaces — they're different lenses
 
 - **Daily Brief** (9 AM, `/brief`) — pulls today's calendar + open decision cards + contacts Loop knows you'll be interacting with today
 - **Evening Wrap** (6 PM, `/wrap`) — reads what was executed today, writes a recap of the day's decisions back to `insights/` so next week's "this week vs last week" rollup is just a query
-- **Insight Box** (`/inbox`) — streams every signal Loop has judged, each enriched with the memory slice that informed the judgement
 
 > 💡 Memory is **per-user, stored locally** in `~/.openloomi/data/memory/`. There's no central registry, no sync, no RBAC. To seed memory on a new machine, copy the directory over SSH — that's it.
 
@@ -495,12 +494,6 @@ A morning rollup at the `/brief` route. It gathers the day's calendar, the email
 ### Evening Wrap
 
 An evening recap at the [`/wrap`](/docs/automation) route. It lists what Loop actually handled on your behalf during the day — emails sent, RSVPs accepted, replies posted — and what it parked for tomorrow. The data is pulled from the `loop.wrap.*` API and rendered through `app/(chat)/wrap/page.tsx`.
-
-### Insight Box
-
-The continuously updating event stream at the [`/inbox`](/docs/memory) route (also called the Insight Box in earlier docs). Every signal Loop has judged is queued here in priority order, regardless of whether it became a decision card or just a thing to be aware of. The underlying list view lives in `components/agent/events-panel.tsx`, and individual events open into full Insight cards in the main chat view.
-
-> 💡 The same decision can show up in **multiple** surfaces at once — a high-confidence email reply might be a decision card _and_ an Insight Box entry _and_ an item on tomorrow's Wrap. Each surface is just a different lens on the same Loop judgement.
 
 ---
 

@@ -23,10 +23,6 @@ import { mutate } from "swr";
 import { dismissToast, toast } from "@/components/toast";
 import { streamNativeAgentResponse } from "@/lib/ai/router/index";
 import { isTauri } from "@/lib/tauri";
-import {
-  useModelPreference,
-  getModelConfig,
-} from "@/components/agent/model-selector";
 import { useTranslation } from "react-i18next";
 import { saveMessagesToDatabase } from "@/lib/ai/chat/save-messages";
 import { getAuthToken } from "@/lib/auth/token-manager";
@@ -289,9 +285,6 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const { t } = useTranslation();
-
-  // Model selection state
-  const [selectedModel] = useModelPreference();
 
   // =====================================================================
   // Chat state management
@@ -1073,8 +1066,7 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
         : await requestLifestyleImageSkillRoute({
             message: messageContent,
             hasReferenceImage: hasLifestyleReferenceImage,
-            model:
-              selectedModel === "default" ? DEFAULT_AI_MODEL : selectedModel,
+            model: DEFAULT_AI_MODEL,
           });
       const lifestyleSkillDecision = lifestyleSkillRoute.decision;
       const shouldGenerateFromClassifierFallback =
@@ -1501,17 +1493,13 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
         }
 
         // Configure to use local API endpoint in Tauri mode
-        const effectiveModel =
-          selectedModel === "default" ? DEFAULT_AI_MODEL : selectedModel;
-        const modelCfg = getModelConfig(selectedModel);
+        const effectiveModel = DEFAULT_AI_MODEL;
         const modelConfig = cloudAuthToken
           ? {
               baseUrl: AI_PROXY_BASE_URL, // SDK will automatically add /v1/messages
               apiKey: cloudAuthToken, // User's auth token
               model: effectiveModel, // Use user-selected model
-              thinkingLevel: modelCfg?.supportsThinking
-                ? (modelCfg.defaultThinkingLevel ?? "adaptive")
-                : undefined,
+              thinkingLevel: undefined,
             }
           : undefined;
 

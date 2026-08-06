@@ -25,7 +25,7 @@
  *
  * Why a bridge at the (chat) layout (not in Home or on the page):
  *   The OAuth callback can resolve while the user is on `/chat`,
- *   `/inbox`, `/connectors`, `/loop/<id>` etc. — anywhere the auth
+ *   `/connectors`, `/loop/<id>` etc. — anywhere the auth
  *   dialog might have been opened. Mounting the listener at the
  *   layout level (sibling of `LoopNavBridge` and `PetChatBridge`)
  *   covers the entire (chat) tree in one place.

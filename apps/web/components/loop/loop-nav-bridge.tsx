@@ -13,7 +13,7 @@
  * `?decision_id=<id>` so they can still drill in.
  *
  * Why this lives in the (chat) layout (and not in Home):
- *   The event can fire while the user is on /chat, /inbox, /connectors,
+ *   The event can fire while the user is on /chat, /connectors,
  *   /loop/<other-id> etc. — anywhere the pet surface might land. If the
  *   listener were only in Home, those routes would silently swallow the
  *   event and the main window would just re-open on whatever page was
@@ -57,19 +57,16 @@ export function LoopNavBridge() {
       window.removeEventListener("openloomi:navigate-decision", handler);
   }, [router]);
 
-  // Brief / wrap cards aren't decisions — they're aggregate views stored
-  // at ~/.openloomi/loop/brief.json / wrap.json. The Rust host fires
-  // these events after the user clicks "Open brief" / "Open wrap" so we
-  // push the dedicated pages that read the JSON directly. The pages
-  // (`/brief`, `/wrap`) handle the "no snapshot yet" case with an empty
-  // state pointing at the trigger endpoint.
+  // The wrap card isn't a decision — it's an aggregate view stored at
+  // ~/.openloomi/loop/wrap.json. The Rust host fires this event after
+  // the user clicks "Open wrap" so we push the dedicated page that
+  // reads the JSON directly. The page (`/wrap`) handles the "no
+  // snapshot yet" case with an empty state pointing at the trigger
+  // endpoint.
   useEffect(() => {
-    const onBrief = () => router.push("/brief");
     const onWrap = () => router.push("/wrap");
-    window.addEventListener("openloomi:navigate-brief", onBrief);
     window.addEventListener("openloomi:navigate-wrap", onWrap);
     return () => {
-      window.removeEventListener("openloomi:navigate-brief", onBrief);
       window.removeEventListener("openloomi:navigate-wrap", onWrap);
     };
   }, [router]);

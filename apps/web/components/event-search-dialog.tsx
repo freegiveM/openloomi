@@ -9,8 +9,18 @@ import {
   DialogTitle,
 } from "@openloomi/ui";
 import type { Insight } from "@/lib/db/schema";
-import type { SearchResultItem } from "@/components/global-search-dialog";
 import { useGlobalInsightDrawer } from "@/components/global-insight-drawer";
+
+/** Shape used by /api/search response items. */
+interface SearchResultItem {
+  id: string;
+  type: "events";
+  title: string;
+  subtitle?: string;
+  timestamp?: string;
+  platform?: string;
+  extra?: Record<string, unknown>;
+}
 import { fetcher } from "@/lib/utils";
 import useSWR from "swr";
 import { EventChannelDropdownContent } from "@/components/shared/event-channel-dropdown-content";

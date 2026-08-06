@@ -21,7 +21,6 @@ import { useGlobalInsightDrawer } from "@/components/global-insight-drawer";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { useConversationApiConfiguration } from "@/components/conversation-api-onboarding-guard";
 import { ConversationApiSetup } from "@/components/conversation-api-setup";
-import { useVoice } from "@/components/audio/voice-provider";
 import { getTextFromMessage } from "@/lib/utils";
 
 interface AgentChatPanelProps {
@@ -53,7 +52,6 @@ export function AgentChatPanel({
   const [attachments, setAttachments] = useState<Array<Attachment>>([]);
   const apiConfigurationState = useConversationApiConfiguration();
   const requiresApiSetup = apiConfigurationState === "missing";
-  const { kokoro } = useVoice();
 
   // Note: previousChatIdRef is not needed because the component gets the latest messages from context
   // When chatId changes, useChat in parent AgentPageClient handles the message switch automatically
@@ -77,7 +75,6 @@ export function AgentChatPanel({
     setMessages,
     stop,
     isAgentRunning,
-    setIsAgentRunning,
     activeChatId: contextActiveChatId,
     switchChatId,
     isVaultOpen,
@@ -113,7 +110,7 @@ export function AgentChatPanel({
     const wasRunning = wasAgentRunningRef.current;
     wasAgentRunningRef.current = isAgentRunningForChat;
 
-    if (!wasRunning || isAgentRunningForChat || !kokoro.enabled) {
+    if (!wasRunning || isAgentRunningForChat) {
       return;
     }
 
@@ -129,10 +126,7 @@ export function AgentChatPanel({
     if (!text) return;
 
     lastSpokenAssistantMessageIdRef.current = latestAssistantMessage.id;
-    void kokoro.speak(text).catch((error) => {
-      console.error("[AgentChatPanel] Failed to play TTS:", error);
-    });
-  }, [isAgentRunningForChat, kokoro, messages]);
+  }, [isAgentRunningForChat, messages]);
 
   // Per-chat input persistence: track previous chat for saving input on switch
   const prevChatIdForInputRef = useRef<string | null>(null);

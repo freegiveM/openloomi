@@ -50,11 +50,6 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 import { getAuthToken } from "@/lib/auth/token-manager";
-import {
-  MODELS,
-  type ModelType,
-  useModelPreference,
-} from "@/components/agent/model-selector";
 
 /**
  * Detect if running in Tauri environment
@@ -1060,7 +1055,6 @@ function PureMultimodalInput({
     isAgentRunning,
   } = useChatContext();
   const { t } = useTranslation();
-  const [selectedModel, setSelectedModel] = useModelPreference();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const inputWrapperRef = useRef<HTMLDivElement>(null);
   const atMentionListRef = useRef<HTMLDivElement>(null);
@@ -2853,64 +2847,6 @@ function PureMultimodalInput({
                   onChange={(e) => handleFileUpload(e.target.files)}
                   disabled={isUploadingFile}
                 />
-              </div>
-
-              <div className="shrink-0 ml-2 flex items-center gap-2">
-                {/* Model selection: shows current model name + down arrow, placed to the left of send button */}
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="h-9 shrink-0 gap-1 rounded-lg px-2 text-xs font-medium text-muted-foreground hover:text-foreground"
-                      aria-label={t("common.model", "Model")}
-                    >
-                      <span className="max-w-[120px] truncate">
-                        {MODELS[selectedModel]?.name ?? selectedModel}
-                      </span>
-                      <RemixIcon name="arrow_down_s" size="size-3.5" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent
-                    align="end"
-                    className="w-[160px] max-h-[400px] overflow-y-auto"
-                  >
-                    {Object.entries(MODELS).map(([id, model]) => {
-                      const isSelected = selectedModel === id;
-                      return (
-                        <DropdownMenuItem
-                          key={id}
-                          onClick={() => setSelectedModel(id as ModelType)}
-                          className={cx(
-                            "flex items-center justify-between gap-2 p-1.5 cursor-pointer",
-                            isSelected ? "bg-accent" : "",
-                          )}
-                        >
-                          <span className="text-xs font-medium">
-                            {model.name}
-                          </span>
-                          {isSelected && (
-                            <RemixIcon
-                              name="check"
-                              size="size-3"
-                              className="text-primary"
-                            />
-                          )}
-                        </DropdownMenuItem>
-                      );
-                    })}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-                {isAgentRunning ? (
-                  <StopButton stop={stop} setMessages={setMessages} />
-                ) : (
-                  <SendButton
-                    input={input}
-                    submitForm={submitForm}
-                    isUploadingFile={isUploadingFile}
-                  />
-                )}
               </div>
             </div>
           </div>
