@@ -11,152 +11,6 @@ import type { Insight } from "@/lib/db/schema";
 import { useTranslation } from "react-i18next";
 import { openUrl } from "@/lib/tauri";
 
-/**
- * Process citation markers in text, convert ^[ID]^ or [number] to clickable badges
- * Supports two formats:
- * 1. ^[Insight ID]^ - New format, use Insight ID directly
- * 2. [number] or [number, number] - Old format, use index (starting from 1)
- */
-function processTextWithCitations(
-  text: string,
-  onCitationClick: (insightId: string) => void,
-  insights?: Insight[],
-): React.ReactNode[] {
-  const parts: React.ReactNode[] = [];
-
-  // Preprocessing: remove excessive newlines in entire text, but keep single newlines between sentences
-  // This prevents unnecessary newlines when replacing citations
-
-  // Used to track citation numbers (starting from 1)
-  const citationIndexMap = new Map<string, number>();
-  let currentCitationIndex = 0;
-
-  // Match three formats:
-  // 1. ^[ID]^ - New format with brackets
-  // 2. [number] or [number, number] - Old format, supports [4] or [4, 5] or [4,5,6]
-  // 3. ^[ID]^ - UUID/ID without brackets (e.g., ^2faf4305-7774-4051-a2b9-4856fc9402e5^)
-  const citationRegex =
-    /\^\[([^\]]+)\]\^|\[(\d+(?:,\s*\d+)*)\]|\^([a-fA-F0-9-]+)\^/g;
-  let lastIndex = 0;
-  let match = citationRegex.exec(text);
-  let keyCounter = 0;
-
-  while (match) {
-    // Add text before match
-    if (match.index > lastIndex) {
-      let textBefore = text.slice(lastIndex, match.index);
-      // Remove all whitespace characters at end of text (spaces, newlines, etc.), since citation badge already has ml-1
-      // This prevents extra whitespace before citation marker causing line breaks
-      textBefore = textBefore.replace(/\s+$/, "");
-      // Ensure text is a string, avoid [object Object] issue
-      if (typeof textBefore === "string" && textBefore) {
-        parts.push(
-          <React.Fragment key={`text-${keyCounter++}`}>
-            {textBefore}
-          </React.Fragment>,
-        );
-      }
-    }
-
-    let insightId: string | undefined;
-    let insight: Insight | undefined;
-    let displayIndex: number | string | undefined;
-
-    // Check if new format ^[ID]^ or old format [number]
-    if (match[1]) {
-      // New format: ^[ID]^
-      const matchedId = match[1].toString();
-
-      // Check if it's a pure number (possibly incorrect format like ^[1]^)
-      const isNumeric = /^\d+$/.test(matchedId);
-
-      if (isNumeric && insights) {
-        // If it's a number, try using it as index (backward compatibility)
-        const index = Number.parseInt(matchedId, 10) - 1;
-        if (index >= 0 && index < insights.length) {
-          insight = insights[index];
-          insightId = insight.id;
-          displayIndex = Number.parseInt(matchedId, 10);
-        }
-      } else {
-        // Normal UUID format
-        insightId = matchedId;
-        insight = insights?.find((i) => i.id === insightId);
-
-        // Assign a sequence number to this ID
-        if (insightId && !citationIndexMap.has(insightId)) {
-          currentCitationIndex++;
-          citationIndexMap.set(insightId, currentCitationIndex);
-        }
-        displayIndex = citationIndexMap.get(insightId);
-      }
-    } else if (match[2] && insights) {
-      // Old format: [number] or [number, number]
-      // Extract all number indices (starting from 1)
-      const indices = match[2]
-        .split(/,?\s*/)
-        .map((s) => Number.parseInt(s.trim(), 10))
-        .filter((n) => !Number.isNaN(n) && n > 0);
-
-      // If there are multiple indices, use the first one
-      if (indices.length > 0) {
-        const index = indices[0] - 1; // Convert to 0-based index
-        if (index >= 0 && index < insights.length) {
-          insight = insights[index];
-          insightId = insight.id;
-          displayIndex = indices[0]; // Use original index as display number
-        }
-      }
-    } else if (match[3]) {
-      // New format without brackets: ^ID^ (e.g., ^2faf4305-7774-4051-a2b9-4856fc9402e5^)
-      insightId = match[3];
-      insight = insights?.find((i) => i.id === insightId);
-
-      if (insightId && !citationIndexMap.has(insightId)) {
-        currentCitationIndex++;
-        citationIndexMap.set(insightId, currentCitationIndex);
-      }
-      displayIndex = citationIndexMap.get(insightId);
-    }
-
-    if (insightId && displayIndex) {
-      parts.push(
-        <CitationBadge
-          key={`citation-${keyCounter++}`}
-          index={displayIndex}
-          platform={insight?.platform}
-          tooltip={insight?.title ?? undefined}
-          onClick={() => {
-            if (insightId) {
-              onCitationClick(insightId);
-            }
-          }}
-        />,
-      );
-    }
-
-    lastIndex = match.index + match[0].length;
-    match = citationRegex.exec(text);
-  }
-
-  // Add remaining text
-  if (lastIndex < text.length) {
-    let remainingText = text.slice(lastIndex);
-    // Remove all whitespace characters at beginning (spaces, newlines, etc.), prevent extra whitespace after citation badge causing line breaks
-    remainingText = remainingText.replace(/^\s+/, "");
-    // Ensure text is a string
-    if (typeof remainingText === "string" && remainingText) {
-      parts.push(
-        <React.Fragment key={`text-${keyCounter++}`}>
-          {remainingText}
-        </React.Fragment>,
-      );
-    }
-  }
-
-  return parts.length > 0 ? parts : [text];
-}
-
 // Use shared utility function to detect image files
 import { IMAGE_FILE_EXTENSIONS } from "@/components/file-icons";
 
@@ -418,8 +272,6 @@ function processChildrenWithFilePaths(
 
 interface MarkdownWithCitationsProps {
   children: string;
-  onCitationClick?: (insightId: string) => void;
-  insights?: Insight[];
   onPreviewFile?: (file: { path: string; name: string; type: string }) => void;
 }
 
@@ -615,8 +467,6 @@ function removeCitationSourcesSection(text: string): string {
  */
 function NonMemoizedMarkdownWithCitations({
   children,
-  onCitationClick,
-  insights,
   onPreviewFile,
 }: MarkdownWithCitationsProps) {
   const { t } = useTranslation();
@@ -664,10 +514,7 @@ function NonMemoizedMarkdownWithCitations({
       if (!hasCitation) {
         return content;
       }
-
-      // Process citation markers (use no-op if onCitationClick not provided)
-      const clickHandler = onCitationClick ?? (() => {});
-      return processTextWithCitations(textContent, clickHandler, insights);
+      return textContent
     };
 
     // Helper function to recursively extract text content
@@ -763,68 +610,6 @@ function NonMemoizedMarkdownWithCitations({
         /\^\[([^\]]+)\]\^\s*$|\[(\d+(?:,\s*\d+)*)\]\s*$/,
       );
 
-      if (citationAtEndMatch && onCitationClick) {
-        let insightId: string | undefined;
-        let insight: Insight | undefined;
-
-        // Extract insight ID
-        if (citationAtEndMatch[1]) {
-          const matchedId = citationAtEndMatch[1].toString();
-          const isNumeric = /^\d+$/.test(matchedId);
-
-          if (isNumeric && insights) {
-            const index = Number.parseInt(matchedId, 10) - 1;
-            if (index >= 0 && index < insights.length) {
-              insight = insights[index];
-              insightId = insight.id;
-            }
-          } else {
-            insightId = matchedId;
-            insight = insights?.find((i: Insight) => i.id === insightId);
-          }
-        } else if (citationAtEndMatch[2] && insights) {
-          const indices = citationAtEndMatch[2]
-            .split(/,?\s*/)
-            .map((s) => Number.parseInt(s.trim(), 10))
-            .filter((n) => !Number.isNaN(n) && n > 0);
-
-          if (indices.length > 0) {
-            const index = indices[0] - 1;
-            if (index >= 0 && index < insights.length) {
-              insight = insights[index];
-              insightId = insight.id;
-            }
-          }
-        }
-
-        // Remove citation marker at end, keep text part
-        const textWithoutCitation = textContent
-          .replace(/\s*\^\[([^\]]+)\]\^\s*$|\s*\[(\d+(?:,\s*\d+)*)\]\s*$/, "")
-          .trim();
-
-        if (insightId && insight) {
-          // Found insight, convert entire text to clickable hyperlink
-          return (
-            <li className="my-1 leading-relaxed min-w-0" {...props}>
-              <button
-                type="button"
-                onClick={() => onCitationClick(insightId)}
-                className="text-primary hover:underline cursor-pointer bg-transparent border-0 p-0 text-left font-inherit"
-              >
-                {textWithoutCitation}
-              </button>
-            </li>
-          );
-        }
-
-        // Insight not found, return plain text with citation marker removed
-        return (
-          <li className="my-1 leading-relaxed min-w-0" {...props}>
-            {textWithoutCitation}
-          </li>
-        );
-      }
-
       // Normal li tag, use generic processing function
       const processedChildren = processContent(liChildren);
       return (
@@ -838,19 +623,6 @@ function NonMemoizedMarkdownWithCitations({
     components.td = ({ node, children, ...props }: any) => {
       // Use depth-first approach to recursively process all text nodes
       const processChildrenDeep = (content: any): React.ReactNode => {
-        // If it's a string, process citation markers directly
-        if (typeof content === "string") {
-          const hasCitation =
-            /\^\[([^\]]+)\]\^|\[(\d+(?:,\s*\d+)*)\]|\^[a-fA-F0-9-]+\^/.test(
-              content,
-            );
-          if (hasCitation) {
-            const clickHandler = onCitationClick ?? (() => {});
-            return processTextWithCitations(content, clickHandler, insights);
-          }
-          return content;
-        }
-
         // If it's an array, recursively process each element
         if (Array.isArray(content)) {
           return content.map((child, index) => {
@@ -896,19 +668,6 @@ function NonMemoizedMarkdownWithCitations({
     components.th = ({ node, children, ...props }: any) => {
       // Use depth-first approach to recursively process all text nodes
       const processChildrenDeep = (content: any): React.ReactNode => {
-        // If it's a string, process citation markers directly
-        if (typeof content === "string") {
-          const hasCitation =
-            /\^\[([^\]]+)\]\^|\[(\d+(?:,\s*\d+)*)\]|\^[a-fA-F0-9-]+\^/.test(
-              content,
-            );
-          if (hasCitation) {
-            const clickHandler = onCitationClick ?? (() => {});
-            return processTextWithCitations(content, clickHandler, insights);
-          }
-          return content;
-        }
-
         // If it's an array, recursively process each element
         if (Array.isArray(content)) {
           return content.map((child, index) => {
@@ -1065,19 +824,6 @@ function NonMemoizedMarkdownWithCitations({
 
       // Use depth-first approach to recursively process all text nodes
       const processChildrenDeep = (content: any): React.ReactNode => {
-        // If it's a string, process citation markers directly
-        if (typeof content === "string") {
-          const hasCitation =
-            /\^\[([^\]]+)\]\^|\[(\d+(?:,\s*\d+)*)\]|\^[a-fA-F0-9-]+\^/.test(
-              content,
-            );
-          if (hasCitation) {
-            const clickHandler = onCitationClick ?? (() => {});
-            return processTextWithCitations(content, clickHandler, insights);
-          }
-          return content;
-        }
-
         // If it's an array, recursively process each element
         if (Array.isArray(content)) {
           return content.map((child, index) => {
@@ -1441,10 +1187,6 @@ function NonMemoizedMarkdownWithCitations({
       const text = String(textNode?.value || "");
       let processed: React.ReactNode[] = [text];
 
-      // Process citation markers first
-      const clickHandler = onCitationClick ?? (() => {});
-      processed = processTextWithCitations(text, clickHandler, insights);
-
       // Then process file path previews
       const previewLabel = t("common.preview", "Preview");
       if (
@@ -1473,7 +1215,7 @@ function NonMemoizedMarkdownWithCitations({
     };
 
     return components;
-  }, [onCitationClick, insights, onPreviewFile, t]);
+  }, [onPreviewFile, t]);
 
   return (
     <div className="w-full min-w-0">
@@ -1493,6 +1235,5 @@ export const MarkdownWithCitations = memo(
   (prevProps, nextProps) =>
     prevProps.children === nextProps.children &&
     prevProps.onCitationClick === nextProps.onCitationClick &&
-    prevProps.insights === nextProps.insights &&
     prevProps.onPreviewFile === nextProps.onPreviewFile,
 );

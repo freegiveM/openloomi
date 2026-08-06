@@ -240,7 +240,7 @@ export function LibraryGridPreviewPanel({
               </p>
             ) : (
               <div className="prose prose-sm dark:prose-invert max-w-none text-card-foreground">
-                <MarkdownWithCitations insights={[]}>
+                <MarkdownWithCitations>
                   {snapshotText || titleLine}
                 </MarkdownWithCitations>
               </div>

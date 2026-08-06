@@ -30,7 +30,7 @@ import {
 } from "@/components/novel-instruction-editor-dynamic";
 import { MarkdownWithCitations } from "@/components/markdown-with-citations";
 import "@/i18n";
-import { TwoPaneSidebarLayout } from "@/components/layout/two-panel-sidebar-layout";
+import { TwoPanelSidebarLayout } from "@/components/layout/two-panel-sidebar-layout";
 
 interface ScheduledJobDetail {
   id: string;
@@ -1155,7 +1155,7 @@ export default function ScheduledJobDetailPage() {
         </div>
       </div>
 
-      <TwoPaneSidebarLayout
+      <TwoPanelSidebarLayout
         isSidebarOpen={executionPreview !== null}
         breakpoint="lg"
         sidebarClassName="lg:min-w-[420px] lg:max-w-[420px]"
@@ -2145,7 +2145,7 @@ export default function ScheduledJobDetailPage() {
             </div>
           )}
         </div>
-      </TwoPaneSidebarLayout>
+      </TwoPanelSidebarLayout>
 
       {/* File preview overlay */}
       {previewFile && (
