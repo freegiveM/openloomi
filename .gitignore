@@ -160,3 +160,93 @@ apps/web/data/
 benchmark/clbench/results/*.json
 # Benchmark results
 benchmark/clbench/results/
+
+# --- Submodule reset: keep local benchmark source but exclude heavy/locals ---
+# Debug scripts (anywhere)
+__dbg_*.py
+__debug_*.py
+debug_*.py
+
+# Logs (any directory)
+logs/
+*_logs/
+harness_logs/
+*.log
+*.jsonl
+*.locked
+!scripts/**/*.log
+
+# Checkpoints and model weights
+checkpoints/
+*.ckpt
+*.pt
+*.pth
+*.h5
+*.pb
+*.onnx
+*.bin
+*.safetensors
+
+# Eval / benchmark outputs
+results/
+!results/README.md
+outputs/
+runs/
+wandb/
+
+# Virtual environments (anywhere)
+.venv/
+.venv38/
+venv/
+env/
+
+# Cloned upstream repos used by SWE-bench-CL eval
+cloned_repos/
+
+# Exclude data/ under the 5 reset submodule paths (JSON datasets live separately)
+benchmark/SWE-bench-CL/data/
+benchmark/jobbench-official/dataset/
+benchmark/GDPval-AA v2/grader/GDPVal_Eval/results/
+
+# Paper PDFs (fetched separately)
+*.pdf
+
+# Local handoff / debug notes (contain environment-specific info)
+HANDOFF*.md
+HANDOFF_SUMMAR*.md
+*_handoff.md
+
+# Vendor: continual-learning-bench (vendored pgasawa/continual-learning-bench)
+# Top-level venv, datasets and run artifacts must never enter the repo.
+benchmark/continual-learning-bench/.venv/
+benchmark/continual-learning-bench/data/
+benchmark/continual-learning-bench/results/
+benchmark/continual-learning-bench/final_results/
+benchmark/continual-learning-bench/scratchpad/
+benchmark/continual-learning-bench/tmp/
+benchmark/continual-learning-bench/cl_benchmark.egg-info/
+benchmark/continual-learning-bench/.env
+benchmark/continual-learning-bench/.env.*
+!.env.example
+!.env.openloomi.example
+benchmark/continual-learning-bench/assets/
+benchmark/continual-learning-bench/web_app/
+
+# Override jobbench-official nested .gitignore (submodule boundary hides it)
+benchmark/jobbench-official/eval/logs/
+benchmark/jobbench-official/eval/.judge_tmp/
+benchmark/jobbench-official/opencode/
+benchmark/jobbench-official/.venv/
+
+# Secrets / API keys / credentials
+*.key
+*_key.txt
+*_key_.txt
+.openai_key*
+.openrouter_key*
+.qwen_key*
+*secret*
+*credentials*
+.env
+.env.*
+!.env.example

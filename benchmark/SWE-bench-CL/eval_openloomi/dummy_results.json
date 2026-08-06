@@ -1,0 +1,11 @@
+{
+  "instance_id": "local__dummy_math_project_task_1",
+  "openloomi_provider": "claude",
+  "agent_reply_chars": 342,
+  "patch_found": true,
+  "patch_len": 180,
+  "patch_applied": true,
+  "unittest_passed": true,
+  "elapsed_sec": 31.6,
+  "reply_tail": "Fixed the `add` function in `math_utils.py` to correctly return `a + b` instead of `a - b`. Both `test_add` and `test_pass_to_pass` now pass.\n\n```diff\ndiff --git a/math_utils.py b/math_utils.py\nindex 12ee743..4693ad3 100644\n--- a/math_utils.py\n+++ b/math_utils.py\n@@ -1,2 +1,2 @@\n def add(a, b):\n-    return a - b\n+    return a + b\n```success"
+}

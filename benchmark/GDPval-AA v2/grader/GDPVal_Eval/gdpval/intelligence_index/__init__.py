@@ -1,0 +1,1 @@
+"""Intelligence Index normalization module."""

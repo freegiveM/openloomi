@@ -1,0 +1,1 @@
+& "D:/openloomi3/openloomi/benchmark/SWE-bench-CL/eval_openloomi/.venv38/Scripts/python.exe" -m pip install "D:/openloomi3/openloomi/benchmark/SWE-bench-CL/eval_openloomi/cloned_repos/django__django" 2>&1 | Select-Object -Last 5

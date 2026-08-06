@@ -1,0 +1,514 @@
+"""Tests for LocalCodeExecToolProvider backend."""
+
+import subprocess
+from pathlib import Path
+
+import anyio
+import pytest
+from anyio.to_thread import run_sync
+
+from stirrup.tools.code_backends.local import LocalCodeExecToolProvider
+
+
+class TestLocalCodeExecToolProvider:
+    """Tests for LocalCodeExecToolProvider."""
+
+    async def test_create_and_cleanup(self) -> None:
+        """Test that temp directory is created and cleaned up properly."""
+        provider = LocalCodeExecToolProvider()
+
+        # Before entering context, temp_dir should be None
+        assert provider.temp_dir is None
+
+        async with provider as _:
+            # During context, temp_dir should exist
+            assert provider.temp_dir is not None
+            assert provider.temp_dir.exists()
+            assert provider.temp_dir.is_dir()
+            temp_dir_path = provider.temp_dir
+
+        # After context exit, temp_dir should be cleaned up
+        assert not temp_dir_path.exists()
+
+    async def test_run_command(self) -> None:
+        """Test basic command execution with stdout, stderr, and exit code capture."""
+        provider = LocalCodeExecToolProvider()
+
+        async with provider as _:
+            # Test stdout capture
+            result = await provider.run_command("echo 'hello world'")
+            assert result.exit_code == 0
+            assert "hello world" in result.stdout
+            assert result.stderr == ""
+            assert result.error_kind is None
+
+            # Test stderr capture
+            result = await provider.run_command("echo 'error message' >&2")
+            assert result.exit_code == 0
+            assert "error message" in result.stderr
+
+            # Test non-zero exit code
+            result = await provider.run_command("exit 42")
+            assert result.exit_code == 42
+
+    async def test_run_command_timeout(self) -> None:
+        """Test that commands timeout correctly."""
+        provider = LocalCodeExecToolProvider()
+
+        async with provider as _:
+            result = await provider.run_command("sleep 10", timeout=1)
+            assert result.error_kind == "timeout"
+            assert "timed out" in result.stderr.lower()
+
+    async def test_run_command_timeout_kills_descendants(self) -> None:
+        """Regression: a timed-out command must not leave orphaned grandchildren.
+
+        Without start_new_session + killpg, bash's backgrounded descendants
+        reparent to init and leak indefinitely. Uses a unique sleep duration
+        as a marker so the check is robust to concurrent processes on the host.
+        """
+        marker = "919293"
+        provider = LocalCodeExecToolProvider()
+        async with provider as _:
+            result = await provider.run_command(
+                f"sleep {marker} & sleep {marker} & wait",
+                timeout=1,
+            )
+            assert result.error_kind == "timeout"
+
+        def list_survivors() -> list[str]:
+            ps = subprocess.run(["ps", "-eo", "command"], capture_output=True, text=True, check=True)
+            return [line for line in ps.stdout.splitlines() if f"sleep {marker}" in line]
+
+        # Poll briefly for kernel to reap signalled descendants.
+        survivors: list[str] = []
+        for _ in range(10):
+            await anyio.sleep(0.2)
+            survivors = await run_sync(list_survivors)
+            if not survivors:
+                break
+        assert not survivors, f"orphaned descendants after timeout: {survivors}"
+
+    async def test_run_command_allowlist(self) -> None:
+        """Test command allowlist enforcement."""
+        provider = LocalCodeExecToolProvider(allowed_commands=[r"^echo", r"^ls"])
+
+        async with provider as _:
+            # Allowed command should work
+            result = await provider.run_command("echo 'allowed'")
+            assert result.exit_code == 0
+            assert result.error_kind is None
+
+            # Disallowed command should be rejected
+            result = await provider.run_command("cat /etc/passwd")
+            assert result.error_kind == "command_not_allowed"
+            assert "not allowed" in result.stderr.lower()
+
+    async def test_run_command_allowlist_does_not_execute_chained_command(self) -> None:
+        provider = LocalCodeExecToolProvider(allowed_commands=[r"^echo"])
+
+        async with provider:
+            result = await provider.run_command("echo allowed; printf bypassed > forbidden.txt")
+            forbidden_file_exists = await provider.file_exists("forbidden.txt")
+
+        assert result.error_kind == "command_not_allowed"
+        assert forbidden_file_exists is False
+
+    @pytest.mark.parametrize(
+        ("allowed_pattern", "command"),
+        [
+            # Assignment prefixes.
+            (r".*", "MODE=test echo allowed"),
+            (r".*", "MODE+=test echo allowed"),
+            (r"^echo", "echo=x touch forbidden.txt"),
+            (r"^echo", "echo[0]=x touch forbidden.txt"),
+            # Unquoted shell operators, spaced or attached to a word.
+            (r"^echo", "echo allowed && printf bypassed"),
+            (r"^echo", "echo allowed || printf bypassed"),
+            (r"^echo", "echo allowed | cat"),
+            (r"^echo", "echo allowed > output.txt"),
+            (r"^echo", "echo allowed < input.txt"),
+            (r"^echo", "echo allowed & printf bypassed"),
+            (r"^echo", "echo allowed >output.txt"),
+            (r"^echo", "echo allowed;printf bypassed"),
+            (r"^echo", "echo '|' --format='%h;%s';printf bypassed"),
+            (r"^echo", "echo allowed 2>&1"),
+            (r"^echo", "echo allowed\nprintf bypassed"),
+            (r"^printf", "printf 'a\nb'\nls"),
+            # '#' is not a comment: the operator scan must see the whole command.
+            (r"^echo", "echo allowed # note > output.txt"),
+            # Unquoted substitution and subshell syntax.
+            (r"^echo", "echo $(printf bypassed)"),
+            (r"^echo", "echo `printf bypassed`"),
+            (r"^echo", "echo <(printf bypassed)"),
+            (r".*", "(touch forbidden.txt)"),
+            # Bash-only quoting that the parser cannot represent fails closed.
+            (r"^echo", r"echo $'it\'s; literal'"),
+            # The pattern must match the executed command, not a quoted inner string.
+            (r"echo.*", "bash -c 'echo allowed; touch forbidden.txt'"),
+            # A prefix word shifts the executed command out from under the pattern.
+            (r"^echo", "time echo allowed"),
+            # Line continuations are not collapsed; the mangled word fails the pattern.
+            (r"^echo", "ec\\\nho allowed"),
+        ],
+    )
+    async def test_run_command_allowlist_rejects_shell_features(
+        self,
+        allowed_pattern: str,
+        command: str,
+    ) -> None:
+        provider = LocalCodeExecToolProvider(allowed_commands=[allowed_pattern])
+
+        async with provider:
+            result = await provider.run_command(command)
+
+        assert result.error_kind == "command_not_allowed"
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "coproc touch forbidden.txt",
+            "! touch forbidden.txt",
+            "echo[1 + 1]=x touch forbidden.txt",
+        ],
+    )
+    async def test_run_command_allowlist_shell_only_words_fail_without_side_effects(
+        self,
+        command: str,
+    ) -> None:
+        # Without a shell there are no keywords or compound assignments: the
+        # first word is looked up as a binary, fails to exec, and nothing
+        # else runs.
+        provider = LocalCodeExecToolProvider(allowed_commands=[r".*"])
+
+        async with provider:
+            result = await provider.run_command(command)
+            side_effect_exists = await provider.file_exists("forbidden.txt")
+
+        assert result.exit_code != 0
+        assert side_effect_exists is False
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "echo 'a; touch forbidden.txt",
+            'echo "a; touch forbidden.txt',
+            r"echo $'a; touch forbidden.txt",
+        ],
+    )
+    async def test_run_command_allowlist_rejects_unterminated_quotes(
+        self,
+        command: str,
+    ) -> None:
+        # An unterminated quote cannot be parsed, so it must fail closed.
+        provider = LocalCodeExecToolProvider(allowed_commands=[r"^echo"])
+
+        async with provider:
+            result = await provider.run_command(command)
+            side_effect_exists = await provider.file_exists("forbidden.txt")
+
+        assert result.error_kind == "command_not_allowed"
+        assert side_effect_exists is False
+
+    async def test_run_command_allowlist_anchors_patterns_at_start(self) -> None:
+        # Patterns match from the start of the command, so an unanchored pattern
+        # must not match a command that merely contains it as a substring.
+        provider = LocalCodeExecToolProvider(allowed_commands=[r"echo"])
+
+        async with provider:
+            result = await provider.run_command("xecho allowed")
+
+        assert result.error_kind == "command_not_allowed"
+
+    async def test_run_command_allowlist_rejection_reason_explains_shell_syntax(self) -> None:
+        # A command that matches the pattern but is rejected for shell syntax must
+        # say so, not claim it failed to match a pattern.
+        provider = LocalCodeExecToolProvider(allowed_commands=[r".*"])
+
+        async with provider:
+            syntax_result = await provider.run_command("echo allowed && printf bypassed")
+            assignment_result = await provider.run_command("MODE=test echo allowed")
+
+        assert syntax_result.error_kind == "command_not_allowed"
+        assert syntax_result.advice is not None
+        assert "without a shell" in syntax_result.advice
+        assert assignment_result.error_kind == "command_not_allowed"
+        assert assignment_result.advice is not None
+        assert "assignment" in assignment_result.advice
+
+    @pytest.mark.parametrize(
+        ("command", "expected_stdout"),
+        [
+            ("echo 'a;b && c || d | e > f < g\n$() `x`'", "a;b && c || d | e > f < g\n$() `x`\n"),
+            ('echo "it\'s ; literal"', "it's ; literal\n"),
+            (r"echo a\;b \$VALUE \${VALUE}", "a;b $VALUE ${VALUE}\n"),
+            # A quoted argument that is entirely operator characters is a
+            # literal, which is how find's -exec terminator is written.
+            ("find . -exec echo {} ';'", ".\n"),
+            # A quote opened mid-argument still quotes the operator after it.
+            ("echo --format='%h;%s'", "--format=%h;%s\n"),
+            # Different quoted forms can coexist without becoming shell syntax.
+            ("echo '|' --format='%h;%s'", "| --format=%h;%s\n"),
+            # Without a shell there is no expansion: variables and globs are
+            # passed through as literal argument bytes, so home-directory
+            # spellings cannot leave the temp directory.
+            ('echo "$HOME"', "$HOME\n"),
+            ("echo $HOME", "$HOME\n"),
+            ("echo ~/x $HOME/x ${HOME}/x", "~/x $HOME/x ${HOME}/x\n"),
+            ("echo *", "*\n"),
+            ("echo 'line1\nline2'", "line1\nline2\n"),
+        ],
+    )
+    async def test_run_command_allowlist_allows_literal_shell_characters(
+        self,
+        command: str,
+        expected_stdout: str,
+    ) -> None:
+        provider = LocalCodeExecToolProvider(allowed_commands=[r"^echo", r"^find"])
+
+        async with provider:
+            result = await provider.run_command(command)
+
+        assert result.error_kind is None
+        assert result.stdout == expected_stdout
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "cat /etc/passwd",
+            # Quoting is gone by the time argv runs, so the guard has to read
+            # the parsed arguments rather than the raw command string.
+            "cat /et''c/passwd",
+            'cat "/etc"/passwd',
+        ],
+    )
+    async def test_run_command_allowlist_rejects_absolute_paths_in_parsed_arguments(
+        self,
+        command: str,
+    ) -> None:
+        provider = LocalCodeExecToolProvider(allowed_commands=[r"^cat"])
+
+        async with provider:
+            result = await provider.run_command(command)
+
+        assert result.error_kind == "absolute_path_detected"
+        assert result.stdout == ""
+
+    async def test_run_command_allowlist_matches_parsed_command_word(self) -> None:
+        # Patterns are matched against the parsed command, so quoting inside
+        # the command word can neither hide a match nor forge one.
+        provider = LocalCodeExecToolProvider(allowed_commands=[r"^echo\b"])
+
+        async with provider:
+            quoted = await provider.run_command("ec'ho' allowed")
+            forged = await provider.run_command("echo''x allowed")
+
+        assert quoted.error_kind is None
+        assert quoted.stdout == "allowed\n"
+        assert forged.error_kind == "command_not_allowed"
+
+    async def test_run_command_allowlist_does_not_expand_hostile_environment(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # Under Bash, some versions recursively expand array indices, so an
+        # attacker-controlled variable could execute code. Without a shell the
+        # expansion never happens and the text is echoed back verbatim.
+        monkeypatch.setenv("STIRRUP_TEST_INDEX", "$(touch forbidden.txt)")
+        provider = LocalCodeExecToolProvider(allowed_commands=[r"^echo"])
+
+        async with provider:
+            result = await provider.run_command('echo "${VALUES[STIRRUP_TEST_INDEX]}"')
+            side_effect_exists = await provider.file_exists("forbidden.txt")
+
+        assert result.error_kind is None
+        assert result.stdout == "${VALUES[STIRRUP_TEST_INDEX]}\n"
+        assert side_effect_exists is False
+
+    async def test_save_output_files(self, temp_output_dir: Path) -> None:
+        """Test saving files from the execution environment."""
+        provider = LocalCodeExecToolProvider()
+
+        async with provider as _:
+            # Create a file in the temp directory
+            await provider.run_command("echo 'test content' > output.txt")
+
+            # Save the file
+            result = await provider.save_output_files(["output.txt"], temp_output_dir)
+            assert len(result.saved) == 1
+            assert result.saved[0].source_path == "output.txt"
+            assert result.saved[0].output_path == temp_output_dir / "output.txt"
+            assert (temp_output_dir / "output.txt").read_text().strip() == "test content"
+
+            # Saving copies the output; the execution environment remains intact.
+            assert provider.temp_dir is not None
+            assert (provider.temp_dir / "output.txt").exists()
+
+            # Test failure case - non-existent file
+            result = await provider.save_output_files(["nonexistent.txt"], temp_output_dir)
+            assert len(result.failed) == 1
+            assert "nonexistent.txt" in result.failed
+
+    async def test_cross_environment_write_failure_preserves_existing_destination(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        source = LocalCodeExecToolProvider()
+        destination = LocalCodeExecToolProvider()
+
+        async with source, destination:
+            await source.write_file_bytes("report.txt", b"new data")
+            await destination.write_file_bytes("out/report.txt", b"old data")
+            assert source.temp_dir is not None
+            assert destination.temp_dir is not None
+            destination_path = destination.temp_dir / "out/report.txt"
+
+            def fail_replacement(content: bytes, path: Path) -> None:  # noqa: ARG001
+                raise OSError("simulated replacement failure")
+
+            monkeypatch.setattr("stirrup.tools.code_backends.local._atomic_write_bytes", fail_replacement)
+            result = await source.save_output_files(["report.txt"], "out", dest_env=destination)
+
+            assert "simulated replacement failure" in result.failed["report.txt"]
+            assert destination_path.read_bytes() == b"old data"
+            assert (source.temp_dir / "report.txt").read_bytes() == b"new data"
+
+    async def test_save_output_files_preserves_nested_paths(self, temp_output_dir: Path) -> None:
+        provider = LocalCodeExecToolProvider()
+
+        async with provider:
+            await provider.write_file_bytes("left/report.txt", b"left")
+            await provider.write_file_bytes("right/report.txt", b"right")
+
+            result = await provider.save_output_files(
+                ["left/report.txt", "right/report.txt"],
+                temp_output_dir,
+            )
+
+            assert result.failed == {}
+            assert (temp_output_dir / "left/report.txt").read_bytes() == b"left"
+            assert (temp_output_dir / "right/report.txt").read_bytes() == b"right"
+
+    async def test_save_output_files_rejects_duplicate_destinations(self, temp_output_dir: Path) -> None:
+        # Two spellings of one destination: the first claims it, the second is
+        # rejected instead of silently overwriting.
+        provider = LocalCodeExecToolProvider()
+
+        async with provider:
+            await provider.write_file_bytes("report.txt", b"first")
+            assert provider.temp_dir is not None
+            absolute_spelling = str(provider.temp_dir / "report.txt")
+
+            result = await provider.save_output_files(["report.txt", absolute_spelling], temp_output_dir)
+
+        assert [saved.source_path for saved in result.saved] == ["report.txt"]
+        assert "collision" in result.failed[absolute_spelling]
+        assert (temp_output_dir / "report.txt").read_bytes() == b"first"
+
+    async def test_save_output_files_treats_exact_duplicates_as_idempotent(self, temp_output_dir: Path) -> None:
+        provider = LocalCodeExecToolProvider()
+
+        async with provider:
+            await provider.write_file_bytes("report.txt", b"data")
+            result = await provider.save_output_files(["report.txt", "report.txt"], temp_output_dir)
+
+        assert result.failed == {}
+        assert [saved.source_path for saved in result.saved] == ["report.txt"]
+
+    async def test_save_output_files_uses_nested_directory_case_policy(
+        self,
+        temp_output_dir: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        nested_output = temp_output_dir / "nested"
+        nested_output.mkdir()
+        monkeypatch.setattr(
+            "stirrup.tools.code_backends.base._is_case_sensitive_filesystem",
+            lambda directory: directory.name != "nested",
+        )
+        provider = LocalCodeExecToolProvider()
+
+        async with provider:
+            await provider.write_file_bytes("nested/Report.txt", b"data")
+            await provider.write_file_bytes("nested/report.txt", b"data")
+            result = await provider.save_output_files(
+                ["nested/Report.txt", "nested/report.txt"],
+                temp_output_dir,
+            )
+
+        assert [saved.source_path for saved in result.saved] == ["nested/Report.txt"]
+        assert "collision" in result.failed["nested/report.txt"]
+
+    async def test_save_output_files_bad_paths_do_not_abort_batch(self, temp_output_dir: Path) -> None:
+        # Traversal and out-of-root sources land in `failed`; the rest of the
+        # batch still saves.
+        provider = LocalCodeExecToolProvider()
+
+        async with provider:
+            await provider.write_file_bytes("good.txt", b"ok")
+            result = await provider.save_output_files(
+                ["nested/../escape.txt", "/etc/passwd", "good.txt"],
+                temp_output_dir,
+            )
+
+        assert "traversal" in result.failed["nested/../escape.txt"]
+        assert "outside known execution roots" in result.failed["/etc/passwd"]
+        assert (temp_output_dir / "good.txt").read_bytes() == b"ok"
+        assert not (temp_output_dir / "escape.txt").exists()
+
+    async def test_save_output_files_rejects_symlink_escape(self, temp_output_dir: Path, tmp_path: Path) -> None:
+        # A symlink inside the execution env pointing outside it must not be
+        # followed by the copy.
+        secret = tmp_path / "secret.txt"
+        secret.write_bytes(b"host secret")
+        provider = LocalCodeExecToolProvider()
+
+        async with provider:
+            assert provider.temp_dir is not None
+            (provider.temp_dir / "leak.txt").symlink_to(secret)
+            result = await provider.save_output_files(["leak.txt"], temp_output_dir)
+
+        assert list(result.failed) == ["leak.txt"]
+        assert not (temp_output_dir / "leak.txt").exists()
+
+    async def test_upload_files(self, sample_file: Path, sample_dir: Path) -> None:
+        """Test uploading files to the execution environment."""
+        provider = LocalCodeExecToolProvider()
+
+        async with provider as _:
+            assert provider.temp_dir is not None
+            # Upload single file
+            result = await provider.upload_files(sample_file)
+            assert len(result.uploaded) == 1
+            assert result.uploaded[0].source_path == sample_file
+            uploaded_path = provider.temp_dir / sample_file.name
+            assert uploaded_path.exists()
+            assert uploaded_path.read_text() == "Hello, World!"
+
+            # Upload directory
+            result = await provider.upload_files(sample_dir)
+            assert len(result.uploaded) == 3  # file1.txt, file2.txt, subdir/file3.txt
+            assert (provider.temp_dir / sample_dir.name / "file1.txt").exists()
+            assert (provider.temp_dir / sample_dir.name / "subdir" / "file3.txt").exists()
+
+            # Test failure case - non-existent file
+            result = await provider.upload_files(Path("/nonexistent/file.txt"))
+            assert len(result.failed) == 1
+
+    async def test_file_exists(self) -> None:
+        """Test file_exists method."""
+        provider = LocalCodeExecToolProvider()
+
+        async with provider as _:
+            # Create a file
+            await provider.run_command("echo 'test' > exists.txt")
+
+            # File should exist
+            assert await provider.file_exists("exists.txt") is True
+
+            # Non-existent file should return False
+            assert await provider.file_exists("nonexistent.txt") is False
+
+            # Directory should return False (only files)
+            await provider.run_command("mkdir testdir")
+            assert await provider.file_exists("testdir") is False

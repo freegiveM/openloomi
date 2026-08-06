@@ -1,0 +1,20 @@
+# eval_openloomi requires
+# 与官方 eval_v3_swe-agent 的 requirements.txt 对齐
+# 仅多一个用于与 OpenLoomi 本地 agent API 通信的 requests
+
+langchain>=0.2.0
+langchain-core>=0.2.0
+langchain-community>=0.2.0
+langgraph>=0.0.50
+pydantic>=2.5.0
+faiss-cpu>=1.7.4
+sentence-transformers>=2.2.2     # 作为默认的 FAISS 嵌入后端 (无需联网)
+flake8>=6.0.0
+python-patch>=1.0.0              # apply_patch 用
+python-dotenv>=1.0.0
+requests>=2.31.0                 # 调 OpenLoomi 本地 /api/native/agent
+tqdm>=4.65.0
+matplotlib>=3.7.2
+pandas>=2.0.3
+numpy>=1.24.3
+ipython>=8.0.0                   # 让 tqdm.notebook 在纯 .py 中可用
