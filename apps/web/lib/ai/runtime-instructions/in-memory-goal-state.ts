@@ -134,6 +134,22 @@ export class InMemoryAgentGoalState
     return goal?.goal.status === "active" ? clone(goal) : null;
   }
 
+  async listGoals(
+    ownerId: string,
+    runtimeSessionId: string,
+  ): Promise<PersistedAgentGoal[]> {
+    const scope = validatedScope(ownerId, runtimeSessionId);
+    const goals = this.sessions.get(scope.key)?.goals.values() ?? [];
+    return [...goals]
+      .sort((left, right) => {
+        const updated = right.goal.updatedAt.localeCompare(left.goal.updatedAt);
+        return updated === 0
+          ? right.goal.id.localeCompare(left.goal.id)
+          : updated;
+      })
+      .map((goal) => clone(goal));
+  }
+
   async findCommitByIdempotency(input: {
     ownerId: string;
     runtimeSessionId: string;
