@@ -21,7 +21,7 @@ the upstream JobBench judge score them.
 2. **Node.js 22+** — required by `openloomi-ctl` packaged mode.
 3. **Python 3.10+** — required by the runner and the judge.
 4. **`uv`** — the JobBench upstream uses it for Python dependency management.
-5. **OpenLoomi Desktop 0.8.8+** — install the official package and log in
+5. **OpenLoomi Desktop 0.9.0+** — install the official package and log in
    once so the auth token is created.
 6. **`openloomi-ctl.exe`** — bundled with the desktop installer. Default
    path on Windows:
@@ -169,7 +169,7 @@ Then start `pnpm tauri:dev` again.
 
 ### `failed to load saved auth token`
 
-The packaged `openloomi-ctl 0.8.8` tries to Base64-decode the saved token,
+The packaged `openloomi-ctl 0.9.0` tries to Base64-decode the saved token,
 but `~/.openloomi/token` is a plain JWT. Set `OPENLOOMI_AUTH_TOKEN` to the
 file contents to bypass the broken decoder.
 
