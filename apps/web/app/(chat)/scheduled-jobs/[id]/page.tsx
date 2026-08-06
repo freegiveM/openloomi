@@ -1257,7 +1257,6 @@ export default function ScheduledJobDetailPage() {
                       <div className="px-3 pb-3 min-w-0 overflow-x-hidden break-words">
                         <div className="text-sm text-muted-foreground break-words">
                           <MarkdownWithCitations
-                            insights={[]}
                             onPreviewFile={openFilePreviewPanel}
                           >
                             {executionPreview.result.message}
@@ -1271,7 +1270,6 @@ export default function ScheduledJobDetailPage() {
                 {executionPreview.output && (
                   <div className="mt-0 rounded-none p-3 pl-2 w-full min-w-0 overflow-x-hidden text-sm">
                     <MarkdownWithCitations
-                      insights={[]}
                       onPreviewFile={openFilePreviewPanel}
                     >
                       {filterToolCallText(executionPreview.output)}

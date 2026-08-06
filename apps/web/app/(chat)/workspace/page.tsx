@@ -1685,7 +1685,7 @@ function KnowledgeDocumentPreviewPanel({
                     {t("workspace.previewNoContent", "No content")}
                   </p>
                 ) : (
-                  <MarkdownWithCitations insights={[]}>
+                  <MarkdownWithCitations>
                     {doc.chunks.map((c) => c.content).join("\n\n")}
                   </MarkdownWithCitations>
                 )}

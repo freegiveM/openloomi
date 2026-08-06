@@ -6,8 +6,6 @@ import ReactMarkdown, { type Components } from "react-markdown";
 // Import remark-gfm directly to avoid Turbopack dynamic import issues
 import remarkGfm from "remark-gfm";
 import { CodeBlock } from "./code-block";
-import { CitationBadge } from "./citation-badge";
-import type { Insight } from "@/lib/db/schema";
 import { useTranslation } from "react-i18next";
 import { openUrl } from "@/lib/tauri";
 
@@ -1234,6 +1232,5 @@ export const MarkdownWithCitations = memo(
   NonMemoizedMarkdownWithCitations,
   (prevProps, nextProps) =>
     prevProps.children === nextProps.children &&
-    prevProps.onCitationClick === nextProps.onCitationClick &&
     prevProps.onPreviewFile === nextProps.onPreviewFile,
 );

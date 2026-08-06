@@ -478,7 +478,7 @@ export function LibraryGridPreviewPanel({
             ) : (
               <div className="pointer-events-none h-full w-full overflow-hidden text-foreground">
                 <div className="origin-top-left scale-[0.58] w-[172%] min-w-0">
-                  <MarkdownWithCitations insights={[]}>
+                  <MarkdownWithCitations>
                     {snapshotText || titleLine}
                   </MarkdownWithCitations>
                 </div>

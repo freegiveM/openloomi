@@ -115,7 +115,7 @@ export function AgentPlanMessage({
             <div className="flex-1 min-w-0">
               {thought && (
                 <div className="text-foreground text-sm leading-relaxed">
-                  <MarkdownWithCitations insights={insights}>
+                  <MarkdownWithCitations>
                     {thought}
                   </MarkdownWithCitations>
                 </div>
@@ -215,7 +215,7 @@ export function AgentPlanMessage({
                             : "text-muted-foreground",
                         )}
                       >
-                        <MarkdownWithCitations insights={insights}>
+                        <MarkdownWithCitations>
                           {step.action}
                         </MarkdownWithCitations>
                       </div>
