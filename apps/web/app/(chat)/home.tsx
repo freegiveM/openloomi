@@ -35,7 +35,7 @@ import { mutate } from "swr";
 import useSWRInfinite from "swr/infinite";
 import { AddPlatformDialog } from "@/components/add-platform-dialog";
 import { useIntegrations } from "@/hooks/use-integrations";
-import { PanelSkeleton, ChatSkeleton } from "@/components/agent/panel-skeleton";
+import { ChatSkeleton } from "@/components/agent/panel-skeleton";
 import { RemixIcon } from "@/components/remix-icon";
 
 const HISTORY_PAGE_SIZE = 20;
@@ -642,20 +642,13 @@ export function Home() {
       );
     }
 
-    const leftPanel =
-      page === null ? (
-        <ChatSkeleton key="chat-skeleton" />
-      ) : (
-        <PanelSkeleton key="panel-skeleton" />
-      );
-
     return (
         <AgentLayout
           centerTitle={t("nav.newChat")} 
           hideCenterHeader={true}
           centerOverlay={undefined}
         >
-          {leftPanel}
+          <ChatSkeleton key="chat-skeleton" />
         </AgentLayout>
     );
   }

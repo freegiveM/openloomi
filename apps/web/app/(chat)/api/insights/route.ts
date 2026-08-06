@@ -1,14 +1,7 @@
 import { auth } from "@/app/(auth)/auth";
-import { db } from "@/lib/db";
-import {
-  insightWeights,
-  insightBriefCategories,
-  insight,
-} from "@/lib/db/schema";
 import {
   listInsightFilters,
   updateUserInsightSettings,
-  normalizeInsight,
   insertInsightRecords,
   getBotsByUserId,
   createBot,
@@ -21,9 +14,7 @@ import {
 } from "@/lib/insights/service";
 import { extractCloudAuthToken } from "@/lib/ai/request-context";
 import { filterInsights } from "@/lib/insights/filter-utils";
-import { getUserCategoryOverrides } from "@/lib/insights/brief-category-override";
 import type { NextRequest } from "next/server";
-import { eq, inArray, and } from "drizzle-orm";
 
 const MS_IN_MINUTE = 60 * 1000;
 const ACTIVITY_UPDATE_COOLDOWN_MS = 5 * MS_IN_MINUTE;
@@ -42,8 +33,6 @@ export async function GET(request: NextRequest) {
   // Support specifying history days via query parameter, 0 means unlimited (return all data)
   const daysParam = searchParams.get("days");
   const customDays = daysParam ? Number.parseInt(daysParam) : null;
-  // Whether to include other data required by Brief Panel (weights, categories, etc.)
-  const includeBriefData = searchParams.get("includeBriefData") === "true";
 
   if (startingAfter && endingBefore) {
     console.error(
@@ -121,119 +110,6 @@ export async function GET(request: NextRequest) {
 
     // Recalculate hasMore after filtering: should return false if no data after filtering
     const hasMore = !!(filteredItems.length > 0 && data.hasMore);
-
-    // If request includes Brief Panel data, return together
-    let briefData: {
-      weights: Record<string, number>;
-      lastViewedAt: Record<string, string>;
-      overrides: Record<string, string>;
-      unpinnedIds: string[];
-      pinnedInsights: any[];
-    } | null = null;
-
-    if (includeBriefData) {
-      const insightIds = filteredItems.map((item) => item.id);
-
-      // Fetch weights and category data in parallel
-      const [weightsResult, overridesResult, allBriefCategories] =
-        await Promise.all([
-          // Get weights data
-          db
-            .select({
-              insightId: insightWeights.insightId,
-              multiplier: insightWeights.customWeightMultiplier,
-              lastViewedAt: insightWeights.lastViewedAt,
-            })
-            .from(insightWeights)
-            .where(
-              and(
-                eq(insightWeights.userId, userId),
-                inArray(insightWeights.insightId, insightIds),
-              ),
-            ),
-          // Use existing getUserCategoryOverrides function to get category overrides
-          getUserCategoryOverrides(userId, filteredItems),
-          // Get all pinned insights (not limited by time)
-          db
-            .select()
-            .from(insightBriefCategories)
-            .where(eq(insightBriefCategories.userId, userId)),
-        ]);
-
-      // Build weights Map
-      const weights: Record<string, number> = {};
-      const lastViewedAt: Record<string, string> = {};
-      weightsResult.forEach((w: any) => {
-        weights[w.insightId] = w.multiplier ?? 1.0;
-        if (w.lastViewedAt) {
-          lastViewedAt[w.insightId] = w.lastViewedAt.toISOString();
-        }
-      });
-      // Fill default weights
-      insightIds.forEach((id) => {
-        if (!(id in weights)) {
-          weights[id] = 1.0;
-        }
-      });
-
-      // Use result returned by getUserCategoryOverrides
-      const overrides = Object.fromEntries(overridesResult.overrides);
-      const unpinnedIds = Array.from(overridesResult.unpinnedIds);
-
-      // Get pinned insights in current page
-      const currentPinnedInsightIds = insightIds.filter(
-        (id) =>
-          overridesResult.overrides.has(id) &&
-          !overridesResult.unpinnedIds.has(id),
-      );
-
-      // Get all pinned insights (not limited by time)
-      const allPinnedInsightIds = allBriefCategories
-        .filter((bc: any) => bc.source !== "unpinned")
-        .map((bc: any) => bc.insightId);
-
-      // Merge all pinned insight IDs that need to be fetched
-      const allPinnedIdsSet = new Set([
-        ...currentPinnedInsightIds,
-        ...allPinnedInsightIds,
-      ]);
-      const allPinnedIds = Array.from(allPinnedIdsSet);
-
-      let pinnedInsights: any[] = [];
-      if (allPinnedIds.length > 0) {
-        const pinnedItems = await db
-          .select()
-          .from(insight)
-          .where(inArray(insight.id, allPinnedIds));
-
-        // Build category map
-        const categoryMap = new Map<string, string>();
-        allBriefCategories.forEach((bc: any) => {
-          if (bc.source !== "unpinned") {
-            categoryMap.set(bc.insightId, bc.category);
-          }
-        });
-
-        pinnedInsights = pinnedItems.map((insightItem: any) => {
-          // First normalize data (deserialize JSON fields)
-          const normalized = normalizeInsight(insightItem);
-          const category = categoryMap.get(normalized.id) || "monitor";
-          return {
-            ...normalized,
-            briefCategory: category,
-          };
-        });
-      }
-
-      briefData = {
-        weights,
-        lastViewedAt,
-        overrides,
-        unpinnedIds,
-        pinnedInsights,
-      };
-    }
-
     const response: any = {
       items: filteredItems,
       hasMore,
@@ -241,11 +117,6 @@ export async function GET(request: NextRequest) {
       sessions: data.sessions,
       rawMessagesIncluded: false,
     };
-
-    // If request includes Brief data, add to response
-    if (briefData) {
-      response.briefData = briefData;
-    }
 
     return Response.json(response, {
       status: 200,

@@ -55,10 +55,6 @@ export function ConnectorAuthorizationProvider({
   );
 }
 
-export function useConnectorAuthorization(): ConnectorAuthorizationState {
-  return useContext(ConnectorAuthorizationContext);
-}
-
 export function useConnectorAuthorizationOptional():
   | ConnectorAuthorizationState
   | undefined {

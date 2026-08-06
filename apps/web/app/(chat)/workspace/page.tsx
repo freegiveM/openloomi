@@ -56,7 +56,6 @@ import {
   SpreadsheetPreviewScrollBody,
 } from "@/components/artifacts/spreadsheet-preview";
 import { uploadRagFile } from "@/lib/files/upload";
-import { useGlobalInsightDrawerOptional } from "@/components/global-insight-drawer";
 import { toast } from "@/components/toast";
 import "../../../i18n";
 import { getAuthToken } from "@/lib/auth/token-manager";
@@ -277,37 +276,6 @@ export default function LibraryPage() {
       router.push(`/workspace?${next.toString()}`);
     },
     [router, searchParams],
-  );
-
-  /** Open event: prioritize opening global drawer; fallback to navigating to event page if drawer unavailable or request fails */
-  const globalDrawer = useGlobalInsightDrawerOptional();
-  const handleOpenEvent = useCallback(
-    (insightId: string) => {
-      if (globalDrawer) {
-        fetch(`/api/insights/${encodeURIComponent(insightId)}?fetch=true`)
-          .then((res) => {
-            if (!res.ok) throw new Error(res.statusText);
-            return res.json();
-          })
-          .then((data) => {
-            if (data?.insight) {
-              globalDrawer.openDrawer(data.insight);
-            } else {
-              router.push(
-                `/?page=events&insightId=${encodeURIComponent(insightId)}`,
-              );
-            }
-          })
-          .catch(() => {
-            router.push(
-              `/?page=events&insightId=${encodeURIComponent(insightId)}`,
-            );
-          });
-      } else {
-        router.push(`/?page=events&insightId=${encodeURIComponent(insightId)}`);
-      }
-    },
-    [globalDrawer, router],
   );
 
   /** Fixed display rule: Chat Vault groups by conversation; My notes / My files group by event (keep GroupByMode for future switching capability) */
@@ -1353,7 +1321,6 @@ export default function LibraryPage() {
                           note={note}
                           viewMode={viewMode}
                           t={t as (key: string, fallback?: string) => string}
-                          onOpenEvent={handleOpenEvent}
                           onDeleteNote={handleDeleteNote}
                         />
                       ))}
@@ -1408,9 +1375,6 @@ export default function LibraryPage() {
                           router.push(
                             `/?page=chat&chatId=${encodeURIComponent(chatId)}`,
                           )
-                        }
-                        onOpenEvent={
-                          activeTab === "myfiles" ? handleOpenEvent : undefined
                         }
                         onPreviewKnowledgeFile={
                           activeTab === "myfiles"
@@ -1721,7 +1685,7 @@ function KnowledgeDocumentPreviewPanel({
                     {t("workspace.previewNoContent", "No content")}
                   </p>
                 ) : (
-                  <MarkdownWithCitations insights={[]}>
+                  <MarkdownWithCitations>
                     {doc.chunks.map((c) => c.content).join("\n\n")}
                   </MarkdownWithCitations>
                 )}
@@ -1741,13 +1705,11 @@ function LibraryNoteRow({
   note,
   viewMode,
   t,
-  onOpenEvent,
   onDeleteNote,
 }: {
   note: LibraryNoteItem;
   viewMode: "list" | "grid";
   t: (key: string, fallback?: string) => string;
-  onOpenEvent: (insightId: string) => void;
   onDeleteNote?: (noteId: string) => void;
 }) {
   const contentPreview =
@@ -1763,18 +1725,6 @@ function LibraryNoteRow({
   /** All are icon buttons, open event uses external_link; delete button placed on the far right */
   const actionButtons = (
     <div className="shrink-0 flex items-center gap-1">
-      <Button
-        variant="ghost"
-        size="icon"
-        className="h-8 w-8 text-muted-foreground hover:text-foreground"
-        onClick={(e) => {
-          e.stopPropagation();
-          onOpenEvent(note.insightId);
-        }}
-        aria-label={t("library.openEvent", "Open event")}
-      >
-        <RemixIcon name="external_link" size="size-4" />
-      </Button>
       {onDeleteNote && (
         <Button
           variant="ghost"

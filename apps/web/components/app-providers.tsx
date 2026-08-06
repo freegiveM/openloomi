@@ -8,7 +8,6 @@
 
 import { Suspense, memo } from "react";
 import { SessionProvider } from "next-auth/react";
-import { InsightOptimisticProvider } from "@/components/insight-optimistic-context";
 import { MobileLayoutWrapper } from "@/components/mobile-layout-wrapper";
 import { MobileBackButton } from "@/components/mobile-back-button";
 import { TelegramSelfListenerInit } from "@/components/telegram-self-listener-init";
@@ -24,7 +23,6 @@ import {
 import { CloudSyncInit } from "@/components/cloud-sync-init";
 import { RawMessagesMigrationInit } from "@/components/raw-messages-migration-init";
 import { TelegramTokenFormProvider } from "@/components/platform-integrations";
-import { VoiceProvider } from "@/components/audio/voice-provider";
 
 // Lazy load initialization components - use Suspense boundaries to avoid blocking initial render
 const IntegrationInitComponents = memo(() => (
@@ -54,13 +52,6 @@ const MobileComponents = memo(() => (
 MobileComponents.displayName = "MobileComponents";
 
 /**
- * Core app content - only includes necessary initialization
- */
-export function AppContent({ children }: { children: React.ReactNode }) {
-  return <InsightOptimisticProvider>{children}</InsightOptimisticProvider>;
-}
-
-/**
  * Complete app Provider tree
  */
 export function AppProviders({ children }: { children: React.ReactNode }) {
@@ -69,12 +60,10 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
       {/* Lazy load integration initialization components */}
       <IntegrationInitComponents />
       <TelegramTokenFormProvider>
-        <VoiceProvider>
           <MobileLayoutWrapper>
-            <AppContent>{children}</AppContent>
+            {children}
             <MobileComponents />
           </MobileLayoutWrapper>
-        </VoiceProvider>
       </TelegramTokenFormProvider>
     </SessionProvider>
   );

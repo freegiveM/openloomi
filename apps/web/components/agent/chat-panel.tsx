@@ -17,7 +17,6 @@ import { useChatContext } from "../chat-context";
 import { ArrowUpIcon, ArrowDownIcon } from "@/components/icons";
 import { Button } from "@openloomi/ui";
 import { WorkspaceFloatPanel } from "./workspace-float-panel";
-import { useGlobalInsightDrawer } from "@/components/global-insight-drawer";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { useConversationApiConfiguration } from "@/components/conversation-api-onboarding-guard";
 import { ConversationApiSetup } from "@/components/conversation-api-setup";
@@ -81,9 +80,6 @@ export function AgentChatPanel({
     setVaultOpen,
     getIsAgentRunningByChatId,
   } = useChatContext();
-
-  // Use global drawer context (same approach as global search to open drawer)
-  const { openDrawer } = useGlobalInsightDrawer();
 
   const handleCloseVault = useCallback(
     () => setVaultOpen(false),
@@ -452,14 +448,6 @@ export function AgentChatPanel({
     switchChatId,
   ]);
 
-  /**
-   * Refresh insights data
-   * Wrapped in useCallback to maintain reference stability and prevent infinite re-renders
-   */
-  const handleRefresh = useCallback(async () => {
-    // Empty function for now - can be extended later if needed
-  }, []);
-
   // Fetch vote data
   const { data: votes } = useSWR<Array<any>>(
     chatId ? `/api/vote?chatId=${chatId}` : null,
@@ -514,11 +502,6 @@ export function AgentChatPanel({
             onOpenWorkspace={
               chatId ? () => openWorkspacePanel(chatId) : undefined
             }
-            onOpenInsight={(insight) => {
-              // Use global drawer context to open drawer
-              openDrawer(insight);
-              setVaultOpen(false);
-            }}
             className="absolute top-full right-0 mt-2"
           />
         </div>
@@ -543,7 +526,6 @@ export function AgentChatPanel({
                       messages={messages}
                       sendMessage={sendMessagePresent}
                       setMessages={setMessages}
-                      onRefresh={handleRefresh}
                       isAgentRunning={isAgentRunningForChat}
                     />
                   </div>

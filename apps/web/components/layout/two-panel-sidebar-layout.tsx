@@ -37,7 +37,7 @@ const BREAKPOINT_CONFIG = {
  * - At breakpoint, main area and sidebar display side-by-side, main area flex-1, sidebar fixed width
  * - Right sidebar scrolls independently without taking up content width
  */
-export function TwoPaneSidebarLayout({
+export function TwoPanelSidebarLayout({
   children,
   sidebar,
   isSidebarOpen,
