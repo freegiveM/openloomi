@@ -39,7 +39,6 @@ export function AgentLayout({
   const searchParams = useSearchParams();
   const page = searchParams?.get("page");
 
-  // Determine whether to show mobile menu bar (only on mobile and insight/brief page)
   const showMobileToolbar = isMobile && !page;
   // Mobile standalone mode: only show currently active panel, fullscreen width
   const isMobileStandaloneMode = isMobile;
@@ -55,14 +54,13 @@ export function AgentLayout({
             ? "flex-1 py-2 pt-2 pb-0 px-2 sm:py-4 sm:px-0 h-full"
             : cn(
                 "flex-1 h-full min-h-0",
-                // No inner padding on desktop without right toolbar (Focus/Insight), consistent with SidebarInset, avoids center card appearing smaller than right sidebar
                 isMobile
                   ? "pt-3 sm:pt-3 pb-0 sm:pb-0 px-2 sm:pl-0 sm:pr-0"
                   : "",
               ),
         ),
   );
-  // Only add inner padding when right toolbar exists; Focus/Insight desktop has no toolbar, no need to repeat SidebarInset's p-2 sm:p-3, avoids center card appearing smaller than right sidebar
+
   const rowClasses = cn(
     "flex-1 min-w-0 min-h-0 flex h-full overflow-hidden",
     isMobileStandaloneMode ? "gap-0" : "gap-2 sm:gap-3",
