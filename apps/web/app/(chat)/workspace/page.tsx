@@ -763,7 +763,7 @@ export default function LibraryPage() {
       title: f.fileName,
       subtitle: undefined,
       date: new Date(f.uploadedAt),
-      groupKey: f.insightId ?? "knowledge",
+      groupKey: "knowledge",
       knowledgeFile: f,
     }));
     return items;
@@ -875,41 +875,6 @@ export default function LibraryPage() {
           items: sortList(list),
           key: dayKey,
         }));
-    }
-
-    if (effectiveGroupBy === "event") {
-      const map = new Map<string, LibraryItem[]>();
-      const fallbackKey = "__unchained__";
-      filteredItems.forEach((item) => {
-        let key: string;
-        // My files: knowledge base files with associated events are grouped by event
-        if (
-          item.kind === "knowledge_file" &&
-          item.knowledgeFile?.insightId &&
-          item.knowledgeFile?.insightTitle
-        ) {
-          key = `insight:${item.knowledgeFile.insightId}:${item.knowledgeFile.insightTitle}`;
-        } else if (item.groupKey === "knowledge" || item.groupKey === "tools") {
-          key = fallbackKey;
-        } else {
-          const meta = chatMeta[item.groupKey];
-          const first = meta?.insights?.[0];
-          key = first ? `insight:${first.id}:${first.title}` : fallbackKey;
-        }
-        if (!map.has(key)) map.set(key, []);
-        map.get(key)?.push(item);
-      });
-      return Array.from(map.entries()).map(([key, list]) => {
-        const label =
-          key === fallbackKey
-            ? activeTab === "myfiles"
-              ? t("workspace.publicGroup")
-              : t("workspace.unchainedEvent")
-            : key.startsWith("insight:")
-              ? key.replace(/^insight:[^:]+:/, "")
-              : key;
-        return { label, items: sortList(list), key };
-      });
     }
 
     if (effectiveGroupBy === "folder") {

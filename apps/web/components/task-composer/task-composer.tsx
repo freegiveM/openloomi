@@ -18,7 +18,6 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useAudioRecording } from "@/hooks/use-audio-recording";
 import { SUPPORTED_FILE_EXTENSIONS } from "@/lib/files/config";
-import { uploadFile } from "@/lib/files/upload";
 import { useAttachmentUpload } from "./use-attachment-upload";
 import type { TaskComposerProps, TaskComposerSubmitPayload } from "./types";
 import { VoiceRecordingBar } from "./voice-recording-bar";
@@ -68,25 +67,6 @@ function extractClipboardFiles(clipboardData: DataTransfer | null): File[] {
   return Array.from(clipboardData.files ?? []);
 }
 
-async function readFileAsBase64(file: File): Promise<string> {
-  const dataUrl = await new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      if (typeof reader.result !== "string") {
-        reject(new Error("Failed to read screenshot file"));
-        return;
-      }
-      resolve(reader.result);
-    };
-    reader.onerror = () =>
-      reject(reader.error ?? new Error("Failed to read screenshot file"));
-    reader.readAsDataURL(file);
-  });
-
-  const [, base64 = ""] = dataUrl.split(",", 2);
-  return base64;
-}
-
 async function importTauriEvent() {
   if (!isTauriEnv) return null;
   try {
@@ -124,7 +104,6 @@ function PureTaskComposer({
   );
   const isComposingOrJustEndedRef = useRef(false);
   const [isDraggingFile, setIsDraggingFile] = useState(false);
-  const [isScreenshotting, setIsScreenshotting] = useState(false);
   const dragCounterRef = useRef(0);
   const focusTextarea = useCallback(() => {
     setTimeout(() => textareaRef.current?.focus(), 0);
@@ -138,7 +117,7 @@ function PureTaskComposer({
     onUploadComplete: focusTextarea,
   });
   const effectiveUploadingState =
-    (controlledUploadingState ?? internalUploadingState) || isScreenshotting;
+    (controlledUploadingState ?? internalUploadingState);
   const handleFileSelection = onFilesSelected ?? internalHandleFileUpload;
 
   const showSendingState =
@@ -307,102 +286,6 @@ function PureTaskComposer({
     },
     [composerBusy, handleFileSelection, isLocked, isVoiceActive],
   );
-
-  const captureScreenshot = async (): Promise<Blob> => {
-    if (!navigator.mediaDevices?.getDisplayMedia) {
-      throw new Error("Screen capture is not supported in this environment");
-    }
-    const stream = await navigator.mediaDevices.getDisplayMedia({
-      audio: false,
-      video: true,
-    });
-
-    const video = document.createElement("video");
-    video.srcObject = stream;
-
-    try {
-      await new Promise<void>((resolve, reject) => {
-        video.onloadedmetadata = () => resolve();
-        video.onerror = () => reject(new Error("Failed to load screen stream"));
-      });
-      await video.play();
-
-      const canvas = document.createElement("canvas");
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-
-      const ctx = canvas.getContext("2d");
-      if (!ctx) {
-        throw new Error("Canvas context unavailable");
-      }
-      ctx.drawImage(video, 0, 0);
-
-      const blob = await new Promise<Blob | null>((resolve) =>
-        canvas.toBlob(resolve, "image/png"),
-      );
-      if (!blob) {
-        throw new Error("Canvas toBlob failed");
-      }
-      return blob;
-    } finally {
-      stream.getTracks().forEach((track) => track.stop());
-      video.srcObject = null;
-    }
-  };
-
-  const handleScreenshot = useCallback(async () => {
-    if (composerBusy || isLocked || isVoiceActive || isScreenshotting) return;
-    setIsScreenshotting(true);
-
-    try {
-      const blob = await captureScreenshot();
-
-      const fileName = `screenshot-${Date.now()}.png`;
-      const file = new File([blob], fileName, { type: "image/png" });
-      const result = await uploadFile(file, { createRecord: false });
-
-      const attachment: Attachment & {
-        file?: File;
-      } = {
-        name: result.name || fileName,
-        url: result.url,
-        downloadUrl: result.downloadUrl,
-        blobPath: result.blobPath,
-        contentType: result.contentType,
-        sizeBytes: result.size,
-        file,
-      };
-
-      setAttachments((prev) => [...prev, attachment]);
-      focusTextarea();
-
-      toast.success(
-        t("chat.screenshotCaptured", "Screenshot captured and added to input"),
-      );
-    } catch (error) {
-      console.error("[TaskComposer] Failed to capture screenshot:", error);
-      if (
-        error instanceof DOMException &&
-        (error.name === "NotAllowedError" || error.name === "AbortError")
-      ) {
-        return;
-      }
-
-      toast.error(
-        t("chat.screenshotFailed", "Screenshot failed, please try again"),
-      );
-    } finally {
-      setIsScreenshotting(false);
-    }
-  }, [
-    composerBusy,
-    focusTextarea,
-    isLocked,
-    isScreenshotting,
-    isVoiceActive,
-    setAttachments,
-    t,
-  ]);
 
   useEffect(() => {
     if (!isTauriEnv || !enableDropzone || onFilesSelected) return;
@@ -594,37 +477,6 @@ function PureTaskComposer({
                     </span>
                   </TooltipContent>
                 </Tooltip>
-                {/* <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      className="group flex size-8 items-center justify-center rounded-full bg-transparent p-0 transition-colors hover:bg-[#D9D9D9] disabled:cursor-not-allowed disabled:opacity-50"
-                      onClick={() => {
-                        void handleScreenshot();
-                      }}
-                      disabled={
-                        composerBusy ||
-                        isLocked ||
-                        isVoiceActive ||
-                        isScreenshotting
-                      }
-                      aria-label={t("chat.screenshot", "Screenshot")}
-                    >
-                      {isScreenshotting ? (
-                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                      ) : (
-                        <RemixIcon name="screenshot_2" size="size-4" />
-                      )}
-                    </button>
-                  </TooltipTrigger>
-                  {!isScreenshotting ? (
-                    <TooltipContent>
-                      <span className="text-xs">
-                        {t("chat.screenshotHint", "Capture screenshot")}
-                      </span>
-                    </TooltipContent>
-                  ) : null}
-                </Tooltip> */}
                 {value.length >= MAX_TEXT_LENGTH && (
                   <span className="shrink-0 text-xs tabular-nums">
                     <span style={{ color: "#E84937" }}>{value.length}</span>

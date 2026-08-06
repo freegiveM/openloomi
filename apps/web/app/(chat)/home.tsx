@@ -109,11 +109,8 @@ export function Home() {
     activeChatId,
     setActiveChatId: contextSetActiveChatId,
     switchChatId,
-    selectedInsight,
     previewFile,
     closeFilePreviewPanel,
-    setSelectedInsight,
-    setIsInsightDrawerOpen,
     sendMessage,
   } = useChatContext();
 
@@ -311,79 +308,6 @@ export function Home() {
     router.replace(newPath, { scroll: false });
   }, [page, localActiveChatId, pathname, searchParams, router]);
 
-  // Prevent insightDetailId cleanup logic from repeatedly executing causing infinite loop
-  const insightCleanupRef = useRef<Set<string>>(new Set());
-
-  // Listen to insightDetailId in URL parameters, automatically load corresponding insight
-  useEffect(() => {
-    const insightDetailId = searchParams.get("insightDetailId");
-    if (!insightDetailId) return;
-
-    // Check if already attempted to clean up this insight ID, prevent infinite loop
-    if (insightCleanupRef.current.has(insightDetailId)) {
-      return;
-    }
-
-    const abortController = new AbortController();
-
-    async function fetchInsight() {
-      try {
-        const res = await fetch(`/api/insights/${insightDetailId}?fetch=true`, {
-          signal: abortController.signal,
-        });
-
-        if (!res.ok) {
-          throw new Error(`Failed to fetch insight: ${res.statusText}`);
-        }
-
-        const data = await res.json();
-
-        if (data.insight) {
-          setSelectedInsight(data.insight);
-          setIsInsightDrawerOpen(true);
-        } else {
-          // If insight doesn't exist, clear URL parameter
-          cleanupInsightUrl(insightDetailId);
-        }
-      } catch (error) {
-        // Ignore abort errors (component unmounted)
-        if (error instanceof Error && error.name === "AbortError") {
-          return;
-        }
-        console.error("Error fetching insight:", error);
-        cleanupInsightUrl(insightDetailId);
-      }
-    }
-
-    function cleanupInsightUrl(id: string | null) {
-      if (!id) return;
-      const cleanupSet = insightCleanupRef.current;
-      if (!cleanupSet.has(id)) {
-        cleanupSet.add(id);
-        const newPath = buildNavigationUrl({
-          pathname,
-          searchParams,
-          paramsToUpdate: { insightDetailId: null },
-        });
-        router.replace(newPath);
-      }
-    }
-
-    fetchInsight();
-
-    return () => {
-      abortController.abort();
-    };
-  }, [searchParams, pathname, router]);
-
-  // When chatId changes, clear selectedInsight to close mobile drawer
-  // This ensures bottom tab displays normally
-  // insightDetailId parameter will be retained, drawer will automatically reopen when user switches back
-  const selectedInsightRef = useRef(selectedInsight);
-  useEffect(() => {
-    selectedInsightRef.current = selectedInsight;
-  }, [selectedInsight]);
-
   // ============================================================================
   // Chat Hook & Refs
   // ============================================================================
@@ -456,7 +380,6 @@ export function Home() {
           ...(page === "chat"
             ? { page: "chat", chatId: targetChatId }
             : { rightPanel: "chat" }),
-          // Keep current insightDetailId parameter in URL
         },
       });
 

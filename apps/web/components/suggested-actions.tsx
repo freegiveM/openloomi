@@ -9,7 +9,6 @@ export interface SuggestedPrompt {
   emoji: string;
   type: "event_based" | "pattern_based" | "role_based";
   reasoning: string;
-  related_insight_ids: string[];
 }
 
 /**
@@ -25,7 +24,6 @@ export function getAllDefaultSuggestions(
       emoji: "📊",
       type: "role_based" as const,
       reasoning: "Create presentation",
-      related_insight_ids: [],
     },
     {
       id: "frontendDesign",
@@ -33,7 +31,6 @@ export function getAllDefaultSuggestions(
       emoji: "🖥️",
       type: "role_based" as const,
       reasoning: "Frontend design for openloomi website introduction page",
-      related_insight_ids: [],
     },
     {
       id: "linkedinPost",
@@ -41,7 +38,6 @@ export function getAllDefaultSuggestions(
       emoji: "📈",
       type: "role_based" as const,
       reasoning: "Event tracking creation",
-      related_insight_ids: [],
     },
     {
       id: "productCopy",
@@ -49,7 +45,6 @@ export function getAllDefaultSuggestions(
       emoji: "✍️",
       type: "role_based" as const,
       reasoning: "Product copy optimization",
-      related_insight_ids: [],
     },
     {
       id: "algorithmicArt",
@@ -57,7 +52,6 @@ export function getAllDefaultSuggestions(
       emoji: "🎨",
       type: "role_based" as const,
       reasoning: "Algorithmic art creation",
-      related_insight_ids: [],
     },
     {
       id: "aiNews",
@@ -65,7 +59,6 @@ export function getAllDefaultSuggestions(
       emoji: "📰",
       type: "role_based" as const,
       reasoning: "AI industry news research",
-      related_insight_ids: [],
     },
   ];
 }

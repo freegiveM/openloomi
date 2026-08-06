@@ -4,7 +4,6 @@ import {
   forwardRef,
   useCallback,
   useEffect,
-  useImperativeHandle,
   useMemo,
   useRef,
   useState,
@@ -13,13 +12,11 @@ import useSWR from "swr";
 import { useTranslation } from "react-i18next";
 import { cn, fetcher } from "@/lib/utils";
 import { toast } from "sonner";
-import { buildRefMarker } from "@openloomi/shared/ref";
 import { EditorContent, useEditor } from "@tiptap/react";
 import { Node as TiptapNode } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
-import type { Insight } from "@/lib/db/schema";
 import { Button, Input } from "@openloomi/ui";
 import {
   Dialog,
@@ -284,37 +281,6 @@ export const NovelInstructionEditor = forwardRef<
     );
   }, [skillsList, skillQuery]);
 
-  /**
-   * Compute event search URL for the event picker dialog.
-   */
-  const eventSearchUrl = useMemo(() => {
-    if (!isEventPickerOpen) return null;
-    if (debouncedEventQuery.trim()) {
-      return `/api/search?q=${encodeURIComponent(debouncedEventQuery)}&types=events&limit=50`;
-    }
-    return "/api/insights/events?limit=20&days=0";
-  }, [debouncedEventQuery, isEventPickerOpen]);
-
-  const { data: eventSearchData, isLoading: isEventLoading } = useSWR<{
-    events?: Array<{ extra?: { insight?: Insight } }>;
-    items?: Insight[];
-  }>(eventSearchUrl, fetcher, { revalidateOnFocus: false });
-
-  /**
-   * Normalize event search response into an Insight list.
-   */
-  const eventList = useMemo((): Insight[] => {
-    const data = eventSearchData;
-    if (!data) return [];
-    if (data.events) {
-      return data.events
-        .map((it) => it.extra?.insight)
-        .filter((insight): insight is Insight => !!insight);
-    }
-    if (data.items) return data.items;
-    return [];
-  }, [eventSearchData]);
-
   // Debounce event query typing.
   useEffect(() => {
     const timer = window.setTimeout(
@@ -527,37 +493,6 @@ export const NovelInstructionEditor = forwardRef<
   }, [disabled, editor, saveSelection]);
 
   /**
-   * Insert an event badge at the current cursor position.
-   */
-  const insertEventBadge = useCallback(
-    (event: Insight) => {
-      if (!editor) return;
-      const title = event.title || event.id;
-      const marker = buildRefMarker("event", `${event.id}|${title}`);
-
-      restoreSelection();
-      editor
-        .chain()
-        .focus()
-        .insertContent({
-          type: "refBadge",
-          attrs: {
-            kind: "event",
-            id: event.id,
-            label: title,
-            marker,
-          },
-        })
-        .run();
-
-      setIsEventPickerOpen(false);
-      setEventQuery("");
-      setDebouncedEventQuery("");
-    },
-    [editor, restoreSelection],
-  );
-
-  /**
    * Insert a skill badge at the current cursor position.
    */
   const insertSkillBadge = useCallback(
@@ -623,36 +558,6 @@ export const NovelInstructionEditor = forwardRef<
         .run();
     },
     [editor],
-  );
-
-  useImperativeHandle(
-    ref,
-    () => ({
-      openEventPicker,
-      openSkillPicker,
-      insertSkillBadge: (skill) => {
-        insertSkillBadge({
-          id: skill.id,
-          name: skill.name,
-          description: "",
-        });
-      },
-      insertEventBadge: (event) => {
-        insertEventBadge({
-          id: event.id,
-          title: event.title ?? event.id,
-          description: event.description ?? "",
-        } as Insight);
-      },
-      insertSourceBadge,
-    }),
-    [
-      insertEventBadge,
-      insertSkillBadge,
-      insertSourceBadge,
-      openEventPicker,
-      openSkillPicker,
-    ],
   );
 
   /**
@@ -877,43 +782,6 @@ export const NovelInstructionEditor = forwardRef<
               )}
               disabled={disabled}
             />
-
-            <div className="flex-1 overflow-y-auto min-h-0 border rounded-lg">
-              {isEventLoading ? (
-                <div className="p-12 flex items-center justify-center text-muted-foreground">
-                  <Spinner size={20} />
-                  <span className="ml-2 text-sm">
-                    {t("common.loading", "Loading")}
-                  </span>
-                </div>
-              ) : eventList.length === 0 ? (
-                <div className="p-8 text-sm text-muted-foreground text-center">
-                  {t("chat.noEvents", "No events")}
-                </div>
-              ) : (
-                <div className="divide-y">
-                  {eventList.map((event) => (
-                    <button
-                      key={event.id}
-                      type="button"
-                      className="w-full px-4 py-3 text-left hover:bg-muted/50 transition-colors"
-                      onClick={() => insertEventBadge(event)}
-                      disabled={disabled}
-                    >
-                      <div className="font-medium text-sm truncate">
-                        {event.title ||
-                          t("chat.untitledEvent", "Untitled event")}
-                      </div>
-                      {event.description && (
-                        <div className="text-xs text-muted-foreground mt-1 line-clamp-2 whitespace-pre-line">
-                          {event.description}
-                        </div>
-                      )}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
           </div>
         </DialogContent>
       </Dialog>

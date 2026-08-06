@@ -35,9 +35,7 @@ import { InlineRefBadge } from "../inline-ref-badge";
 import { ErrorMessageDisplay } from "./error-message-display";
 import { NativeToolCall } from "./native-tool-call";
 import { RawMessagesResult } from "./raw-messages-result";
-import { LifestyleImageConsent } from "./lifestyle-image-consent";
 import { ToolCallAccordion, type ToolCallPart } from "./tool-call-accordion";
-import { buildLifestyleReferenceImages } from "@/lib/ai/image-generation/lifestyle-reference-images";
 import {
   LibraryItemRow,
   type LibraryItem,
@@ -824,42 +822,6 @@ const PurePreviewMessage = ({
                             maxHeight="400px"
                           />
                         </div>
-                      );
-                    }
-
-                    if (type === "data-lifestyleImageConsent") {
-                      const consentPart = part as {
-                        data?: {
-                          prompt?: string;
-                          referenceImages?: unknown;
-                        };
-                      };
-                      const prompt = consentPart.data?.prompt?.trim();
-                      if (!prompt) return null;
-                      const referenceImages = buildLifestyleReferenceImages(
-                        Array.isArray(consentPart.data?.referenceImages)
-                          ? consentPart.data.referenceImages
-                          : [],
-                      );
-
-                      return (
-                        <LifestyleImageConsent
-                          key={key}
-                          onConfirm={() =>
-                            confirmLifestyleImageGeneration({
-                              chatId,
-                              assistantMessageId: message.id,
-                              prompt,
-                              referenceImages,
-                            })
-                          }
-                          onDecline={() =>
-                            declineLifestyleImageGeneration({
-                              chatId,
-                              assistantMessageId: message.id,
-                            })
-                          }
-                        />
                       );
                     }
 

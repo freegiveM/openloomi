@@ -10,8 +10,6 @@ import { Button } from "./ui/button";
 import { RemixIcon } from "@/components/remix-icon";
 import useSWR from "swr";
 import { fetcher } from "@/lib/utils";
-import { buildRefMarker } from "@openloomi/shared/ref";
-import type { Insight } from "@/lib/db/schema";
 
 type SkillItem = {
   id: string;
@@ -124,34 +122,6 @@ export function SkillEventInput({
 
   // Event search state
   const [eventSearchQuery, setEventSearchQuery] = useState("");
-  const [debouncedEventQuery, setDebouncedEventQuery] = useState("");
-  const eventSearchUrl = useMemo(() => {
-    if (debouncedEventQuery.trim()) {
-      return `/api/search?q=${encodeURIComponent(debouncedEventQuery)}&types=events&limit=50`;
-    }
-    return "/api/insights/events?limit=20&days=0";
-  }, [debouncedEventQuery]);
-
-  const { data: eventSearchData } = useSWR(eventSearchUrl, fetcher, {
-    revalidateOnFocus: false,
-    revalidateOnReconnect: false,
-  });
-
-  // Parse event list
-  const eventList = useMemo((): Insight[] => {
-    if (!eventSearchData) return [];
-    if (eventSearchData.events) {
-      return eventSearchData.events
-        .map((item: any) => item.extra?.insight)
-        .filter(
-          (insight: Insight | undefined): insight is Insight => !!insight,
-        );
-    }
-    if (eventSearchData.items) {
-      return eventSearchData.items;
-    }
-    return [];
-  }, [eventSearchData]);
 
   // Filter skills list
   const filteredSkills = useMemo(() => {
@@ -164,17 +134,6 @@ export function SkillEventInput({
         (s.description ?? "").toLowerCase().includes(q),
     );
   }, [skillsList, slashQuery]);
-
-  // Filter events list
-  const filteredEvents = useMemo(() => {
-    const q = eventSearchQuery.trim().toLowerCase();
-    if (!q) return eventList;
-    return eventList.filter(
-      (event) =>
-        (event.title ?? "").toLowerCase().includes(q) ||
-        (event.description ?? "").toLowerCase().includes(q),
-    );
-  }, [eventList, eventSearchQuery]);
 
   // Handle text input
   const handleInput = useCallback(
@@ -280,37 +239,6 @@ export function SkillEventInput({
     [value, onChange],
   );
 
-  // Insert event
-  const insertEvent = useCallback(
-    (event: Insight) => {
-      const range = atMentionRangeRef.current;
-      let start: number;
-      let end: number;
-      if (range) {
-        start = range.start;
-        end = range.end;
-        atMentionRangeRef.current = null;
-      } else {
-        start = value.length;
-        end = value.length;
-      }
-      // Use [[ref:event:id|title]] format
-      const marker = buildRefMarker(
-        "event",
-        `${event.id}|${event.title || event.id}`,
-      );
-      const trailingSpace = " ";
-      const newValue =
-        value.slice(0, start) + marker + trailingSpace + value.slice(end);
-      onChange(newValue);
-      setIsAtMentionOpen(false);
-      setEventSearchQuery("");
-      setDebouncedEventQuery("");
-      setTimeout(() => textareaRef.current?.focus(), 0);
-    },
-    [value, onChange],
-  );
-
   // Remove selected skill
   const removeSkill = useCallback(
     (skillId: string) => {
@@ -367,55 +295,16 @@ export function SkillEventInput({
           return;
         }
       }
-
-      // Event menu keyboard navigation
-      if (isAtMentionOpen && filteredEvents.length > 0) {
-        if (e.key === "ArrowDown") {
-          e.preventDefault();
-          setAtMentionHighlightedIndex((i) =>
-            i < filteredEvents.length - 1 ? i + 1 : 0,
-          );
-          return;
-        }
-        if (e.key === "ArrowUp") {
-          e.preventDefault();
-          setAtMentionHighlightedIndex((i) =>
-            i > 0 ? i - 1 : filteredEvents.length - 1,
-          );
-          return;
-        }
-        if (e.key === "Enter") {
-          e.preventDefault();
-          const event = filteredEvents[atMentionHighlightedIndex];
-          if (event) insertEvent(event);
-          return;
-        }
-        if (e.key === "Escape") {
-          e.preventDefault();
-          setIsAtMentionOpen(false);
-          return;
-        }
-      }
     },
     [
       isSlashOpen,
       isAtMentionOpen,
       filteredSkills,
-      filteredEvents,
       slashHighlightedIndex,
       atMentionHighlightedIndex,
       insertSkill,
-      insertEvent,
     ],
   );
-
-  // Debounce event search
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedEventQuery(eventSearchQuery);
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [eventSearchQuery]);
 
   // Scroll to highlighted item
   useEffect(() => {
@@ -663,68 +552,6 @@ export function SkillEventInput({
                   >
                     <RemixIcon name="close" size="size-4" />
                   </button>
-                )}
-              </div>
-            </div>
-
-            {/* Event list */}
-            <div className="flex-1 overflow-y-auto">
-              <div className="p-1.5">
-                {filteredEvents.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center gap-2 px-4 py-6 text-center">
-                    <span className="text-muted-foreground/80 text-sm">
-                      {eventSearchQuery.trim()
-                        ? t("chat.noEventsFound", "No matching events found")
-                        : t("chat.noEvents", "No events")}
-                    </span>
-                  </div>
-                ) : (
-                  <div className="flex flex-col gap-0.5">
-                    {filteredEvents.map((event, index) => {
-                      const isHighlighted = index === atMentionHighlightedIndex;
-                      return (
-                        <div
-                          key={event.id}
-                          data-index={index}
-                          role="option"
-                          aria-selected={isHighlighted}
-                        >
-                          <button
-                            type="button"
-                            className={cx(
-                              "flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm transition-colors",
-                              "hover:bg-accent hover:text-accent-foreground",
-                              isHighlighted &&
-                                "bg-accent text-accent-foreground shadow-sm",
-                            )}
-                            onClick={() => insertEvent(event)}
-                          >
-                            <span
-                              className={cx(
-                                "flex h-8 w-8 shrink-0 items-center justify-center rounded-md",
-                                isHighlighted
-                                  ? "bg-primary/15 text-primary"
-                                  : "bg-muted/80 text-muted-foreground",
-                              )}
-                            >
-                              <RemixIcon name="calendar-event" size="size-4" />
-                            </span>
-                            <div className="flex-1 min-w-0">
-                              <span className="block truncate font-normal">
-                                {event.title ||
-                                  t("chat.untitledEvent", "Untitled event")}
-                              </span>
-                              {event.description && (
-                                <span className="block truncate text-xs text-muted-foreground">
-                                  {event.description}
-                                </span>
-                              )}
-                            </div>
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
                 )}
               </div>
             </div>

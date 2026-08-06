@@ -213,21 +213,6 @@ export class OfflineManager {
   }
 
   /**
-   * Get sync endpoint
-   */
-  private getEndpointForType(type: SyncItem["type"]): string {
-    const endpoints: Record<SyncItem["type"], string> = {
-      chat: "chats",
-      message: "messages",
-      bot: "bots",
-      insight: "insights",
-      setting: "settings",
-    };
-
-    return endpoints[type];
-  }
-
-  /**
    * Delay
    */
   private delay(ms: number): Promise<void> {

@@ -1230,27 +1230,6 @@ export const WarningIcon = ({ size = 16 }: { size?: number }) => {
   );
 };
 
-export const InsightPanelHeaderIcon = ({ size = 16 }: { size?: number }) => {
-  return (
-    <svg
-      height={size}
-      strokeLinejoin="round"
-      viewBox="0 0 16 16"
-      width={size}
-      style={{ color: "currentcolor" }}
-    >
-      <path
-        fillRule="evenodd"
-        clipRule="evenodd"
-        d="M13.5 2.5C11.5 0.5 7.5 1.5 4.5 4.5C1.5 7.5 0.5 11.5 2.5 13.5C4.5 15.5 8.5 14.5 11.5 11.5C14.5 8.5 15.5 4.5 13.5 2.5Z
-           M4.5 11.5L11.5 4.5
-           M6.5 13.5L13.5 6.5"
-        fill="currentColor"
-      />
-    </svg>
-  );
-};
-
 export const SettingIcon = ({ size = 16 }: { size?: number }) => {
   return (
     <svg

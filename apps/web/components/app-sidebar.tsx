@@ -702,7 +702,6 @@ export function AppSidebar() {
                         );
                       })}
 
-                      {/* New Chat - opens as right panel under Focus/Tracking, keeping left Insight/Focus visible; otherwise chat page only */}
                       {isNavVisible("chat") &&
                         (() => {
                           const isNewChatActive =

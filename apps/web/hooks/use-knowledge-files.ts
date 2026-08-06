@@ -9,7 +9,6 @@ import { getAuthToken } from "@/lib/auth/token-manager";
 
 /**
  * Knowledge base document interface
- * insightId / insightTitle comes from insight_documents association, used for grouping by event within library
  */
 export interface KnowledgeFile {
   id: string;
@@ -18,10 +17,6 @@ export interface KnowledgeFile {
   sizeBytes: number;
   totalChunks: number;
   uploadedAt: string;
-  /** Associated event ID (exists when uploaded in event) */
-  insightId?: string;
-  /** Associated event title */
-  insightTitle?: string;
 }
 
 /**
