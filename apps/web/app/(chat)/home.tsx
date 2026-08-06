@@ -14,7 +14,6 @@ import {
 } from "react";
 import { useLocalStorage } from "usehooks-ts";
 import { AgentLayout } from "@/components/agent/layout";
-import { ResponsiveToolbar } from "@/components/agent/responsive-toolbar";
 import { AgentChatPanel } from "@/components/agent/chat-panel";
 import { ChatHeaderPanel } from "@/components/agent/chat-header-panel";
 import { Button, PageSectionHeader } from "@openloomi/ui";
@@ -23,17 +22,13 @@ import "../../i18n";
 import type { ChatMessage } from "@openloomi/shared";
 import dynamic from "next/dynamic";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
-import { buildNavigationUrl, cn, generateUUID, fetcher } from "@/lib/utils";
+import { buildNavigationUrl, generateUUID, fetcher } from "@/lib/utils";
 import { UserProfileSettings } from "@/components/user-profile-settings";
 import { AiApiSettings } from "@/components/ai-api-settings";
 import { StorageManagementPanel } from "@/components/storage-management-panel";
-import { useIsMobile } from "@openloomi/hooks/use-is-mobile";
 import { useChatContext } from "@/components/chat-context";
-import { InsightsPaginationProvider } from "@/hooks/use-insight-data";
 import { FilePreviewOverlay } from "@/components/file-preview-overlay";
 import { ChatHistorySidePanel } from "@/components/agent/chat-history-side-panel";
-import { NewInsightsSidePanel } from "@/components/agent/new-insights-side-panel";
-import { useNewInsightsContext } from "@/components/insights-new-context";
 import type { ChatHistoryResponse } from "@/lib/ai/chat/api";
 import { decodeSearchParamText } from "@/lib/chat/query-text";
 import { mutate } from "swr";
@@ -86,11 +81,9 @@ export function Home() {
 
   const router = useRouter();
   const pathname = usePathname();
-  const isMobile = useIsMobile();
   const searchParams = useSearchParams();
 
   const page = searchParams.get("page");
-  const category = searchParams.get("category");
   /** Chat page (page=chat) reads chatId from URL, used to correctly open corresponding chat after jumping from Library/Chat Vault "Open chat" */
   const urlChatId = searchParams.get("chatId") ?? undefined;
   /** Chat page reads send parameter from URL, automatically sends that message after mounting (e.g., onboarding "Talk with openloomi") */
@@ -101,21 +94,12 @@ export function Home() {
   const initialInput = decodeSearchParamText(urlInitialInput);
   const prefillToken = searchParams.get("prefillToken") ?? undefined;
 
-  /** Inbox page (/inbox) and Focus page (/) are distinguished by pathname, no longer use panel parameter */
-  const isInboxPage = pathname === "/inbox";
-
-  // Use useMemo to cache category prop, avoid causing child component re-render due to new reference
-  const memoizedCategory = useMemo(() => category ?? undefined, [category]);
-
   // Chat page right sidebar history switch (only used when page=chat)
   // Default collapsed, use localStorage to persist user preference
   const [isChatHistoryOpen, setIsChatHistoryOpen] = useLocalStorage(
     "chatHistoryPanelOpen",
     false,
   );
-
-  // New insights panel switch (only used when page=chat)
-  const [isNewInsightsPanelOpen, setIsNewInsightsPanelOpen] = useState(false);
 
   // Get state from ChatContext
   const {
@@ -126,16 +110,12 @@ export function Home() {
     setActiveChatId: contextSetActiveChatId,
     switchChatId,
     selectedInsight,
-    isInsightDrawerOpen,
     previewFile,
     closeFilePreviewPanel,
     setSelectedInsight,
     setIsInsightDrawerOpen,
     sendMessage,
   } = useChatContext();
-
-  // Get new insights count from context
-  const { newInsightsCount } = useNewInsightsContext();
 
   // Progressive authorization state
   const [isAddPlatformDialogOpen, setIsAddPlatformDialogOpen] = useState(false);
@@ -317,8 +297,7 @@ export function Home() {
   useEffect(() => {
     // Only redirect when page is null and localActiveChatId is available
     if (page !== null || !localActiveChatId) return;
-    // /inbox is a standalone page that also has no page query parameter.
-    // Keep it on the insight/events surface instead of forcing it into chat.
+
     if (pathname !== "/") return;
 
     const newPath = buildNavigationUrl({
@@ -331,35 +310,6 @@ export function Home() {
     });
     router.replace(newPath, { scroll: false });
   }, [page, localActiveChatId, pathname, searchParams, router]);
-
-  // Mobile panel state
-  // Note: When initializing, need to consider pathname, ensure value in localStorage matches current path
-  const [mobileActivePanel, setMobileActivePanel] = useLocalStorage<
-    "insight" | "brief" | "chat"
-  >("mobileActivePanel", () => {
-    if (typeof window === "undefined") return "brief";
-    const saved = localStorage.getItem("mobileActivePanel");
-    // If saved value matches current path, use saved value
-    // "/" path corresponds to "brief", "/inbox" path corresponds to "insight"
-    // "chat" needs to be re-judged when not on chat page
-    const currentPath = window.location.pathname;
-    if (saved === "chat") {
-      // If saved value is chat, need to re-judge based on current path
-      return currentPath === "/inbox" ? "insight" : "brief";
-    }
-    if (saved && ["insight", "brief"].includes(saved)) {
-      return saved as "insight" | "brief";
-    }
-    return currentPath === "/inbox" ? "insight" : "brief";
-  });
-
-  // Page title
-  const [centerTitle, setCenterTitle] = useState("Workspace");
-
-  // Get translations after client hydration completes, avoid hydration error
-  useEffect(() => {
-    setCenterTitle(t("agent.sections.center", "Workspace"));
-  }, [t]);
 
   // Prevent insightDetailId cleanup logic from repeatedly executing causing infinite loop
   const insightCleanupRef = useRef<Set<string>>(new Set());
@@ -434,12 +384,6 @@ export function Home() {
     selectedInsightRef.current = selectedInsight;
   }, [selectedInsight]);
 
-  // Defensive check: ensure effectiveChatId exists and is valid
-  const isValidChatId =
-    effectiveChatId &&
-    typeof effectiveChatId === "string" &&
-    effectiveChatId.length > 0;
-
   // ============================================================================
   // Chat Hook & Refs
   // ============================================================================
@@ -497,45 +441,9 @@ export function Home() {
     previsAgentRunningRef.current = isAgentRunning;
   }, [isAgentRunning, setMessages, activeChatId]);
 
-  const handleAskAiClick = useCallback(() => {
-    // Mobile: switch panel
-    if (isMobile && !page) {
-      if (mobileActivePanel === "chat") {
-        setMobileActivePanel(isInboxPage ? "insight" : "brief");
-      } else {
-        setMobileActivePanel("chat");
-      }
-      return;
-    }
-  }, [isMobile, page, isInboxPage, mobileActivePanel]);
-
-  // Sync pathname to mobile panel state (/inbox = insight, / = focus)
-  useEffect(() => {
-    if (!isMobile || page) return;
-
-    const prevPath = sessionStorage.getItem("prevPathname");
-    if (prevPath === null) {
-      sessionStorage.setItem("prevPathname", pathname);
-      return;
-    }
-
-    if (prevPath === pathname) return;
-
-    if (pathname === "/inbox") {
-      setMobileActivePanel("insight");
-    } else if (pathname === "/") {
-      // When switching to home page, ensure set to brief, don't keep chat status
-      setMobileActivePanel("brief");
-    }
-    sessionStorage.setItem("prevPathname", pathname);
-  }, [pathname, page, isMobile]);
-
   // Extracted inline handlers to useCallback for better performance
   const handleChatIdChange = useCallback(
     (newChatId: string | null) => {
-      // Read insightDetailId from current URL parameters, not from state
-      // Because when switching chat, state may not have updated yet
-      const currentInsightDetailId = searchParams.get("insightDetailId");
       // If newChatId is null (new conversation), generate a new UUID
       const targetChatId = newChatId ?? generateUUID();
       // When page=chat, use query parameters instead of /chat/[id] route
@@ -585,35 +493,6 @@ export function Home() {
     },
     [effectiveChatId, handleChatIdChange, mutateHistoryPages],
   );
-
-  const handleOpenRelatedInsight = useCallback(
-    (insight: import("@/lib/db/schema").Insight | null) => {
-      setSelectedInsight(insight);
-      // Update insightDetailId parameter in URL
-      if (insight?.id) {
-        const newPath = buildNavigationUrl({
-          pathname,
-          searchParams,
-          paramsToUpdate: { insightDetailId: insight.id },
-        });
-        router.replace(newPath);
-      }
-    },
-    [pathname, searchParams, router],
-  );
-
-  const handlePageTypeClick = useCallback(() => {
-    // Focus/Inbox are independent pages: navigate to another page after clicking
-    router.push(isInboxPage ? "/" : "/inbox");
-  }, [isInboxPage, router]);
-
-  // Memoized helper for mobile panel title
-  const getMobilePanelTitle = useCallback(() => {
-    if (isInboxPage) {
-      return memoizedCategory || t("nav.inbox", "Insight Box");
-    }
-    return t("brief.title", "Daily Focus");
-  }, [isInboxPage, memoizedCategory, t]);
 
   /** Utility page title mapping (single source of truth: only maintain here, PageSectionHeader reuses) */
   function getUtilityPageTitle(pageParam: string | null): string {
@@ -717,87 +596,9 @@ export function Home() {
       );
     }
 
-    // Determine whether to show mobile menu bar (only show when mobile and on insight/brief page)
-    const showMobileToolbar = isMobile && !page;
-
-    // Mobile: display different panel according to mobileActivePanel
-    if (showMobileToolbar) {
-      let mobilePanelContent: ReactNode;
-      // Header title determined by entry page type (first-level page)
-      const mobilePanelTitle = getMobilePanelTitle();
-
-      switch (mobileActivePanel) {
-        case "chat":
-          mobilePanelContent = (
-            <div className="flex h-full flex-col">
-              <ChatHeaderPanel onChatIdChange={handleChatIdChange} />
-              <div
-                className={cn(
-                  "flex-1 min-h-0 overflow-auto",
-                  // Mobile: add bottom spacing (chat panel needs less spacing)
-                  isMobile && "pb-[80px]",
-                )}
-              >
-                <AgentChatPanel
-                  initialInput={initialInput}
-                  prefillToken={prefillToken}
-                  initialMessageToSend={initialMessageToSend}
-                />
-              </div>
-            </div>
-          );
-          break;
-        default:
-          mobilePanelContent = (
-            <div className="flex h-full flex-col">
-              <ChatHeaderPanel onChatIdChange={handleChatIdChange} />
-              <div
-                className={cn(
-                  "flex-1 min-h-0 overflow-auto",
-                  // Mobile: add bottom spacing (chat panel needs less spacing)
-                  isMobile && "pb-[80px]",
-                )}
-              >
-                <AgentChatPanel
-                  initialInput={initialInput}
-                  prefillToken={prefillToken}
-                  initialMessageToSend={initialMessageToSend}
-                />
-              </div>
-            </div>
-          );
-      }
-
-      // Create responsive toolbar component
-      const responsiveToolbar = (
-        <ResponsiveToolbar
-          pageType={isInboxPage ? "insight" : "brief"}
-          activePanel={mobileActivePanel}
-          onPageTypeClick={handlePageTypeClick}
-          onAskAiClick={handleAskAiClick}
-        />
-      );
-
-      return (
-        <InsightsPaginationProvider>
-          <AgentLayout
-            centerTitle={mobilePanelTitle}
-            hideCenterHeader={true}
-            mobileActivePanel={mobileActivePanel}
-            mobileHeaderTitle={mobilePanelTitle}
-          >
-            {mobilePanelContent}
-          </AgentLayout>
-          {/* Mobile bottom menu bar - render independently outside AgentLayout */}
-          {responsiveToolbar}
-        </InsightsPaginationProvider>
-      );
-    }
-
     // Chat page (entered from left menu "New chat" or Library/Chat Vault "Open chat"): full-screen display chat, no left Focus/Tracking panel; use effectiveChatId to support chatId in URL
     if (page === "chat") {
       return (
-        <InsightsPaginationProvider>
           <AgentLayout centerTitle={t("nav.newChat")} hideCenterHeader={true}>
             <div className="flex h-full min-h-0 w-full gap-0">
               {/* Left: chat content */}
@@ -809,11 +610,6 @@ export function Home() {
                   onToggleHistoryPanel={() =>
                     setIsChatHistoryOpen((open) => !open)
                   }
-                  isNewInsightsPanelOpen={isNewInsightsPanelOpen}
-                  onToggleNewInsightsPanel={() =>
-                    setIsNewInsightsPanelOpen((open) => !open)
-                  }
-                  newInsightsCount={newInsightsCount}
                 />
                 <div className="flex-1 min-h-0 overflow-hidden">
                   <AgentChatPanel
@@ -841,51 +637,10 @@ export function Home() {
                   />
                 </div>
               )}
-
-              {/* Right: new insights sidebar - "Need to Know" */}
-              {isNewInsightsPanelOpen && (
-                <NewInsightsSidePanel
-                  onInsightClick={async (insightId) => {
-                    try {
-                      const res = await fetch(
-                        `/api/insights/${insightId}?fetch=true`,
-                      );
-                      if (res.ok) {
-                        const data = await res.json();
-                        if (data.insight) {
-                          setSelectedInsight(data.insight);
-                          setIsInsightDrawerOpen(true);
-                        }
-                      }
-                    } catch (error) {
-                      console.error("Failed to fetch insight:", error);
-                    }
-                  }}
-                  onSuggestionClick={(suggestion) => {
-                    sendMessage({
-                      parts: [{ type: "text", text: suggestion }],
-                    });
-                  }}
-                />
-              )}
             </div>
           </AgentLayout>
-        </InsightsPaginationProvider>
       );
     }
-
-    // Desktop: render Focus (Brief) or Insight (EventsPanel) based on pathname; embedInCard avoids double-layer border with Shell's content-area-card
-    // Desktop: Insight details are displayed embedded in middle card of respective Panel, don't render global drawer, to coexist with right person detail bar
-    const closeExternalInsight = () => {
-      setSelectedInsight(null);
-      setIsInsightDrawerOpen(false);
-      const newPath = buildNavigationUrl({
-        pathname,
-        searchParams,
-        paramsToUpdate: { insightDetailId: null },
-      });
-      router.replace(newPath);
-    };
 
     const leftPanel =
       page === null ? (
@@ -895,15 +650,13 @@ export function Home() {
       );
 
     return (
-      <InsightsPaginationProvider>
         <AgentLayout
-          centerTitle={centerTitle}
+          centerTitle={t("nav.newChat")} 
           hideCenterHeader={true}
           centerOverlay={undefined}
         >
           {leftPanel}
         </AgentLayout>
-      </InsightsPaginationProvider>
     );
   }
 
