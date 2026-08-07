@@ -325,10 +325,20 @@ export type QuietDayFillerId =
 
 export interface LoopPreferences {
   enabled: boolean;
-  /** 24h HH:MM local time. */
-  briefTime: string;
-  /** 24h HH:MM local time. */
-  wrapTime: string;
+  /**
+   * 24h HH:MM local time, or `null` to skip the morning brief job entirely.
+   * #417 — Loop defaults to fully off on a fresh install; the user opts in
+   * to the tick, brief, and wrap jobs independently via the settings panel.
+   * Setting `briefTime` to `null` makes `scheduler.ensureLoopJobs` delete
+   * the brief cron row if it exists and never recreate it, so a user can
+   * run Loop with ticks but no morning brief — or no wrap at all.
+   */
+  briefTime: string | null;
+  /**
+   * 24h HH:MM local time, or `null` to skip the evening wrap job entirely.
+   * See `briefTime` for the rationale (#417).
+   */
+  wrapTime: string | null;
   /** Tick interval seconds. */
   intervalSec: number;
   /** Hard-skip patterns. */
@@ -477,9 +487,22 @@ export interface LoopMutes {
 }
 
 export const DEFAULT_LOOP_PREFERENCES: LoopPreferences = {
-  enabled: true,
-  briefTime: "09:00",
-  wrapTime: "21:00",
+  // #417 — Loop is OFF by default. Fresh installs must opt in
+  // explicitly via the settings panel; the cron executor does not
+  // poll any of Loop's three ScheduledJob rows (`loop.tick` /
+  // `loop.brief` / `loop.wrap`) on a fresh install. Users who
+  // already have `config.json` with `enabled: true` set are
+  // grandfathered — `readPreferences()` shallow-merges defaults
+  // under the persisted file, so flipping this default cannot
+  // disable an install that already opted in.
+  enabled: false,
+  // #417 — brief/wrap are separately opt-in. `null` means the
+  // matching cron row is removed (and never recreated) by
+  // `scheduler.ensureLoopJobs`. Tick interval is the same as
+  // before since the off-by-default flag already prevents it
+  // from running on fresh installs.
+  briefTime: null,
+  wrapTime: null,
   intervalSec: 600,
   noReplySkip: true,
   promotionSkip: true,

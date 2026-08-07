@@ -46,8 +46,13 @@ function markLoopNoticeSeen(): void {
 type LoopPreferencesResponse = {
   preferences: {
     enabled: boolean;
-    briefTime: string;
-    wrapTime: string;
+    /**
+     * #417 — `null` means the brief / wrap job is opted-out. UI
+     * maps that to "Enable morning brief?" = false. Server
+     * accepts and round-trips `null`.
+     */
+    briefTime: string | null;
+    wrapTime: string | null;
     intervalSec: number;
     noReplySkip: boolean;
     promotionSkip: boolean;
@@ -62,8 +67,13 @@ type LoopPreferencesResponse = {
 
 type DraftState = {
   enabled: boolean;
-  briefTime: string;
-  wrapTime: string;
+  /**
+   * #417 — explicit opt-in per job. `null` → brief job not
+   * scheduled; server deletes the row. String → cron expression at
+   * that wall-clock local time.
+   */
+  briefTime: string | null;
+  wrapTime: string | null;
   intervalSec: number;
   /**
    * IANA timezone from `Intl.DateTimeFormat()` of the host running this
@@ -77,10 +87,14 @@ type DraftState = {
 };
 
 function emptyDraft(): DraftState {
+  // #417 — fresh-install defaults: Loop is OFF. Users opt into the
+  // tick / brief / wrap jobs independently. The 09:00 / 21:00
+  // sentinel times are not stored as defaults; when the user
+  // flips a per-job opt-in on we default to a reasonable HH:MM.
   return {
-    enabled: true,
-    briefTime: "09:00",
-    wrapTime: "21:00",
+    enabled: false,
+    briefTime: null,
+    wrapTime: null,
     intervalSec: 600,
     timezone: "",
   };
@@ -95,9 +109,16 @@ function resolveBrowserTimezone(): string {
   }
 }
 
+const DEFAULT_BRIEF_TIME = "09:00";
+const DEFAULT_WRAP_TIME = "21:00";
+
 function validate(draft: DraftState): string | null {
-  if (!TIME_RE.test(draft.briefTime)) return "Morning brief time must be HH:MM";
-  if (!TIME_RE.test(draft.wrapTime)) return "Evening wrap time must be HH:MM";
+  if (draft.briefTime !== null && !TIME_RE.test(draft.briefTime)) {
+    return "Morning brief time must be HH:MM";
+  }
+  if (draft.wrapTime !== null && !TIME_RE.test(draft.wrapTime)) {
+    return "Evening wrap time must be HH:MM";
+  }
   if (!Number.isFinite(draft.intervalSec) || draft.intervalSec < 30) {
     return "Tick interval must be at least 30 seconds";
   }
@@ -129,21 +150,33 @@ export function LoopSettings() {
       };
       setDraft(next);
       setDirty(false);
-      // First-launch notice. Loop is on by default; some platforms
-      // (Gmail, Calendar, GitHub, Slack) get polled every 10 minutes. We
-      // surface a one-time toast the first time the user opens this
-      // settings panel and sees Loop enabled, so they can flip it off
-      // here if they prefer. The flag lives in localStorage because
-      // it's a UI hint, not a server-side preference.
-      if (next.enabled && !hasSeenLoopNotice()) {
+      // #417 — first-launch notice. Loop is OFF by default on a fresh
+      // install. The first time the user opens this settings panel and
+      // sees Loop still off, we surface a one-time toast that
+      // explains what Loop is and how to opt in. Existing users who
+      // had `enabled: true` already get the legacy notice wording
+      // (since `next.enabled === true` here). The flag lives in
+      // localStorage because it's a UI hint, not a server-side
+      // preference.
+      if (!hasSeenLoopNotice()) {
         markLoopNoticeSeen();
-        toast({
-          type: "info",
-          description: t(
-            "settings.loopNoticeDescription",
-            "Loop is on — Loomi is reading Gmail / Calendar / GitHub / Slack in the background to fill your morning brief. Toggle off here if you'd rather not.",
-          ),
-        });
+        if (next.enabled) {
+          toast({
+            type: "info",
+            description: t(
+              "settings.loopNoticeDescriptionLegacy",
+              "Loop is on — Loomi is reading Gmail / Calendar / GitHub / Slack in the background to fill your morning brief. Toggle off here if you'd rather not.",
+            ),
+          });
+        } else {
+          toast({
+            type: "info",
+            description: t(
+              "settings.loopNoticeDescription",
+              "Loop is off by default. Enable it here if you want Loomi to monitor Gmail / Calendar / GitHub / Slack and build a morning brief for you.",
+            ),
+          });
+        }
       }
     } catch (error) {
       console.error("[Loop Settings] Failed to load", error);
@@ -251,34 +284,65 @@ export function LoopSettings() {
 
       {draft.enabled && (
         <div className="grid gap-4 sm:grid-cols-3">
+          {/* #417 — per-job opt-in. Each brief / wrap cron row is
+              independently toggled. Switch OFF → null saved →
+              matching cron row deleted by
+              `scheduler.ensureLoopJobs` on the next PUT. Switch
+              ON → uses the time input below (or the prior saved
+              value, or the legacy 09:00 / 21:00 default for a
+              fresh install). */}
           <div className="space-y-1.5">
-            <Label
-              htmlFor="loop-brief-time"
-              className="text-sm font-medium text-foreground"
-            >
-              {t("settings.loopBriefTimeLabel", "Morning brief time")}
-            </Label>
+            <div className="flex items-center justify-between gap-2">
+              <Label
+                htmlFor="loop-brief-enabled"
+                className="text-sm font-medium text-foreground"
+              >
+                {t("settings.loopBriefLabel", "Morning brief")}
+              </Label>
+              <Switch
+                id="loop-brief-enabled"
+                checked={draft.briefTime !== null}
+                disabled={saving}
+                onCheckedChange={(next) =>
+                  update({
+                    briefTime: next ? draft.briefTime ?? DEFAULT_BRIEF_TIME : null,
+                  })
+                }
+              />
+            </div>
             <Input
               id="loop-brief-time"
               type="time"
-              value={draft.briefTime}
-              disabled={saving}
+              value={draft.briefTime ?? ""}
+              disabled={saving || draft.briefTime === null}
               onChange={(e) => update({ briefTime: e.target.value })}
               className="max-w-[10rem]"
             />
           </div>
           <div className="space-y-1.5">
-            <Label
-              htmlFor="loop-wrap-time"
-              className="text-sm font-medium text-foreground"
-            >
-              {t("settings.loopWrapTimeLabel", "Evening wrap time")}
-            </Label>
+            <div className="flex items-center justify-between gap-2">
+              <Label
+                htmlFor="loop-wrap-enabled"
+                className="text-sm font-medium text-foreground"
+              >
+                {t("settings.loopWrapLabel", "Evening wrap")}
+              </Label>
+              <Switch
+                id="loop-wrap-enabled"
+                checked={draft.wrapTime !== null}
+                disabled={saving}
+                onCheckedChange={(next) =>
+                  update({
+                    wrapTime: next ? draft.wrapTime ?? DEFAULT_WRAP_TIME : null,
+                  })
+                }
+              />
+            </div>
             <Input
               id="loop-wrap-time"
               type="time"
-              value={draft.wrapTime}
-              disabled={saving}
+              value={draft.wrapTime ?? ""}
+              disabled={saving || draft.wrapTime === null}
               onChange={(e) => update({ wrapTime: e.target.value })}
               className="max-w-[10rem]"
             />

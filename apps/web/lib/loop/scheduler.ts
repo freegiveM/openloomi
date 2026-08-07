@@ -125,7 +125,21 @@ function scheduleFor(
     const minutes = Math.max(1, Math.round(prefs.intervalSec / 60));
     return { type: "interval-minutes", minutes };
   }
+  // #417 — when the user has *not* opted into brief / wrap, the
+  // matching `prefs.{briefTime,wrapTime}` is `null`. The caller in
+  // `ensureLoopJobs` short-circuits before us in that case (so we
+  // never produce a ScheduleConfig for a job that's been turned off),
+  // but if some other entry path ever reaches us we still refuse to
+  // synthesise a fake cron expression — falling back to a 24-hour
+  // interval would silently keep the job alive. Return a clearly
+  // bogus 1-minute interval whose nextRunAt the caller can recognise
+  // and delete.
   const time = kind === "brief" ? prefs.briefTime : prefs.wrapTime;
+  if (time === null || time === undefined) {
+    // Sentinel — `ensureLoopJobs` checks for this and treats it as
+    // "row should not exist".
+    return { type: "interval-minutes", minutes: 1 };
+  }
   const expr = briefTimeToCron(time);
   if (!expr) return { type: "interval-minutes", minutes: 60 }; // safe fallback
   // CRITICAL: include `timezone` in the ScheduleConfig. `updateJob`'s
@@ -134,6 +148,21 @@ function scheduleFor(
   // falls back to UTC and the row's `next_run_at` lands on a UTC wall
   // clock instead of the user's local one (the original 8h drift bug).
   return { type: "cron", expression: expr, timezone };
+}
+
+/** True when `kind` should have a ScheduledJob row in this prefs shape.
+ *  Returns false for brief/wrap when the user has opted out via a null
+ *  time (#417). The tick row is always kept (gated by `prefs.enabled`
+ *  inside `ensureLoopJobs` instead).
+ */
+function isJobWanted(
+  kind: LoopJobKind,
+  prefs: ReturnType<typeof readPreferences>,
+): boolean {
+  if (kind === "tick") return true;
+  const time = kind === "brief" ? prefs.briefTime : prefs.wrapTime;
+  if (time === null || time === undefined) return false;
+  return briefTimeToCron(time) !== null;
 }
 
 function jobConfigFor(kind: LoopJobKind) {
@@ -181,9 +210,25 @@ export async function ensureLoopJobs(
 
   for (const kind of Object.keys(LOOP_JOB_NAMES) as LoopJobKind[]) {
     const name = LOOP_JOB_NAMES[kind];
-    const schedule = scheduleFor(kind, prefs, timezone);
     const job = jobConfigFor(kind);
     const desiredEnabled = enabled;
+
+    // #417 — opt-in shape: brief / wrap are removed (not just disabled)
+    // when the user has cleared the time. The cleanest way to keep this
+    // idempotent is to delete the row if it exists, and skip creation.
+    if (!isJobWanted(kind, prefs)) {
+      const existing = await findJobByName(uid, name);
+      if (existing) {
+        await deleteJob(uid, existing.id);
+        summary.updated.push(name);
+        log(`[scheduler] deleted ${name} (job disabled by prefs)`);
+      } else {
+        summary.skipped.push(name);
+      }
+      continue;
+    }
+
+    const schedule = scheduleFor(kind, prefs, timezone);
 
     const existing = await findJobByName(uid, name);
     if (!existing) {
@@ -316,8 +361,8 @@ export function isStarted(): boolean {
 export function status(): {
   started: boolean;
   tickIntervalSec: number;
-  briefTime: string;
-  wrapTime: string;
+  briefTime: string | null;
+  wrapTime: string | null;
   enabled: boolean;
   activeUserId: string | null;
   lastEnsuredAt: string | null;
