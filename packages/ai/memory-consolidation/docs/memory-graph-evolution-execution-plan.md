@@ -1,6 +1,6 @@
 # Dynamic Memory Cluster Evolution Execution Plan
 
-Status: `PHASE_0_3_DRAFT_PR_STACK`
+Status: `PHASE_0_3_SHIPPED_PHASE_4_GATES_MET`
 
 ## Objective
 
@@ -8,6 +8,10 @@ Prepare the accepted foundation and controlled write loop, controlled retrieval
 loop, and authorized correction loop as three serial, reviewable experimental
 Draft PR candidates. The stack remains disabled by default and does not
 authorize a runtime cohort or rollout.
+
+That stack shipped, and the Phase 4 demonstrations and gate work shipped on top
+of it. The default-off constraint above is unchanged by either: nothing in this
+plan has authorized enabling anything for a real user.
 
 ## Delivery Rules
 
@@ -421,7 +425,13 @@ empty until something concrete needs to go in it.
 
 ## Stop Line
 
-Stop at `PHASE_0_3_DRAFT_PR_STACK` or
-`PHASE_0_3_DRAFT_PR_SPLIT_BLOCKED`. Do not collect cohort observations,
-implement Phase 4 persistence, expand runtime exposure, merge a pull request,
-or enter the next phase without explicit approval.
+Stop at `PHASE_0_3_SHIPPED_PHASE_4_GATES_MET`. Phases 0-3 are merged and the six
+Phase 4 gates are met, which establishes that enabling the defaults would be
+safe — not that it should happen. Everything remains default-off.
+
+Do not enable a default, expand a runtime cohort, collect cohort observations,
+or begin Phase 5 without the project owner's explicit approval. Phase 5 also has
+an unresolved design question recorded above: graph write and graph-aware
+retrieval share one policy, so the behaviour with the strongest evidence cannot
+be enabled without the ones that have none. Settle that before any rollout, not
+during one.
