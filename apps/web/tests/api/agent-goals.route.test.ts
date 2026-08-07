@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import { AgentGoalStateError } from "@/lib/ai/runtime-instructions/goal-state-error";
+import { RuntimeSessionPersistenceError } from "@/lib/ai/runtime-instructions/runtime-session-persistence";
 import {
   AgentGoalApiService,
   type AgentGoalApiDependencies,
@@ -139,6 +140,7 @@ const dependencies = {
   },
   queries: { listBySession: vi.fn(), getById: vi.fn() },
   liveSessions: { resolve: vi.fn() },
+  runtimeSessions: { ensure: vi.fn() },
   sessionOwnership: { isOwnedChat: vi.fn() },
 } satisfies AgentGoalApiDependencies;
 
@@ -168,12 +170,14 @@ beforeEach(() => {
     ...Object.values(dependencies.goals),
     ...Object.values(dependencies.queries),
     dependencies.liveSessions.resolve,
+    dependencies.runtimeSessions.ensure,
     dependencies.sessionOwnership.isOwnedChat,
   ]) {
     mock.mockReset();
   }
   dependencies.sessionOwnership.isOwnedChat.mockResolvedValue(true);
   dependencies.liveSessions.resolve.mockResolvedValue({});
+  dependencies.runtimeSessions.ensure.mockResolvedValue({});
   dependencies.goals.activate.mockResolvedValue(acceptedCommand);
   dependencies.goals.update.mockResolvedValue(acceptedCommand);
   dependencies.goals.upsertContext.mockResolvedValue(acceptedCommand);
@@ -299,6 +303,10 @@ describe("Agent Goal API", () => {
     expect(spoofed.status).toBe(400);
     expect(missingKey.status).toBe(400);
     expect(dependencies.goals.activate).toHaveBeenCalledTimes(1);
+    expect(dependencies.runtimeSessions.ensure).toHaveBeenCalledWith(
+      "user-a",
+      runtimeSessionId,
+    );
     expect(dependencies.goals.activate).toHaveBeenCalledWith(
       expect.objectContaining({
         ownerId: "user-a",
@@ -356,6 +364,28 @@ describe("Agent Goal API", () => {
       code: "transport_failed",
     });
     expect(JSON.stringify(deferredBody)).not.toContain("private runtime path");
+  });
+
+  test("fails closed when an unfinished SQLite session needs recovery", async () => {
+    dependencies.runtimeSessions.ensure.mockRejectedValueOnce(
+      new RuntimeSessionPersistenceError(
+        "runtime_session_recovery_required",
+        "restart recovery is required",
+      ),
+    );
+
+    const response = await collectionRoute.POST(
+      request("POST", "/api/agent-goals", {
+        runtimeSessionId,
+        goal: goalInput,
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      code: "runtime_session_recovery_required",
+    });
+    expect(dependencies.goals.activate).not.toHaveBeenCalled();
   });
 
   test("forces user authority on updates and maps revision conflicts", async () => {

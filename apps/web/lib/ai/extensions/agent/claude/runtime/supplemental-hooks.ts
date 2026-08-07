@@ -10,6 +10,7 @@ import type {
   ClaudeRuntimeToolOutcome,
   ClaudeRuntimeToolStart,
 } from "./event-observer";
+import type { RuntimeObservationContext } from "@/lib/ai/runtime-instructions/runtime-observation";
 
 export interface ClaudeRuntimeToolHookObserver {
   captureToolStart(
@@ -50,6 +51,7 @@ export interface ClaudeRuntimeGoalStopController {
   evaluateStop(input: {
     runEpoch: number;
     assistantTurnId: string;
+    turnContext: RuntimeObservationContext | null;
     lastAssistantMessage?: string;
     stopHookActive: boolean;
   }): Promise<ClaudeRuntimeStopHookDecision>;

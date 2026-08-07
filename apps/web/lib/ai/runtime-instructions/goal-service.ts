@@ -501,6 +501,11 @@ export class GoalService {
           runtimeSessionId,
           "runtimeSessionId",
         );
+        const active = await this.state.getActivePrimaryGoal(
+          parsedOwnerId,
+          parsedSessionId,
+        );
+        if (!active) return null;
         const instructions = await this.state.listInstructions(
           parsedOwnerId,
           parsedSessionId,

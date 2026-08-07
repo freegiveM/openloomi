@@ -13,6 +13,7 @@ export type { SqliteAppendEvidenceResult } from "./evidence-repository";
 export { SqliteGoalRepository } from "./goal-repository";
 export { SqliteInstructionRepository } from "./instruction-repository";
 export { SqliteRunRepository } from "./run-repository";
+export { SqliteRuntimeObservationJournal } from "./runtime-observation-journal";
 export type {
   SqliteGoalRunProgressUpdateInput,
   SqliteGoalRunTransitionInput,

@@ -10,6 +10,7 @@ import type {
   AgentGoalSummaryView,
 } from "../goal-query-service";
 import type { RuntimeSessionRegistry } from "../runtime-session-registry";
+import type { RuntimeSessionPersistencePort } from "../runtime-session-persistence";
 import type {
   ActivateGoalRequest,
   RemoveGoalContextRequest,
@@ -24,6 +25,7 @@ export interface AgentGoalApiDependencies {
   >;
   queries: Pick<AgentGoalQueryService, "listBySession" | "getById">;
   liveSessions: Pick<RuntimeSessionRegistry, "resolve">;
+  runtimeSessions: Pick<RuntimeSessionPersistencePort, "ensure">;
   sessionOwnership: {
     isOwnedChat(ownerId: string, runtimeSessionId: string): Promise<boolean>;
   };
@@ -107,6 +109,10 @@ export class AgentGoalApiService {
     idempotencyKey: string,
   ): Promise<GoalCommandResult> {
     await this.requireSession(ownerId, request.runtimeSessionId);
+    await this.dependencies.runtimeSessions.ensure(
+      ownerId,
+      request.runtimeSessionId,
+    );
     return this.dependencies.goals.activate({
       ownerId,
       runtimeSessionId: request.runtimeSessionId,
@@ -123,6 +129,10 @@ export class AgentGoalApiService {
     idempotencyKey: string,
   ): Promise<GoalCommandResult> {
     await this.requireSession(ownerId, request.runtimeSessionId);
+    await this.dependencies.runtimeSessions.ensure(
+      ownerId,
+      request.runtimeSessionId,
+    );
     return this.dependencies.goals.update({
       ownerId,
       runtimeSessionId: request.runtimeSessionId,
@@ -141,6 +151,10 @@ export class AgentGoalApiService {
     idempotencyKey: string,
   ): Promise<GoalCommandResult> {
     await this.requireSession(ownerId, request.runtimeSessionId);
+    await this.dependencies.runtimeSessions.ensure(
+      ownerId,
+      request.runtimeSessionId,
+    );
     return this.dependencies.goals.upsertContext({
       ownerId,
       runtimeSessionId: request.runtimeSessionId,
@@ -162,6 +176,10 @@ export class AgentGoalApiService {
     idempotencyKey: string,
   ): Promise<GoalCommandResult> {
     await this.requireSession(ownerId, request.runtimeSessionId);
+    await this.dependencies.runtimeSessions.ensure(
+      ownerId,
+      request.runtimeSessionId,
+    );
     return this.dependencies.goals.removeContext({
       ownerId,
       runtimeSessionId: request.runtimeSessionId,

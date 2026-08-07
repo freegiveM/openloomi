@@ -73,7 +73,6 @@ export function AgentChatPanel({
     sendMessage,
     setMessages,
     stop,
-    isAgentRunning,
     activeChatId: contextActiveChatId,
     switchChatId,
     isVaultOpen,
@@ -395,14 +394,14 @@ export function AgentChatPanel({
       }
 
       // Check if AI is already responding to prevent duplicate submissions
-      if (isAgentRunning) {
+      if (isAgentRunningForChat) {
         console.warn("[sendMessage] Agent is already running");
         return Promise.reject(new Error("Agent is already running"));
       }
 
       return sendMessage(message, requestOptions);
     },
-    [apiConfigurationState, sendMessage, isAgentRunning],
+    [apiConfigurationState, sendMessage, isAgentRunningForChat],
   );
 
   /** Auto-send initialMessageToSend after mount (e.g., from onboarding "Chat with openloomi" click): switches to new chat first, then sends, runs only once; if from URL send param, clears after sending */
@@ -577,7 +576,7 @@ export function AgentChatPanel({
                 value={input}
                 setValue={handleSetInput}
                 onStop={stop}
-                isAgentRunning={isAgentRunning}
+                isAgentRunning={isAgentRunningForChat}
                 attachments={attachments}
                 setAttachments={setAttachments}
                 onSubmit={async ({ text, attachments: submitAttachments }) => {

@@ -1,4 +1,7 @@
-import type { SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
+import type {
+  SDKMessage,
+  SDKUserMessage,
+} from "@anthropic-ai/claude-agent-sdk";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -54,7 +57,7 @@ async function createFixture(runtimeOptions: RuntimeOverrides = {}) {
     Symbol.asyncIterator
   ]();
   await sdkInput.next();
-  return { claude, registration, runtime, sdkInput };
+  return { claude, handle, registration, runtime, sdkInput };
 }
 
 type Fixture = Awaited<ReturnType<typeof createFixture>>;
@@ -70,6 +73,13 @@ async function activateGoal(fixture: Fixture, goal: GoalDraft) {
   // Activation uses the normal SDK input channel. Continuation guidance is
   // delivered inline by the Stop hook and must not enter this queue again.
   await fixture.sdkInput.next();
+  fixture.handle.push({
+    type: "result",
+    subtype: "success",
+    uuid: "pre-goal-turn-result",
+    session_id: "goal-controller-provider",
+  } as unknown as SDKMessage);
+  await vi.waitFor(() => expect(fixture.claude.sdkMessageCount).toBe(1));
   return activation;
 }
 
@@ -78,16 +88,26 @@ async function closeFixture(fixture: Fixture) {
   await fixture.claude.close();
 }
 
-async function observeAssistantTurn(fixture: Fixture, assistantTurnId: string) {
-  await fixture.runtime.observations.observeProviderEvent({
-    ownerId: OWNER_ID,
-    runtimeSessionId: SESSION_ID,
-    runEpoch: 0,
-    eventKey: assistantTurnId,
-    providerEventId: assistantTurnId,
-    observedAt: NOW.toISOString(),
-    usage: { tokensUsed: 1, turnsUsed: 1 },
-  });
+async function observeAssistantTurn(
+  fixture: Fixture,
+  assistantTurnId: string,
+  text = "Applying the active Goal.",
+) {
+  const previousCount = fixture.claude.sdkMessageCount;
+  fixture.handle.push({
+    type: "assistant",
+    uuid: assistantTurnId,
+    session_id: "goal-controller-provider",
+    parent_tool_use_id: null,
+    message: {
+      role: "assistant",
+      content: [{ type: "text", text }],
+      usage: { input_tokens: 1, output_tokens: 0 },
+    },
+  } as unknown as SDKMessage);
+  await vi.waitFor(() =>
+    expect(fixture.claude.sdkMessageCount).toBe(previousCount + 1),
+  );
 }
 
 function commandGoal(overrides: Partial<GoalDraft> = {}): GoalDraft {
@@ -116,7 +136,7 @@ function commandGoal(overrides: Partial<GoalDraft> = {}): GoalDraft {
 }
 
 describe("GoalController Claude Stop integration", () => {
-  it("deduplicates one inline continuation and fails closed on recursive Stop", async () => {
+  it("deduplicates an inline continuation and attributes its provider output", async () => {
     const fixture = await createFixture();
     try {
       await activateGoal(fixture, commandGoal());
@@ -133,13 +153,6 @@ describe("GoalController Claude Stop integration", () => {
         lastAssistantMessage: "The test has not run yet.",
         stopHookActive: false,
       });
-      const recursion = await fixture.claude.evaluateStop({
-        runEpoch: 0,
-        assistantTurnId: "assistant-turn-1",
-        lastAssistantMessage: "The test has not run yet.",
-        stopHookActive: true,
-      });
-
       expect(first).toMatchObject({
         decision: "block",
         outcome: "continue",
@@ -159,10 +172,91 @@ describe("GoalController Claude Stop integration", () => {
       expect(duplicate.outcome).toBe("continue");
       expect(duplicate.instruction.id).toBe(first.instruction.id);
       expect(duplicate.reason).toBe(first.reason);
-      expect(recursion).toMatchObject({
-        decision: "allow",
-        outcome: "blocked",
+      await expect(
+        fixture.runtime.observations.listDeliveries(OWNER_ID, SESSION_ID),
+      ).resolves.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            instructionId: first.instruction.id,
+            state: "written_to_sdk",
+          }),
+        ]),
+      );
+
+      await observeAssistantTurn(fixture, "assistant-after-continuation");
+      await vi.waitFor(async () => {
+        const evidence = await fixture.runtime.observations.listEvidence(
+          OWNER_ID,
+          SESSION_ID,
+        );
+        expect(evidence).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              instructionId: first.instruction.id,
+              sourceEventId: "assistant-after-continuation:assistant",
+            }),
+          ]),
+        );
       });
+      await expect(
+        fixture.runtime.observations.listDeliveries(OWNER_ID, SESSION_ID),
+      ).resolves.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            instructionId: first.instruction.id,
+            state: "observed",
+          }),
+        ]),
+      );
+
+    } finally {
+      await closeFixture(fixture);
+    }
+  });
+
+  it("fails closed on recursive Stop without a new assistant turn", async () => {
+    const fixture = await createFixture();
+    try {
+      await activateGoal(fixture, commandGoal());
+      await observeAssistantTurn(fixture, "assistant-recursive-stop");
+      await fixture.claude.evaluateStop({
+        runEpoch: 0,
+        assistantTurnId: "assistant-recursive-stop",
+        lastAssistantMessage: "The test has not run yet.",
+        stopHookActive: false,
+      });
+
+      await expect(
+        fixture.claude.evaluateStop({
+          runEpoch: 0,
+          assistantTurnId: "assistant-recursive-stop",
+          lastAssistantMessage: "The test has not run yet.",
+          stopHookActive: true,
+        }),
+      ).resolves.toMatchObject({ decision: "allow", outcome: "blocked" });
+    } finally {
+      await closeFixture(fixture);
+    }
+  });
+
+  it("fails the Stop handoff when continuation context cannot be registered", async () => {
+    const fixture = await createFixture();
+    try {
+      await activateGoal(fixture, commandGoal());
+      await observeAssistantTurn(fixture, "assistant-handoff-failure");
+      vi.spyOn(
+        fixture.runtime.observations,
+        "recordInstructionHandoff",
+      ).mockResolvedValue(false);
+
+      await expect(
+        fixture.claude.evaluateStop({
+          runEpoch: 0,
+          assistantTurnId: "assistant-handoff-failure",
+          lastAssistantMessage: "The test has not run yet.",
+          stopHookActive: false,
+        }),
+      ).rejects.toMatchObject({ code: "instruction_handoff_failed" });
     } finally {
       await closeFixture(fixture);
     }
@@ -243,6 +337,23 @@ describe("GoalController Claude Stop integration", () => {
         decision: "allow",
         outcome: "budget_limited",
       });
+      await expect(
+        fixture.runtime.observations.listGoalRuns(OWNER_ID, SESSION_ID),
+      ).resolves.toEqual([
+        expect.objectContaining({
+          status: "budget_limited",
+          lastEvaluation: expect.objectContaining({
+            reason: expect.stringContaining(
+              "maximum turn budget of 1 was exhausted",
+            ),
+          }),
+        }),
+      ]);
+      const [finishedRun] =
+        await fixture.runtime.observations.listGoalRuns(OWNER_ID, SESSION_ID);
+      expect(finishedRun?.lastEvaluation?.reason).not.toContain(
+        "Continue working",
+      );
     } finally {
       await closeFixture(fixture);
     }
@@ -357,7 +468,11 @@ describe("GoalController Claude Stop integration", () => {
         completionPolicy: "model_evaluator",
         source: { type: "user" },
       });
-      await observeAssistantTurn(fixture, "assistant-evaluator-error");
+      await observeAssistantTurn(
+        fixture,
+        "assistant-evaluator-error",
+        "The implementation appears complete.",
+      );
 
       await expect(
         fixture.claude.evaluateStop({
@@ -399,6 +514,42 @@ describe("GoalController Claude Stop integration", () => {
           stopHookActive: false,
         }),
       ).resolves.toMatchObject({ decision: "allow", outcome: "stale" });
+    } finally {
+      await closeFixture(fixture);
+    }
+  });
+
+  it("does not evaluate a newer Goal revision for an older active turn", async () => {
+    const semanticEvaluator = { evaluate: vi.fn() };
+    const fixture = await createFixture({ semanticEvaluator });
+    try {
+      const activated = await activateGoal(fixture, commandGoal());
+      await observeAssistantTurn(fixture, "assistant-old-revision");
+      await fixture.runtime.goals.update({
+        ownerId: OWNER_ID,
+        runtimeSessionId: SESSION_ID,
+        goalId: activated.goal.goal.id,
+        expectedRevision: 1,
+        idempotencyKey: "update-before-old-stop",
+        source: { type: "user", authority: "user" },
+        update: { priority: 90 },
+      });
+      await fixture.sdkInput.next();
+
+      await expect(
+        fixture.claude.evaluateStop({
+          runEpoch: 0,
+          assistantTurnId: "assistant-old-revision",
+          lastAssistantMessage: "This turn began under revision one.",
+          stopHookActive: false,
+        }),
+      ).resolves.toMatchObject({
+        decision: "allow",
+        outcome: "stale",
+        goalId: activated.goal.goal.id,
+        goalRevision: 1,
+      });
+      expect(semanticEvaluator.evaluate).not.toHaveBeenCalled();
     } finally {
       await closeFixture(fixture);
     }

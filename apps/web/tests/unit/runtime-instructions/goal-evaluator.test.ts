@@ -365,6 +365,131 @@ describe("GoalEvaluator", () => {
     });
   });
 
+  it("retains satisfied model criteria across evaluations of the same run", async () => {
+    const agentGoal = goal(
+      [
+        criterion("behavior-a", { type: "model_evidence" }),
+        criterion("behavior-b", { type: "model_evidence" }),
+      ],
+      "model_evaluator",
+    );
+    const evidenceA = evidence(
+      "30000000-0000-4000-8000-000000000010",
+      agentGoal,
+      {
+        type: "test_result",
+        success: true,
+        summary: "Behavior A passed",
+        payload: { assertion: "behavior-a" },
+      },
+    );
+    const evidenceB = evidence(
+      "30000000-0000-4000-8000-000000000011",
+      agentGoal,
+      {
+        type: "test_result",
+        success: true,
+        summary: "Behavior B passed",
+        payload: { assertion: "behavior-b" },
+      },
+    );
+    const semantic = {
+      evaluate: vi.fn(async () => ({
+        completed: true,
+        confidence: 0.95,
+        satisfiedCriteria: ["behavior-b"],
+        missingCriteria: [],
+        evidence: [
+          {
+            criterionId: "behavior-b",
+            evidenceIds: [evidenceB.id],
+          },
+        ],
+        reason: "Behavior B is now verified.",
+      })),
+    } satisfies GoalSemanticEvaluatorPort;
+    const evaluator = new GoalEvaluator(semantic);
+    const second = await evaluator.evaluate({
+      goal: agentGoal,
+      run: {
+        ...run(agentGoal),
+        lastEvaluation: {
+          completed: false,
+          confidence: 0.95,
+          satisfiedCriteria: ["behavior-a"],
+          missingCriteria: ["behavior-b"],
+          evidence: [
+            {
+              criterionId: "behavior-a",
+              evidenceIds: [evidenceA.id],
+            },
+          ],
+          reason: "Behavior A is verified; behavior B remains.",
+        },
+      },
+      evidence: [evidenceA, evidenceB],
+    });
+
+    expect(semantic.evaluate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        criteria: [expect.objectContaining({ id: "behavior-b" })],
+        satisfiedCriteria: ["behavior-a"],
+      }),
+    );
+    expect(second).toMatchObject({
+      completed: true,
+      satisfiedCriteria: ["behavior-a", "behavior-b"],
+      missingCriteria: [],
+      evidence: [
+        { criterionId: "behavior-a", evidenceIds: [evidenceA.id] },
+        { criterionId: "behavior-b", evidenceIds: [evidenceB.id] },
+      ],
+    });
+  });
+
+  it("re-evaluates prior model satisfaction when its evidence is unavailable", async () => {
+    const agentGoal = goal(
+      [criterion("behavior-correct", { type: "model_evidence" })],
+      "model_evaluator",
+    );
+    const semantic = {
+      evaluate: vi.fn(async () => ({
+        completed: false,
+        confidence: 1,
+        satisfiedCriteria: [],
+        missingCriteria: ["behavior-correct"],
+        evidence: [],
+        reason: "The prior evidence is not in the current snapshot.",
+      })),
+    } satisfies GoalSemanticEvaluatorPort;
+    const previous = {
+      completed: true,
+      confidence: 1,
+      satisfiedCriteria: ["behavior-correct"],
+      missingCriteria: [],
+      evidence: [
+        {
+          criterionId: "behavior-correct",
+          evidenceIds: ["30000000-0000-4000-8000-000000000099"],
+        },
+      ],
+      reason: "Previously satisfied.",
+    };
+
+    await new GoalEvaluator(semantic).evaluate({
+      goal: agentGoal,
+      run: { ...run(agentGoal), lastEvaluation: previous },
+      evidence: [],
+    });
+
+    expect(semantic.evaluate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        criteria: [expect.objectContaining({ id: "behavior-correct" })],
+        satisfiedCriteria: [],
+      }),
+    );
+  });
+
   it("fails closed when semantic evaluation is unavailable, throws, or references foreign evidence", async () => {
     const agentGoal = goal(
       [criterion("behavior-correct", { type: "model_evidence" })],

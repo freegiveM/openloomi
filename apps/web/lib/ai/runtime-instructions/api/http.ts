@@ -12,6 +12,8 @@ import { getAuthUser } from "@/lib/auth/dual-auth";
 import { isTauriMode } from "@/lib/env/constants";
 
 import { AgentGoalStateError } from "../goal-state-error";
+import { AgentGoalPersistenceError } from "../persistence/errors";
+import { RuntimeSessionPersistenceError } from "../runtime-session-persistence";
 import type { GoalCommandResult } from "../goal-service";
 import { GoalServiceError } from "../goal-service-error";
 import type {
@@ -174,6 +176,18 @@ function goalApiErrorResponse(error: unknown): NextResponse {
           ? 500
           : 409;
     return apiError(error.code, status);
+  }
+  if (error instanceof RuntimeSessionPersistenceError) {
+    const status =
+      error.code === "runtime_session_not_found"
+        ? 404
+        : error.code === "storage_failure"
+          ? 500
+          : 409;
+    return apiError(error.code, status);
+  }
+  if (error instanceof AgentGoalPersistenceError) {
+    return apiError(error.code, error.code === "invalid_record" ? 500 : 409);
   }
   console.error("[Agent Goal API] Request failed", error);
   return apiError("goal_runtime_error", 500);

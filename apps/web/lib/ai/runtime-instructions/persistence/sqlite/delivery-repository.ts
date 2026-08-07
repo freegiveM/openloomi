@@ -87,6 +87,16 @@ export class SqliteDeliveryRepository {
     );
   }
 
+  async listBySession(
+    input: SqliteGoalPersistenceScope,
+  ): Promise<PersistedRuntimeInstructionDelivery[]> {
+    const scope = normalizeScope(input);
+    return this.database.store.listDeliveries(
+      scope.ownerId,
+      scope.runtimeSessionId,
+    );
+  }
+
   async listDispatchable(
     input: SqliteGoalPersistenceScope & { availableAt: string; limit?: number },
   ): Promise<PersistedRuntimeInstructionDelivery[]> {

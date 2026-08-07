@@ -94,8 +94,13 @@ export class GoalEvaluator {
         item.goalRunId === input.run.id &&
         item.goalRevision === input.goal.revision,
     );
+    const availableEvidenceIds = new Set(evidence.map(({ id }) => id));
     const evaluations = input.goal.successCriteria.map((criterion) =>
-      evaluateDeterministically(criterion, evidence),
+      restoreSatisfiedModelCriterion(
+        evaluateDeterministically(criterion, evidence),
+        input.run.lastEvaluation,
+        availableEvidenceIds,
+      ),
     );
     const blocking = evaluations.filter(
       (evaluation) => evaluation.criterion.required && !evaluation.satisfied,
@@ -255,6 +260,40 @@ function evaluateDeterministically(
   // `model_evidence` is intentionally delegated and `manual` is never
   // inferred from evidence, including a model-generated assertion.
   return { criterion, evidenceIds: [], satisfied: false };
+}
+
+function restoreSatisfiedModelCriterion(
+  evaluation: CriterionEvaluation,
+  previous: GoalEvaluationResult | null | undefined,
+  availableEvidenceIds: ReadonlySet<string>,
+): CriterionEvaluation {
+  // Goal evidence is immutable and criteria are monotonic within one run, just
+  // like successful command/tool evidence. Never carry satisfaction across a
+  // missing or fenced evidence item.
+  if (
+    evaluation.satisfied ||
+    evaluation.criterion.verification.type !== "model_evidence" ||
+    !previous?.satisfiedCriteria.includes(evaluation.criterion.id)
+  ) {
+    return evaluation;
+  }
+
+  const association = previous.evidence.find(
+    ({ criterionId }) => criterionId === evaluation.criterion.id,
+  );
+  const evidenceIds = [...new Set(association?.evidenceIds ?? [])];
+  if (
+    evidenceIds.length === 0 ||
+    evidenceIds.some((id) => !availableEvidenceIds.has(id))
+  ) {
+    return evaluation;
+  }
+
+  return {
+    ...evaluation,
+    satisfied: true,
+    evidenceIds: evidenceIds.slice(0, MAX_EVIDENCE_IDS_PER_CRITERION),
+  };
 }
 
 function commandEvidenceMatches(

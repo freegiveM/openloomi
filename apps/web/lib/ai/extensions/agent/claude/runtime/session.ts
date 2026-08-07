@@ -33,6 +33,7 @@ import type {
 import type { ClaudeRuntimeLogger } from "../skills";
 import type {
   ClaudeRuntimeEventObserverPort,
+  ClaudeInstructionTurnHandoff,
   ClaudeRuntimeToolOutcome,
   ClaudeRuntimeToolStart,
 } from "./event-observer";
@@ -92,6 +93,10 @@ export class ClaudeRuntimeSession
   private readonly terminalWaiters = new Set<TerminalWaiter>();
   private eventObserver: ClaudeRuntimeEventObserverPort | null = null;
   private stopController: ClaudeRuntimeGoalStopController | null = null;
+  private readonly continuationInstructionIds = new Set<string>();
+  private readonly initialTurnInstructionIds = new Set<string>();
+  private replayingInitialInstructions = false;
+  private expectedProviderInterruptResults = 0;
   private latestAssistantTurnId?: string;
   private assistantTurnSequence = 0;
 
@@ -204,12 +209,16 @@ export class ClaudeRuntimeSession
       return controller.evaluateStop({
         runEpoch: requestedRunEpoch,
         assistantTurnId,
+        turnContext: null,
         ...(lastAssistantMessage === undefined ? {} : { lastAssistantMessage }),
         stopHookActive: input.stopHookActive,
       });
     }
 
     await this.eventObserver?.flush();
+    const turnContexts =
+      (await this.eventObserver?.captureTurnContexts(requestedRunEpoch)) ?? [];
+    const turnContext = turnContexts.at(-1) ?? null;
     if (lastAssistantMessage) {
       await this.recordObservation("record Stop assistant report", (observer) =>
         observer.observeStopAssistantReport({
@@ -219,6 +228,7 @@ export class ClaudeRuntimeSession
             ? {}
             : { providerSessionId: input.providerSessionId }),
           runEpoch: requestedRunEpoch,
+          contexts: turnContexts,
         }),
       );
     }
@@ -228,9 +238,17 @@ export class ClaudeRuntimeSession
       const decision = await controller.evaluateStop({
         runEpoch: requestedRunEpoch,
         assistantTurnId,
+        turnContext,
         ...(lastAssistantMessage === undefined ? {} : { lastAssistantMessage }),
         stopHookActive: input.stopHookActive,
       });
+      if (decision.decision === "block") {
+        await this.requireInstructionWritten(
+          decision.instruction.id,
+          requestedRunEpoch,
+          "current_turn",
+        );
+      }
       if (decision.decision === "block" && this.currentState === "evaluating") {
         this.transition("running");
       }
@@ -253,10 +271,12 @@ export class ClaudeRuntimeSession
     }
 
     this.inputQueue.setHandoffHandler((supplementalInput) => {
+      const turnHandoff = this.resolveInstructionTurnHandoff(supplementalInput);
       this.observeSupplementalInputHandoff(supplementalInput);
       void this.observeInstructionWritten(
         supplementalInput.id,
         supplementalInput.runEpoch,
+        turnHandoff,
       );
     });
     const multiplexer = new ClaudeInputMultiplexer(
@@ -269,7 +289,18 @@ export class ClaudeRuntimeSession
         prompt: multiplexer.toSdkPrompt(),
         options: input.queryOptions,
       });
-      this.inputQueue.setInterruptHandler(() => this.query?.interrupt());
+      this.inputQueue.setInterruptHandler(async () => {
+        this.expectedProviderInterruptResults++;
+        try {
+          await this.query?.interrupt();
+        } catch (error) {
+          this.expectedProviderInterruptResults = Math.max(
+            0,
+            this.expectedProviderInterruptResults - 1,
+          );
+          throw error;
+        }
+      });
       this.transition("running");
       this.outputPump = this.pumpQuery(this.query);
       if (this.externalInput) {
@@ -292,15 +323,42 @@ export class ClaudeRuntimeSession
     return this.output.subscribe();
   }
 
+  async replayInitialInstructions<T>(
+    replay: () => Promise<T>,
+  ): Promise<T> {
+    if (this.replayingInitialInstructions) {
+      throw new ClaudeRuntimeSessionError(
+        "initial_replay_in_progress",
+        "Claude runtime session is already replaying initial instructions",
+      );
+    }
+    this.replayingInitialInstructions = true;
+    try {
+      return await replay();
+    } finally {
+      this.replayingInitialInstructions = false;
+    }
+  }
+
   async deliver(
     instruction: RuntimeInstruction,
   ): Promise<RuntimeDeliveryReceipt> {
     const idle = this.currentState === "idle";
+    if (this.replayingInitialInstructions) {
+      this.initialTurnInstructionIds.add(instruction.id);
+    }
+    if (instruction.kind === "goal.continue") {
+      this.continuationInstructionIds.add(instruction.id);
+    }
     const receipt = await this.instructionTransport.deliver(instruction, {
       interruptControl: !idle,
       interruptSteer: !idle,
     });
-    if (receipt.state !== "queued" || !this.query) return receipt;
+    if (receipt.state !== "queued" || !this.query) {
+      this.initialTurnInstructionIds.delete(instruction.id);
+      this.continuationInstructionIds.delete(instruction.id);
+      return receipt;
+    }
 
     if (
       instruction.kind === "control.interrupt" ||
@@ -310,6 +368,7 @@ export class ClaudeRuntimeSession
       await this.observeInstructionWritten(
         instruction.id,
         instruction.payload.expectedRunEpoch,
+        "next_turn",
       );
       if (
         this.runEpoch === instruction.payload.expectedRunEpoch &&
@@ -492,6 +551,8 @@ export class ClaudeRuntimeSession
     if (this.closing) return;
     this.closing = true;
     this.stopController = null;
+    this.initialTurnInstructionIds.clear();
+    this.continuationInstructionIds.clear();
 
     this.inputQueue.setInterruptHandler(null);
     this.inputQueue.setHandoffHandler(null);
@@ -536,14 +597,18 @@ export class ClaudeRuntimeSession
     try {
       for await (const message of query) {
         const observedRunEpoch = this.providerOutputEpoch;
+        const expectedInterruptResult =
+          this.consumeExpectedProviderInterruptResult(message);
         this.processedSdkMessages++;
         this.updateSessionFromSdkMessage(message, observedRunEpoch);
         await this.recordProviderObservation(message, observedRunEpoch);
-        for (const agentMessage of this.outputMultiplexer.convert(message)) {
-          await this.output.publish({
-            ...agentMessage,
-            runEpoch: observedRunEpoch,
-          });
+        if (!expectedInterruptResult) {
+          for (const agentMessage of this.outputMultiplexer.convert(message)) {
+            await this.output.publish({
+              ...agentMessage,
+              runEpoch: observedRunEpoch,
+            });
+          }
         }
         if (message.type === "result") {
           if (observedRunEpoch === this.runEpoch) {
@@ -623,6 +688,18 @@ export class ClaudeRuntimeSession
     }
   }
 
+  private consumeExpectedProviderInterruptResult(message: SDKMessage): boolean {
+    if (this.expectedProviderInterruptResults === 0) return false;
+    if (message.type !== "result") return false;
+    this.expectedProviderInterruptResults--;
+    return (
+      message.subtype === "error_during_execution" &&
+      (message.terminal_reason === "aborted_streaming" ||
+        message.terminal_reason === "aborted_tools" ||
+        message.errors.some((error) => /\brequest\b.*\baborted\b/i.test(error)))
+    );
+  }
+
   private observeSupplementalInputHandoff(input: AgentSupplementalInput): void {
     const inputRunEpoch = input.runEpoch ?? this.runEpoch;
     if (
@@ -667,14 +744,56 @@ export class ClaudeRuntimeSession
   private async observeInstructionWritten(
     instructionId: string,
     runEpoch: number,
+    turnHandoff: ClaudeInstructionTurnHandoff,
   ): Promise<void> {
     await this.recordObservation("record SDK instruction handoff", (observer) =>
       observer.instructionWritten({
         instructionId,
         runEpoch,
+        turnHandoff,
         recordedAt: new Date().toISOString(),
       }),
     );
+  }
+
+  private async requireInstructionWritten(
+    instructionId: string,
+    runEpoch: number,
+    turnHandoff: ClaudeInstructionTurnHandoff,
+  ): Promise<void> {
+    const observer = this.eventObserver;
+    if (!observer) {
+      throw new ClaudeRuntimeSessionError(
+        "instruction_handoff_failed",
+        "Claude Goal continuation requires a runtime event observer",
+      );
+    }
+    try {
+      await observer.instructionWritten({
+        instructionId,
+        runEpoch,
+        turnHandoff,
+        recordedAt: new Date().toISOString(),
+      });
+    } catch (cause) {
+      throw new ClaudeRuntimeSessionError(
+        "instruction_handoff_failed",
+        `Failed to register Claude Goal continuation ${instructionId}: ${errorMessage(cause)}`,
+      );
+    }
+  }
+
+  private resolveInstructionTurnHandoff(
+    input: AgentSupplementalInput,
+  ): ClaudeInstructionTurnHandoff {
+    const isInitialReplay = this.initialTurnInstructionIds.delete(input.id);
+    const isContinuation = this.continuationInstructionIds.delete(input.id);
+    return input.intent === "inform" ||
+      this.currentState === "idle" ||
+      isInitialReplay ||
+      isContinuation
+      ? "current_turn"
+      : "next_turn";
   }
 
   private async recordProviderObservation(
@@ -778,6 +897,8 @@ export class ClaudeRuntimeSession
 
 export type ClaudeRuntimeSessionErrorCode =
   | "already_started"
+  | "initial_replay_in_progress"
+  | "instruction_handoff_failed"
   | "invalid_terminal_boundary"
   | "invalid_run_epoch"
   | "not_started"
@@ -822,6 +943,10 @@ function assistantMessageText(message: SDKMessage): string {
     )
     .join("\n")
     .trim();
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function assertRunEpoch(runEpoch: number): void {
