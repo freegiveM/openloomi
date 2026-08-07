@@ -2,6 +2,8 @@ import type {
   AgentGoalRun,
   GoalEvidence,
   PersistedAgentGoal,
+  RuntimeProvider,
+  RuntimeSessionState,
   RuntimeInstruction,
 } from "@openloomi/ai/agent/runtime-instructions";
 
@@ -39,6 +41,8 @@ import type { BetterSqlite3Client } from "./transaction";
 export interface SqliteGoalSessionRecord {
   readonly ownerId: string;
   readonly runtimeSessionId: string;
+  readonly provider: RuntimeProvider;
+  readonly state: RuntimeSessionState;
   readonly runEpoch: number;
   readonly lastInstructionSequence: number;
   readonly providerSessionId?: string;
@@ -103,7 +107,7 @@ export class SqliteGoalRuntimeStore {
   ): SqliteGoalSessionRecord | null {
     const row = this.client
       .prepare(
-        `SELECT owner_id, id, run_epoch, last_instruction_sequence,
+        `SELECT owner_id, id, provider, state, run_epoch, last_instruction_sequence,
                 provider_session_id, pending_operation, created_at, updated_at
            FROM agent_runtime_sessions
           WHERE owner_id = ? AND id = ?`,
@@ -113,6 +117,8 @@ export class SqliteGoalRuntimeStore {
     return {
       ownerId: requiredString(row.owner_id, "runtime session owner_id"),
       runtimeSessionId: requiredString(row.id, "runtime session id"),
+      provider: requiredLiteral(row.provider, "claude", "runtime session provider"),
+      state: requiredSessionState(row.state),
       runEpoch: requiredInteger(row.run_epoch, "runtime session run_epoch", 0),
       lastInstructionSequence: requiredInteger(
         row.last_instruction_sequence,
@@ -141,6 +147,111 @@ export class SqliteGoalRuntimeStore {
         0,
       ),
     };
+  }
+
+  getSessionById(runtimeSessionId: string): SqliteGoalSessionRecord | null {
+    const row = this.client
+      .prepare("SELECT owner_id FROM agent_runtime_sessions WHERE id = ?")
+      .get(runtimeSessionId) as RawRow | undefined;
+    if (!row) return null;
+    return this.getSession(
+      requiredString(row.owner_id, "runtime session owner_id"),
+      runtimeSessionId,
+    );
+  }
+
+  getSessionByProviderSessionId(
+    providerSessionId: string,
+  ): SqliteGoalSessionRecord | null {
+    const row = this.client
+      .prepare(
+        `SELECT owner_id, id FROM agent_runtime_sessions
+          WHERE provider = 'claude' AND provider_session_id = ?`,
+      )
+      .get(providerSessionId) as RawRow | undefined;
+    if (!row) return null;
+    return this.getSession(
+      requiredString(row.owner_id, "runtime session owner_id"),
+      requiredString(row.id, "runtime session id"),
+    );
+  }
+
+  hasUser(ownerId: string): boolean {
+    return Boolean(
+      this.client.prepare('SELECT 1 FROM "User" WHERE id = ?').get(ownerId),
+    );
+  }
+
+  insertSession(input: {
+    ownerId: string;
+    runtimeSessionId: string;
+    recordedAtSeconds: number;
+  }): void {
+    this.client
+      .prepare(
+        `INSERT INTO agent_runtime_sessions
+           (id, owner_id, provider, state, created_at, updated_at)
+         VALUES (?, ?, 'claude', 'starting', ?, ?)`,
+      )
+      .run(
+        input.runtimeSessionId,
+        input.ownerId,
+        input.recordedAtSeconds,
+        input.recordedAtSeconds,
+      );
+  }
+
+  bindProviderSession(input: {
+    ownerId: string;
+    runtimeSessionId: string;
+    expectedProviderSessionId?: string;
+    providerSessionId: string;
+    updatedAtSeconds: number;
+  }): boolean {
+    const predicate =
+      input.expectedProviderSessionId === undefined
+        ? "provider_session_id IS NULL"
+        : "provider_session_id = ?";
+    const parameters: unknown[] = [
+      input.providerSessionId,
+      input.updatedAtSeconds,
+      input.ownerId,
+      input.runtimeSessionId,
+    ];
+    if (input.expectedProviderSessionId !== undefined) {
+      parameters.push(input.expectedProviderSessionId);
+    }
+    return (
+      this.client
+        .prepare(
+          `UPDATE agent_runtime_sessions
+              SET provider_session_id = ?, updated_at = MAX(updated_at, ?)
+            WHERE owner_id = ? AND id = ? AND ${predicate}`,
+        )
+        .run(...parameters).changes === 1
+    );
+  }
+
+  clearProviderSession(input: {
+    ownerId: string;
+    runtimeSessionId: string;
+    expectedProviderSessionId: string;
+    updatedAtSeconds: number;
+  }): boolean {
+    return (
+      this.client
+        .prepare(
+          `UPDATE agent_runtime_sessions
+              SET provider_session_id = NULL, updated_at = MAX(updated_at, ?)
+            WHERE owner_id = ? AND id = ? AND provider_session_id = ?`,
+        )
+        .run(
+          input.updatedAtSeconds,
+          input.ownerId,
+          input.runtimeSessionId,
+          input.expectedProviderSessionId,
+        ).changes === 1
+    );
   }
 
   updateSession(input: UpdateSqliteSessionInput): boolean {
@@ -689,6 +800,20 @@ export class SqliteGoalRuntimeStore {
       .map((row) => mapDeliveryRow(row as RawRow));
   }
 
+  listDeliveries(
+    ownerId: string,
+    runtimeSessionId: string,
+  ): PersistedRuntimeInstructionDelivery[] {
+    return this.client
+      .prepare(
+        `SELECT * FROM agent_runtime_deliveries
+          WHERE owner_id = ? AND runtime_session_id = ?
+          ORDER BY created_at ASC, attempt ASC, id ASC`,
+      )
+      .all(ownerId, runtimeSessionId)
+      .map((row) => mapDeliveryRow(row as RawRow));
+  }
+
   listDispatchableDeliveries(
     ownerId: string,
     runtimeSessionId: string,
@@ -982,6 +1107,30 @@ function mapEvidenceRow(row: RawRow): GoalEvidence {
 
 function isGoalSlotState(value: string): value is AgentGoalSlotState {
   return value === "assigned" || value === "reserved" || value === "released";
+}
+
+function requiredLiteral<T extends string>(
+  value: unknown,
+  expected: T,
+  field: string,
+): T {
+  if (value !== expected) throw new Error(`Invalid persisted ${field}`);
+  return expected;
+}
+
+function requiredSessionState(value: unknown): RuntimeSessionState {
+  if (
+    value !== "starting" &&
+    value !== "idle" &&
+    value !== "running" &&
+    value !== "evaluating" &&
+    value !== "interrupted" &&
+    value !== "closed" &&
+    value !== "failed"
+  ) {
+    throw new Error("Invalid persisted runtime session state");
+  }
+  return value;
 }
 
 function requiredString(value: unknown, field: string): string {

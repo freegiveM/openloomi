@@ -312,6 +312,31 @@ beforeEach(async () => {
 });
 
 describe("native agent memory-context route", () => {
+  it("rejects an existing Claude Runtime Session owned by another user", async () => {
+    mocks.getChatById.mockResolvedValue({
+      id: "foreign-claude-chat",
+      userId: "different-user",
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/native/agent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: "Continue this Claude session",
+          provider: "claude",
+          sessionId: "foreign-claude-chat",
+        }),
+      }) as never,
+    );
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({
+      error: "Runtime Session not found",
+    });
+    expect(mocks.capturedPrompts).toEqual([]);
+  });
+
   it("derives conversation/task applicability only from an owned server-side chat", async () => {
     const manager = mocks.manager as ContractBackedMemoryStorage;
     await storeRawMessagesWithGraphEvolution({

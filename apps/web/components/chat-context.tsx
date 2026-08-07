@@ -22,6 +22,13 @@ import { streamNativeAgentResponse } from "@/lib/ai/router/index";
 import { isTauri } from "@/lib/tauri";
 import { useTranslation } from "react-i18next";
 import { saveMessagesToDatabase } from "@/lib/ai/chat/save-messages";
+import {
+  attachChatSessionAbort,
+  finishChatSession,
+  getChatSessionState as readChatSessionState,
+  setChatSessionRunning,
+  type ChatSessionState,
+} from "@/lib/ai/chat/runtime-state";
 import { getAuthToken } from "@/lib/auth/token-manager";
 import { uploadImageTUS } from "@/lib/files/tus-upload";
 import type { ImageAttachment as AgentImageAttachment } from "@openloomi/ai/agent/types";
@@ -92,12 +99,6 @@ type ChatHistoryCache = {
     [key: string]: unknown;
   }>;
   [key: string]: unknown;
-};
-
-// Independent state per chat
-type ChatSessionState = {
-  isAgentRunning: boolean;
-  abortFn: (() => void) | null;
 };
 
 export interface ChatContextValue {
@@ -612,20 +613,19 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
   const setIsAgentRunningForChatFn = useCallback(
     (chatId: string, running: boolean) => {
       if (!chatId) return;
-      setChatSessionStates((prev) => {
-        const newMap = new Map(prev);
-        const currentState =
-          newMap.get(chatId) ||
-          ({
-            isAgentRunning: false,
-            abortFn: null,
-          } as ChatSessionState);
-        newMap.set(chatId, { ...currentState, isAgentRunning: running });
-        return newMap;
-      });
+      setChatSessionStates((prev) =>
+        setChatSessionRunning(prev, chatId, running),
+      );
     },
     [],
   );
+
+  const finishNativeAgentRun = useCallback((chatId: string | null) => {
+    abortFnRef.current = null;
+    setIsSending(false);
+    if (!chatId) return;
+    setChatSessionStates((prev) => finishChatSession(prev, chatId));
+  }, []);
 
   const saveChatMessageImmediately = useCallback(
     (message: ChatMessage, chatId: string) => {
@@ -1504,23 +1504,12 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
             // Update both ref and state simultaneously to ensure stop function can access synchronously
             abortFnRef.current = abortFn;
             if (chatIdForAbort) {
-              setChatSessionStates((prev) => {
-                const newMap = new Map(prev);
-                const currentState = getChatSessionState(chatIdForAbort);
-                newMap.set(chatIdForAbort, { ...currentState, abortFn });
-                return newMap;
-              });
+              setChatSessionStates((prev) =>
+                attachChatSessionAbort(prev, chatIdForAbort, abortFn),
+              );
             }
           },
           onUpdate: async (data) => {
-            // Ensure state is true when receiving message.
-            // Pass the captured chatIdForAbort so the running flag is set on the
-            // SAME chat that onDone/onError later clears. Without this, updates
-            // default to the current activeChatId, which can drift (e.g. when the
-            // user switches chats mid-stream), leaving the flag stuck true and the
-            // send button locked in the loading/stop state after completion.
-            setIsAgentRunningFn(true, chatIdForAbort ?? undefined);
-
             // Deduplicate based on messageId - avoid duplicate messages
             const messageId = (data as { messageId?: string }).messageId;
             if (messageId) {
@@ -2003,6 +1992,7 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
                   return updated;
                 }, chatIdForMessages);
               }
+              finishNativeAgentRun(chatIdForAbort || activeChatId);
             }
 
             // Save AI message parts on every update
@@ -2013,26 +2003,7 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
           modelConfig,
           onDone: async () => {
             codexTransportStatus.clear();
-            // Clear sending lock
-            setIsSending(false);
-            // Cleanup native agent state - use chatIdForAbort to ensure lock is cleared for correct chat
-            // Fallback to activeChatId if chatIdForAbort is not available (should not happen but safety check)
-            const chatIdToClear = chatIdForAbort || activeChatId;
-            // Clear abort function in ref FIRST to prevent race with stop()
-            abortFnRef.current = null;
-            // Clear abort function and isAgentRunning for current conversation atomically
-            if (chatIdToClear) {
-              setChatSessionStates((prev) => {
-                const newMap = new Map(prev);
-                const currentState = getChatSessionState(chatIdToClear);
-                newMap.set(chatIdToClear, {
-                  ...currentState,
-                  isAgentRunning: false,
-                  abortFn: null,
-                });
-                return newMap;
-              });
-            }
+            finishNativeAgentRun(chatIdForAbort || activeChatId);
 
             // Reset stream error retry count and retry flag (execution success)
             setStreamRetryCount(0);
@@ -2063,27 +2034,8 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
           },
           onError: (error) => {
             codexTransportStatus.clear();
-            // Clear sending lock
-            setIsSending(false);
             console.error("[NativeAgent] Stream error:", error);
-            // Cleanup native agent state - use chatIdForAbort to ensure lock is cleared for correct chat
-            // Fallback to activeChatId if chatIdForAbort is not available (should not happen but safety check)
-            const chatIdToClear = chatIdForAbort || activeChatId;
-            // Clear abort function in ref FIRST to prevent race with stop()
-            abortFnRef.current = null;
-            // Clear abort function and isAgentRunning for current conversation atomically
-            if (chatIdToClear) {
-              setChatSessionStates((prev) => {
-                const newMap = new Map(prev);
-                const currentState = getChatSessionState(chatIdToClear);
-                newMap.set(chatIdToClear, {
-                  ...currentState,
-                  isAgentRunning: false,
-                  abortFn: null,
-                });
-                return newMap;
-              });
-            }
+            finishNativeAgentRun(chatIdForAbort || activeChatId);
 
             // Safely extract error properties
             const errorName =
@@ -2261,12 +2213,9 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
 
         // Save abort function for current conversation so it can still abort after switching conversations
         if (chatIdForAbort) {
-          setChatSessionStates((prev) => {
-            const newMap = new Map(prev);
-            const currentState = getChatSessionState(chatIdForAbort);
-            newMap.set(chatIdForAbort, { ...currentState, abortFn });
-            return newMap;
-          });
+          setChatSessionStates((prev) =>
+            attachChatSessionAbort(prev, chatIdForAbort, abortFn),
+          );
         }
 
         return Promise.resolve();
@@ -2306,8 +2255,7 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
           }
           return updated;
         }, chatIdForMessages);
-        // Bug fix: clear isSending lock to allow future messages
-        setIsSending(false);
+        finishNativeAgentRun(stableActiveChatId);
         return Promise.reject(error);
       }
     },
@@ -2317,6 +2265,7 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
       setMessages,
       t,
       setIsAgentRunningForChatFn,
+      finishNativeAgentRun,
       saveUserMessageAndUpdateHistory,
       saveChatMessageImmediately,
       generateLifestyleImageReply,
@@ -2346,101 +2295,35 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // =====================================================================
-  // Per-chat state management (persisted to localStorage)
+  // Per-chat transient runtime state
   // =====================================================================
-
-  // Load chatSessionStates from localStorage
-  const loadChatSessionStatesFromStorage = (): Map<
-    string,
-    ChatSessionState
-  > => {
-    if (typeof window === "undefined") return new Map();
-    try {
-      const saved = localStorage.getItem("chatSessionStates");
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        // Convert plain object back to Map
-        const map = new Map<string, ChatSessionState>();
-        for (const [key, value] of Object.entries(parsed)) {
-          map.set(key, value as ChatSessionState);
-        }
-        return map;
-      }
-    } catch (e) {
-      console.error("[ChatContext] Failed to load chatSessionStates:", e);
-    }
-    return new Map();
-  };
 
   const [chatSessionStates, setChatSessionStates] = useState<
     Map<string, ChatSessionState>
-  >(loadChatSessionStatesFromStorage);
+  >(() => new Map());
 
   // Use ref to store current abortFn, ensure stop function can access synchronously
   // Avoid issues caused by React state async updates
   const abortFnRef = useRef<(() => void) | null>(null);
 
-  // Persist chatSessionStates to localStorage - use debounced async write to avoid blocking main thread
-  // Limit stored sessions to prevent localStorage quota exceeded errors
-  const MAX_STORED_SESSIONS = 20;
-
+  // Runtime state cannot survive a reload because abort functions are not
+  // serializable. Remove legacy persisted flags so a stale `true` value cannot
+  // resurrect a stop button without a live request.
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const timeoutId = setTimeout(() => {
-      try {
-        // Convert Map to plain object for JSON serialization
-        // Limit to most recent sessions to prevent localStorage quota exceeded
-        const entries = Array.from(chatSessionStates.entries());
-        const recentEntries = entries.slice(-MAX_STORED_SESSIONS);
-        const obj: Record<string, Omit<ChatSessionState, "abortFn">> = {};
-        recentEntries.forEach(([key, value]) => {
-          // eslint-disable-next-line @typescript-eslint/no-unused-vars
-          const { abortFn, ...rest } = value;
-          obj[key] = {
-            ...rest,
-          };
-        });
-        localStorage.setItem("chatSessionStates", JSON.stringify(obj));
-      } catch (e) {
-        // Handle QuotaExceededError specifically - clear old data and retry with fewer sessions
-        if (
-          e instanceof DOMException &&
-          (e.name === "QuotaExceededError" || e.code === 22)
-        ) {
-          console.warn(
-            "[ChatContext] localStorage quota exceeded, clearing old sessions",
-          );
-          try {
-            // Keep only the most recent 5 sessions and minimal data
-            const entries = Array.from(chatSessionStates.entries());
-            const recentEntries = entries.slice(-5);
-            const obj: Record<string, Omit<ChatSessionState, "abortFn">> = {};
-            recentEntries.forEach(([key, value]) => {
-              // eslint-disable-next-line @typescript-eslint/no-unused-vars
-              const { abortFn, ...rest } = value;
-              obj[key] = { ...rest };
-            });
-            localStorage.setItem("chatSessionStates", JSON.stringify(obj));
-          } catch {
-            // If even that fails, clear entirely
-            localStorage.removeItem("chatSessionStates");
-          }
-        } else {
-          console.error("[ChatContext] Failed to save chatSessionStates:", e);
-        }
-      }
-    }, 100);
-    return () => clearTimeout(timeoutId);
-  }, [chatSessionStates]);
+    try {
+      localStorage.removeItem("chatSessionStates");
+    } catch (error) {
+      console.warn(
+        "[ChatContext] Failed to remove legacy chat runtime state:",
+        error,
+      );
+    }
+  }, []);
 
   const getChatSessionState = useCallback(
     (chatId: string): ChatSessionState => {
-      return (
-        chatSessionStates.get(chatId) || {
-          isAgentRunning: false,
-          abortFn: null,
-        }
-      );
+      return readChatSessionState(chatSessionStates, chatId);
     },
     [chatSessionStates],
   );
@@ -2495,6 +2378,8 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error("[stop] Error aborting native agent:", error);
     } finally {
+      abortFnRef.current = null;
+      setIsSending(false);
       // Clear abort functions and running state for all conversations
       setChatSessionStates((prev) => {
         const newMap = new Map(prev);
@@ -2517,14 +2402,11 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
     (running: boolean, chatId?: string) => {
       const targetChatId = chatId ?? activeChatId;
       if (!targetChatId) return;
-      setChatSessionStates((prev) => {
-        const newMap = new Map(prev);
-        const currentState = getChatSessionState(targetChatId);
-        newMap.set(targetChatId, { ...currentState, isAgentRunning: running });
-        return newMap;
-      });
+      setChatSessionStates((prev) =>
+        setChatSessionRunning(prev, targetChatId, running),
+      );
     },
-    [activeChatId, getChatSessionState],
+    [activeChatId],
   );
 
   const openFilePreviewPanel = useCallback(

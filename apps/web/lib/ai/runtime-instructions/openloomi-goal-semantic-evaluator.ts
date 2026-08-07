@@ -2,10 +2,8 @@ import {
   GoalEvaluationResultSchema,
   type GoalEvaluationResult,
 } from "@openloomi/ai/agent/runtime-instructions";
-import { generateText, type LanguageModel } from "ai";
 
-import { getModel } from "@openloomi/ai/agent";
-import { isTauriMode } from "@/lib/env";
+import type { LlmProvider } from "@/lib/ai/provider";
 import type {
   GoalSemanticEvaluationInput,
   GoalSemanticEvaluatorPort,
@@ -17,38 +15,44 @@ const MAX_EVIDENCE_SUMMARY_CHARACTERS = 1_000;
 const MAX_EVIDENCE_PAYLOAD_CHARACTERS = 8_000;
 const MAX_CONTEXT_SUMMARY_CHARACTERS = 2_000;
 
+async function resolveOwnerProvider(ownerId: string) {
+  const { resolveLlmProvider } = await import("@/lib/ai/provider-resolver");
+  return resolveLlmProvider({ userId: ownerId, prefer: "anthropic_messages" });
+}
+
 export interface OpenLoomiGoalSemanticEvaluatorOptions {
-  /**
-   * Lets a caller bind evaluation to a request/session-scoped model. The
-   * process-global OpenLoomi model remains a compatibility fallback and any
-   * configuration failure is handled fail-closed by GoalController.
-   */
-  resolveModel?: () => LanguageModel;
+  resolveProvider?: (ownerId: string) => Promise<LlmProvider | undefined>;
   timeoutMs?: number;
 }
 
 /** Uses OpenLoomi's configured language model for unresolved semantic checks. */
 export class OpenLoomiGoalSemanticEvaluator implements GoalSemanticEvaluatorPort {
-  private readonly resolveModel: () => LanguageModel;
+  private readonly resolveProvider: (
+    ownerId: string,
+  ) => Promise<LlmProvider | undefined>;
   private readonly timeoutMs: number;
 
   constructor(options: OpenLoomiGoalSemanticEvaluatorOptions = {}) {
-    this.resolveModel = options.resolveModel ?? (() => getModel(isTauriMode()));
+    this.resolveProvider = options.resolveProvider ?? resolveOwnerProvider;
     this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   }
 
   async evaluate(
     input: GoalSemanticEvaluationInput,
   ): Promise<GoalEvaluationResult> {
-    const { text } = await generateText({
-      model: this.resolveModel(),
-      temperature: 0,
-      maxOutputTokens: 2_048,
-      abortSignal: AbortSignal.timeout(this.timeoutMs),
-      prompt: buildEvaluationPrompt(input),
+    const provider = await this.resolveProvider(input.run.ownerId);
+    if (!provider) throw new Error("No Goal evaluation provider is configured");
+    const { text } = await provider.complete({
+      userContent: buildEvaluationPrompt(input),
+      maxTokens: 2_048,
+      timeoutMs: this.timeoutMs,
     });
 
-    return GoalEvaluationResultSchema.parse(parseJsonObject(text));
+    const candidate = parseJsonObject(text) as { nextInstruction?: unknown };
+    const next = candidate?.nextInstruction;
+    if (typeof next === "string" && !next.trim())
+      candidate.nextInstruction = undefined;
+    return GoalEvaluationResultSchema.parse(candidate);
   }
 }
 

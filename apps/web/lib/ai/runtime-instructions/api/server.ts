@@ -15,6 +15,7 @@ export function getAgentGoalApiService(): AgentGoalApiService {
     goals: runtime.goals,
     queries: runtime.queries,
     liveSessions: runtime.sessions,
+    runtimeSessions: runtime.runtimeSessions,
     sessionOwnership: {
       isOwnedChat: async (ownerId, runtimeSessionId) => {
         const chat = await getChatById({ id: runtimeSessionId });

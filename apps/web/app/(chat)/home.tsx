@@ -16,7 +16,18 @@ import { useLocalStorage } from "usehooks-ts";
 import { AgentLayout } from "@/components/agent/layout";
 import { AgentChatPanel } from "@/components/agent/chat-panel";
 import { ChatHeaderPanel } from "@/components/agent/chat-header-panel";
-import { Button, PageSectionHeader } from "@openloomi/ui";
+import {
+  Button,
+  PageSectionHeader,
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@openloomi/ui";
 import { useTranslation } from "react-i18next";
 import "../../i18n";
 import type { ChatMessage } from "@openloomi/shared";
@@ -29,6 +40,7 @@ import { StorageManagementPanel } from "@/components/storage-management-panel";
 import { useChatContext } from "@/components/chat-context";
 import { FilePreviewOverlay } from "@/components/file-preview-overlay";
 import { ChatHistorySidePanel } from "@/components/agent/chat-history-side-panel";
+import { AgentGoalSidePanel } from "@/components/agent/goal-side-panel";
 import type { ChatHistoryResponse } from "@/lib/ai/chat/api";
 import { decodeSearchParamText } from "@/lib/chat/query-text";
 import { mutate } from "swr";
@@ -37,6 +49,7 @@ import { AddPlatformDialog } from "@/components/add-platform-dialog";
 import { useIntegrations } from "@/hooks/use-integrations";
 import { ChatSkeleton } from "@/components/agent/panel-skeleton";
 import { RemixIcon } from "@/components/remix-icon";
+import { useIsMobile } from "@openloomi/hooks/use-is-mobile";
 
 const HISTORY_PAGE_SIZE = 20;
 
@@ -100,6 +113,8 @@ export function Home() {
     "chatHistoryPanelOpen",
     false,
   );
+  const [isGoalPanelOpen, setIsGoalPanelOpen] = useState(false);
+  const isMobile = useIsMobile();
 
   // Get state from ChatContext
   const {
@@ -522,6 +537,7 @@ export function Home() {
     // Chat page (entered from left menu "New chat" or Library/Chat Vault "Open chat"): full-screen display chat, no left Focus/Tracking panel; use effectiveChatId to support chatId in URL
     if (page === "chat") {
       return (
+        <>
           <AgentLayout centerTitle={t("nav.newChat")} hideCenterHeader={true}>
             <div className="flex h-full min-h-0 w-full gap-0">
               {/* Left: chat content */}
@@ -530,10 +546,32 @@ export function Home() {
                   chatId={effectiveChatId}
                   onChatIdChange={handleChatIdChange}
                   isHistoryPanelOpen={isChatHistoryOpen}
-                  onToggleHistoryPanel={() =>
-                    setIsChatHistoryOpen((open) => !open)
-                  }
-                />
+                  onToggleHistoryPanel={() => {
+                    setIsGoalPanelOpen(false);
+                    setIsChatHistoryOpen((open) => !open);
+                  }}
+                >
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant={isGoalPanelOpen ? "secondary" : "ghost"}
+                        size="icon"
+                        className="h-8 w-8"
+                        aria-label={t("agentGoals.open")}
+                        aria-expanded={isGoalPanelOpen}
+                        onClick={() => {
+                          setIsChatHistoryOpen(false);
+                          setIsGoalPanelOpen((open) => !open);
+                        }}
+                      >
+                        <RemixIcon name="target" size="size-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>{t("agentGoals.title")}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </ChatHeaderPanel>
                 <div className="flex-1 min-h-0 overflow-hidden">
                   <AgentChatPanel
                     key={effectiveChatId}
@@ -560,8 +598,34 @@ export function Home() {
                   />
                 </div>
               )}
+              {isGoalPanelOpen && !isMobile && effectiveChatId && (
+                <div className="hidden h-full max-h-screen w-[360px] min-w-[320px] max-w-[420px] flex-col overflow-hidden border-l border-border md:flex">
+                  <AgentGoalSidePanel
+                    key={effectiveChatId}
+                    runtimeSessionId={effectiveChatId}
+                    onClose={() => setIsGoalPanelOpen(false)}
+                  />
+                </div>
+              )}
             </div>
           </AgentLayout>
+          {isMobile && effectiveChatId && (
+            <Sheet open={isGoalPanelOpen} onOpenChange={setIsGoalPanelOpen}>
+              <SheetContent side="right" className="w-full max-w-none p-0">
+                <SheetHeader className="sr-only">
+                  <SheetTitle>{t("agentGoals.title")}</SheetTitle>
+                  <SheetDescription>
+                    {t("agentGoals.description")}
+                  </SheetDescription>
+                </SheetHeader>
+                <AgentGoalSidePanel
+                  key={effectiveChatId}
+                  runtimeSessionId={effectiveChatId}
+                />
+              </SheetContent>
+            </Sheet>
+          )}
+        </>
       );
     }
 

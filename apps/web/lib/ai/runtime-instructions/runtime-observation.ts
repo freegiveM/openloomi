@@ -43,6 +43,7 @@ export interface RuntimeProviderEventObservation {
   terminal?: boolean;
   usage?: RuntimeUsageDelta;
   context?: RuntimeObservationContext;
+  acknowledgedContexts?: RuntimeObservationContext[];
   evidence?: RuntimeEvidenceDraft[];
 }
 

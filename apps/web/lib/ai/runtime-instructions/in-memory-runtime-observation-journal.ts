@@ -317,6 +317,12 @@ export class InMemoryRuntimeObservationJournal implements RuntimeObservationJour
       const context = parsed.context
         ? this.validateContext(session, parsed.context, parsed.runEpoch)
         : this.latestWrittenContext(session, parsed.runEpoch);
+      const acknowledgedContexts = this.acknowledgedContexts(
+        session,
+        parsed.runEpoch,
+        context,
+        parsed.acknowledgedContexts,
+      );
       const evidence = context
         ? this.materializeEvidence(session, context, parsed.evidence ?? [])
         : [];
@@ -337,19 +343,23 @@ export class InMemoryRuntimeObservationJournal implements RuntimeObservationJour
       if (parsed.providerSessionId) {
         this.assignProviderSession(session, parsed.providerSessionId);
       }
-      this.markWrittenDeliveriesObserved(
-        session,
-        parsed.runEpoch,
-        parsed.providerEventId,
-        parsed.observedAt,
-      );
-      if (parsed.terminal) {
-        this.markNormalDeliveriesApplied(
+      for (const acknowledged of acknowledgedContexts) {
+        this.markWrittenDeliveriesObserved(
           session,
-          parsed.runEpoch,
+          acknowledged,
           parsed.providerEventId,
           parsed.observedAt,
         );
+      }
+      if (parsed.terminal) {
+        for (const acknowledged of acknowledgedContexts) {
+          this.markNormalDeliveriesApplied(
+            session,
+            acknowledged,
+            parsed.providerEventId,
+            parsed.observedAt,
+          );
+        }
       }
 
       if (!context || !run) return true;
@@ -990,51 +1000,67 @@ export class InMemoryRuntimeObservationJournal implements RuntimeObservationJour
     return context;
   }
 
-  private markWrittenDeliveriesObserved(
+  private acknowledgedContexts(
     session: RuntimeObservationSession,
     runEpoch: number,
+    primary: RuntimeObservationContext | null,
+    acknowledged: RuntimeObservationContext[] | undefined,
+  ): RuntimeObservationContext[] {
+    const contexts = new Map<string, RuntimeObservationContext>();
+    for (const candidate of [primary, ...(acknowledged ?? [])]) {
+      if (!candidate) continue;
+      const valid = this.validateContext(session, candidate, runEpoch);
+      if (valid) contexts.set(valid.instructionId, valid);
+    }
+    return [...contexts.values()];
+  }
+
+  private markWrittenDeliveriesObserved(
+    session: RuntimeObservationSession,
+    context: RuntimeObservationContext | null,
     providerEventId: string,
     observedAt: string,
   ): void {
-    // Claude does not echo an OpenLoomi instruction ID in output events. The
-    // first causal provider event therefore acknowledges every instruction
-    // already handed to this provider turn, scoped by the current runEpoch.
-    for (const stored of session.deliveries.values()) {
-      if (
-        stored.runEpoch === runEpoch &&
-        !isInterruptControl(stored.instruction) &&
-        stored.delivery.state === "written_to_sdk"
-      ) {
-        this.transitionDelivery(
-          stored.delivery,
-          "observed",
-          observedAt,
-          providerEventId,
-        );
-      }
+    if (!context) return;
+    const stored = session.deliveries.get(context.instructionId);
+    if (
+      stored?.runEpoch !== context.runEpoch ||
+      stored.delivery.goalRunId !== context.goalRunId ||
+      isInterruptControl(stored.instruction) ||
+      stored.delivery.state !== "written_to_sdk"
+    ) {
+      return;
     }
+    this.transitionDelivery(
+      stored.delivery,
+      "observed",
+      observedAt,
+      providerEventId,
+    );
   }
 
   private markNormalDeliveriesApplied(
     session: RuntimeObservationSession,
-    runEpoch: number,
+    context: RuntimeObservationContext | null,
     providerEventId: string,
     observedAt: string,
   ): void {
-    for (const stored of session.deliveries.values()) {
-      if (
-        stored.runEpoch === runEpoch &&
-        stored.delivery.state === "observed" &&
-        !isInterruptControl(stored.instruction)
-      ) {
-        this.transitionDelivery(
-          stored.delivery,
-          "applied",
-          observedAt,
-          providerEventId,
-        );
-      }
+    if (!context) return;
+    const stored = session.deliveries.get(context.instructionId);
+    if (
+      stored?.runEpoch !== context.runEpoch ||
+      stored.delivery.goalRunId !== context.goalRunId ||
+      stored.delivery.state !== "observed" ||
+      isInterruptControl(stored.instruction)
+    ) {
+      return;
     }
+    this.transitionDelivery(
+      stored.delivery,
+      "applied",
+      observedAt,
+      providerEventId,
+    );
   }
 
   private materializeEvidence(
@@ -1237,6 +1263,9 @@ function parseProviderObservation(
     ...(input.context === undefined
       ? {}
       : { context: structuredClone(input.context) }),
+    ...(input.acknowledgedContexts === undefined
+      ? {}
+      : { acknowledgedContexts: structuredClone(input.acknowledgedContexts) }),
     ...(input.evidence === undefined
       ? {}
       : { evidence: structuredClone(input.evidence) }),

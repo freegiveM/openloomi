@@ -8,6 +8,7 @@ const MAX_NAME_CHARACTERS = 256;
 const MAX_SUMMARY_CHARACTERS = 1_000;
 const MAX_COMMAND_CHARACTERS = 4_000;
 const MAX_DETAIL_CHARACTERS = 8_000;
+const MAX_COMMAND_RESPONSE_PREVIEW_CHARACTERS = 3_000;
 const MAX_PATH_CHARACTERS = 512;
 const MAX_PATHS = 16;
 const MAX_JSON_DEPTH = 4;
@@ -75,6 +76,14 @@ interface ExplicitToolOutcome {
 function truncate(value: string, maximum: number): string {
   if (value.length <= maximum) return value;
   return `${value.slice(0, Math.max(0, maximum - 16))}\n...[truncated]`;
+}
+
+function truncateEdges(value: string, maximum: number): string {
+  if (value.length <= maximum) return value;
+  const marker = "\n...[truncated]...\n";
+  const retained = Math.max(0, maximum - marker.length);
+  const head = Math.ceil(retained / 2);
+  return `${value.slice(0, head)}${marker}${value.slice(-(retained - head))}`;
 }
 
 function redactSensitiveText(value: string): string {
@@ -324,6 +333,47 @@ function responsePreview(value: unknown): string | undefined {
   }
 }
 
+function commandResponsePreview(value: unknown): string | undefined {
+  if (value === undefined) return undefined;
+  const response = asRecord(value);
+  const stdout =
+    typeof value === "string"
+      ? value
+      : findRecordValue(response, ["stdout", "output"]);
+  const stderr = findRecordValue(response, ["stderr"]);
+  const sections: string[] = [];
+  if (typeof stdout === "string" && stdout.trim()) {
+    sections.push(`stdout:\n${compactRepeatedLines(stdout)}`);
+  }
+  if (typeof stderr === "string" && stderr.trim()) {
+    sections.push(`stderr:\n${compactRepeatedLines(stderr)}`);
+  }
+  const preview =
+    sections.length > 0 ? sections.join("\n\n") : responsePreview(value);
+  return preview === undefined
+    ? undefined
+    : truncateEdges(preview, MAX_COMMAND_RESPONSE_PREVIEW_CHARACTERS);
+}
+
+function compactRepeatedLines(value: string): string {
+  const lines = redactSensitiveText(value).replace(/\r\n/g, "\n").split("\n");
+  const counts = new Map<string, number>();
+  for (const line of lines) {
+    if (line.trim()) counts.set(line, (counts.get(line) ?? 0) + 1);
+  }
+  const emitted = new Set<string>();
+  return lines
+    .flatMap((line) => {
+      const count = counts.get(line) ?? 1;
+      if (!line.trim() || count === 1) return [line];
+      if (emitted.has(line)) return [];
+      emitted.add(line);
+      return [line, `[repeated ${count} times]`];
+    })
+    .join("\n")
+    .trim();
+}
+
 function safeDuration(durationMs: number | undefined): number | undefined {
   return typeof durationMs === "number" &&
     Number.isFinite(durationMs) &&
@@ -409,7 +459,9 @@ export function collectClaudeToolEvidence({
   if (FILE_CHANGE_TOOLS.has(normalizedName)) {
     payload.inputContentRetained = false;
   } else {
-    const preview = responsePreview(toolResponse);
+    const preview = isCommandTool(toolName)
+      ? commandResponsePreview(toolResponse)
+      : responsePreview(toolResponse);
     if (preview !== undefined) payload.outputPreview = preview;
     if (!isCommandTool(toolName)) payload.input = boundedDetail(toolInput);
   }
