@@ -60,6 +60,11 @@ export async function state(): Promise<LoopState> {
     connectors,
     connectorCapability: summarizeConnectorCapability(connectors),
     ...(status.lastTickAt ? { lastTickAt: status.lastTickAt } : {}),
+    // #516 — null while a normal supervisor is present OR no tick has
+    // run yet; one of "stamp_missing" / "stamp_stale" / "stamp_mismatch"
+    // when the most recent tick was refused by parent-watch. UI surfaces
+    // this as a banner telling the user the desktop app is gone.
+    orphanSupervisor: status.orphanSupervisor ?? null,
   };
 }
 

@@ -1152,6 +1152,15 @@ pub fn try_start_nextjs(
         .env("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "1")
         .env("CLAUDE_CODE_TMPDIR", code_tmpdir)
         .env("CLAUDE_DISABLE_URL_SAFETY_CHECK", "true")
+        // #516 — pass the supervisor boot id to the Node child so its
+        // parent-watch can match it against the heartbeat file we write
+        // at `~/.openloomi/sidecar.alive`. Without this gate the cron
+        // executor happily fires `loop.tick` against the user's own
+        // Claude subscription even after the desktop supervisor dies.
+        .env(
+            crate::sidecar_liveness::BOOT_ID_ENV,
+            crate::sidecar_liveness::boot_id(),
+        )
         .stdin(Stdio::piped())
         .stdout(Stdio::inherit())
         .stderr(Stdio::piped());
@@ -1655,6 +1664,10 @@ pub fn start_nextjs_server() {
 
                 // Spawn watchdog thread to monitor process health
                 spawn_watchdog_thread();
+                // #516 — start the heartbeat thread that backs the Loop
+                // parent-watch check. Idempotent; safe to call whenever
+                // the Node server transitions to "running".
+                crate::sidecar_liveness::start_heartbeat();
             } else {
                 NEXTJS_STARTED.store(false, Ordering::SeqCst);
                 STARTUP_IN_PROGRESS.store(false, Ordering::SeqCst);
@@ -1774,6 +1787,14 @@ pub fn cleanup_nodejs_process() {
     };
 
     println!("🧹 Cleaning up Node.js process...");
+
+    // #516 — stop the heartbeat FIRST so the Node child's parent-watch
+    // stops reading a fresh stamp file before we tear the child down.
+    // Order matters: if we tear down Node first the supervisor dies
+    // (this thread) before the heartbeat, but that's fine too because
+    // it stops anyway — keeping the explicit call here so the
+    // `Node-only-cleanup` paths (panic hooks) also clear the stamp.
+    crate::sidecar_liveness::stop_heartbeat();
 
     let child = {
         let mut guard = lock_recovered(NODEJS_PROCESS.as_ref(), "cleanup node process handle");
@@ -1919,6 +1940,12 @@ pub fn cleanup_nodejs_process_from_panic_hook() {
     };
 
     println!("🧹 Cleaning up Node.js process from panic hook...");
+
+    // #516 — clear the stamp on the panic-hook path too. The thread
+    // is best-effort and may already be unwinding; `stop_heartbeat`
+    // is idempotent and won't panic even if some internals are
+    // partially torn down.
+    crate::sidecar_liveness::stop_heartbeat();
 
     if let Some(mut child) = take_node_child_from_panic_hook() {
         terminate_node_child_from_panic_hook(&mut child);
