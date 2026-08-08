@@ -123,6 +123,19 @@ const FAKE_USER_ID = "user-orphan-test";
 const FAKE_STAMP_PATH = "/tmp/loomi-orphan-test-nonexistent/alive";
 const FAKE_BOOT_ID = "boot-orphan-123";
 
+/**
+ * Look up a handler from `mockRegistry` and throw a clear error if
+ * it's missing. Avoids biome's `noNonNullAssertion` while still
+ * surfacing a real diagnostic when the test setup forgot to register.
+ */
+function requireHandler(name: string) {
+  const h = mockRegistry[name];
+  if (!h) {
+    throw new Error(`handler not registered: ${name}`);
+  }
+  return h;
+}
+
 const fakeContext = {
   userId: FAKE_USER_ID,
   jobId: "job-loop-tick-orphan",
@@ -151,7 +164,7 @@ afterEach(() => {
 
 describe("handleTick — orphan refusal (#516)", () => {
   it("refuses the tick, never imports tick/watcher, and emits a zero-yield result", async () => {
-    const handler = mockRegistry["loop.tick"];
+    const handler = requireHandler("loop.tick");
     expect(handler, "loop.tick handler must be registered").toBeTypeOf(
       "function",
     );
@@ -218,7 +231,7 @@ describe("handleTick — orphan refusal (#516)", () => {
       throw new Error("disk full");
     });
 
-    const handler = mockRegistry["loop.tick"]!;
+    const handler = requireHandler("loop.tick");
     const result = await handler(fakeContext);
 
     expect(result.status).toBe("success");
@@ -239,7 +252,7 @@ describe("handleTick — orphan refusal (#516)", () => {
       throw new Error("FK violation");
     });
 
-    const handler = mockRegistry["loop.tick"]!;
+    const handler = requireHandler("loop.tick");
     const result = await handler(fakeContext);
 
     expect(result.status).toBe("success");
