@@ -9,11 +9,11 @@ import {
   isInsightChromaEnabled,
   type ChromaInsightVectorInput,
   upsertInsightsToChroma,
-} from "@/lib/memory/chroma-memory-index";
+} from "@openloomi/memory-store/chroma-memory-index";
 import {
   isInsightSQLiteVecEnabled,
   upsertInsightsToSQLiteVec,
-} from "@/lib/memory/sqlite-vector-index";
+} from "@openloomi/memory-store/sqlite-vector-index";
 import {
   createUserEmbeddingProvider,
   getUserEmbeddingModelName,

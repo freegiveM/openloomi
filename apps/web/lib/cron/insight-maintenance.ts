@@ -9,8 +9,8 @@ import {
 } from "../db/queries";
 import { runWeeklyInsightMaintenance } from "@/lib/insights/maintenance";
 import { runInsightEmbeddingDream } from "@/lib/insights/dream";
-import { getRawMessageManager } from "@/lib/memory/raw-message-store";
-import { upsertRawMessagesToChroma } from "@/lib/memory/chroma-memory-index";
+import { getRawMessageManager } from "@openloomi/memory-store/raw-message-store";
+import { upsertRawMessagesToChroma } from "@openloomi/memory-store/chroma-memory-index";
 import { hasInsightEmbeddingProviderConfig } from "@/lib/insights/embedding-service";
 import {
   createUserEmbeddingProvider,

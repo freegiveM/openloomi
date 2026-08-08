@@ -68,10 +68,10 @@ vi.mock("@/lib/db/queries", () => ({
   saveMessages: saveMessagesMock,
 }));
 vi.mock("@/lib/env", () => ({ isTauriMode: isTauriModeMock }));
-vi.mock("@/lib/memory/chroma-memory-index", () => ({
+vi.mock("@openloomi/memory-store/chroma-memory-index", () => ({
   upsertRawMessagesToChroma: vi.fn().mockResolvedValue(undefined),
 }));
-vi.mock("@/lib/memory/raw-message-store", () => ({
+vi.mock("@openloomi/memory-store/raw-message-store", () => ({
   getRawMessageManager: getRawMessageManagerMock,
   getRawMessageStorageBackend: getRawMessageStorageBackendMock,
   isRawMessageStorageAvailable: isRawMessageStorageAvailableMock,

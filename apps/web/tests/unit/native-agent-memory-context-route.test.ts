@@ -43,7 +43,7 @@ vi.mock("@openloomi/ai/agent/registry", () => ({
   }),
 }));
 
-vi.mock("@/lib/memory/raw-message-store", () => ({
+vi.mock("@openloomi/memory-store/raw-message-store", () => ({
   isRawMessageStorageAvailable: () => true,
   getRawMessageManager: async () => mocks.manager,
 }));

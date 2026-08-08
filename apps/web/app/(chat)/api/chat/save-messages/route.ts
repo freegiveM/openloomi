@@ -18,7 +18,7 @@ import {
   findChatMemoryRevisionConflict,
   writeSavedChatMessagesToMemory,
 } from "@/lib/memory/chat-memory-write";
-import { resolveMemoryGraphWritePolicy } from "@/lib/memory/memory-graph-write-policy";
+import { resolveMemoryGraphWritePolicy } from "@openloomi/memory-store/memory-graph-write-policy";
 import type { ChatMessage } from "@openloomi/shared";
 import type { Attachment } from "@openloomi/shared";
 import { NextResponse } from "next/server";

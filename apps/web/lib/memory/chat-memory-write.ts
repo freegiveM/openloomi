@@ -5,7 +5,7 @@ import {
   type RawMessageStorageManagerWithSearch,
   getRawMessageManager,
   isRawMessageStorageAvailable,
-} from "@/lib/memory/raw-message-store";
+} from "@openloomi/memory-store/raw-message-store";
 import {
   type MemoryGraphLifecycleRuntimeResult,
   type RawMessage,
@@ -19,7 +19,7 @@ import {
   type MemoryGraphWritePolicyDecision,
   resolveMemoryGraphWritePolicy,
   sanitizeUntrustedMemoryMetadata,
-} from "./memory-graph-write-policy";
+} from "@openloomi/memory-store/memory-graph-write-policy";
 
 type SavedChatMessage = ChatMessage & { createdAt: Date };
 
