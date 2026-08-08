@@ -32,6 +32,7 @@ mod update;
 mod workspace_artifacts;
 
 mod permissions;
+mod sidecar_liveness;
 mod telegram;
 
 fn escape_js_string(raw: &str) -> String {

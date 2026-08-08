@@ -31,7 +31,32 @@ process.stdin.on("end", () => {
     env: process.env,
   });
 
-  child.on("exit", (code) => {
-    process.exit(code || 0);
+  // Forward termination signals to the inner child so killing only the
+  // wrapper (e.g. Tauri cleanup sending SIGTERM to this pid, not the
+  // whole process group) still tears down the actual server. Without
+  // this the inner Next.js process survives and burns the user's quota
+  // (#516: orphaned Loop ticks after uninstall). The forwarded signal
+  // child.on("exit") below turns into a conventional shell exit code.
+  const FORWARDED_SIGNALS = ["SIGTERM", "SIGINT", "SIGHUP"];
+  const forwardSignal = (signal) => {
+    if (child.exitCode !== null || child.signalCode !== null) return;
+    try {
+      child.kill(signal);
+    } catch (_) {
+      /* child already gone — best effort */
+    }
+  };
+  for (const sig of FORWARDED_SIGNALS) {
+    process.on(sig, () => forwardSignal(sig));
+  }
+
+  child.on("exit", (code, signal) => {
+    if (signal) {
+      // Conventional exit code for signal-induced death so callers
+      // can distinguish a forced kill from a clean shutdown.
+      const signalExitCodes = { SIGHUP: 129, SIGINT: 130, SIGTERM: 143 };
+      process.exit(signalExitCodes[signal] ?? 128);
+    }
+    process.exit(code ?? 0);
   });
 });

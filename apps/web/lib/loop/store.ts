@@ -816,6 +816,16 @@ export interface LoopStatusSnapshot {
    * wondering why an authorized integration produced zero decisions.
    */
   unsupportedSignals?: number;
+  /**
+   * #516 — set when the most recent tick was refused by the
+   * supervisor check. Distinct from `lastError` (a free-form string)
+   * so the dashboard payload can pass it through to the UI banner
+   * without string parsing.
+   */
+  orphanSupervisor?:
+    | "stamp_missing"
+    | "stamp_stale"
+    | "stamp_mismatch";
 }
 
 export function readStatus(): LoopStatusSnapshot {

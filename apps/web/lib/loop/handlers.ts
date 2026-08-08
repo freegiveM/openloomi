@@ -13,6 +13,9 @@
 
 import { log } from "./store";
 import { registerCustomHandler } from "@/lib/cron/executor";
+import { checkSupervisor } from "./parent-watch";
+import { writePreferences } from "./preferences";
+import { removeLoopJobs } from "./scheduler";
 import type { JobExecutionContext, JobExecutionResult } from "@/lib/cron/types";
 
 /**
@@ -54,6 +57,63 @@ async function handleTick(
   const { run, setActiveUser } = await import("./tick");
   const { runOnce: runWatcher } = await import("./watcher");
   return runAsJob(async () => {
+    // #516 — refuse to tick when the Tauri supervisor is gone.
+    //
+    // Without this gate the cron executor happily fires `loop.tick` every
+    // interval against the user's own Claude subscription, even if the
+    // openloomi.app that originally launched this Node process has been
+    // uninstalled. The check returns ok=true in dev / CLI modes where
+    // OPENLOOMI_BOOT_ID is unset, so test rigs and `loop tick` from a
+    // terminal keep working. When the env IS set but the supervisor's
+    // stamp file is missing/stale/mismatched, we zero-yield, write a
+    // status entry, and disable Loop in prefs + remove the three cron
+    // rows so subsequent ticks no-op until the user re-enables.
+    const supervisor = checkSupervisor();
+    if (!supervisor.ok) {
+      log(`[handler] tick refused: ${supervisor.reason}`);
+      // `!supervisor.ok` means state ∈ {stamp_missing, stamp_stale,
+      // stamp_mismatch} — the two "ok" states (unbound, supervised) are
+      // unreachable here. Narrow the union so the LoopTickResult type
+      // stays a strict subset of SupervisorState for the orphan case.
+      const orphanState = supervisor.state as
+        | "stamp_missing"
+        | "stamp_stale"
+        | "stamp_mismatch";
+      const { writeStatus, readStatus } = await import("./store");
+      const prev = readStatus();
+      writeStatus({
+        ...prev,
+        lastTickAt: new Date().toISOString(),
+        lastError: supervisor.reason,
+        lastSignalCount: 0,
+        lastDecisionCount: 0,
+        orphanSupervisor: orphanState,
+      });
+      // Flip prefs.enabled=false + remove the cron rows so the next
+      // tick (cron or manual /api/loop/tick) is also a no-op. Idempotent.
+      try {
+        writePreferences({ enabled: false });
+      } catch (e) {
+        log(`[handler] failed to disable prefs after orphan: ${
+          e instanceof Error ? e.message : String(e)
+        }`);
+      }
+      try {
+        await removeLoopJobs(context.userId);
+      } catch (e) {
+        log(`[handler] failed to remove loop cron jobs after orphan: ${
+          e instanceof Error ? e.message : String(e)
+        }`);
+      }
+      return {
+        scanned: 0,
+        surfaced: 0,
+        muted: 0,
+        newDecisions: [],
+        errors: [],
+        orphanSupervisor: orphanState,
+      };
+    }
     // First, have the watcher pull any new events from connected
     // integrations. The watch pass appends directly to signals.jsonl, and
     // the tick's 2h lookback will pick up everything we just wrote.

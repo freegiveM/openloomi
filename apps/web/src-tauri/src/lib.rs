@@ -12,6 +12,7 @@ pub mod node;
 pub mod notify;
 pub mod panic_guard;
 pub mod permissions;
+pub mod sidecar_liveness;
 pub mod render_runtime;
 pub mod runtime_components;
 pub mod storage;

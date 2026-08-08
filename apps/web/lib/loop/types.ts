@@ -649,6 +649,17 @@ export interface LoopState {
      */
     unsupportedSignals: number;
   };
+  /**
+   * #516 — when the supervisor check refused the most recent tick,
+   * mirror the reason here. UI surfaces this as a banner: "Loop
+   * disabled — desktop app supervisor not detected". `null` while a
+   * normal supervisor is present OR while no tick has run yet.
+   */
+  orphanSupervisor?:
+    | "stamp_missing"
+    | "stamp_stale"
+    | "stamp_mismatch"
+    | null;
   lastTickAt?: string;
   connectors: ConnectorEntry[];
   /**
@@ -673,6 +684,17 @@ export interface LoopTickResult {
    * zero decisions.
    */
   unsupportedSignals?: number;
+  /**
+   * #516 — present (and tick is zero-yield) when the supervisor
+   * check in `handleTick` (`lib/loop/parent-watch.ts`) refused to
+   * run. Surface in `LoopState` so the UI can render a clear "Loop
+   * disabled — supervisor gone" banner instead of silently pretending
+   * the tick was a normal no-signal run.
+   */
+  orphanSupervisor?:
+    | "stamp_missing"
+    | "stamp_stale"
+    | "stamp_mismatch";
 }
 
 // ---------------------------------------------------------------------------
