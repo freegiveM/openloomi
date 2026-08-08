@@ -300,6 +300,47 @@ export default defineConfig({
         find: "@openloomi/storage",
         replacement: alias("../../packages/storage/src/local.ts"),
       },
+      // @openloomi/memory-store subpaths - must come before the bare package alias
+      {
+        find: "@openloomi/memory-store/unified-search",
+        replacement: alias("../../packages/memory-store/src/search/unified-search.ts"),
+      },
+      {
+        find: "@openloomi/memory-store/raw-message-store",
+        replacement: alias("../../packages/memory-store/src/storage/raw-message-store.ts"),
+      },
+      {
+        find: "@openloomi/memory-store/sqlite-raw-message-store",
+        replacement: alias("../../packages/memory-store/src/storage/sqlite-raw-message-store.ts"),
+      },
+      {
+        find: "@openloomi/memory-store/sqlite-vector-index",
+        replacement: alias("../../packages/memory-store/src/storage/sqlite-vector-index.ts"),
+      },
+      {
+        find: "@openloomi/memory-store/chroma-memory-index",
+        replacement: alias("../../packages/memory-store/src/storage/chroma-memory-index.ts"),
+      },
+      {
+        find: "@openloomi/memory-store/postgres-raw-message-factory",
+        replacement: alias("../../packages/memory-store/src/storage/postgres-raw-message-factory.ts"),
+      },
+      {
+        find: "@openloomi/memory-store/memory-graph-write-policy",
+        replacement: alias("../../packages/memory-store/src/policies/memory-graph-write-policy.ts"),
+      },
+      {
+        find: "@openloomi/memory-store/memory-graph-correction-policy",
+        replacement: alias("../../packages/memory-store/src/policies/memory-graph-correction-policy.ts"),
+      },
+      {
+        find: "@openloomi/memory-store/*",
+        replacement: alias("../../packages/memory-store/src/*"),
+      },
+      {
+        find: "@openloomi/memory-store",
+        replacement: alias("../../packages/memory-store/src/index.ts"),
+      },
       {
         find: "@openloomi/integrations/channels",
         replacement: alias("../../packages/integrations/channels/src/index.ts"),

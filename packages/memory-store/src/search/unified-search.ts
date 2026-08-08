@@ -9,9 +9,11 @@
 
 import type { UnifiedSearchDeps } from "../config";
 import { isRawMessageChromaEnabled, searchRawMessagesWithChroma } from "../storage/chroma-memory-index";
+import { isRawMessageStorageAvailable } from "../storage/raw-message-store";
 import {
   clampUnifiedMemorySearchLimit,
   clampUnifiedMemorySearchThreshold,
+  isRawMemorySemanticResult,
   mergeUnifiedMemorySearchResults,
   normalizeUnifiedMemorySearchSources,
   toKnowledgeResult,
@@ -52,23 +54,41 @@ export function createUnifiedSearch(deps: UnifiedSearchDeps = {}): UnifiedSearch
   async function searchUnifiedMemory(
     input: UnifiedMemorySearchInput,
   ): Promise<UnifiedMemorySearchOutput> {
+    const query = input.query.trim();
     const sources = normalizeUnifiedMemorySearchSources(input.sources);
     const limit = clampUnifiedMemorySearchLimit(input.limit);
     const threshold = clampUnifiedMemorySearchThreshold(input.threshold);
     const warnings: UnifiedMemorySearchWarning[] = [];
-
     const results: UnifiedMemorySearchResult[] = [];
 
+    if (!query) {
+      return {
+        query,
+        sources,
+        results: [],
+        count: 0,
+        warnings,
+      };
+    }
+
     if (sources.includes("memory")) {
-      try {
-        const memoryHits = await runMemorySource(input, limit, threshold);
-        results.push(...memoryHits);
-      } catch (error) {
-        logger.warn?.("[memory-store] memory source failed:", error);
+      if (isRawMessageStorageAvailable()) {
+        try {
+          const memoryHits = await runMemorySource(input, limit, threshold);
+          results.push(...memoryHits);
+        } catch (error) {
+          logger.warn?.("[memory-store] memory source failed:", error);
+          warnings.push({
+            source: "memory",
+            code: "memory_search_failed",
+            message: (error as Error).message ?? "memory_search_failed",
+          });
+        }
+      } else {
         warnings.push({
           source: "memory",
-          code: "memory_search_failed",
-          message: (error as Error).message ?? "memory_search_failed",
+          code: "raw_message_storage_unavailable",
+          message: "Raw memory storage is not available in this environment.",
         });
       }
     }
@@ -166,40 +186,61 @@ export function createUnifiedSearch(deps: UnifiedSearchDeps = {}): UnifiedSearch
       authToken: input.authToken,
     });
 
+    const filters =
+      input.botIds && input.botIds.length > 0
+        ? input.botIds.map((botId) => ({ botId }))
+        : [{}];
+
     if (isRawMessageChromaEnabled()) {
-      const chromaHits = await searchRawMessagesWithChroma({
-        userId: input.userId,
-        queryEmbedding,
-        limit: limit * 5,
-        threshold,
-        botId: input.botIds?.[0],
-      });
-      return chromaHits.map((hit) =>
-        toMemoryResult({
-          id: hit.id,
-          content: hit.content,
-          similarity: hit.similarity,
-          metadata: hit.metadata,
-        }),
-      );
+      try {
+        const chromaHits = (
+          await Promise.all(
+            filters.map((filter) => {
+              const botId = "botId" in filter ? filter.botId : undefined;
+              return searchRawMessagesWithChroma({
+                userId: input.userId,
+                queryEmbedding,
+                limit,
+                threshold,
+                botId,
+              });
+            }),
+          )
+        )
+          .flat()
+          .map(toMemoryResult);
+        logger.log?.(
+          "[memory-store] Raw message semantic search completed",
+          { backend: "chroma", dimensions: queryEmbedding.length, count: chromaHits.length },
+        );
+        return chromaHits;
+      } catch (error) {
+        logger.warn?.(
+          "[memory-store] Chroma raw message search failed; falling back to database search:",
+          error,
+        );
+        // fall through to the ANN/database search below
+      }
     }
 
     if (typeof deps.searchRawMessagesAnn === "function") {
-      const rows = await deps.searchRawMessagesAnn({
-        userId: input.userId,
-        queryEmbedding,
-        limit: limit * 5,
-        threshold,
-        botId: input.botIds?.[0],
-      });
-      return rows.map((row) =>
-        toMemoryResult({
-          id: row.id,
-          content: row.content,
-          similarity: row.similarity,
-          metadata: row.metadata,
-        }),
-      );
+      const rows = (
+        await Promise.all(
+          filters.map((filter) =>
+            deps.searchRawMessagesAnn!({
+              userId: input.userId,
+              queryEmbedding,
+              limit,
+              threshold,
+              botId: "botId" in filter ? filter.botId : undefined,
+            }),
+          ),
+        )
+      )
+        .flat()
+        .filter(isRawMemorySemanticResult)
+        .map(toMemoryResult);
+      return rows;
     }
 
     return [];
