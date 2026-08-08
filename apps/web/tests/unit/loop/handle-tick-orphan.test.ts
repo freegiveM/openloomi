@@ -45,6 +45,8 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { JobExecutionContext, JobExecutionResult } from "@/lib/cron/types";
+
 // vi.mock is hoisted above imports, so the spies are in place by the
 // time the handlers module (and its transitive imports) load. We mock
 // the *user-facing* siblings of handlers.ts so a regression that
@@ -52,18 +54,36 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Spies we observe from handleTick's refusal path. `run` and
 // `runOnce` are the "tokens burn here" surfaces — they must not be
-// reached.
-const writePreferencesSpy = vi.fn();
-const removeLoopJobsSpy = vi.fn(async () => {});
-const runTickSpy = vi.fn(() => {
+// reached. Typed so the mock factory wrappers can forward arguments
+// without TS2554 ("Expected 0 arguments, but got 1"); return types
+// are explicit `: void` so biome's `noConfusingVoidType` is happy.
+const writePreferencesSpy = vi.fn(
+  (_patch: unknown): void => {
+    /* observed */
+  },
+);
+const removeLoopJobsSpy = vi.fn(
+  async (_uid: string | undefined): Promise<void> => {
+    /* observed */
+  },
+);
+const runTickSpy = vi.fn((_args: unknown) => {
   throw new Error("tick.run must NOT be called when supervisor is gone");
 });
-const runWatcherSpy = vi.fn(async () => {
+const runWatcherSpy = vi.fn(async (_args: unknown) => {
   throw new Error("watcher.runOnce must NOT be called when supervisor is gone");
 });
-const writeStatusSpy = vi.fn();
-const readStatusSpy = vi.fn(() => ({}));
-const logSpy = vi.fn();
+const writeStatusSpy = vi.fn(
+  (_status: unknown): void => {
+    /* observed */
+  },
+);
+const readStatusSpy = vi.fn(
+  (): Record<string, unknown> => ({}),
+);
+const logSpy = vi.fn((..._args: unknown[]): void => {
+  /* observed */
+});
 
 vi.mock("@/lib/loop/preferences", () => ({
   writePreferences: (patch: unknown) => writePreferencesSpy(patch),
@@ -101,13 +121,13 @@ vi.mock("@/lib/loop/store", () => ({
 // will populate our mock registry exactly the way it does the real one.
 const mockRegistry: Record<
   string,
-  (ctx: unknown) => Promise<unknown>
+  (ctx: JobExecutionContext) => Promise<JobExecutionResult>
 > = {};
 vi.mock("@/lib/cron/executor", () => ({
   customJobHandlers: mockRegistry,
   registerCustomHandler: (
     name: string,
-    handler: (ctx: unknown) => Promise<unknown>,
+    handler: (ctx: JobExecutionContext) => Promise<JobExecutionResult>,
   ) => {
     mockRegistry[name] = handler;
   },
@@ -127,8 +147,12 @@ const FAKE_BOOT_ID = "boot-orphan-123";
  * Look up a handler from `mockRegistry` and throw a clear error if
  * it's missing. Avoids biome's `noNonNullAssertion` while still
  * surfacing a real diagnostic when the test setup forgot to register.
+ * Typed to `JobExecutionResult` so callers can assert on `result.status`
+ * etc. without `as unknown as` casts.
  */
-function requireHandler(name: string) {
+function requireHandler(
+  name: string,
+): (ctx: JobExecutionContext) => Promise<JobExecutionResult> {
   const h = mockRegistry[name];
   if (!h) {
     throw new Error(`handler not registered: ${name}`);
@@ -174,9 +198,9 @@ describe("handleTick — orphan refusal (#516)", () => {
     // 1. Result shape — success (so the cron executor logs a clean run)
     //    with the orphan state surfaced in the JSON-encoded output.
     expect(result.status).toBe("success");
-    expect((result as { error?: string }).error).toBeUndefined();
-    expect(typeof (result as { output?: string }).output).toBe("string");
-    const parsed = JSON.parse((result as { output: string }).output);
+    expect(result.error).toBeUndefined();
+    expect(typeof result.output).toBe("string");
+    const parsed = JSON.parse(result.output ?? "");
     expect(parsed).toMatchObject({
       scanned: 0,
       surfaced: 0,
