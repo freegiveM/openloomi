@@ -225,7 +225,15 @@
 			"@openloomi/voice-kokoro": ["../../packages/voice-kokoro/src/index.ts"],
 			"@openloomi/voice-kokoro/*": ["../../packages/voice-kokoro/src/*"],
 			"@openloomi/voice-whisper": ["../../packages/voice-whisper/src/index.ts"],
-			"@openloomi/voice-whisper/*": ["../../packages/voice-whisper/src/*"]
+			"@openloomi/voice-whisper/*": ["../../packages/voice-whisper/src/*"],
+			"@openloomi/memory-store": ["../../packages/memory-store/src/index.ts"],
+			"@openloomi/memory-store/*": [
+				"../../packages/memory-store/src/*",
+				"../../packages/memory-store/src/storage/*",
+				"../../packages/memory-store/src/search/*",
+				"../../packages/memory-store/src/policies/*",
+				"../../packages/memory-store/src/server/*"
+			]
 		},
 		"typeRoots": ["./node_modules/@types"]
 	},

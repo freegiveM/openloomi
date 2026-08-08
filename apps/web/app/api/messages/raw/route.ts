@@ -4,11 +4,11 @@ import {
   isReservedChatMemoryEvidenceId,
   resolveUntrustedRawMemoryGraphWritePolicy,
   sanitizeUntrustedMemoryMetadata,
-} from "@/lib/memory/memory-graph-write-policy";
+} from "@openloomi/memory-store/memory-graph-write-policy";
 import {
   getRawMessageManager,
   getRawMessageStorageBackend,
-} from "@/lib/memory/raw-message-store";
+} from "@openloomi/memory-store/raw-message-store";
 import {
   type RawMessage,
   storeRawMessagesWithGraphEvolution,

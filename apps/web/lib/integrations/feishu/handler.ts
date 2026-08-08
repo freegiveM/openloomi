@@ -121,7 +121,7 @@ async function storeFeishuRawMessage(input: {
   try {
     const nowSec = Math.floor(Date.now() / 1000);
     const { getRawMessageManager } =
-      await import("@/lib/memory/raw-message-store");
+      await import("@openloomi/memory-store/raw-message-store");
     const manager = await getRawMessageManager();
     const rawMessage: RawMessage = {
       messageId: input.messageId,
@@ -149,7 +149,7 @@ async function storeFeishuRawMessage(input: {
     );
     await manager.storeMessage(messageWithEmbedding);
     const { upsertRawMessagesToChroma } =
-      await import("@/lib/memory/chroma-memory-index");
+      await import("@openloomi/memory-store/chroma-memory-index");
     await upsertRawMessagesToChroma([messageWithEmbedding]);
     console.log("[Feishu] Stored raw message", {
       messageId: input.messageId,

@@ -26,12 +26,12 @@ const {
   hasUserEmbeddingProviderConfigMock: vi.fn(),
 }));
 
-vi.mock("@/lib/memory/raw-message-store", () => ({
+vi.mock("@openloomi/memory-store/raw-message-store", () => ({
   getRawMessageManager: getRawMessageManagerMock,
   isRawMessageStorageAvailable: isRawMessageStorageAvailableMock,
 }));
 
-vi.mock("@/lib/memory/chroma-memory-index", () => ({
+vi.mock("@openloomi/memory-store/chroma-memory-index", () => ({
   isRawMessageChromaEnabled: isRawMessageChromaEnabledMock,
   searchRawMessagesWithChroma: searchRawMessagesWithChromaMock,
 }));

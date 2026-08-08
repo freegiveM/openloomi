@@ -21,10 +21,10 @@ const {
 vi.mock("server-only", () => ({}));
 vi.mock("@/app/(auth)/auth", () => ({ auth: authMock }));
 vi.mock("@/lib/db/queries", () => ({ botExists: botExistsMock }));
-vi.mock("@/lib/memory/chroma-memory-index", () => ({
+vi.mock("@openloomi/memory-store/chroma-memory-index", () => ({
   upsertRawMessagesToChroma: upsertRawMessagesToChromaMock,
 }));
-vi.mock("@/lib/memory/raw-message-store", () => ({
+vi.mock("@openloomi/memory-store/raw-message-store", () => ({
   getRawMessageManager: getRawMessageManagerMock,
   getRawMessageStorageBackend: getRawMessageStorageBackendMock,
   isRawMessageStorageAvailable: isRawMessageStorageAvailableMock,

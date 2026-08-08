@@ -14,11 +14,11 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("server-only", () => ({}));
 
-vi.mock("@/lib/memory/memory-graph-write-policy", () => ({
+vi.mock("@openloomi/memory-store/memory-graph-write-policy", () => ({
   resolveMemoryGraphWritePolicy: mocks.policy,
 }));
 
-vi.mock("@/lib/memory/raw-message-store", () => ({
+vi.mock("@openloomi/memory-store/raw-message-store", () => ({
   isRawMessageStorageAvailable: mocks.storageAvailable,
   getRawMessageManager: mocks.getManager,
 }));

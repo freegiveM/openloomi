@@ -1106,3 +1106,23 @@ export async function closePostgresRawMessageManager(): Promise<void> {
   await manager.close();
   manager = null;
 }
+
+// ---------------------------------------------------------------------------
+// Register this Postgres manager with the standalone @openloomi/memory-store
+// package so the standalone HTTP/MCP server (running outside the web app)
+// can fall back to Postgres when not in Tauri mode. Registration is a no-op
+// for in-app imports — the route handlers continue to use
+// `getPostgresRawMessageManager()` directly.
+// ---------------------------------------------------------------------------
+import { registerPostgresFactory as registerPostgresRawMessageFactory } from "@openloomi/memory-store/postgres-raw-message-factory";
+
+registerPostgresRawMessageFactory(async () => {
+  if (!manager) {
+    const m = new PostgresRawMessageManager();
+    await m.init();
+    manager = m;
+  }
+  return manager as unknown as Awaited<
+    ReturnType<Parameters<typeof registerPostgresRawMessageFactory>[0]>
+  >;
+});
