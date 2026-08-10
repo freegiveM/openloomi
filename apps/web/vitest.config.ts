@@ -600,6 +600,28 @@ export default defineConfig({
         replacement: alias("../../packages/ai/src/agent/index.ts"),
       },
       {
+        find: "@openloomi/insights/constants",
+        replacement: alias("../../packages/insights/src/constants.ts"),
+      },
+      {
+        find: "@openloomi/insights/grouping",
+        replacement: alias("../../packages/insights/src/grouping.ts"),
+      },
+      {
+        find: "@openloomi/insights/platform-filter-config",
+        replacement: alias(
+          "../../packages/insights/src/platform-filter-config.ts",
+        ),
+      },
+      {
+        find: "@openloomi/insights/refresh-telemetry",
+        replacement: alias("../../packages/insights/src/refresh-telemetry.ts"),
+      },
+      {
+        find: "@openloomi/insights/resolve-language",
+        replacement: alias("../../packages/insights/src/resolve-language.ts"),
+      },
+      {
         find: "@openloomi/insights",
         replacement: alias("../../packages/insights/src/index.ts"),
       },
