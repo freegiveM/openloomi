@@ -485,7 +485,9 @@ function PureTaskComposer({
                 )}
               </div>
 
-              {isVoiceActive && false ? (
+              {
+                /* biome-ignore lint/correctness/noConstantCondition: voice input is feature-flagged off via @/components/audio/voice-provider; the JSX is intentionally retained so we can flip the flag back on without re-deriving the layout (commit d7550300). */
+                isVoiceActive && false ? (
                 <div className="min-w-0 flex-1">
                   <VoiceRecordingBar
                     phase={phase}
