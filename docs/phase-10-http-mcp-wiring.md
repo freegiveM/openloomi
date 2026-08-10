@@ -28,6 +28,10 @@ Every runtime service that benefits from cross-process consumption ships with:
 | `@openloomi/contracts` | yes | n/a | n/a | — | Pure types |
 | `@openloomi/db` | yes | n/a | n/a | — | Used by HTTP daemons, not a daemon itself |
 
+> All packages live in `packages/` in the current monorepo. The
+> `runtime/packages/*` / `ui/packages/*` split is deferred to the
+> `opencontext` repo split (see `docs/repo-naming.md`).
+
 ## Gating
 
 Cross-process consumption is gated per-package via env vars. Defaults:
