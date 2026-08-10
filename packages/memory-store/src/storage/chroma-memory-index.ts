@@ -8,12 +8,10 @@
  */
 
 import { buildMemoryRecordEmbeddingDocument } from "@openloomi/ai/memory";
-import {
-  rawMessageToMemoryRecord,
-  type RawMessage,
-} from "@openloomi/indexeddb";
 import { ChromaVectorStore } from "@openloomi/rag";
 import type { DocumentChunk } from "@openloomi/rag/vector-service";
+
+import { rawMessageToMemoryRecord, type RawMessage } from "../contracts";
 
 const DEFAULT_RAW_MESSAGES_COLLECTION = "openloomi_raw_messages";
 const DEFAULT_INSIGHTS_COLLECTION = "openloomi_insights";
