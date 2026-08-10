@@ -9,6 +9,30 @@ export default defineConfig({
     alias: [
       // Specific paths first (higher priority)
       {
+        find: "@openloomi/contracts/user-type",
+        replacement: alias("../../packages/contracts/src/user-type.ts"),
+      },
+      {
+        find: "@openloomi/contracts/integration-id",
+        replacement: alias("../../packages/contracts/src/integration-id.ts"),
+      },
+      {
+        find: "@openloomi/contracts/errors",
+        replacement: alias("../../packages/contracts/src/errors.ts"),
+      },
+      {
+        find: "@openloomi/contracts/schemas",
+        replacement: alias("../../packages/contracts/src/schemas.ts"),
+      },
+      {
+        find: "@openloomi/contracts/*",
+        replacement: alias("../../packages/contracts/src/*"),
+      },
+      {
+        find: "@openloomi/contracts",
+        replacement: alias("../../packages/contracts/src/index.ts"),
+      },
+      {
         find: "@openloomi/shared/errors",
         replacement: alias("../../packages/shared/src/errors.ts"),
       },
