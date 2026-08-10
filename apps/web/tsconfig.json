@@ -85,6 +85,8 @@
 				"../../packages/billing/src/entitlements.ts"
 			],
 			"@openloomi/indexeddb/*": ["../../packages/indexeddb/src/*"],
+			"@openloomi/db": ["../../packages/db/src/index.ts"],
+			"@openloomi/db/*": ["../../packages/db/src/*"],
 			"@openloomi/insights/*": ["../../packages/insights/src/*"],
 			"@openloomi/integrations/composio": [
 				"../../packages/integrations/composio/src/index.ts"

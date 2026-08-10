@@ -365,6 +365,29 @@ export default defineConfig({
         find: "@openloomi/memory-store",
         replacement: alias("../../packages/memory-store/src/index.ts"),
       },
+      // @openloomi/db subpaths (Phase 4)
+      {
+        find: "@openloomi/db/batch",
+        replacement: alias("../../packages/db/src/batch.ts"),
+      },
+      {
+        find: "@openloomi/db/utils",
+        replacement: alias("../../packages/db/src/utils.ts"),
+      },
+      {
+        find: "@openloomi/db/agent-goal-runtime-schema-types",
+        replacement: alias(
+          "../../packages/db/src/agent-goal-runtime-schema-types.ts",
+        ),
+      },
+      {
+        find: "@openloomi/db/*",
+        replacement: alias("../../packages/db/src/*"),
+      },
+      {
+        find: "@openloomi/db",
+        replacement: alias("../../packages/db/src/index.ts"),
+      },
       {
         find: "@openloomi/integrations/channels",
         replacement: alias("../../packages/integrations/channels/src/index.ts"),
