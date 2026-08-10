@@ -1,37 +1,20 @@
-/**
- * Loop preferences — read/write the user's local config.json. Defaults
- * are applied on missing fields so partially-written files self-heal.
- */
+// Phase 5 — re-export shim over `@openloomi/loop/preferences`. The leaf
+// module owns the Loop config.json reader/writer (`readPreferences` /
+// `writePreferences`) plus the `LoopPreferences` shape and
+// `DEFAULT_LOOP_PREFERENCES` constant. Defining the interface here
+// (instead of leaving it inside the 843-line `apps/web/lib/loop/types.ts`)
+// makes the new `@openloomi/loop` package truly self-contained.
+//
+// The old `apps/web/lib/loop/types.ts` re-exports `LoopPreferences` from
+// here so existing call sites that import the type via `./types` keep
+// working without any change.
 
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { ensureDirs, ensureParent, LOOP_PATHS } from "./paths";
-import { DEFAULT_LOOP_PREFERENCES, type LoopPreferences } from "./types";
-
-export function readPreferences(): LoopPreferences {
-  ensureDirs();
-  if (!existsSync(LOOP_PATHS.config)) {
-    return { ...DEFAULT_LOOP_PREFERENCES };
-  }
-  try {
-    const raw = JSON.parse(
-      readFileSync(LOOP_PATHS.config, "utf8"),
-    ) as Partial<LoopPreferences>;
-    return { ...DEFAULT_LOOP_PREFERENCES, ...(raw ?? {}) };
-  } catch {
-    return { ...DEFAULT_LOOP_PREFERENCES };
-  }
-}
-
-export function writePreferences(
-  patch: Partial<LoopPreferences>,
-): LoopPreferences {
-  ensureDirs();
-  const next: LoopPreferences = { ...readPreferences(), ...(patch ?? {}) };
-  ensureParent(LOOP_PATHS.config);
-  try {
-    writeFileSync(LOOP_PATHS.config, JSON.stringify(next, null, 2));
-  } catch (e) {
-    console.warn("[loop.preferences] write failed:", e);
-  }
-  return next;
-}
+export {
+  readPreferences,
+  writePreferences,
+  DEFAULT_LOOP_PREFERENCES,
+} from "@openloomi/loop/preferences";
+export type {
+  LoopPreferences,
+  QuietDayFillerId,
+} from "@openloomi/loop/preferences";

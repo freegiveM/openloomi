@@ -365,6 +365,48 @@ export default defineConfig({
         find: "@openloomi/memory-store",
         replacement: alias("../../packages/memory-store/src/index.ts"),
       },
+      // @openloomi/cron (Phase 5)
+      {
+        find: "@openloomi/cron/types",
+        replacement: alias("../../packages/cron/src/types.ts"),
+      },
+      {
+        find: "@openloomi/cron/scheduler",
+        replacement: alias("../../packages/cron/src/scheduler.ts"),
+      },
+      {
+        find: "@openloomi/cron/stream-response",
+        replacement: alias("../../packages/cron/src/stream-response.ts"),
+      },
+      {
+        find: "@openloomi/cron/*",
+        replacement: alias("../../packages/cron/src/*"),
+      },
+      {
+        find: "@openloomi/cron",
+        replacement: alias("../../packages/cron/src/index.ts"),
+      },
+      // @openloomi/loop (Phase 5)
+      {
+        find: "@openloomi/loop/paths",
+        replacement: alias("../../packages/loop/src/paths.ts"),
+      },
+      {
+        find: "@openloomi/loop/cli-path",
+        replacement: alias("../../packages/loop/src/cli-path.ts"),
+      },
+      {
+        find: "@openloomi/loop/preferences",
+        replacement: alias("../../packages/loop/src/preferences.ts"),
+      },
+      {
+        find: "@openloomi/loop/*",
+        replacement: alias("../../packages/loop/src/*"),
+      },
+      {
+        find: "@openloomi/loop",
+        replacement: alias("../../packages/loop/src/index.ts"),
+      },
       // @openloomi/db subpaths (Phase 4)
       {
         find: "@openloomi/db/batch",

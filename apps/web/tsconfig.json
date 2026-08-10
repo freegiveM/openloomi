@@ -237,7 +237,11 @@
 				"../../packages/memory-store/src/search/*",
 				"../../packages/memory-store/src/policies/*",
 				"../../packages/memory-store/src/server/*"
-			]
+			],
+			"@openloomi/cron": ["../../packages/cron/src/index.ts"],
+			"@openloomi/cron/*": ["../../packages/cron/src/*"],
+			"@openloomi/loop": ["../../packages/loop/src/index.ts"],
+			"@openloomi/loop/*": ["../../packages/loop/src/*"]
 		},
 		"typeRoots": ["./node_modules/@types"]
 	},
