@@ -247,7 +247,11 @@
 			],
 			"@openloomi/integrations-runtime/*": [
 				"../../packages/integrations-runtime/src/*"
-			]
+			],
+			"@openloomi/env-config": ["../../packages/env-config/src/index.ts"],
+			"@openloomi/env-config/*": ["../../packages/env-config/src/*"],
+			"@openloomi/ui-runtime": ["../../packages/ui-runtime/src/index.ts"],
+			"@openloomi/ui-runtime/*": ["../../packages/ui-runtime/src/*"]
 		},
 		"typeRoots": ["./node_modules/@types"]
 	},

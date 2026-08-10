@@ -446,6 +446,62 @@ export default defineConfig({
         find: "@openloomi/integrations-runtime",
         replacement: alias("../../packages/integrations-runtime/src/index.ts"),
       },
+      // @openloomi/env-config (Phase 8)
+      {
+        find: "@openloomi/env-config/client-constants",
+        replacement: alias(
+          "../../packages/env-config/src/client-constants.ts",
+        ),
+      },
+      {
+        find: "@openloomi/env-config/client-mode",
+        replacement: alias("../../packages/env-config/src/client-mode.ts"),
+      },
+      {
+        find: "@openloomi/env-config/tauri-paths",
+        replacement: alias("../../packages/env-config/src/tauri-paths.ts"),
+      },
+      {
+        find: "@openloomi/env-config/*",
+        replacement: alias("../../packages/env-config/src/*"),
+      },
+      {
+        find: "@openloomi/env-config",
+        replacement: alias("../../packages/env-config/src/index.ts"),
+      },
+      // @openloomi/ui-runtime (Phase 8)
+      {
+        find: "@openloomi/ui-runtime/platform/env",
+        replacement: alias("../../packages/ui-runtime/src/platform/env.ts"),
+      },
+      {
+        find: "@openloomi/ui-runtime/platform/filesystem",
+        replacement: alias("../../packages/ui-runtime/src/platform/filesystem.ts"),
+      },
+      {
+        find: "@openloomi/ui-runtime/platform/adapters/tauri/filesystem",
+        replacement: alias(
+          "../../packages/ui-runtime/src/platform/adapters/tauri/filesystem.ts",
+        ),
+      },
+      {
+        find: "@openloomi/ui-runtime/platform/adapters/browser/filesystem",
+        replacement: alias(
+          "../../packages/ui-runtime/src/platform/adapters/browser/filesystem.ts",
+        ),
+      },
+      {
+        find: "@openloomi/ui-runtime/platform",
+        replacement: alias("../../packages/ui-runtime/src/platform/index.ts"),
+      },
+      {
+        find: "@openloomi/ui-runtime/*",
+        replacement: alias("../../packages/ui-runtime/src/*"),
+      },
+      {
+        find: "@openloomi/ui-runtime",
+        replacement: alias("../../packages/ui-runtime/src/index.ts"),
+      },
       // @openloomi/db subpaths (Phase 4)
       {
         find: "@openloomi/db/batch",

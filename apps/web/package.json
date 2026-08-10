@@ -58,6 +58,8 @@
 		"@openloomi/insights": "workspace:*",
 		"@openloomi/integrations": "workspace:*",
 		"@openloomi/integrations-runtime": "workspace:*",
+		"@openloomi/env-config": "workspace:*",
+		"@openloomi/ui-runtime": "workspace:*",
 		"@openloomi/loop": "workspace:*",
 		"@openloomi/memory-consolidation": "workspace:*",
 		"@openloomi/memory-store": "workspace:*",
