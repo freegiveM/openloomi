@@ -3,6 +3,7 @@ import { defineConfig } from "tsup";
 export default defineConfig({
   entry: {
     index: "src/index.ts",
+    contracts: "src/contracts.ts",
     http: "src/http.ts",
     mcp: "src/mcp.ts",
     "storage/raw-message-store": "src/storage/raw-message-store.ts",

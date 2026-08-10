@@ -5,7 +5,7 @@
  * explicitly. Used by the apps/web routes via `@openloomi/memory-store/memory-graph-write-policy`.
  */
 
-import { CHAT_MEMORY_EVIDENCE_ID_PREFIX } from "@openloomi/indexeddb";
+import { CHAT_MEMORY_EVIDENCE_ID_PREFIX } from "../contracts";
 
 export { CHAT_MEMORY_EVIDENCE_ID_PREFIX };
 
