@@ -241,7 +241,13 @@
 			"@openloomi/cron": ["../../packages/cron/src/index.ts"],
 			"@openloomi/cron/*": ["../../packages/cron/src/*"],
 			"@openloomi/loop": ["../../packages/loop/src/index.ts"],
-			"@openloomi/loop/*": ["../../packages/loop/src/*"]
+			"@openloomi/loop/*": ["../../packages/loop/src/*"],
+			"@openloomi/integrations-runtime": [
+				"../../packages/integrations-runtime/src/index.ts"
+			],
+			"@openloomi/integrations-runtime/*": [
+				"../../packages/integrations-runtime/src/*"
+			]
 		},
 		"typeRoots": ["./node_modules/@types"]
 	},

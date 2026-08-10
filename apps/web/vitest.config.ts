@@ -407,6 +407,45 @@ export default defineConfig({
         find: "@openloomi/loop",
         replacement: alias("../../packages/loop/src/index.ts"),
       },
+      // @openloomi/integrations-runtime (Phase 7)
+      {
+        find: "@openloomi/integrations-runtime/authorization-errors",
+        replacement: alias(
+          "../../packages/integrations-runtime/src/authorization-errors.ts",
+        ),
+      },
+      {
+        find: "@openloomi/integrations-runtime/oauth-callback-script",
+        replacement: alias(
+          "../../packages/integrations-runtime/src/oauth-callback-script.ts",
+        ),
+      },
+      {
+        find: "@openloomi/integrations-runtime/platform-connectability",
+        replacement: alias(
+          "../../packages/integrations-runtime/src/platform-connectability.ts",
+        ),
+      },
+      {
+        find: "@openloomi/integrations-runtime/platform-visuals",
+        replacement: alias(
+          "../../packages/integrations-runtime/src/platform-visuals.ts",
+        ),
+      },
+      {
+        find: "@openloomi/integrations-runtime/task-integration-inference",
+        replacement: alias(
+          "../../packages/integrations-runtime/src/task-integration-inference.ts",
+        ),
+      },
+      {
+        find: "@openloomi/integrations-runtime/*",
+        replacement: alias("../../packages/integrations-runtime/src/*"),
+      },
+      {
+        find: "@openloomi/integrations-runtime",
+        replacement: alias("../../packages/integrations-runtime/src/index.ts"),
+      },
       // @openloomi/db subpaths (Phase 4)
       {
         find: "@openloomi/db/batch",
