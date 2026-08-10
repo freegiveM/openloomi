@@ -235,7 +235,7 @@ importers:
         version: link:../../packages/cron
       '@openloomi/env-config':
         specifier: workspace:*
-        version: link:../../runtime/packages/env-config
+        version: link:../../packages/env-config
       '@openloomi/hooks':
         specifier: workspace:*
         version: link:../../packages/hooks
@@ -253,7 +253,7 @@ importers:
         version: link:../../packages/integrations
       '@openloomi/integrations-runtime':
         specifier: workspace:*
-        version: link:../../runtime/packages/integrations-runtime
+        version: link:../../packages/integrations-runtime
       '@openloomi/loop':
         specifier: workspace:*
         version: link:../../packages/loop
@@ -280,7 +280,7 @@ importers:
         version: link:../../packages/sqlite
       '@openloomi/ui-runtime':
         specifier: workspace:*
-        version: link:../../ui/packages/ui-runtime
+        version: link:../../packages/ui-runtime
       '@openloomi/voice-kokoro':
         specifier: workspace:*
         version: link:../../packages/voice-kokoro
@@ -1233,6 +1233,15 @@ importers:
         specifier: ^5.6.3
         version: 5.9.3
 
+  packages/env-config:
+    devDependencies:
+      '@openloomi/config':
+        specifier: workspace:*
+        version: link:../config
+      typescript:
+        specifier: ^5.6.3
+        version: 5.9.3
+
   packages/hooks:
     dependencies:
       react:
@@ -1288,6 +1297,19 @@ importers:
         version: 5.9.3
 
   packages/integrations: {}
+
+  packages/integrations-runtime:
+    dependencies:
+      '@openloomi/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+    devDependencies:
+      '@openloomi/config':
+        specifier: workspace:*
+        version: link:../config
+      typescript:
+        specifier: ^5.6.3
+        version: 5.9.3
 
   packages/integrations/asana:
     dependencies:
@@ -1787,7 +1809,7 @@ importers:
     dependencies:
       '@openloomi/ui-runtime':
         specifier: workspace:*
-        version: link:../../ui/packages/ui-runtime
+        version: link:../ui-runtime
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
@@ -1846,41 +1868,7 @@ importers:
         specifier: ^5.6.3
         version: 5.9.3
 
-  packages/voice-kokoro:
-    devDependencies:
-      typescript:
-        specifier: ^5.6.3
-        version: 5.9.3
-
-  packages/voice-whisper:
-    devDependencies:
-      typescript:
-        specifier: ^5.6.3
-        version: 5.9.3
-
-  runtime/packages/env-config:
-    devDependencies:
-      '@openloomi/config':
-        specifier: workspace:*
-        version: link:../../../packages/config
-      typescript:
-        specifier: ^5.6.3
-        version: 5.9.3
-
-  runtime/packages/integrations-runtime:
-    dependencies:
-      '@openloomi/contracts':
-        specifier: workspace:*
-        version: link:../../../packages/contracts
-    devDependencies:
-      '@openloomi/config':
-        specifier: workspace:*
-        version: link:../../../packages/config
-      typescript:
-        specifier: ^5.6.3
-        version: 5.9.3
-
-  ui/packages/ui-runtime:
+  packages/ui-runtime:
     dependencies:
       '@tauri-apps/api':
         specifier: ^2.11.0
@@ -1894,7 +1882,19 @@ importers:
     devDependencies:
       '@openloomi/config':
         specifier: workspace:*
-        version: link:../../../packages/config
+        version: link:../config
+      typescript:
+        specifier: ^5.6.3
+        version: 5.9.3
+
+  packages/voice-kokoro:
+    devDependencies:
+      typescript:
+        specifier: ^5.6.3
+        version: 5.9.3
+
+  packages/voice-whisper:
+    devDependencies:
       typescript:
         specifier: ^5.6.3
         version: 5.9.3
