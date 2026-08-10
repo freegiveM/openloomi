@@ -325,13 +325,29 @@ export interface LoopSignal {
 // Re-exported here so existing call sites that import the type via
 // `@/lib/loop/types` keep working without any change.
 
+// Phase 5 — `LoopPreferences` / `QuietDayFillerId` (type-only) moved into
+// the leaf `@openloomi/loop` package (`packages/loop/src/preferences.ts`)
+// so the runtime + UI can both read/write the same
+// `~/.openloomi/loop/config.json` without dragging the rest of
+// `apps/web/lib/loop/*` along. Re-exported here as `import type` so
+// existing call sites that use `LoopPreferences` via `@/lib/loop/types`
+// keep working — `import type` is erased at build time and never
+// reaches the client bundle.
+//
+// NOTE: `DEFAULT_LOOP_PREFERENCES` is intentionally NOT re-exported from
+// this file. It is a runtime value that transitively imports
+// `node:fs` / `node:os` / `node:path` via `./paths`, so re-exporting it
+// here drags those modules into the client bundle whenever
+// `./client.ts` (which `export *`s this file) is imported by a Client
+// Component. Server code that needs the constant should import it
+// directly from `@/lib/loop/preferences` or the server-side
+// `@/lib/loop/preferences` shim instead.
+
 import type {
   LoopPreferences,
   QuietDayFillerId,
 } from "@openloomi/loop/preferences";
-import { DEFAULT_LOOP_PREFERENCES } from "@openloomi/loop/preferences";
 export type { LoopPreferences, QuietDayFillerId };
-export { DEFAULT_LOOP_PREFERENCES };
 
 /** Mute rule scope — discriminated union keyed by signal type. */
 export type MuteScope =

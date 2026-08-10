@@ -16,7 +16,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { DEFAULT_LOOP_PREFERENCES } from "@/lib/loop/types";
+import { DEFAULT_LOOP_PREFERENCES } from "@/lib/loop/preferences";
 
 describe("DEFAULT_LOOP_PREFERENCES — #417 fresh-install defaults", () => {
   it("has enabled=false so fresh installs do not auto-run Loop", () => {
