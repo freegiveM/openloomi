@@ -9,7 +9,7 @@ import type {
   Message,
 } from "@openloomi/integrations/channels";
 import type { Attachment } from "@openloomi/shared";
-import type { UserType } from "@/app/(auth)/auth";
+import type { UserType } from "@openloomi/contracts/user-type";
 import { ingestExternalAttachment } from "@/lib/files/external-ingest";
 import {
   delay,

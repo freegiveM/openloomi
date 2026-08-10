@@ -15,7 +15,7 @@ import {
   upsertContact,
 } from "@/lib/db/queries";
 import { resolveAgentLanguage } from "@/lib/insights/resolve-language";
-import type { UserType } from "@/app/(auth)/auth";
+import type { UserType } from "@openloomi/contracts/user-type";
 import { DEFAULT_AI_MODEL, AI_PROXY_BASE_URL } from "@/lib/env/constants";
 import {
   handleAgentRuntime,

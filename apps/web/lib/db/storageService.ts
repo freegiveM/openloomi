@@ -1,5 +1,5 @@
 import { and, desc, eq, inArray, lt, sql } from "drizzle-orm";
-import type { UserType } from "@/app/(auth)/auth";
+import type { UserType } from "@openloomi/contracts/user-type";
 import type { FileStorageProvider } from "@/lib/files/config";
 
 import { db } from "./queries";

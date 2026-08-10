@@ -11,7 +11,7 @@ import type { ExtractEmailInfo } from "../email";
 import type { Attachment } from "@openloomi/shared";
 import { ingestAttachmentForUser } from "@/lib/integrations/utils/attachments";
 import { cleanEmailForLLM, buildSnippet } from "@openloomi/integrations/utils";
-import type { UserType } from "@/app/(auth)/auth";
+import type { UserType } from "@openloomi/contracts/user-type";
 
 const GMAIL_MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 const DEFAULT_GMAIL_INSIGHT_SYNC_MAX_RESULTS = 100;

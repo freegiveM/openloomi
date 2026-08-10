@@ -2054,7 +2054,7 @@ export class WhatsAppAdapter extends MessagePlatformAdapter {
       const ingested = await this.fileIngester.ingestForUser({
         source: "whatsapp",
         ownerUserId: this.ownerUserId,
-        ownerUserType: this.ownerUserType as any,
+        ownerLocalUserType: this.ownerUserType as any,
         maxSizeBytes: WHATSAPP_MAX_ATTACHMENT_BYTES,
         originalFileName: fileName,
         mimeTypeHint: mimeType,
