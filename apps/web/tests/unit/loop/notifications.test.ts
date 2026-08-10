@@ -56,6 +56,52 @@ vi.mock("@/lib/loop/paths", async () => {
   };
 });
 
+// Phase 5 — `apps/web/lib/loop/preferences.ts` is now a re-export shim
+// over `@openloomi/loop/preferences`, which in turn imports from
+// `@openloomi/loop/paths`. The legacy `@/lib/loop/paths` mock above
+// only intercepts the shim, not the new package, so we mirror it
+// here for the new path alias.
+vi.mock("@openloomi/loop/paths", async () => {
+  const { join } = await import("node:path");
+  const buildPaths = () => ({
+    home: LOOP_HOME,
+    signals: join(LOOP_HOME, "signals.jsonl"),
+    decisions: join(LOOP_HOME, "decisions.json"),
+    status: join(LOOP_HOME, "status.json"),
+    brief: join(LOOP_HOME, "brief.json"),
+    wrap: join(LOOP_HOME, "wrap.json"),
+    connectors: join(LOOP_HOME, "connectors.json"),
+    config: join(LOOP_HOME, "config.json"),
+    mutes: join(LOOP_HOME, "mutes.json"),
+    migrated: join(LOOP_HOME, "migrated.json"),
+    log: join(LOOP_HOME, "loop.log"),
+    inbox: join(LOOP_HOME, "inbox"),
+    syncState: join(LOOP_HOME, "sync-state.json"),
+    attention: join(LOOP_HOME, "attention.json"),
+  });
+  const pathsProxy = new Proxy(
+    {},
+    {
+      get: (_t, prop: string) => (buildPaths() as Record<string, string>)[prop],
+    },
+  );
+  return {
+    get LOOP_HOME() {
+      return LOOP_HOME;
+    },
+    LOOP_PATHS: pathsProxy,
+    ensureDirs: () => {
+      mkdirSync(LOOP_HOME, { recursive: true });
+      mkdirSync(join(LOOP_HOME, "inbox", ".processed"), { recursive: true });
+      mkdirSync(join(LOOP_HOME, "inbox", ".failed"), { recursive: true });
+    },
+    ensureParent: (p: string) => {
+      const { dirname } = require("node:path") as typeof import("node:path");
+      mkdirSync(dirname(p), { recursive: true });
+    },
+  };
+});
+
 const {
   filterActionable,
   notifyForDecisions,

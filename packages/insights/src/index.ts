@@ -5,3 +5,8 @@ export * from "./focus-classifier";
 export * from "./option-normalizers";
 export * from "./event-rank";
 export * from "./insight-utils";
+export * from "./constants";
+export * from "./grouping";
+export * from "./platform-filter-config";
+export * from "./refresh-telemetry";
+export * from "./resolve-language";

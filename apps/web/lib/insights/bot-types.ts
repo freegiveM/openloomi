@@ -6,7 +6,7 @@ import type {
   TimelineData,
 } from "@/lib/ai/subagents/insights";
 import type { BotWithAccount } from "../db/queries";
-import type { UserType } from "@/app/(auth)/auth";
+import type { UserType } from "@openloomi/contracts/user-type";
 import type { Platform } from "@openloomi/integrations/channels/sources/types";
 import type { RawMessageData } from "@openloomi/indexeddb/extractor";
 

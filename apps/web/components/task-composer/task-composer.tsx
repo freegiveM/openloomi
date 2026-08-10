@@ -21,7 +21,6 @@ import { SUPPORTED_FILE_EXTENSIONS } from "@/lib/files/config";
 import { useAttachmentUpload } from "./use-attachment-upload";
 import type { TaskComposerProps, TaskComposerSubmitPayload } from "./types";
 import { VoiceRecordingBar } from "./voice-recording-bar";
-import { useVoice } from "@/components/audio/voice-provider";
 
 const isTauriEnv = typeof window !== "undefined" && "__TAURI__" in window;
 const IME_COMPOSITION_BUFFER_MS = 120;
@@ -96,7 +95,6 @@ function PureTaskComposer({
   enableDropzone = true,
 }: TaskComposerProps) {
   const { t } = useTranslation();
-  const { whisper } = useVoice();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const compositionEndTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
@@ -487,7 +485,9 @@ function PureTaskComposer({
                 )}
               </div>
 
-              {isVoiceActive && whisper.enabled ? (
+              {
+                /* biome-ignore lint/correctness/noConstantCondition: voice input is feature-flagged off via @/components/audio/voice-provider; the JSX is intentionally retained so we can flip the flag back on without re-deriving the layout (commit d7550300). */
+                isVoiceActive && false ? (
                 <div className="min-w-0 flex-1">
                   <VoiceRecordingBar
                     phase={phase}
@@ -510,7 +510,7 @@ function PureTaskComposer({
                 </div>
               ) : (
                 <div className="flex shrink-0 items-center gap-2">
-                  {whisper.enabled && (
+                  {false && (
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <button

@@ -11,7 +11,7 @@ import type {
   IngestResult,
   IngestedAttachment,
   AttachmentDownloadPayload,
-  UserType as CoreUserType,
+  LocalUserType as CoreUserType,
 } from "@openloomi/integrations/core";
 import {
   ingestExternalAttachment,
@@ -74,7 +74,7 @@ export class WebFileIngester implements FileIngester {
   async ingestForUser(options: {
     source: string;
     ownerUserId: string;
-    ownerUserType?: CoreUserType;
+    ownerLocalUserType?: CoreUserType;
     maxSizeBytes?: number;
     mimeTypeHint?: string | null;
     sizeHintBytes?: number | null;
@@ -87,7 +87,7 @@ export class WebFileIngester implements FileIngester {
     const {
       source,
       ownerUserId,
-      ownerUserType,
+      ownerLocalUserType,
       maxSizeBytes,
       mimeTypeHint,
       sizeHintBytes,
@@ -97,7 +97,7 @@ export class WebFileIngester implements FileIngester {
       logContext,
     } = options;
 
-    if (!ownerUserId || !ownerUserType) {
+    if (!ownerUserId || !ownerLocalUserType) {
       return null;
     }
 
@@ -154,7 +154,7 @@ export class WebFileIngester implements FileIngester {
   async ingestMany(options: {
     source: string;
     ownerUserId: string;
-    ownerUserType?: CoreUserType;
+    ownerLocalUserType?: CoreUserType;
     maxSizeBytes?: number;
     attachments: Array<{
       mimeTypeHint?: string | null;
@@ -169,7 +169,7 @@ export class WebFileIngester implements FileIngester {
     const {
       source,
       ownerUserId,
-      ownerUserType,
+      ownerLocalUserType,
       maxSizeBytes,
       attachments,
       logger,
@@ -181,7 +181,7 @@ export class WebFileIngester implements FileIngester {
       const ingested = await this.ingestForUser({
         source,
         ownerUserId,
-        ownerUserType,
+        ownerLocalUserType,
         maxSizeBytes,
         mimeTypeHint: attachment.mimeTypeHint,
         sizeHintBytes: attachment.sizeHintBytes,

@@ -5,7 +5,7 @@
  * using the auth system from apps/web.
  */
 
-import type { AuthProvider, UserType } from "@openloomi/integrations/core";
+import type { AuthProvider, LocalUserType } from "@openloomi/integrations/core";
 import { auth } from "@/app/(auth)/auth";
 import { headers } from "next/headers";
 
@@ -15,7 +15,7 @@ import { headers } from "next/headers";
 export class WebAuthProvider implements AuthProvider {
   private _userId: string | null = null;
   private _token: string | null = null;
-  private _userType: UserType | null = null;
+  private _userType: LocalUserType | null = null;
   private _initialized = false;
 
   /**
@@ -37,7 +37,7 @@ export class WebAuthProvider implements AuthProvider {
   /**
    * Get the current user's type
    */
-  getUserType(): UserType | null {
+  getLocalUserType(): LocalUserType | null {
     this.ensureInitialized();
     return this._userType;
   }
@@ -56,9 +56,9 @@ export class WebAuthProvider implements AuthProvider {
       }
 
       this._userId = session.user.id;
-      // Map apps/web UserType to core UserType
+      // Map apps/web UserType to core LocalUserType
       const userType = session.user.isGuest ? "guest" : "user";
-      this._userType = userType as UserType;
+      this._userType = userType as LocalUserType;
 
       // Get token from Authorization header if available
       const headersList = await headers();

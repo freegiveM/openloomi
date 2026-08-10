@@ -1,33 +1,8 @@
 "use client";
 
-export type IntegrationId =
-  | "telegram"
-  | "whatsapp"
-  | "slack"
-  | "discord"
-  | "gmail"
-  | "outlook"
-  | "linkedin"
-  | "instagram"
-  | "twitter"
-  | "google_calendar"
-  | "google_meet"
-  | "outlook_calendar"
-  | "teams"
-  | "facebook_messenger"
-  | "google_drive"
-  | "google_docs"
-  | "hubspot"
-  | "notion"
-  | "github"
-  | "asana"
-  | "jira"
-  | "linear"
-  | "imessage"
-  | "feishu"
-  | "dingtalk"
-  | "qqbot"
-  | "weixin";
+import type { IntegrationId } from "@openloomi/contracts/integration-id";
+
+export type { IntegrationId };
 
 export type CreateIntegrationAccountPayload = {
   platform: IntegrationId;

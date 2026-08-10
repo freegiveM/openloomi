@@ -10,6 +10,7 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
+    "./contracts": "./dist/contracts.js",
     "./http": {
       "types": "./dist/http.d.ts",
       "import": "./dist/http.js"
@@ -43,12 +44,19 @@
     "@hono/node-server": "^1.13.7",
     "@modelcontextprotocol/sdk": "^1.25.3",
     "@openloomi/ai": "workspace:*",
-    "@openloomi/indexeddb": "workspace:*",
     "@openloomi/rag": "workspace:*",
     "@openloomi/shared": "workspace:*",
     "@openloomi/sqlite": "workspace:*",
     "hono": "^4.6.14",
     "zod": "^4.3.6"
+  },
+  "peerDependencies": {
+    "@openloomi/indexeddb": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@openloomi/indexeddb": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@openloomi/config": "workspace:*",

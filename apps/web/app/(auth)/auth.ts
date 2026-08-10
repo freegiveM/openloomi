@@ -33,7 +33,9 @@ export interface AuthModuleLike {
   signOut: (options?: Record<string, unknown>) => Promise<void>;
 }
 
-export type UserType = "guest" | "regular" | "basic" | "pro" | "team";
+import type { UserType } from "@openloomi/contracts/user-type";
+
+export type { UserType };
 
 declare module "next-auth/jwt" {
   interface JWT extends DefaultJWT {

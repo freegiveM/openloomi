@@ -24,7 +24,7 @@
  * warning — fine for a standalone memory daemon.
  */
 
-import type { RawMessage } from "@openloomi/indexeddb/storage";
+import type { RawMessage } from "./contracts";
 
 export interface MemoryStoreDb {
   /** Resolve the active Drizzle DB handle. Must be server-side. */

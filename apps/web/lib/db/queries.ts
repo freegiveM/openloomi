@@ -102,7 +102,7 @@ import {
 import { generateUUID } from "../utils";
 import { generateHashedPassword } from "./utils";
 import { AppError } from "@openloomi/shared/errors";
-import type { UserType } from "@/app/(auth)/auth";
+import type { UserType } from "@openloomi/contracts/user-type";
 import { isTauriMode } from "@/lib/env/constants";
 import { filterDueInsightSettings } from "@/lib/insights/tier";
 import type { IntegrationId } from "@/lib/integrations/client";

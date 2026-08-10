@@ -39,7 +39,7 @@ export type PlatformId =
   | "teams";
 
 /** User type within the platform */
-export type UserType = "user" | "guest";
+export type LocalUserType = "user" | "guest";
 
 /** Base integration account data */
 export interface IntegrationAccount {
@@ -140,7 +140,7 @@ export interface AuthProvider {
   /**
    * Get the current user's type
    */
-  getUserType(): UserType | null;
+  getLocalUserType(): LocalUserType | null;
 }
 
 // ============================================================================
@@ -222,7 +222,7 @@ export interface FileIngester {
   ingestForUser(options: {
     source: string;
     ownerUserId: string;
-    ownerUserType?: UserType;
+    ownerLocalUserType?: LocalUserType;
     maxSizeBytes?: number;
     mimeTypeHint?: string | null;
     sizeHintBytes?: number | null;
@@ -239,7 +239,7 @@ export interface FileIngester {
   ingestMany(options: {
     source: string;
     ownerUserId: string;
-    ownerUserType?: UserType;
+    ownerLocalUserType?: LocalUserType;
     maxSizeBytes?: number;
     attachments: Array<{
       mimeTypeHint?: string | null;
@@ -370,7 +370,7 @@ export const noopCredentialStore: CredentialStore = {
 export const noopAuthProvider: AuthProvider = {
   getUserId: () => null,
   getToken: () => null,
-  getUserType: () => null,
+  getLocalUserType: () => null,
 };
 
 export const noopSessionStore: SessionStore = {
