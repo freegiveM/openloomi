@@ -27,15 +27,6 @@ import { recordUsage } from "@/lib/llm-usage/recorder";
 // NOTE: Vercel has hard limits (Hobby: 10s, Pro: 800s).
 export const maxDuration = 800;
 
-// Server-only probe — disabled (no-op). The earlier version wrote to a
-// hard-coded path on the developer's machine, which is rejected by review.
-// All `probeLog(...)` calls in this file are intentionally preserved as
-// no-ops so that future SSE instrumentation can be wired back in without
-// re-introducing the hard-coded path.
-const probeLog = (_line: string) => {
-  /* intentionally disabled */
-};
-
 // Always run as a Node.js route handler and disable any caching layer. SSE
 // must stream frame-by-frame; Next.js's default route handler can otherwise
 // buffer the entire response before flushing (especially under the turbopack
@@ -94,10 +85,6 @@ function createSSEStream(
   return new ReadableStream({
     start(controller) {
       let controllerClosed = false;
-      let probeEventCount = 0;
-      probeLog(
-        `SSE start(controller) entered; generatorSymbol=${typeof generator[Symbol.asyncIterator] === "function" ? "fn" : "?"}`,
-      );
 
       heartbeatTimer = setInterval(() => {
         if (controllerClosed) {
@@ -105,7 +92,6 @@ function createSSEStream(
           return;
         }
         try {
-          probeLog("heartbeat-tick");
           // SSE comments are ignored by clients but keep the connection hot.
           controller.enqueue(encoder.encode(": keep-alive\n\n"));
         } catch {
@@ -115,26 +101,12 @@ function createSSEStream(
 
       void (async () => {
         try {
-          probeLog("for-await loop entered");
           for await (const message of generator) {
-            probeEventCount += 1;
-            probeLog(
-              `for-await got message #${probeEventCount} type=${message?.type ?? "?"} keys=${message ? Object.keys(message).join(",") : "null"}`,
-            );
             if (controllerClosed) break;
             const data = `data: ${JSON.stringify(message)}\n\n`;
             try {
-              probeLog(
-                `#${probeEventCount} calling controller.enqueue(${data.length}B)`,
-              );
               controller.enqueue(encoder.encode(data));
-              probeLog(
-                `#${probeEventCount} controller.enqueue returned`,
-              );
-            } catch (enqueueError) {
-              probeLog(
-                `#${probeEventCount} controller.enqueue THREW: ${enqueueError}`,
-              );
+            } catch {
               // Controller already closed, stop processing
               break;
             }
@@ -144,17 +116,10 @@ function createSSEStream(
 
             // Close stream after result message to signal completion
             if (message.type === "result") {
-              probeLog("Result message received, closing stream...");
               break;
             }
           }
-          probeLog(
-            `for-await loop exited; total messages seen=${probeEventCount}`,
-          );
         } catch (error) {
-          probeLog(
-            `for-await THREW: name=${error instanceof Error ? error.name : "?"} msg=${error instanceof Error ? error.message : String(error)} stack=${error instanceof Error ? (error.stack ?? "").split("\n").slice(0,3).join(" | ") : "n/a"}`,
-          );
           console.error("[AgentAPI] Generator error:", {
             message: error instanceof Error ? error.message : String(error),
             stack: error instanceof Error ? error.stack : undefined,
