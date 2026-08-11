@@ -225,7 +225,17 @@ export async function evaluateRubrics(
                 content: prompt,
               },
             ],
-            max_tokens: 1000,
+            // qwen3.7-plus is a reasoning model routed via Alibaba. By default
+            // it streams a long "Thinking Process..." preamble into the
+            // `reasoning` field and only emits the final JSON in `content`
+            // once the thinking budget is exhausted. With max_tokens=1000 the
+            // thinking alone filled the budget and `content` came back null,
+            // which is why we kept seeing "No JSON object found". We need a
+            // large enough budget for both phases.
+            //
+            // Note: `response_format: { type: "json_object" }` is NOT used
+            // because the Alibaba route rejects it with a non-OK response.
+            max_tokens: 4000,
           }),
           signal: AbortSignal.timeout(60000),
         });

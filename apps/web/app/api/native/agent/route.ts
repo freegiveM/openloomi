@@ -27,6 +27,15 @@ import { recordUsage } from "@/lib/llm-usage/recorder";
 // NOTE: Vercel has hard limits (Hobby: 10s, Pro: 800s).
 export const maxDuration = 800;
 
+// Always run as a Node.js route handler and disable any caching layer. SSE
+// must stream frame-by-frame; Next.js's default route handler can otherwise
+// buffer the entire response before flushing (especially under the turbopack
+// dev server used by `pnpm tauri:dev`). Forcing runtime + dynamic is the
+// minimal change that lets `controller.enqueue(...)` push each SSE frame to
+// the client as soon as the OpenLoomi EventBus yields a message.
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 /**
  * Resolves a stable providerType slug from the request body. Today the only
  * tracking-eligible provider is the Anthropic-compatible path ("claude"),
@@ -97,7 +106,7 @@ function createSSEStream(
             const data = `data: ${JSON.stringify(message)}\n\n`;
             try {
               controller.enqueue(encoder.encode(data));
-            } catch (enqueueError) {
+            } catch {
               // Controller already closed, stop processing
               break;
             }
@@ -107,9 +116,6 @@ function createSSEStream(
 
             // Close stream after result message to signal completion
             if (message.type === "result") {
-              console.log(
-                "[AgentAPI] Result message received, closing stream...",
-              );
               break;
             }
           }

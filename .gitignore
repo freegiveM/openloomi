@@ -203,6 +203,17 @@ env/
 # Cloned upstream repos used by SWE-bench-CL eval
 cloned_repos/
 
+# GDPval-AA v2 openloomi-runner: debug scripts (transient, never committed)
+benchmark/GDPval-AA v2/openloomi-runner/scripts/
+
+# GDPval-AA v2 openloomi-runner: local Python launcher shims (developer-only)
+benchmark/GDPval-AA v2/openloomi-runner/.shims/
+
+# SWE-bench-CL eval: Python virtualenvs (per-Python-version, never committed)
+benchmark/SWE-bench-CL/eval_openloomi/.venv310/
+benchmark/SWE-bench-CL/eval_openloomi/.venv39/
+benchmark/SWE-bench-CL/eval_openloomi/.venv/
+
 # Exclude data/ under the 5 reset submodule paths (JSON datasets live separately)
 benchmark/SWE-bench-CL/data/
 benchmark/jobbench-official/dataset/
