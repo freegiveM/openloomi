@@ -158,6 +158,7 @@ export class ClaudeRuntimeEventObserver implements ClaudeRuntimeEventObserverPor
             ownerId: this.ownerId,
             runtimeSessionId: this.runtimeSessionId,
             providerSessionId: identity.providerSessionId,
+            runEpoch,
           });
         }
         return;

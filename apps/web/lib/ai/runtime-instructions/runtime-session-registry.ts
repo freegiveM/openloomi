@@ -131,6 +131,12 @@ export class RuntimeSessionRegistry implements RuntimeSessionResolverPort {
     return session?.ownerId === ownerId && session.transport === transport;
   }
 
+  /** Owner-scoped liveness probe for the recovery presentation API. */
+  has(ownerId: string, runtimeSessionId: string): boolean {
+    const session = this.sessions.get(runtimeSessionId);
+    return session?.ownerId === ownerId;
+  }
+
   get size(): number {
     return this.sessions.size;
   }

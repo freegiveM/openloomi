@@ -38,6 +38,218 @@ import {
 } from "../runtime-observation-mappers";
 import type { BetterSqlite3Client } from "./transaction";
 
+const UNFINISHED_GOAL_PREDICATE = `EXISTS (
+    SELECT 1 FROM agent_goals AS goal
+     WHERE goal.owner_id = session.owner_id
+       AND goal.runtime_session_id = session.id
+       AND goal.slot_state IN ('assigned', 'reserved')
+       AND goal.status IN ('active', 'paused', 'blocked')
+)`;
+
+const UNFINISHED_RUN_PREDICATE = `EXISTS (
+    SELECT 1 FROM agent_goal_runs AS run
+     WHERE run.owner_id = session.owner_id
+       AND run.runtime_session_id = session.id
+       AND run.status IN (
+         'queued', 'running', 'evaluating', 'continuing', 'paused', 'blocked'
+       )
+)`;
+
+const UNFINISHED_DELIVERY_PREDICATE = `EXISTS (
+    SELECT 1 FROM agent_runtime_deliveries AS delivery
+     WHERE delivery.owner_id = session.owner_id
+       AND delivery.runtime_session_id = session.id
+       AND delivery.state IN (
+         'pending', 'leased', 'queued', 'written_to_sdk', 'observed'
+       )
+)`;
+
+const UNFINISHED_RUNTIME_PREDICATE = `(
+  session.pending_operation IS NOT NULL
+  OR ${UNFINISHED_GOAL_PREDICATE}
+  OR ${UNFINISHED_RUN_PREDICATE}
+  OR ${UNFINISHED_DELIVERY_PREDICATE}
+)`;
+
+/**
+ * A provider host can disappear after Goal/Run finalization but before its
+ * last Delivery reaches a terminal state. Nothing remains to resume in that
+ * case, but the Delivery still fences an ordinary live claim. Recovery must
+ * therefore reconcile this terminal execution boundary instead of leaving
+ * the Session permanently interrupted.
+ */
+const DELIVERY_ONLY_RECOVERY_PREDICATE = `(
+  session.pending_operation IS NULL
+  AND NOT ${UNFINISHED_GOAL_PREDICATE}
+  AND NOT ${UNFINISHED_RUN_PREDICATE}
+  AND ${UNFINISHED_DELIVERY_PREDICATE}
+)`;
+
+/**
+ * A Goal created while no Claude transport is attached has not crashed: it is
+ * waiting for the next ordinary Runtime to claim the Session and replay its
+ * pristine outbox. Keep this stricter than "no provider session" so an
+ * abandoned lease, provider-visible delivery, or any execution evidence still
+ * goes through durable recovery and fails closed when its resume handle is
+ * unavailable.
+ */
+const WAITING_FOR_FIRST_PROVIDER_RUNTIME_PREDICATE = `(
+  session.run_epoch = 0
+  AND session.state = 'idle'
+  AND session.provider_session_id IS NULL
+  AND session.pending_operation IS NULL
+  AND session.recovery_failed_at IS NULL
+  AND session.recovery_lease_owner IS NULL
+  AND session.recovery_lease_token IS NULL
+  AND session.recovery_lease_expires_at IS NULL
+  AND EXISTS (
+    SELECT 1
+      FROM agent_goals AS waiting_goal
+      JOIN agent_goal_runs AS waiting_run
+        ON waiting_run.owner_id = waiting_goal.owner_id
+       AND waiting_run.runtime_session_id = waiting_goal.runtime_session_id
+       AND waiting_run.goal_id = waiting_goal.id
+       AND waiting_run.goal_revision = waiting_goal.revision
+       AND waiting_run.run_epoch = session.run_epoch
+     WHERE waiting_goal.owner_id = session.owner_id
+       AND waiting_goal.runtime_session_id = session.id
+       AND waiting_goal.slot = 'primary'
+       AND waiting_goal.slot_state = 'assigned'
+       AND waiting_goal.status = 'active'
+       AND waiting_run.status = 'queued'
+       AND waiting_run.provider_session_id IS NULL
+       AND waiting_run.turns_used = 0
+       AND waiting_run.tokens_used = 0
+       AND waiting_run.completed_at IS NULL
+       AND waiting_run.last_evaluation IS NULL
+       AND EXISTS (
+         SELECT 1
+           FROM agent_runtime_instructions AS activation
+           JOIN agent_runtime_deliveries AS activation_delivery
+             ON activation_delivery.owner_id = activation.owner_id
+            AND activation_delivery.runtime_session_id = activation.runtime_session_id
+            AND activation_delivery.instruction_id = activation.id
+            AND activation_delivery.run_epoch = activation.run_epoch
+          WHERE activation.owner_id = waiting_goal.owner_id
+            AND activation.runtime_session_id = waiting_goal.runtime_session_id
+            AND activation.goal_id = waiting_goal.id
+            AND activation.run_epoch = waiting_run.run_epoch
+            AND activation.kind = 'goal.activate'
+            AND activation.command_order = 0
+            AND activation.command_type = 'goal_instruction'
+            AND activation.command_phase = 'committed'
+            AND activation_delivery.goal_run_id = waiting_run.id
+            AND activation_delivery.state = 'pending'
+            AND activation_delivery.attempt = 1
+            AND activation_delivery.lease_token IS NULL
+            AND activation_delivery.lease_owner IS NULL
+            AND activation_delivery.lease_expires_at IS NULL
+            AND activation_delivery.provider_event_id IS NULL
+            AND activation_delivery.error_code IS NULL
+            AND activation_delivery.error_message IS NULL
+       )
+       AND NOT EXISTS (
+         SELECT 1 FROM agent_runtime_deliveries AS attempted_delivery
+          WHERE attempted_delivery.owner_id = waiting_run.owner_id
+            AND attempted_delivery.runtime_session_id = waiting_run.runtime_session_id
+            AND attempted_delivery.goal_run_id = waiting_run.id
+            AND (
+              attempted_delivery.state <> 'pending'
+              OR attempted_delivery.attempt <> 1
+              OR attempted_delivery.lease_token IS NOT NULL
+              OR attempted_delivery.lease_owner IS NOT NULL
+              OR attempted_delivery.lease_expires_at IS NOT NULL
+              OR attempted_delivery.provider_event_id IS NOT NULL
+              OR attempted_delivery.error_code IS NOT NULL
+              OR attempted_delivery.error_message IS NOT NULL
+            )
+       )
+       AND NOT EXISTS (
+         SELECT 1 FROM agent_runtime_instructions AS undeliverable_instruction
+          WHERE undeliverable_instruction.owner_id = waiting_goal.owner_id
+            AND undeliverable_instruction.runtime_session_id = waiting_goal.runtime_session_id
+            AND undeliverable_instruction.goal_id = waiting_goal.id
+            AND undeliverable_instruction.run_epoch = waiting_run.run_epoch
+            AND NOT EXISTS (
+              SELECT 1 FROM agent_runtime_deliveries AS instruction_delivery
+               WHERE instruction_delivery.owner_id = undeliverable_instruction.owner_id
+                 AND instruction_delivery.runtime_session_id = undeliverable_instruction.runtime_session_id
+                 AND instruction_delivery.instruction_id = undeliverable_instruction.id
+                 AND instruction_delivery.goal_run_id = waiting_run.id
+                 AND instruction_delivery.run_epoch = undeliverable_instruction.run_epoch
+            )
+       )
+       AND NOT EXISTS (
+         SELECT 1 FROM agent_goal_evidence AS waiting_evidence
+          WHERE waiting_evidence.owner_id = waiting_run.owner_id
+            AND waiting_evidence.runtime_session_id = waiting_run.runtime_session_id
+            AND waiting_evidence.goal_run_id = waiting_run.id
+       )
+       AND NOT EXISTS (
+         SELECT 1 FROM agent_goal_runs AS other_run
+          WHERE other_run.owner_id = waiting_run.owner_id
+            AND other_run.runtime_session_id = waiting_run.runtime_session_id
+            AND other_run.id <> waiting_run.id
+            AND other_run.status IN (
+              'queued', 'running', 'evaluating', 'continuing', 'paused', 'blocked'
+            )
+       )
+       AND NOT EXISTS (
+         SELECT 1 FROM agent_runtime_deliveries AS other_delivery
+          WHERE other_delivery.owner_id = waiting_run.owner_id
+            AND other_delivery.runtime_session_id = waiting_run.runtime_session_id
+            AND (
+              other_delivery.goal_run_id IS NULL
+              OR other_delivery.goal_run_id <> waiting_run.id
+            )
+            AND other_delivery.state IN (
+              'pending', 'leased', 'queued', 'written_to_sdk', 'observed'
+            )
+       )
+  )
+)`;
+
+const RECOVERABLE_SESSION_PREDICATE = `(
+  session.state <> 'failed'
+  AND (
+    session.state <> 'closed'
+    OR session.pending_operation IS NOT NULL
+    OR EXISTS (
+      SELECT 1 FROM agent_goals AS goal
+       WHERE goal.owner_id = session.owner_id
+         AND goal.runtime_session_id = session.id
+         AND goal.slot_state IN ('assigned', 'reserved')
+         AND goal.status IN ('active', 'paused', 'blocked')
+    )
+    OR EXISTS (
+      SELECT 1 FROM agent_goal_runs AS run
+       WHERE run.owner_id = session.owner_id
+         AND run.runtime_session_id = session.id
+         AND run.status IN (
+           'queued', 'running', 'evaluating', 'continuing', 'paused', 'blocked'
+         )
+    )
+  )
+)`;
+
+const IMMEDIATE_RECOVERY_PREDICATE = `(
+  session.pending_operation IS NOT NULL
+  OR EXISTS (
+    SELECT 1 FROM agent_goals AS goal
+     WHERE goal.owner_id = session.owner_id
+       AND goal.runtime_session_id = session.id
+       AND goal.slot_state = 'assigned'
+       AND goal.status = 'active'
+  )
+  OR EXISTS (
+    SELECT 1 FROM agent_goal_runs AS run
+     WHERE run.owner_id = session.owner_id
+       AND run.runtime_session_id = session.id
+       AND run.status IN ('queued', 'running', 'evaluating', 'continuing')
+  )
+  OR ${DELIVERY_ONLY_RECOVERY_PREDICATE}
+)`;
+
 export interface SqliteGoalSessionRecord {
   readonly ownerId: string;
   readonly runtimeSessionId: string;
@@ -46,6 +258,14 @@ export interface SqliteGoalSessionRecord {
   readonly runEpoch: number;
   readonly lastInstructionSequence: number;
   readonly providerSessionId?: string;
+  readonly workingDirectory?: string;
+  readonly recoveryDescriptor?: Readonly<Record<string, unknown>>;
+  readonly recoveryLeaseOwner?: string;
+  readonly recoveryLeaseToken?: string;
+  readonly recoveryLeaseExpiresAtSeconds?: number;
+  readonly recoveryErrorCode?: string;
+  readonly recoveryErrorMessage?: string;
+  readonly recoveryFailedAtSeconds?: number;
   readonly pendingOperation?: AgentRuntimePendingOperation;
   readonly createdAtSeconds: number;
   readonly updatedAtSeconds: number;
@@ -93,6 +313,20 @@ export interface UpdateSqliteDeliveryInput {
   readonly next: PersistedRuntimeInstructionDelivery;
 }
 
+export interface SqliteProviderEventReceiptInput {
+  readonly ownerId: string;
+  readonly runtimeSessionId: string;
+  readonly runEpoch: number;
+  readonly eventKey: string;
+  readonly providerEventId: string;
+  readonly providerSessionId?: string;
+  readonly eventFingerprint: string;
+  readonly observedAtSeconds: number;
+  readonly createdAtSeconds: number;
+}
+
+export interface SqliteProviderEventReceiptRecord extends SqliteProviderEventReceiptInput {}
+
 /**
  * Synchronous SQLite row store shared by the Goal state unit of work and the
  * standalone repositories. Callers that perform writes must hold the native
@@ -108,7 +342,11 @@ export class SqliteGoalRuntimeStore {
     const row = this.client
       .prepare(
         `SELECT owner_id, id, provider, state, run_epoch, last_instruction_sequence,
-                provider_session_id, pending_operation, created_at, updated_at
+                provider_session_id, working_directory, recovery_descriptor,
+                recovery_lease_owner, recovery_lease_token,
+                recovery_lease_expires_at, recovery_error_code,
+                recovery_error_message, recovery_failed_at, pending_operation,
+                created_at, updated_at
            FROM agent_runtime_sessions
           WHERE owner_id = ? AND id = ?`,
       )
@@ -117,7 +355,11 @@ export class SqliteGoalRuntimeStore {
     return {
       ownerId: requiredString(row.owner_id, "runtime session owner_id"),
       runtimeSessionId: requiredString(row.id, "runtime session id"),
-      provider: requiredLiteral(row.provider, "claude", "runtime session provider"),
+      provider: requiredLiteral(
+        row.provider,
+        "claude",
+        "runtime session provider",
+      ),
       state: requiredSessionState(row.state),
       runEpoch: requiredInteger(row.run_epoch, "runtime session run_epoch", 0),
       lastInstructionSequence: requiredInteger(
@@ -128,6 +370,43 @@ export class SqliteGoalRuntimeStore {
       ...(optionalString(row.provider_session_id) === undefined
         ? {}
         : { providerSessionId: optionalString(row.provider_session_id) }),
+      ...(optionalString(row.working_directory) === undefined
+        ? {}
+        : { workingDirectory: optionalString(row.working_directory) }),
+      ...(row.recovery_descriptor === null ||
+      row.recovery_descriptor === undefined
+        ? {}
+        : {
+            recoveryDescriptor: parseJsonObject(
+              row.recovery_descriptor,
+              "runtime session recovery_descriptor",
+            ),
+          }),
+      ...(optionalString(row.recovery_lease_owner) === undefined
+        ? {}
+        : { recoveryLeaseOwner: optionalString(row.recovery_lease_owner) }),
+      ...(optionalString(row.recovery_lease_token) === undefined
+        ? {}
+        : { recoveryLeaseToken: optionalString(row.recovery_lease_token) }),
+      ...(optionalInteger(row.recovery_lease_expires_at, 0) === undefined
+        ? {}
+        : {
+            recoveryLeaseExpiresAtSeconds: optionalInteger(
+              row.recovery_lease_expires_at,
+              0,
+            ),
+          }),
+      ...(optionalString(row.recovery_error_code) === undefined
+        ? {}
+        : { recoveryErrorCode: optionalString(row.recovery_error_code) }),
+      ...(optionalString(row.recovery_error_message) === undefined
+        ? {}
+        : { recoveryErrorMessage: optionalString(row.recovery_error_message) }),
+      ...(optionalInteger(row.recovery_failed_at, 0) === undefined
+        ? {}
+        : {
+            recoveryFailedAtSeconds: optionalInteger(row.recovery_failed_at, 0),
+          }),
       ...(row.pending_operation === null || row.pending_operation === undefined
         ? {}
         : {
@@ -185,17 +464,22 @@ export class SqliteGoalRuntimeStore {
   insertSession(input: {
     ownerId: string;
     runtimeSessionId: string;
+    workingDirectory?: string;
+    recoveryDescriptor?: object;
     recordedAtSeconds: number;
   }): void {
     this.client
       .prepare(
         `INSERT INTO agent_runtime_sessions
-           (id, owner_id, provider, state, created_at, updated_at)
-         VALUES (?, ?, 'claude', 'starting', ?, ?)`,
+           (id, owner_id, provider, state, working_directory,
+            recovery_descriptor, created_at, updated_at)
+         VALUES (?, ?, 'claude', 'starting', ?, ?, ?, ?)`,
       )
       .run(
         input.runtimeSessionId,
         input.ownerId,
+        input.workingDirectory ?? null,
+        serializeJson(input.recoveryDescriptor),
         input.recordedAtSeconds,
         input.recordedAtSeconds,
       );
@@ -206,6 +490,9 @@ export class SqliteGoalRuntimeStore {
     runtimeSessionId: string;
     expectedProviderSessionId?: string;
     providerSessionId: string;
+    runtimeLeaseToken: string;
+    expectedRunEpoch: number;
+    availableAtSeconds: number;
     updatedAtSeconds: number;
   }): boolean {
     const predicate =
@@ -226,9 +513,17 @@ export class SqliteGoalRuntimeStore {
         .prepare(
           `UPDATE agent_runtime_sessions
               SET provider_session_id = ?, updated_at = MAX(updated_at, ?)
-            WHERE owner_id = ? AND id = ? AND ${predicate}`,
+            WHERE owner_id = ? AND id = ? AND ${predicate}
+              AND recovery_lease_token = ?
+              AND recovery_lease_expires_at > ?
+              AND run_epoch = ?`,
         )
-        .run(...parameters).changes === 1
+        .run(
+          ...parameters,
+          input.runtimeLeaseToken,
+          input.availableAtSeconds,
+          input.expectedRunEpoch,
+        ).changes === 1
     );
   }
 
@@ -250,6 +545,379 @@ export class SqliteGoalRuntimeStore {
           input.ownerId,
           input.runtimeSessionId,
           input.expectedProviderSessionId,
+        ).changes === 1
+    );
+  }
+
+  updateSessionRecoveryMetadata(input: {
+    ownerId: string;
+    runtimeSessionId: string;
+    workingDirectory?: string;
+    recoveryDescriptor?: object;
+    updatedAtSeconds: number;
+  }): boolean {
+    return (
+      this.client
+        .prepare(
+          `UPDATE agent_runtime_sessions
+              SET working_directory = ?, recovery_descriptor = ?,
+                  updated_at = MAX(updated_at, ?)
+            WHERE owner_id = ? AND id = ?`,
+        )
+        .run(
+          input.workingDirectory ?? null,
+          serializeJson(input.recoveryDescriptor),
+          input.updatedAtSeconds,
+          input.ownerId,
+          input.runtimeSessionId,
+        ).changes === 1
+    );
+  }
+
+  listRecoverableSessionIds(
+    availableAtSeconds: number,
+    limit: number,
+  ): Array<{ ownerId: string; runtimeSessionId: string }> {
+    return this.client
+      .prepare(
+        `SELECT session.owner_id, session.id
+           FROM agent_runtime_sessions AS session
+          WHERE session.recovery_failed_at IS NULL
+            AND (
+              session.recovery_lease_token IS NULL
+              OR session.recovery_lease_expires_at <= ?
+            )
+            AND ${RECOVERABLE_SESSION_PREDICATE}
+            AND ${IMMEDIATE_RECOVERY_PREDICATE}
+            AND NOT ${WAITING_FOR_FIRST_PROVIDER_RUNTIME_PREDICATE}
+          ORDER BY session.updated_at ASC, session.id ASC
+          LIMIT ?`,
+      )
+      .all(availableAtSeconds, limit)
+      .map((row) => {
+        const candidate = row as RawRow;
+        return {
+          ownerId: requiredString(candidate.owner_id, "recovery owner_id"),
+          runtimeSessionId: requiredString(candidate.id, "recovery session id"),
+        };
+      });
+  }
+
+  /**
+   * Owner-scoped read model for the desktop recovery UI. Unlike
+   * `listRecoverableSessionIds`, this intentionally includes a session whose
+   * recovery lease is currently held: that is the session the restarted UI
+   * must keep displaying while the coordinator is consuming Claude output.
+   */
+  listRecoveryPresentationSessionIds(ownerId: string, limit: number): string[] {
+    return this.client
+      .prepare(
+        `SELECT session.id
+           FROM agent_runtime_sessions AS session
+          WHERE session.owner_id = ?
+            AND session.recovery_failed_at IS NULL
+            AND ${RECOVERABLE_SESSION_PREDICATE}
+            AND ${IMMEDIATE_RECOVERY_PREDICATE}
+            AND NOT ${WAITING_FOR_FIRST_PROVIDER_RUNTIME_PREDICATE}
+          ORDER BY session.updated_at DESC, session.id ASC
+          LIMIT ?`,
+      )
+      .all(ownerId, limit)
+      .map((row) => requiredString((row as RawRow).id, "recovery session id"));
+  }
+
+  hasUnfinishedRuntimeState(
+    ownerId: string,
+    runtimeSessionId: string,
+  ): boolean {
+    const row = this.client
+      .prepare(
+        `SELECT ${UNFINISHED_RUNTIME_PREDICATE} AS unfinished
+           FROM agent_runtime_sessions AS session
+          WHERE session.owner_id = ? AND session.id = ?`,
+      )
+      .get(ownerId, runtimeSessionId) as RawRow | undefined;
+    return row?.unfinished === 1;
+  }
+
+  hasDeliveryOnlyRecoveryState(
+    ownerId: string,
+    runtimeSessionId: string,
+  ): boolean {
+    const row = this.client
+      .prepare(
+        `SELECT ${DELIVERY_ONLY_RECOVERY_PREDICATE} AS delivery_only
+           FROM agent_runtime_sessions AS session
+          WHERE session.owner_id = ? AND session.id = ?`,
+      )
+      .get(ownerId, runtimeSessionId) as RawRow | undefined;
+    return row?.delivery_only === 1;
+  }
+
+  isWaitingForFirstProviderRuntime(
+    ownerId: string,
+    runtimeSessionId: string,
+  ): boolean {
+    const row = this.client
+      .prepare(
+        `SELECT ${WAITING_FOR_FIRST_PROVIDER_RUNTIME_PREDICATE} AS waiting
+           FROM agent_runtime_sessions AS session
+          WHERE session.owner_id = ? AND session.id = ?`,
+      )
+      .get(ownerId, runtimeSessionId) as RawRow | undefined;
+    return row?.waiting === 1;
+  }
+
+  claimLiveRuntimeLease(input: {
+    ownerId: string;
+    runtimeSessionId: string;
+    leaseOwner: string;
+    leaseToken: string;
+    availableAtSeconds: number;
+    leaseExpiresAtSeconds: number;
+    updatedAtSeconds: number;
+  }): boolean {
+    return (
+      this.client
+        .prepare(
+          `UPDATE agent_runtime_sessions AS session
+              SET recovery_lease_owner = ?, recovery_lease_token = ?,
+                  recovery_lease_expires_at = ?, updated_at = MAX(updated_at, ?)
+            WHERE session.owner_id = ? AND session.id = ?
+              AND session.state NOT IN ('closed', 'failed')
+              AND session.recovery_failed_at IS NULL
+              AND (
+                session.recovery_lease_token IS NULL
+                OR session.recovery_lease_expires_at <= ?
+              )
+              AND (
+                NOT ${UNFINISHED_RUNTIME_PREDICATE}
+                OR ${WAITING_FOR_FIRST_PROVIDER_RUNTIME_PREDICATE}
+              )`,
+        )
+        .run(
+          input.leaseOwner,
+          input.leaseToken,
+          input.leaseExpiresAtSeconds,
+          input.updatedAtSeconds,
+          input.ownerId,
+          input.runtimeSessionId,
+          input.availableAtSeconds,
+        ).changes === 1
+    );
+  }
+
+  claimRecoveryLease(input: {
+    ownerId: string;
+    runtimeSessionId: string;
+    leaseOwner: string;
+    leaseToken: string;
+    availableAtSeconds: number;
+    leaseExpiresAtSeconds: number;
+    updatedAtSeconds: number;
+  }): boolean {
+    return (
+      this.client
+        .prepare(
+          `UPDATE agent_runtime_sessions AS session
+              SET recovery_lease_owner = ?, recovery_lease_token = ?,
+                  recovery_lease_expires_at = ?, updated_at = MAX(updated_at, ?)
+            WHERE session.owner_id = ? AND session.id = ?
+              AND session.recovery_failed_at IS NULL
+              AND (
+                session.recovery_lease_token IS NULL
+                OR session.recovery_lease_expires_at <= ?
+              )
+              AND ${RECOVERABLE_SESSION_PREDICATE}
+              AND ${UNFINISHED_RUNTIME_PREDICATE}
+              AND NOT ${WAITING_FOR_FIRST_PROVIDER_RUNTIME_PREDICATE}`,
+        )
+        .run(
+          input.leaseOwner,
+          input.leaseToken,
+          input.leaseExpiresAtSeconds,
+          input.updatedAtSeconds,
+          input.ownerId,
+          input.runtimeSessionId,
+          input.availableAtSeconds,
+        ).changes === 1
+    );
+  }
+
+  renewRecoveryLease(input: {
+    ownerId: string;
+    runtimeSessionId: string;
+    leaseOwner: string;
+    leaseToken: string;
+    availableAtSeconds: number;
+    leaseExpiresAtSeconds: number;
+    updatedAtSeconds: number;
+  }): boolean {
+    return (
+      this.client
+        .prepare(
+          `UPDATE agent_runtime_sessions
+              SET recovery_lease_expires_at = ?, updated_at = MAX(updated_at, ?)
+            WHERE owner_id = ? AND id = ?
+              AND recovery_lease_owner = ? AND recovery_lease_token = ?
+              AND recovery_lease_expires_at > ?`,
+        )
+        .run(
+          input.leaseExpiresAtSeconds,
+          input.updatedAtSeconds,
+          input.ownerId,
+          input.runtimeSessionId,
+          input.leaseOwner,
+          input.leaseToken,
+          input.availableAtSeconds,
+        ).changes === 1
+    );
+  }
+
+  releaseRecoveryLease(input: {
+    ownerId: string;
+    runtimeSessionId: string;
+    leaseOwner: string;
+    leaseToken: string;
+    availableAtSeconds: number;
+    updatedAtSeconds: number;
+  }): boolean {
+    return (
+      this.client
+        .prepare(
+          `UPDATE agent_runtime_sessions
+              SET recovery_lease_owner = NULL, recovery_lease_token = NULL,
+                  recovery_lease_expires_at = NULL,
+                  updated_at = MAX(updated_at, ?)
+            WHERE owner_id = ? AND id = ?
+              AND recovery_lease_owner = ? AND recovery_lease_token = ?
+              AND recovery_lease_expires_at > ?`,
+        )
+        .run(
+          input.updatedAtSeconds,
+          input.ownerId,
+          input.runtimeSessionId,
+          input.leaseOwner,
+          input.leaseToken,
+          input.availableAtSeconds,
+        ).changes === 1
+    );
+  }
+
+  releaseLiveRuntimeLease(input: {
+    ownerId: string;
+    runtimeSessionId: string;
+    leaseOwner: string;
+    leaseToken: string;
+    expectedRunEpoch: number;
+    availableAtSeconds: number;
+    updatedAtSeconds: number;
+  }): boolean {
+    return (
+      this.client
+        .prepare(
+          `UPDATE agent_runtime_sessions AS session
+              SET state = CASE
+                    WHEN ${UNFINISHED_RUNTIME_PREDICATE} THEN 'interrupted'
+                    ELSE 'idle'
+                  END,
+                  provider_session_id = CASE
+                    WHEN ${UNFINISHED_RUNTIME_PREDICATE}
+                      THEN provider_session_id
+                    ELSE NULL
+                  END,
+                  recovery_lease_owner = NULL,
+                  recovery_lease_token = NULL,
+                  recovery_lease_expires_at = NULL,
+                  updated_at = MAX(updated_at, ?)
+            WHERE session.owner_id = ? AND session.id = ?
+              AND session.state NOT IN ('closed', 'failed')
+              AND session.recovery_lease_owner = ?
+              AND session.recovery_lease_token = ?
+              AND session.run_epoch = ?
+              AND session.recovery_lease_expires_at > ?`,
+        )
+        .run(
+          input.updatedAtSeconds,
+          input.ownerId,
+          input.runtimeSessionId,
+          input.leaseOwner,
+          input.leaseToken,
+          input.expectedRunEpoch,
+          input.availableAtSeconds,
+        ).changes === 1
+    );
+  }
+
+  updateSessionState(input: {
+    ownerId: string;
+    runtimeSessionId: string;
+    expectedState: RuntimeSessionState;
+    expectedRunEpoch: number;
+    state: RuntimeSessionState;
+    recoveryLeaseToken?: string;
+    updatedAtSeconds: number;
+  }): boolean {
+    const leasePredicate = input.recoveryLeaseToken
+      ? "recovery_lease_token = ? AND recovery_lease_expires_at > ?"
+      : "recovery_lease_token IS NULL";
+    const parameters: unknown[] = [
+      input.state,
+      input.updatedAtSeconds,
+      input.ownerId,
+      input.runtimeSessionId,
+      input.expectedState,
+      input.expectedRunEpoch,
+    ];
+    if (input.recoveryLeaseToken) {
+      parameters.push(input.recoveryLeaseToken, input.updatedAtSeconds);
+    }
+    return (
+      this.client
+        .prepare(
+          `UPDATE agent_runtime_sessions
+              SET state = ?, updated_at = MAX(updated_at, ?)
+            WHERE owner_id = ? AND id = ? AND state = ? AND run_epoch = ?
+              AND ${leasePredicate}`,
+        )
+        .run(...parameters).changes === 1
+    );
+  }
+
+  markRecoveryFailed(input: {
+    ownerId: string;
+    runtimeSessionId: string;
+    leaseOwner: string;
+    leaseToken: string;
+    expectedRunEpoch: number;
+    errorCode: string;
+    errorMessage: string;
+    failedAtSeconds: number;
+  }): boolean {
+    return (
+      this.client
+        .prepare(
+          `UPDATE agent_runtime_sessions
+              SET state = 'failed', recovery_error_code = ?,
+                  recovery_error_message = ?, recovery_failed_at = ?,
+                  recovery_lease_owner = NULL, recovery_lease_token = NULL,
+                  recovery_lease_expires_at = NULL,
+                  updated_at = MAX(updated_at, ?)
+            WHERE owner_id = ? AND id = ?
+              AND recovery_lease_owner = ? AND recovery_lease_token = ?
+              AND run_epoch = ? AND recovery_lease_expires_at > ?`,
+        )
+        .run(
+          input.errorCode,
+          input.errorMessage,
+          input.failedAtSeconds,
+          input.failedAtSeconds,
+          input.ownerId,
+          input.runtimeSessionId,
+          input.leaseOwner,
+          input.leaseToken,
+          input.expectedRunEpoch,
+          input.failedAtSeconds,
         ).changes === 1
     );
   }
@@ -490,6 +1158,20 @@ export class SqliteGoalRuntimeStore {
       )
       .all(ownerId, runtimeSessionId, afterSequence)
       .map((row) => mapInstructionRow(row as RawRow).instruction);
+  }
+
+  listStoredInstructions(
+    ownerId: string,
+    runtimeSessionId: string,
+  ): StoredRuntimeInstruction[] {
+    return this.client
+      .prepare(
+        `SELECT * FROM agent_runtime_instructions
+          WHERE owner_id = ? AND runtime_session_id = ?
+          ORDER BY sequence ASC`,
+      )
+      .all(ownerId, runtimeSessionId)
+      .map((row) => mapInstructionRow(row as RawRow));
   }
 
   insertInstruction(input: InsertSqliteInstructionInput): void {
@@ -879,6 +1561,79 @@ export class SqliteGoalRuntimeStore {
     );
   }
 
+  getProviderEventReceipt(
+    ownerId: string,
+    runtimeSessionId: string,
+    runEpoch: number,
+    eventKey: string,
+  ): SqliteProviderEventReceiptRecord | null {
+    const row = this.client
+      .prepare(
+        `SELECT owner_id, runtime_session_id, run_epoch, event_key,
+                provider_event_id, provider_session_id, event_fingerprint,
+                observed_at, created_at
+           FROM agent_runtime_provider_events
+          WHERE owner_id = ? AND runtime_session_id = ?
+            AND run_epoch = ? AND event_key = ?`,
+      )
+      .get(ownerId, runtimeSessionId, runEpoch, eventKey) as RawRow | undefined;
+    if (!row) return null;
+    return {
+      ownerId: requiredString(row.owner_id, "provider event owner_id"),
+      runtimeSessionId: requiredString(
+        row.runtime_session_id,
+        "provider event runtime_session_id",
+      ),
+      runEpoch: requiredInteger(row.run_epoch, "provider event run_epoch", 0),
+      eventKey: requiredString(row.event_key, "provider event event_key"),
+      providerEventId: requiredString(
+        row.provider_event_id,
+        "provider event provider_event_id",
+      ),
+      ...(optionalString(row.provider_session_id) === undefined
+        ? {}
+        : { providerSessionId: optionalString(row.provider_session_id) }),
+      eventFingerprint: requiredString(
+        row.event_fingerprint,
+        "provider event event_fingerprint",
+      ),
+      observedAtSeconds: requiredInteger(
+        row.observed_at,
+        "provider event observed_at",
+        0,
+      ),
+      createdAtSeconds: requiredInteger(
+        row.created_at,
+        "provider event created_at",
+        0,
+      ),
+    };
+  }
+
+  insertProviderEventReceipt(input: SqliteProviderEventReceiptInput): boolean {
+    return (
+      this.client
+        .prepare(
+          `INSERT OR IGNORE INTO agent_runtime_provider_events (
+             owner_id, runtime_session_id, run_epoch, event_key,
+             provider_event_id, provider_session_id, event_fingerprint,
+             observed_at, created_at
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          input.ownerId,
+          input.runtimeSessionId,
+          input.runEpoch,
+          input.eventKey,
+          input.providerEventId,
+          input.providerSessionId ?? null,
+          input.eventFingerprint,
+          input.observedAtSeconds,
+          input.createdAtSeconds,
+        ).changes === 1
+    );
+  }
+
   getEvidence(
     ownerId: string,
     runtimeSessionId: string,
@@ -1154,6 +1909,12 @@ function requiredInteger(
     throw new Error(`Invalid persisted ${field}`);
   }
   return value as number;
+}
+
+function optionalInteger(value: unknown, minimum: number): number | undefined {
+  return value === null || value === undefined
+    ? undefined
+    : requiredInteger(value, "optional integer", minimum);
 }
 
 function parseJsonObject(

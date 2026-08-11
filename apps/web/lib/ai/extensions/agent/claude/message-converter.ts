@@ -1,5 +1,12 @@
 import type { AgentMessage } from "@openloomi/ai/agent/types";
 
+/**
+ * Claude's SDK can surface provider stream failures as a synthetic assistant
+ * message instead of throwing or emitting a terminal result. Keep the raw
+ * provider text out of user-visible output and durable Goal evidence.
+ */
+export const CLAUDE_API_ERROR_SENTINEL = "__INTERNAL_ERROR__";
+
 export interface ClaudeSdkMessageConversionOptions {
   message: unknown;
   // Tracks finalized assistant text blocks so replayed SDK messages do not
@@ -58,6 +65,20 @@ export function sanitizeClaudeAgentText(text: string): string {
 }
 
 /**
+ * Identify the SDK's synthetic provider-error assistant message. This flag is
+ * present at runtime even though older Claude Agent SDK type declarations do
+ * not expose it.
+ */
+export function isClaudeSdkApiErrorMessage(message: unknown): boolean {
+  return (
+    message !== null &&
+    typeof message === "object" &&
+    (message as { type?: unknown }).type === "assistant" &&
+    (message as { isApiErrorMessage?: unknown }).isApiErrorMessage === true
+  );
+}
+
+/**
  * Convert raw Claude Code SDK messages into OpenLoomi's AgentMessage stream.
  */
 export function* convertClaudeSdkMessage({
@@ -67,6 +88,15 @@ export function* convertClaudeSdkMessage({
   hasStreamedText,
   createMessageId,
 }: ClaudeSdkMessageConversionOptions): Generator<AgentMessage> {
+  if (isClaudeSdkApiErrorMessage(message)) {
+    yield {
+      type: "error",
+      message: CLAUDE_API_ERROR_SENTINEL,
+      messageId: createMessageId(),
+    };
+    return;
+  }
+
   const msg = message as {
     type: string;
     message?: { content?: unknown[] };

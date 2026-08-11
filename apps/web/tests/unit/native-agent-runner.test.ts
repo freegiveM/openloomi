@@ -324,6 +324,70 @@ describe("native agent runner", () => {
     expect(messages).toEqual([{ type: "text", content: "ok" }]);
   });
 
+  it("accepts runtime recovery only from the trusted runner context", async () => {
+    const trustedAgent = new CapturingAgent();
+    const getDefaultMemoryContext = vi.fn();
+    const runtimeRecovery = {
+      runtimeSessionId: "persisted-runtime-session",
+      providerSessionId: "persisted-claude-session",
+      workingDirectory: join(tmpdir(), "persisted-runtime-session"),
+      runEpoch: 3,
+      recoveryLeaseToken: "trusted-lease",
+      instructionSettlements: [],
+    };
+    const trustedRun = await runNativeAgentRequest(
+      {
+        prompt: "host recovery placeholder",
+        provider: "claude",
+        modelConfig: {
+          model: "persisted-session-model",
+          thinkingLevel: "adaptive",
+        },
+      },
+      {
+        ...createContext(),
+        runtimeRecovery,
+      },
+      {
+        registry: createRegistry(trustedAgent),
+        getDefaultMemoryContext,
+        getUserLlmProviderConfig: async () => ({
+          apiKey: "current-trusted-key",
+          baseUrl: "https://current-provider.example.test",
+          model: "current-user-model",
+        }),
+        logger: silentLogger,
+      },
+    );
+    await collectMessages(trustedRun.generator);
+    expect(trustedAgent.options?.runtimeRecovery).toEqual(runtimeRecovery);
+    expect(trustedAgent.config).toMatchObject({
+      apiKey: "current-trusted-key",
+      baseUrl: "https://current-provider.example.test",
+      model: "persisted-session-model",
+      thinkingLevel: "adaptive",
+    });
+    expect(getDefaultMemoryContext).not.toHaveBeenCalled();
+
+    const requestAgent = new CapturingAgent();
+    const untrustedRun = await runNativeAgentRequest(
+      {
+        prompt: "request recovery attempt",
+        provider: "claude",
+        runtimeRecovery,
+      } as Parameters<typeof runNativeAgentRequest>[0] & {
+        runtimeRecovery: typeof runtimeRecovery;
+      },
+      createContext(),
+      {
+        registry: createRegistry(requestAgent),
+        logger: silentLogger,
+      },
+    );
+    await collectMessages(untrustedRun.generator);
+    expect(requestAgent.options?.runtimeRecovery).toBeUndefined();
+  });
+
   it("injects materialized default memory context into the actual agent prompt", async () => {
     const agent = new CapturingAgent();
     const getDefaultMemoryContext = vi.fn(async () => ({

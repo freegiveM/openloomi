@@ -30,12 +30,18 @@ const OWNER_B = "10000000-0000-4000-8000-000000000002";
 const SESSION_A = "sqlite-runtime-a";
 const SESSION_B = "sqlite-runtime-b";
 const NOW = new Date("2026-08-05T08:00:00.000Z");
-const MIGRATION = readFileSync(
-  join(
-    dirname(fileURLToPath(import.meta.url)),
-    "../../../lib/db/migrations-sqlite/0107_agent_goal_runtime.sql",
+const MIGRATIONS = [
+  "0107_agent_goal_runtime.sql",
+  "0108_agent_goal_runtime_recovery.sql",
+].map((migration) =>
+  readFileSync(
+    join(
+      dirname(fileURLToPath(import.meta.url)),
+      "../../../lib/db/migrations-sqlite",
+      migration,
+    ),
+    "utf8",
   ),
-  "utf8",
 );
 
 const databases: Database.Database[] = [];
@@ -136,7 +142,7 @@ function createHarness() {
   databases.push(database);
   database.pragma("foreign_keys = ON");
   database.exec('CREATE TABLE "User" ("id" text PRIMARY KEY NOT NULL)');
-  database.exec(MIGRATION);
+  for (const migration of MIGRATIONS) database.exec(migration);
   database
     .prepare('INSERT INTO "User" (id) VALUES (?), (?)')
     .run(OWNER_A, OWNER_B);

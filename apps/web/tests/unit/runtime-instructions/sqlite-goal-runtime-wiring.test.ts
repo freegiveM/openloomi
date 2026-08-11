@@ -11,12 +11,18 @@ import { createSqliteAgentGoalRuntime } from "@/lib/ai/runtime-instructions/runt
 const OWNER_ID = "10000000-0000-4000-8000-000000000001";
 const SESSION_ID = "sqlite-runtime-wiring";
 const START = new Date("2026-08-06T08:00:00.000Z");
-const MIGRATION = readFileSync(
-  join(
-    dirname(fileURLToPath(import.meta.url)),
-    "../../../lib/db/migrations-sqlite/0107_agent_goal_runtime.sql",
+const MIGRATIONS = [
+  "0107_agent_goal_runtime.sql",
+  "0108_agent_goal_runtime_recovery.sql",
+].map((migration) =>
+  readFileSync(
+    join(
+      dirname(fileURLToPath(import.meta.url)),
+      "../../../lib/db/migrations-sqlite",
+      migration,
+    ),
+    "utf8",
   ),
-  "utf8",
 );
 
 const databases: Database.Database[] = [];
@@ -30,7 +36,7 @@ function harness() {
   databases.push(database);
   database.pragma("foreign_keys = ON");
   database.exec('CREATE TABLE "User" ("id" text PRIMARY KEY NOT NULL)');
-  database.exec(MIGRATION);
+  for (const migration of MIGRATIONS) database.exec(migration);
   database.prepare('INSERT INTO "User" (id) VALUES (?)').run(OWNER_ID);
   let now = START;
   let nextId = 1;
@@ -77,6 +83,17 @@ describe("SQLite Agent Goal runtime composition", () => {
   it("keeps an old turn result scoped to its immutable instruction context", async () => {
     const { database, runtime, advance } = harness();
     await runtime.runtimeSessions.ensure(OWNER_ID, SESSION_ID);
+    const liveLease = await runtime.runtimeSessions.claimLiveRuntime({
+      ownerId: OWNER_ID,
+      runtimeSessionId: SESSION_ID,
+      leaseOwner: "sqlite-wiring-test",
+    });
+    if (!liveLease) throw new Error("Expected a live Runtime lease");
+    const observationLease = runtime.observations.attachRuntimeLease({
+      ownerId: OWNER_ID,
+      runtimeSessionId: SESSION_ID,
+      leaseToken: liveLease.leaseToken,
+    });
     const activation = await runtime.goals.activate({
       ownerId: OWNER_ID,
       runtimeSessionId: SESSION_ID,
@@ -161,11 +178,30 @@ describe("SQLite Agent Goal runtime composition", () => {
         ({ instructionId }) => instructionId === updated.instruction.id,
       ),
     ).toMatchObject({ state: "written_to_sdk" });
+    observationLease.release();
+    await runtime.runtimeSessions.releaseLiveRuntime({
+      ownerId: OWNER_ID,
+      runtimeSessionId: SESSION_ID,
+      leaseOwner: liveLease.leaseOwner,
+      leaseToken: liveLease.leaseToken,
+      expectedRunEpoch: 0,
+    });
   });
 
   it("uses one durable source for delivery, observation, evaluation, and queries", async () => {
     const { database, runtime, advance } = harness();
     await runtime.runtimeSessions.ensure(OWNER_ID, SESSION_ID);
+    const liveLease = await runtime.runtimeSessions.claimLiveRuntime({
+      ownerId: OWNER_ID,
+      runtimeSessionId: SESSION_ID,
+      leaseOwner: "sqlite-wiring-test",
+    });
+    if (!liveLease) throw new Error("Expected a live Runtime lease");
+    const observationLease = runtime.observations.attachRuntimeLease({
+      ownerId: OWNER_ID,
+      runtimeSessionId: SESSION_ID,
+      leaseToken: liveLease.leaseToken,
+    });
     const activation = await runtime.goals.activate({
       ownerId: OWNER_ID,
       runtimeSessionId: SESSION_ID,
@@ -211,6 +247,7 @@ describe("SQLite Agent Goal runtime composition", () => {
       ownerId: OWNER_ID,
       runtimeSessionId: SESSION_ID,
       providerSessionId: "claude-query-1",
+      runEpoch: 0,
     });
     const context = await runtime.observations.captureContext({
       ownerId: OWNER_ID,
@@ -244,6 +281,7 @@ describe("SQLite Agent Goal runtime composition", () => {
         ],
       }),
     ).toBe(true);
+    const replayedAt = advance(1);
     expect(
       await runtime.observations.observeProviderEvent({
         ownerId: OWNER_ID,
@@ -251,8 +289,20 @@ describe("SQLite Agent Goal runtime composition", () => {
         runEpoch: 0,
         eventKey: "claude:event:1",
         providerEventId: "provider-event-1",
-        observedAt,
+        providerSessionId: "claude-query-1",
+        observedAt: replayedAt,
         context,
+        usage: { turnsUsed: 1, tokensUsed: 25 },
+        evidence: [
+          {
+            type: "tool_result",
+            sourceEventId: "tool-result-1",
+            summary: "The focused test passed",
+            success: true,
+            payload: { toolName: "test" },
+            observedAt: replayedAt,
+          },
+        ],
       }),
     ).toBe(false);
 
@@ -346,6 +396,14 @@ describe("SQLite Agent Goal runtime composition", () => {
         .prepare("SELECT count(*) AS count FROM agent_goal_evidence")
         .get(),
     ).toEqual({ count: 1 });
+    observationLease.release();
+    await runtime.runtimeSessions.releaseLiveRuntime({
+      ownerId: OWNER_ID,
+      runtimeSessionId: SESSION_ID,
+      leaseOwner: liveLease.leaseOwner,
+      leaseToken: liveLease.leaseToken,
+      expectedRunEpoch: 0,
+    });
   });
 
   it("reclaims terminal-free chat rows but fails closed on unfinished Goals", async () => {
@@ -370,10 +428,22 @@ describe("SQLite Agent Goal runtime composition", () => {
         )
         .get(SESSION_ID),
     ).toEqual({ provider_session_id: null });
+    const liveLease = await runtime.runtimeSessions.claimLiveRuntime({
+      ownerId: OWNER_ID,
+      runtimeSessionId: SESSION_ID,
+      leaseOwner: "ordinary-chat-test",
+    });
+    if (!liveLease) throw new Error("Expected a live Runtime lease");
+    const observationLease = runtime.observations.attachRuntimeLease({
+      ownerId: OWNER_ID,
+      runtimeSessionId: SESSION_ID,
+      leaseToken: liveLease.leaseToken,
+    });
     await runtime.observations.setProviderSession({
       ownerId: OWNER_ID,
       runtimeSessionId: SESSION_ID,
       providerSessionId: "ordinary-chat-query",
+      runEpoch: 0,
     });
     expect(
       database
@@ -381,7 +451,7 @@ describe("SQLite Agent Goal runtime composition", () => {
           "SELECT provider_session_id FROM agent_runtime_sessions WHERE id = ?",
         )
         .get(SESSION_ID),
-    ).toEqual({ provider_session_id: null });
+    ).toEqual({ provider_session_id: "ordinary-chat-query" });
 
     await runtime.goals.activate({
       ownerId: OWNER_ID,
@@ -390,6 +460,21 @@ describe("SQLite Agent Goal runtime composition", () => {
       source: { type: "user", authority: "user" },
       goal: goalInput(),
     });
+    observationLease.release();
+    await runtime.runtimeSessions.releaseLiveRuntime({
+      ownerId: OWNER_ID,
+      runtimeSessionId: SESSION_ID,
+      leaseOwner: liveLease.leaseOwner,
+      leaseToken: liveLease.leaseToken,
+      expectedRunEpoch: 0,
+    });
+    expect(
+      database
+        .prepare(
+          "SELECT provider_session_id FROM agent_runtime_sessions WHERE id = ?",
+        )
+        .get(SESSION_ID),
+    ).toEqual({ provider_session_id: "ordinary-chat-query" });
     const restarted = createSqliteAgentGoalRuntime(database);
     await expect(
       restarted.runtimeSessions.ensure(OWNER_ID, SESSION_ID),

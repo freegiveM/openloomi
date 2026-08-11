@@ -92,6 +92,24 @@ export function register() {
         })
         .catch((e) => console.warn("[Loop] Scheduler import failed:", e));
 
+      import("./lib/ai/runtime-instructions/recovery/startup")
+        .then(({ startAgentGoalRuntimeRecovery }) =>
+          startAgentGoalRuntimeRecovery().then((report) => {
+            const resumed = report.outcomes.filter(
+              (entry) => entry.status === "resumed",
+            ).length;
+            const failed = report.outcomes.filter(
+              (entry) => entry.status === "failed",
+            ).length;
+            if (report.scanned > 0) {
+              console.log(
+                `[Agent Goal Recovery] scanned=${report.scanned} resumed=${resumed} failed=${failed}`,
+              );
+            }
+          }),
+        )
+        .catch((e) => console.warn("[Agent Goal Recovery] Startup failed:", e));
+
       // Legacy daemon cleanup (#288): sweep for any stale
       // `openloomi-loop.cjs schedule|watch` process left running from an
       // older debug build and SIGTERM it. Best-effort; soft-fails so the

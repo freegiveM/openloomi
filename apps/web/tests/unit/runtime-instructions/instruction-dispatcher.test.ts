@@ -98,6 +98,70 @@ function queuedReceipt(
 }
 
 describe("RuntimeInstructionDispatcher ordered outbox drain", () => {
+  it("hydrates durable recovery progress and only retries unsettled instructions", async () => {
+    const instructions = outbox(3);
+    const transport = new ScriptedTransport(SESSION_ID);
+    const dispatcher = registeredDispatcher(transport, instructions);
+
+    await dispatcher.initializeRecoveredProgress({
+      ownerId: OWNER_ID,
+      runtimeSessionId: SESSION_ID,
+      transport,
+      settlements: [
+        {
+          instructionId: instructions[0].id,
+          disposition: "accepted",
+          providerEventId: "claude-event-1",
+          recordedAt: NOW,
+        },
+        {
+          instructionId: instructions[2].id,
+          disposition: "superseded",
+          reason: "stale Goal revision",
+          recordedAt: NOW,
+        },
+      ],
+    });
+
+    await expect(
+      dispatcher.drain({
+        ownerId: OWNER_ID,
+        runtimeSessionId: SESSION_ID,
+        targetInstructionId: instructions[2].id,
+      }),
+    ).resolves.toEqual({
+      status: "superseded",
+      runtimeSessionId: SESSION_ID,
+      instructionId: instructions[2].id,
+      reason: "stale Goal revision",
+    });
+    expect(transport.delivered.map(({ id }) => id)).toEqual([
+      instructions[1].id,
+    ]);
+  });
+
+  it("rejects recovery progress for an instruction outside the durable outbox", async () => {
+    const instructions = outbox(1);
+    const transport = new ScriptedTransport(SESSION_ID);
+    const dispatcher = registeredDispatcher(transport, instructions);
+
+    await expect(
+      dispatcher.initializeRecoveredProgress({
+        ownerId: OWNER_ID,
+        runtimeSessionId: SESSION_ID,
+        transport,
+        settlements: [
+          {
+            instructionId: INSTRUCTION_IDS[3],
+            disposition: "accepted",
+            recordedAt: NOW,
+          },
+        ],
+      }),
+    ).rejects.toMatchObject({ code: "outbox_progress_conflict" });
+    expect(transport.delivered).toEqual([]);
+  });
+
   it("keeps an unavailable predecessor pending, then replays in order for each replacement transport", async () => {
     const sessions = new RuntimeSessionRegistry();
     const instructions = outbox();

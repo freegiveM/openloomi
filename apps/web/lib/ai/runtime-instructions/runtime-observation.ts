@@ -139,6 +139,7 @@ export interface RuntimeProviderObservationPort {
     ownerId: string;
     runtimeSessionId: string;
     providerSessionId: string;
+    runEpoch?: number;
   }): Promise<void>;
 
   captureContext(input: {
@@ -150,6 +151,23 @@ export interface RuntimeProviderObservationPort {
   observeProviderEvent(
     input: RuntimeProviderEventObservation,
   ): Promise<boolean>;
+}
+
+export interface RuntimeObservationLeaseRegistration {
+  release(): void;
+}
+
+/**
+ * Optional durable ownership fence implemented by persistent journals.
+ * Runtime adapters attach the lease that owns their provider process before
+ * any provider event or Delivery mutation is recorded.
+ */
+export interface RuntimeObservationLeaseFencePort {
+  attachRuntimeLease(input: {
+    ownerId: string;
+    runtimeSessionId: string;
+    leaseToken: string;
+  }): RuntimeObservationLeaseRegistration;
 }
 
 /** Complete boundary implemented by process-local and future durable journals. */

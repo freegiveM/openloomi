@@ -42,8 +42,10 @@ import { FilePreviewOverlay } from "@/components/file-preview-overlay";
 import { ChatHistorySidePanel } from "@/components/agent/chat-history-side-panel";
 import { AgentGoalSidePanel } from "@/components/agent/goal-side-panel";
 import type { ChatHistoryResponse } from "@/lib/ai/chat/api";
+import { selectStartupChat } from "@/lib/ai/chat/startup-selection";
+import type { AgentGoalRecoverySessionsResponse } from "@/lib/ai/runtime-instructions/api";
 import { decodeSearchParamText } from "@/lib/chat/query-text";
-import { mutate } from "swr";
+import useSWR, { mutate } from "swr";
 import useSWRInfinite from "swr/infinite";
 import { AddPlatformDialog } from "@/components/add-platform-dialog";
 import { useIntegrations } from "@/hooks/use-integrations";
@@ -121,8 +123,8 @@ export function Home() {
     messages,
     setMessages,
     isAgentRunning,
+    isSending,
     activeChatId,
-    setActiveChatId: contextSetActiveChatId,
     switchChatId,
     previewFile,
     closeFilePreviewPanel,
@@ -190,33 +192,72 @@ export function Home() {
   // it at the layout level keeps the navigation working from any (chat)
   // route, not only the home page.
 
-  // Listen for integration authorization completion → retry the tool call
+  const shouldReadRecoverySessions =
+    pathname === "/" && (page === null || page === "chat");
+  const { data: recoverySessions, error: recoverySessionsError } =
+    useSWR<AgentGoalRecoverySessionsResponse>(
+      shouldReadRecoverySessions ? "/api/agent-goals/runtime-sessions" : null,
+      fetcher,
+      {
+        refreshInterval: 2000,
+        revalidateOnFocus: true,
+        dedupingInterval: 1000,
+      },
+    );
+  const newChatIdRef = useRef(generateUUID());
+  const startupSelection = useMemo(
+    () =>
+      selectStartupChat({
+        pathname,
+        page,
+        urlChatId,
+        recoveryLoaded:
+          !shouldReadRecoverySessions ||
+          recoverySessions !== undefined ||
+          recoverySessionsError !== undefined,
+        recoveryChatId: recoverySessions?.sessions[0]?.runtimeSessionId,
+        restoredChatId: activeChatId,
+        newChatId: newChatIdRef.current,
+      }),
+    [
+      activeChatId,
+      page,
+      pathname,
+      recoverySessions,
+      recoverySessionsError,
+      shouldReadRecoverySessions,
+      urlChatId,
+    ],
+  );
+  const effectiveChatId = startupSelection.chatId;
+  const selectedRecoverySession = recoverySessions?.sessions.find(
+    (session) => session.runtimeSessionId === effectiveChatId,
+  );
+  const isSelectedRecoveryActive = selectedRecoverySession !== undefined;
+  const recoveryPresentationPending =
+    shouldReadRecoverySessions &&
+    recoverySessions === undefined &&
+    recoverySessionsError === undefined;
+  const recoverySessionsLoaded = recoverySessions !== undefined;
+
+  // Retrying an authorized integration starts a new provider turn directly
+  // through ChatContext. Apply the same recovery ownership gate as the
+  // composer so a browser turn cannot race the server-owned resumed Query.
   useEffect(() => {
     const handler = () => {
       mutateIntegrations();
-      // Send "continue" to retry the tool call with the newly connected integration
+      if (recoveryPresentationPending || isSelectedRecoveryActive) return;
       sendMessage({ parts: [{ type: "text", text: "continue" }] });
     };
     window.addEventListener("integration:accountAuthorized", handler);
     return () =>
       window.removeEventListener("integration:accountAuthorized", handler);
-  }, [mutateIntegrations, sendMessage]);
-
-  // Use ref to track activeChatId in context, avoid adding it to useEffect dependency array
-  const contextActiveChatIdRef = useRef(activeChatId);
-  contextActiveChatIdRef.current = activeChatId;
-
-  // Client-side selected chat ID (for highlighting, separated from chatId in URL)
-  const [localActiveChatId] = useState<string | null>(() => {
-    // If no chatId (new conversation), generate a new UUID
-    return generateUUID();
-  });
-
-  /** Actually used chatId: Chat page prioritizes URL's chatId, otherwise uses activeChatId or props.chatId */
-  const effectiveChatId = useMemo(() => {
-    if (page === "chat" && urlChatId) return urlChatId;
-    return localActiveChatId;
-  }, [page, urlChatId, localActiveChatId]);
+  }, [
+    isSelectedRecoveryActive,
+    mutateIntegrations,
+    recoveryPresentationPending,
+    sendMessage,
+  ]);
 
   // Data for Chat page right sidebar history (independent of Header, avoid
   // dependency on internal implementation). SWR Infinite handles dedup,
@@ -268,27 +309,60 @@ export function Home() {
     });
   }, [chatsList]);
 
-  // Sync effectiveChatId to ChatContext
-  // When chatId exists in URL (jumped from scheduled job or execution history), call switchChatId to load messages
+  // Every startup source goes through switchChatId. Merely setting the ID leaves
+  // messagesMap empty after a process restart, which makes the restored chat
+  // look like a new conversation even though its messages are durable.
   useEffect(() => {
     if (!effectiveChatId) return;
+    switchChatId(effectiveChatId);
+  }, [effectiveChatId, switchChatId]);
 
-    // If chatId exists in URL (jumped from scheduled job etc.), call switchChatId to load messages
-    if (urlChatId) {
-      // Always call switchChatId, let it handle caching logic internally
-      // Avoid message not loaded due to async loading not completing
-      switchChatId(effectiveChatId);
-    } else {
-      contextSetActiveChatId(effectiveChatId);
+  // A recovered Runtime has no browser SSE connection. Refresh only the chat
+  // that the server explicitly reports as recovery-active, and never replace
+  // local optimistic state while an ordinary browser send is in progress.
+  const lastRecoveryChatRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!effectiveChatId || !recoverySessionsLoaded) return;
+
+    if (isSelectedRecoveryActive) {
+      lastRecoveryChatRef.current = effectiveChatId;
+      if (isSending || isAgentRunning) return;
+      const interval = window.setInterval(() => {
+        switchChatId(effectiveChatId, true);
+      }, 2000);
+      return () => window.clearInterval(interval);
     }
-  }, [effectiveChatId, contextSetActiveChatId, switchChatId, urlChatId]);
 
-  // When localActiveChatId changes, synchronously update chatId parameter in URL (only on chat page)
+    if (lastRecoveryChatRef.current !== effectiveChatId) {
+      lastRecoveryChatRef.current = null;
+      return;
+    }
+    if (isSending || isAgentRunning) return;
+
+    // The session just left the recovery read model (normally completion).
+    // Pull its final message once and refresh history so the recovered tab
+    // seamlessly becomes an ordinary completed chat.
+    switchChatId(effectiveChatId, true);
+    void mutate(
+      (key) => typeof key === "string" && key.startsWith("/api/history"),
+    );
+    lastRecoveryChatRef.current = null;
+  }, [
+    effectiveChatId,
+    isAgentRunning,
+    isSending,
+    isSelectedRecoveryActive,
+    recoverySessionsLoaded,
+    switchChatId,
+  ]);
+
+  // When the selected ID has no URL representation yet, add it without
+  // overriding a chat explicitly supplied by navigation.
   // This can avoid effectiveChatId still using old value due to URL update delay
   // Note: Only need to sync when there's no chatId in URL (avoid overwriting existing chatId, e.g., when jumped from scheduled job)
   useEffect(() => {
     // Skip initial render
-    if (!localActiveChatId) return;
+    if (!effectiveChatId) return;
     // Only synchronously update URL on chat page
     if (page !== "chat") return;
     // If chatId already exists in URL, no need to update (possibly jumped from scheduled job etc.)
@@ -299,16 +373,17 @@ export function Home() {
       searchParams,
       paramsToUpdate: {
         page: "chat",
-        chatId: localActiveChatId,
+        chatId: effectiveChatId,
       },
     });
     router.replace(newPath, { scroll: false });
-  }, [localActiveChatId, page, searchParams, router]);
+  }, [effectiveChatId, page, searchParams, router, urlChatId]);
 
   // Initial redirect: when page is null (first load), redirect to chat page
   useEffect(() => {
-    // Only redirect when page is null and localActiveChatId is available
-    if (page !== null || !localActiveChatId) return;
+    // Wait for the recovery read before deciding between a recovered, restored,
+    // or brand-new chat.
+    if (page !== null || !effectiveChatId) return;
 
     if (pathname !== "/") return;
 
@@ -317,11 +392,11 @@ export function Home() {
       searchParams,
       paramsToUpdate: {
         page: "chat",
-        chatId: localActiveChatId,
+        chatId: effectiveChatId,
       },
     });
     router.replace(newPath, { scroll: false });
-  }, [page, localActiveChatId, pathname, searchParams, router]);
+  }, [page, effectiveChatId, pathname, searchParams, router]);
 
   // ============================================================================
   // Chat Hook & Refs
@@ -544,6 +619,7 @@ export function Home() {
               <div className="flex min-w-0 flex-1 flex-col">
                 <ChatHeaderPanel
                   chatId={effectiveChatId}
+                  recoverySessions={recoverySessions?.sessions}
                   onChatIdChange={handleChatIdChange}
                   isHistoryPanelOpen={isChatHistoryOpen}
                   onToggleHistoryPanel={() => {
@@ -579,6 +655,8 @@ export function Home() {
                     initialInput={initialInput}
                     prefillToken={prefillToken}
                     initialMessageToSend={initialMessageToSend}
+                    serverRecoveryActive={isSelectedRecoveryActive}
+                    serverRecoveryPending={recoveryPresentationPending}
                   />
                 </div>
               </div>
@@ -630,13 +708,13 @@ export function Home() {
     }
 
     return (
-        <AgentLayout
-          centerTitle={t("nav.newChat")} 
-          hideCenterHeader={true}
-          centerOverlay={undefined}
-        >
-          <ChatSkeleton key="chat-skeleton" />
-        </AgentLayout>
+      <AgentLayout
+        centerTitle={t("nav.newChat")}
+        hideCenterHeader={true}
+        centerOverlay={undefined}
+      >
+        <ChatSkeleton key="chat-skeleton" />
+      </AgentLayout>
     );
   }
 

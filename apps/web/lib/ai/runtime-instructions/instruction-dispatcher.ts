@@ -30,6 +30,21 @@ export interface RuntimeInstructionInlineAcceptanceInput extends RuntimeInstruct
   receipt: RuntimeDeliveryReceipt;
 }
 
+export interface RuntimeInstructionRecoverySettlement {
+  instructionId: string;
+  disposition: "accepted" | "superseded";
+  recordedAt: string;
+  providerEventId?: string;
+  reason?: string;
+}
+
+export interface RuntimeInstructionRecoveryProgressInput {
+  ownerId: string;
+  runtimeSessionId: string;
+  transport: RuntimeInstructionTransportPort;
+  settlements: readonly RuntimeInstructionRecoverySettlement[];
+}
+
 export type RuntimeInstructionControlBarrierPolicy =
   | "preserve_predecessors"
   | "supersede_predecessors";
@@ -147,6 +162,135 @@ export class RuntimeInstructionDispatcher {
     private readonly outbox: RuntimeInstructionOutboxReader,
     private readonly deliveryJournal?: RuntimeDeliveryJournalPort,
   ) {}
+
+  /**
+   * Rebuild process-local transport progress from the durable Delivery journal.
+   *
+   * A recovered transport is a new object, so its WeakMap progress starts at
+   * sequence zero. Without this hydration, replaying the outbox would write
+   * provider-visible instructions to Claude a second time. Callers must only
+   * classify durable provider-visible attempts as `accepted`; undelivered
+   * attempts are deliberately omitted so the normal drain can retry them.
+   */
+  initializeRecoveredProgress(
+    input: RuntimeInstructionRecoveryProgressInput,
+  ): Promise<void> {
+    const ownerId = requiredIdentifier(input.ownerId, "ownerId");
+    const runtimeSessionId = requiredIdentifier(
+      input.runtimeSessionId,
+      "runtimeSessionId",
+    );
+    assertTransportTargetsSession(input.transport, runtimeSessionId);
+    const scope = sessionScope(ownerId, runtimeSessionId);
+    return this.deliveries.run(scope, async () => {
+      const resolved = await this.sessions.resolve(ownerId, runtimeSessionId);
+      if (resolved !== input.transport) {
+        throw new RuntimeInstructionDispatcherError(
+          "outbox_progress_conflict",
+          `Runtime Session ${runtimeSessionId} changed before recovery progress was initialized`,
+        );
+      }
+
+      let rawInstructions: RuntimeInstruction[];
+      try {
+        rawInstructions = await this.outbox.listInstructions(
+          ownerId,
+          runtimeSessionId,
+        );
+      } catch (cause) {
+        throw new RuntimeInstructionDispatcherError(
+          "outbox_read_failed",
+          `Failed to read the authoritative outbox for Runtime Session ${runtimeSessionId}`,
+          cause,
+        );
+      }
+      const instructions = parseCompleteOutbox(
+        runtimeSessionId,
+        rawInstructions,
+      );
+      const byId = new Map(
+        instructions.map((instruction) => [instruction.id, instruction]),
+      );
+      const progress = this.getProgress(input.transport, scope, instructions);
+      const seen = new Set<string>();
+
+      for (const settlement of input.settlements) {
+        const instructionId = requiredIdentifier(
+          settlement.instructionId,
+          "settlement.instructionId",
+        );
+        if (seen.has(instructionId)) {
+          throw new RuntimeInstructionDispatcherError(
+            "outbox_progress_conflict",
+            `Recovery progress contains duplicate instruction ${instructionId}`,
+          );
+        }
+        seen.add(instructionId);
+        const instruction = byId.get(instructionId);
+        if (!instruction) {
+          throw new RuntimeInstructionDispatcherError(
+            "outbox_progress_conflict",
+            `Recovery progress references unknown instruction ${instructionId}`,
+          );
+        }
+        const recordedAt = requiredTimestamp(
+          settlement.recordedAt,
+          "settlement.recordedAt",
+        );
+        if (settlement.disposition === "accepted") {
+          const acceptedInstruction: AcceptedInstruction = {
+            instructionId,
+            instruction: structuredClone(instruction),
+            receipt: {
+              instructionId,
+              runtimeSessionId,
+              state: "written_to_sdk",
+              recordedAt,
+              ...(settlement.providerEventId === undefined
+                ? {}
+                : {
+                    providerEventId: requiredIdentifier(
+                      settlement.providerEventId,
+                      "settlement.providerEventId",
+                    ),
+                  }),
+            },
+          };
+          const existing = progress.acceptedBySequence.get(
+            instruction.sequence,
+          );
+          if (existing) assertSameProgressInstruction(existing, instruction);
+          else
+            progress.acceptedBySequence.set(
+              instruction.sequence,
+              acceptedInstruction,
+            );
+          continue;
+        }
+        if (settlement.disposition !== "superseded") {
+          throw new RuntimeInstructionDispatcherError(
+            "outbox_progress_conflict",
+            `Unsupported recovery disposition for instruction ${instructionId}`,
+          );
+        }
+        const reason = requiredText(
+          settlement.reason ?? "Instruction was settled before recovery",
+          "settlement.reason",
+        );
+        const existing = progress.supersededBySequence.get(
+          instruction.sequence,
+        );
+        if (existing) assertSameProgressInstruction(existing, instruction);
+        else
+          progress.supersededBySequence.set(instruction.sequence, {
+            instructionId,
+            instruction: structuredClone(instruction),
+            reason,
+          });
+      }
+      advanceSettledPrefix(progress, instructions);
+    });
+  }
 
   drain(
     input: RuntimeInstructionDrainInput,
@@ -654,16 +798,47 @@ function parseOutbox(input: {
   targetInstructionId: string;
   instructions: readonly RuntimeInstruction[];
 }): ParsedDrain {
-  if (!Array.isArray(input.instructions) || input.instructions.length === 0) {
+  const instructions = parseCompleteOutbox(
+    input.runtimeSessionId,
+    input.instructions,
+  );
+  if (instructions.length === 0) {
     throw new RuntimeInstructionDispatcherError(
       "invalid_drain",
       "Runtime Instruction outbox must contain at least one instruction",
     );
   }
 
+  const target = instructions.find(
+    (instruction) => instruction.id === input.targetInstructionId,
+  );
+  if (!target) {
+    throw new RuntimeInstructionDispatcherError(
+      "invalid_drain",
+      `Target instruction ${input.targetInstructionId} is not present in the outbox`,
+    );
+  }
+  return {
+    ownerId: input.ownerId,
+    runtimeSessionId: input.runtimeSessionId,
+    instructions,
+    target,
+  };
+}
+
+function parseCompleteOutbox(
+  runtimeSessionId: string,
+  input: readonly RuntimeInstruction[],
+): RuntimeInstruction[] {
+  if (!Array.isArray(input)) {
+    throw new RuntimeInstructionDispatcherError(
+      "invalid_drain",
+      "Runtime Instruction outbox must be an array",
+    );
+  }
   let instructions: RuntimeInstruction[];
   try {
-    instructions = input.instructions.map((instruction) =>
+    instructions = input.map((instruction) =>
       RuntimeInstructionSchema.parse(instruction),
     );
   } catch (cause) {
@@ -683,7 +858,7 @@ function parseOutbox(input: {
         `Complete outbox must contain contiguous sequences starting at 1; expected ${expectedSequence}, received ${instruction.sequence}`,
       );
     }
-    if (instruction.targetSessionId !== input.runtimeSessionId) {
+    if (instruction.targetSessionId !== runtimeSessionId) {
       throw new RuntimeInstructionDispatcherError(
         "invalid_drain",
         "Every instruction in one outbox drain must target the same Runtime Session",
@@ -697,22 +872,7 @@ function parseOutbox(input: {
     }
     instructionIds.add(instruction.id);
   }
-
-  const target = instructions.find(
-    (instruction) => instruction.id === input.targetInstructionId,
-  );
-  if (!target) {
-    throw new RuntimeInstructionDispatcherError(
-      "invalid_drain",
-      `Target instruction ${input.targetInstructionId} is not present in the outbox`,
-    );
-  }
-  return {
-    ownerId: input.ownerId,
-    runtimeSessionId: input.runtimeSessionId,
-    instructions,
-    target,
-  };
+  return instructions;
 }
 
 function assertCompatibleProgress(
@@ -961,6 +1121,16 @@ function requiredText(value: unknown, field: string): string {
     );
   }
   return normalized;
+}
+
+function requiredTimestamp(value: unknown, field: string): string {
+  if (typeof value !== "string" || !Number.isFinite(Date.parse(value))) {
+    throw new RuntimeInstructionDispatcherError(
+      "invalid_drain",
+      `${field} must be an ISO timestamp`,
+    );
+  }
+  return value;
 }
 
 function sessionScope(ownerId: string, runtimeSessionId: string): string {

@@ -11,6 +11,7 @@ import { Badge, Button } from "@openloomi/ui";
 import { HorizontalScrollContainer, hasDragged } from "@openloomi/ui";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@openloomi/ui";
 import type { ChatHistoryResponse } from "@/lib/ai/chat/api";
+import type { AgentGoalRecoverySession } from "@/lib/ai/runtime-instructions/api";
 import { buildNavigationUrl } from "@/lib/utils";
 import { fetcher } from "@/lib/utils";
 import { cn } from "@/lib/utils";
@@ -35,6 +36,17 @@ interface ChatHeaderPanelProps {
    * Toggle right history panel (controlled by parent whether to show)
    */
   onToggleHistoryPanel?: () => void;
+  /** Server-owned Goal sessions still running after a desktop restart. */
+  recoverySessions?: readonly AgentGoalRecoverySession[];
+}
+
+interface HeaderChat {
+  id: string;
+  title: string;
+  createdAt: Date;
+  latestMessageContent: string | null;
+  latestMessageTime: Date | null;
+  messageCount: number;
 }
 
 /**
@@ -52,6 +64,7 @@ export function ChatHeaderPanel({
   children,
   isHistoryPanelOpen,
   onToggleHistoryPanel,
+  recoverySessions = [],
 }: ChatHeaderPanelProps = {}) {
   const { t } = useTranslation();
 
@@ -79,11 +92,15 @@ export function ChatHeaderPanel({
   // Check if agent for the specified chatId is running
   const isChatRunning = useCallback(
     (chatId: string): boolean => {
+      if (
+        recoverySessions.some((session) => session.runtimeSessionId === chatId)
+      ) {
+        return true;
+      }
       if (!getChatSessionStates) return false;
-      const states = getChatSessionStates();
-      return states.get(chatId)?.isAgentRunning ?? false;
+      return getChatSessionStates().get(chatId)?.isAgentRunning ?? false;
     },
-    [getChatSessionStates],
+    [getChatSessionStates, recoverySessions],
   );
 
   // Prefer context's activeChatId (for highlighting), otherwise use externally passed chatId
@@ -106,11 +123,28 @@ export function ChatHeaderPanel({
     },
   );
 
-  // Find current chat from history
+  const recoveryChats = useMemo<HeaderChat[]>(
+    () =>
+      recoverySessions.map((session) => ({
+        id: session.chat.id,
+        title: session.chat.title,
+        createdAt: new Date(session.chat.createdAt),
+        latestMessageContent: null,
+        latestMessageTime: new Date(session.chat.createdAt),
+        messageCount: 1,
+      })),
+    [recoverySessions],
+  );
+
+  // Find current chat from history or the server recovery read model.
   const currentChat = useMemo(() => {
-    if (!chatHistory?.chats || !currentChatId) return null;
-    return chatHistory.chats.find((chat) => chat.id === currentChatId) || null;
-  }, [chatHistory, currentChatId]);
+    if (!currentChatId) return null;
+    return (
+      chatHistory?.chats.find((chat) => chat.id === currentChatId) ??
+      recoveryChats.find((chat) => chat.id === currentChatId) ??
+      null
+    );
+  }, [chatHistory, currentChatId, recoveryChats]);
 
   // Sort all chats by time (newest first)
   const sortedChats = useMemo(() => {
@@ -130,42 +164,40 @@ export function ChatHeaderPanel({
 
   // Get chat list for display title (up to 5)
   const displayChats = useMemo(() => {
-    if (!sortedChats || sortedChats.length === 0) {
-      if (currentChatId && currentChat) {
-        return [currentChat];
+    // Recovery sessions take priority even when the corresponding Chat is too
+    // old to be present in the first history page.
+    const display: HeaderChat[] = recoveryChats.slice(0, 5);
+    const seen = new Set(display.map((chat) => chat.id));
+    for (const chat of sortedChats) {
+      if (display.length >= 5) break;
+      if (!seen.has(chat.id)) {
+        display.push(chat);
+        seen.add(chat.id);
       }
-      if (!currentChatId) {
-        return [];
-      }
-      return [];
     }
 
-    // Take top 5 chats
-    const top5Chats = sortedChats.slice(0, 5);
-    const currentChatInTop5 = currentChatId
-      ? top5Chats.some((chat) => chat.id === currentChatId)
+    const currentChatIsDisplayed = currentChatId
+      ? display.some((chat) => chat.id === currentChatId)
       : false;
 
-    // If current chat is not in top 5, include it and place at the end (rightmost)
-    if (currentChatId && !currentChatInTop5) {
+    // If current chat is not in the first five, keep it visible at the end.
+    if (currentChatId && !currentChatIsDisplayed) {
       if (currentChat) {
-        return [...top5Chats, currentChat];
+        return [...display, currentChat];
       }
-      if (currentChatId) {
-        const newChatPlaceholder = {
-          id: currentChatId,
-          title: t("common.newChat"),
-          createdAt: new Date(),
-          latestMessageContent: null,
-          latestMessageTime: new Date(),
-          messageCount: 0,
-        };
-        return [...top5Chats, newChatPlaceholder];
-      }
+      const newChatPlaceholder = {
+        id: currentChatId,
+        title: t("common.newChat"),
+        createdAt: new Date(),
+        latestMessageContent: null,
+        latestMessageTime: new Date(),
+        messageCount: 0,
+      };
+      return [...display, newChatPlaceholder];
     }
 
-    return top5Chats;
-  }, [sortedChats, currentChatId, currentChat, t]);
+    return display;
+  }, [sortedChats, recoveryChats, currentChatId, currentChat, t]);
 
   // Stable display list reference to avoid flicker during data loading
   const prevDisplayChatsRef = useRef<typeof displayChats>([]);

@@ -15,7 +15,10 @@ import {
   AgentGoalQueryService,
   type AgentGoalReadSource,
 } from "./goal-query-service";
-import { GoalLifecycleService } from "./goal-lifecycle-service";
+import {
+  GoalLifecycleService,
+  type RuntimeSessionRecoveryWakePort,
+} from "./goal-lifecycle-service";
 import { GoalReplacementCoordinator } from "./goal-replacement-coordinator";
 import { InMemoryAgentGoalState } from "./in-memory-goal-state";
 import { InMemoryRuntimeObservationJournal } from "./in-memory-runtime-observation-journal";
@@ -66,6 +69,7 @@ export interface AgentGoalRuntime {
 export interface SqliteAgentGoalRuntime extends AgentGoalRuntime {
   readonly state: SqliteAgentGoalState;
   readonly observations: SqliteRuntimeObservationJournal;
+  readonly runtimeSessions: SqliteRuntimeSessionPersistence;
 }
 
 export function createInMemoryAgentGoalRuntime(
@@ -74,6 +78,7 @@ export function createInMemoryAgentGoalRuntime(
     idGenerator?: RuntimeIdGeneratorPort;
     observationIdGenerator?: RuntimeIdGeneratorPort;
     semanticEvaluator?: GoalSemanticEvaluatorPort;
+    recoveryWake?: RuntimeSessionRecoveryWakePort;
   } = {},
 ): InMemoryAgentGoalRuntime {
   const state = new InMemoryAgentGoalState();
@@ -116,6 +121,7 @@ export function createInMemoryAgentGoalRuntime(
     idGenerator,
     30_000,
     observations,
+    options.recoveryWake,
   );
   const goals = new GoalService(
     state,
@@ -153,6 +159,7 @@ export function createSqliteAgentGoalRuntime(
     idGenerator?: RuntimeIdGeneratorPort;
     observationIdGenerator?: RuntimeIdGeneratorPort;
     semanticEvaluator?: GoalSemanticEvaluatorPort;
+    recoveryWake?: RuntimeSessionRecoveryWakePort;
   } = {},
 ): SqliteAgentGoalRuntime {
   const database =
@@ -186,6 +193,7 @@ export function createSqliteAgentGoalRuntime(
     clock,
     idGenerator,
     semanticEvaluator: options.semanticEvaluator,
+    recoveryWake: options.recoveryWake,
     queries: sqliteGoalReadSource(database),
   });
 }
@@ -194,10 +202,11 @@ function composeRuntime(input: {
   state: SqliteAgentGoalState;
   observations: SqliteRuntimeObservationJournal;
   sessions: RuntimeSessionRegistry;
-  runtimeSessions: RuntimeSessionPersistencePort;
+  runtimeSessions: SqliteRuntimeSessionPersistence;
   clock: RuntimeClockPort;
   idGenerator: RuntimeIdGeneratorPort;
   semanticEvaluator?: GoalSemanticEvaluatorPort;
+  recoveryWake?: RuntimeSessionRecoveryWakePort;
   queries: AgentGoalReadSource;
 }): SqliteAgentGoalRuntime {
   const queries = new AgentGoalQueryService(input.queries, input.clock);
@@ -222,6 +231,7 @@ function composeRuntime(input: {
     input.idGenerator,
     30_000,
     input.observations,
+    input.recoveryWake,
   );
   return {
     state: input.state,
@@ -321,7 +331,16 @@ export function getAgentGoalRuntime(): AgentGoalRuntime {
   processGlobal.__openLoomiAgentGoalRuntimeV2 ??= isTauriMode()
     ? createSqliteAgentGoalRuntime(
         getDbInstance() as unknown as SqliteGoalRuntimeDatabaseSource,
-        { semanticEvaluator: new OpenLoomiGoalSemanticEvaluator() },
+        {
+          semanticEvaluator: new OpenLoomiGoalSemanticEvaluator(),
+          recoveryWake: {
+            async wake(input) {
+              const { wakeAgentGoalRuntimeRecovery } =
+                await import("./recovery/startup");
+              return wakeAgentGoalRuntimeRecovery(input);
+            },
+          },
+        },
       )
     : createInMemoryAgentGoalRuntime({
         semanticEvaluator: new OpenLoomiGoalSemanticEvaluator(),
