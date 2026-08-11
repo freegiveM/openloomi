@@ -10,6 +10,7 @@ import type { MemoryApplicabilityContext } from "@openloomi/memory-consolidation
 import type { Session } from "next-auth";
 import type { NextRequest } from "next/server";
 
+import { appendFileSync as _appendFileSync } from "node:fs";
 import { auth } from "@/app/(auth)/auth";
 import { resolveNativeAgentProviderRequest } from "@/lib/ai/native-agent/provider-env";
 import {
@@ -26,6 +27,38 @@ import { recordUsage } from "@/lib/llm-usage/recorder";
 // This prevents "TypeError: Load failed" when tool calls take a long time.
 // NOTE: Vercel has hard limits (Hobby: 10s, Pro: 800s).
 export const maxDuration = 800;
+
+// Server-only probe: writes lines into a fixed file so we can inspect SSE
+// behaviour even when the OpenLoomi tauri:dev console isn't reachable.
+// Path is hard-coded (matches HANDOVER_2026-08-07.md §3.2) so it's
+// greppable on every host. Remove this block once the SSE flushing bug
+// is fixed.
+const PROBE_PATH = "D:/openloomi3/openloomi/agent_api_probe.log";
+const probeLog = (line: string) => {
+  try {
+    _appendFileSync(PROBE_PATH, `[${new Date().toISOString()}] ${line}\n`);
+  } catch {
+    /* best-effort */
+  }
+};
+// Touch the file at import time so the user can see we have write access.
+try {
+  _appendFileSync(
+    PROBE_PATH,
+    `[${new Date().toISOString()}] [AgentAPI_PROBE] route.ts module loaded\n`,
+  );
+} catch {
+  /* ignore */
+}
+
+// Always run as a Node.js route handler and disable any caching layer. SSE
+// must stream frame-by-frame; Next.js's default route handler can otherwise
+// buffer the entire response before flushing (especially under the turbopack
+// dev server used by `pnpm tauri:dev`). Forcing runtime + dynamic is the
+// minimal change that lets `controller.enqueue(...)` push each SSE frame to
+// the client as soon as the OpenLoomi EventBus yields a message.
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 /**
  * Resolves a stable providerType slug from the request body. Today the only
@@ -76,6 +109,10 @@ function createSSEStream(
   return new ReadableStream({
     start(controller) {
       let controllerClosed = false;
+      let probeEventCount = 0;
+      probeLog(
+        `SSE start(controller) entered; generatorSymbol=${typeof generator[Symbol.asyncIterator] === "function" ? "fn" : "?"}`,
+      );
 
       heartbeatTimer = setInterval(() => {
         if (controllerClosed) {
@@ -83,6 +120,7 @@ function createSSEStream(
           return;
         }
         try {
+          probeLog(`heartbeat-tick`);
           // SSE comments are ignored by clients but keep the connection hot.
           controller.enqueue(encoder.encode(": keep-alive\n\n"));
         } catch {
@@ -92,12 +130,26 @@ function createSSEStream(
 
       void (async () => {
         try {
+          probeLog(`for-await loop entered`);
           for await (const message of generator) {
+            probeEventCount += 1;
+            probeLog(
+              `for-await got message #${probeEventCount} type=${message?.type ?? "?"} keys=${message ? Object.keys(message).join(",") : "null"}`,
+            );
             if (controllerClosed) break;
             const data = `data: ${JSON.stringify(message)}\n\n`;
             try {
+              probeLog(
+                `#${probeEventCount} calling controller.enqueue(${data.length}B)`,
+              );
               controller.enqueue(encoder.encode(data));
+              probeLog(
+                `#${probeEventCount} controller.enqueue returned`,
+              );
             } catch (enqueueError) {
+              probeLog(
+                `#${probeEventCount} controller.enqueue THREW: ${enqueueError}`,
+              );
               // Controller already closed, stop processing
               break;
             }
@@ -107,13 +159,17 @@ function createSSEStream(
 
             // Close stream after result message to signal completion
             if (message.type === "result") {
-              console.log(
-                "[AgentAPI] Result message received, closing stream...",
-              );
+              probeLog("Result message received, closing stream...");
               break;
             }
           }
+          probeLog(
+            `for-await loop exited; total messages seen=${probeEventCount}`,
+          );
         } catch (error) {
+          probeLog(
+            `for-await THREW: name=${error instanceof Error ? error.name : "?"} msg=${error instanceof Error ? error.message : String(error)} stack=${error instanceof Error ? (error.stack ?? "").split("\n").slice(0,3).join(" | ") : "n/a"}`,
+          );
           console.error("[AgentAPI] Generator error:", {
             message: error instanceof Error ? error.message : String(error),
             stack: error instanceof Error ? error.stack : undefined,

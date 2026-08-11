@@ -22,6 +22,7 @@
 
 import "dotenv/config";
 import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 
 import {
@@ -34,7 +35,6 @@ import {
   loadReferenceAttachments,
   readAuthToken,
   summariseHandle,
-  V2_TOOL_SET,
 } from "./agent";
 import { loadGDPvalAADataset } from "./dataset";
 import type {
@@ -62,6 +62,11 @@ interface CliArgs {
   timeoutMs: number;
   quick?: number;
   resume: boolean;
+  /** When set, also re-run any prediction that succeeded but produced 0
+   *  deliverables (the "0 deliverable" bug we're currently debugging). The
+   *  runner treats these as fresh tasks — it will clear the workdir,
+   *  re-stage reference files, and overwrite the old prediction. */
+  retryZeroDeliverables: boolean;
   /** When set, overrides the default v2 tool set. */
   allowedTools?: string[];
   /** Skip the official v2 prompt builder; use a plain text dump instead. */
@@ -158,6 +163,12 @@ function parseArgs(argv: string[]): CliArgs {
       case "--no-official-prompts":
         values.useOfficialPrompts = false;
         break;
+      case "--retry-zero-deliverables":
+        values.retryZeroDeliverables = true;
+        break;
+      case "--no-retry-zero-deliverables":
+        values.retryZeroDeliverables = false;
+        break;
       case "--help":
       case "-h":
         printUsage();
@@ -185,6 +196,7 @@ function parseArgs(argv: string[]): CliArgs {
     resume: values.resume as boolean,
     allowedTools,
     useOfficialPrompts: values.useOfficialPrompts as boolean,
+    retryZeroDeliverables: values.retryZeroDeliverables as boolean,
   };
 }
 
@@ -212,9 +224,18 @@ Optional:
   --model, -m             Model identifier (forwarded to the harness)
   --permission-mode       default | acceptEdits | bypassPermissions | plan | dontAsk
   --timeout-ms            Per-task wall-clock budget (default 30 min)
-  --allowed-tools         Override the v2 tool set (default: WebFetch,WebSearch,ViewImage,Bash)
+  --allowed-tools         Send an explicit allowedTools list to OpenLoomi.
+                          By default the field is omitted to avoid a Bun CLI
+                          stack overflow on this OpenLoomi build
+                          (see DIAGNOSIS_2026-08-06.md).
   --quick, -q             Only run the first N tasks
   --resume / --no-resume  Skip tasks already in --output (default: resume)
+  --retry-zero-deliverables / --no-retry-zero-deliverables
+                          When combined with --resume, also re-run any task
+                          that previously completed successfully but
+                          produced 0 deliverables. Used to recover from
+                          the fs-polling 0-deliverable bug after the
+                          code fix lands.
   --no-official-prompts   Skip the Python prompt builder; pass the raw task
                           prompt to the agent with the finish text protocol
                           appended. Useful for debugging.
@@ -373,7 +394,45 @@ async function main() {
   const previous = args.resume
     ? await loadExistingPredictions(args.output)
     : [];
-  const completed = new Set(previous.map((p) => p.task_id));
+  // When --retry-zero-deliverables is set, drop ANY prediction that does
+  // not have real deliverables. "Real" means: deliverables.length > 0 AND
+  // the prediction came from a live SSE run (has metadata). Predictions
+  // recovered from workdir scans (metadata === undefined) only have a
+  // placeholder deliverable list — re-run those to get the full live
+  // response / tool_calls / turn_count / sha256.
+  const retryableZeroDeliv = args.retryZeroDeliverables
+    ? new Set(
+        previous
+          .filter(
+            (p) =>
+              // Truly zero deliverables
+              !Array.isArray(p.deliverables) ||
+              p.deliverables.length === 0 ||
+              // Recovered from workdir scan (no live SSE data)
+              (p as any).metadata === undefined ||
+              (p as any).metadata === null,
+          )
+          .map((p) => p.task_id),
+      )
+    : new Set<string>();
+  if (retryableZeroDeliv.size > 0) {
+    console.log(
+      `[GDPval-AA v2] --retry-zero-deliverables: re-running ${retryableZeroDeliv.size} zero-deliverable task(s) (includes both errored + empty-success)`,
+    );
+  } else if (args.retryZeroDeliverables) {
+    console.log(
+      `[GDPval-AA v2] --retry-zero-deliverables: no matching tasks`,
+    );
+  }
+  // Drop retryable zero-deliverable tasks from the `completed` set so the
+  // runner will re-execute them. Keep them in `predictions` for now so the
+  // run.json always has an entry per task; we'll overwrite the entry when
+  // the retry succeeds.
+  const completed = new Set(
+    previous
+      .filter((p) => !retryableZeroDeliv.has(p.task_id))
+      .map((p) => p.task_id),
+  );
   const predictions: GDPvalAAPrediction[] = [...previous];
 
   const baseResult: GDPvalAARunResult = {
@@ -387,7 +446,11 @@ async function main() {
     predictions: [],
   };
 
-  const allowedTools = args.allowedTools ?? [...V2_TOOL_SET];
+  // Only set `allowedTools` when the user explicitly passed
+  // `--allowed-tools`. Empirically, sending the field to OpenLoomi triggers a
+  // Bun CLI stack overflow (see DIAGNOSIS_2026-08-06.md), so we omit it
+  // otherwise and let OpenLoomi use its default tool set.
+  const allowedTools = args.allowedTools;
 
   for (const [index, task] of selected.entries()) {
     if (completed.has(task.task_id)) {
@@ -399,7 +462,16 @@ async function main() {
 
     const taskWorkdir = join(workdirsDir, task.task_id);
     // Fresh workdir per task — never reuse deliverables across tasks.
-    await rm(taskWorkdir, { recursive: true, force: true });
+    // rm is best-effort: EBUSY here means OpenLoomi's worker still holds
+    // a handle from a previous run, in which case we just reuse whatever
+    // is in the dir.
+    try {
+      await rm(taskWorkdir, { recursive: true, force: true });
+    } catch (err) {
+      console.warn(
+        `  ! could not clear workdir (${(err as NodeJS.ErrnoException)?.code ?? "unknown"}): proceeding with existing contents`,
+      );
+    }
     await mkdir(taskWorkdir, { recursive: true });
 
     const startMs = Date.now();
@@ -449,6 +521,14 @@ async function main() {
         permissionMode: args.permissionMode,
         allowedTools,
         timeoutMs: args.timeoutMs,
+        // Default-on: fall back to fs polling when the OpenLoomi SSE pipe
+        // stalls (the common case under Next.js 16 + Turbopack dev). The
+        // fallback waits for `workDir` to stop changing for ~2 min before
+        // declaring the task done, and enriches the handle from the
+        // server-side probe log so we keep an approximate tool-call / turn
+        // / usage trace. See HANDOVER_2026-08-07 §4.3.
+        useFsPollingFallback: true,
+        probeLogPath: "D:/openloomi3/openloomi/agent_api_probe.log",
         // Inject reference files via the v2 fileAttachments contract.
         // (The OpenLoomi agent module reads them as base64 + name and
         // writes them into workDir.)
@@ -548,7 +628,45 @@ async function main() {
       };
     }
 
-    predictions.push(prediction);
+    // If we're re-running a task (e.g. a previous zero-deliverable retry),
+    // overwrite the old prediction in place rather than appending a duplicate.
+    // BUT protect against two regression modes:
+    //   1. Retry errored (fetch failed) with 0 new deliverables AND the
+    //      old prediction had deliverables — keep the old (downgrade to
+    //      recovered shape so a future retry can pick it up).
+    //   2. Retry succeeded but produced 0 deliverables AND the old
+    //      prediction had deliverables — keep the old (the new run is a
+    //      regression: no output files written).
+    // In both cases we convert the old prediction to the recovered shape
+    // (cleared metadata) so the next --retry-zero-deliverables run will
+    // try to upgrade it again.
+    const existingIdx = predictions.findIndex(
+      (p) => p.task_id === prediction.task_id,
+    );
+    if (
+      existingIdx >= 0 &&
+      prediction.deliverables.length === 0 &&
+      !prediction.abandoned
+    ) {
+      const old = predictions[existingIdx];
+      if (old.deliverables.length > 0) {
+        predictions[existingIdx] = {
+          ...old,
+          error: prediction.error,
+          duration_ms: prediction.duration_ms,
+          // Drop the live metadata so the next retry treats this as
+          // recovered-with-files rather than as a live-with-no-deliverable.
+          metadata: undefined as any,
+        };
+        await saveRunResult(args.output, baseResult, predictions);
+        continue;
+      }
+    }
+    if (existingIdx >= 0) {
+      predictions[existingIdx] = prediction;
+    } else {
+      predictions.push(prediction);
+    }
     await saveRunResult(args.output, baseResult, predictions);
   }
 

@@ -440,10 +440,27 @@ export class ClaudeRuntimeSession implements RuntimeSessionLifecycleControlPort 
         this.updateSessionFromSdkMessage(message, observedRunEpoch);
         await this.recordProviderObservation(message, observedRunEpoch);
         for (const agentMessage of this.outputMultiplexer.convert(message)) {
-          await this.output.publish({
-            ...agentMessage,
-            runEpoch: observedRunEpoch,
-          });
+          // Fire-and-forget the publish. Awaiting here lets
+          // AgentOutputEventBus.publishOne → waitForCapacity stall the SDK
+          // iterator the moment any subscriber's `pending` queue fills up,
+          // which in turn starves the route.ts SSE writer of mid-stream
+          // frames (the consumer side is then blocked behind the slow
+          // ReadableStream socket write in OpenLoomi's tauri:dev proxy).
+          // By detaching publish from this microtask we keep the SDK pump
+          // running and let the EventBus absorb events at its subscriber
+          // capacity; the slow consumer simply experiences higher latency
+          // instead of deadlocking the producer.
+          this.output
+            .publish({
+              ...agentMessage,
+              runEpoch: observedRunEpoch,
+            })
+            .catch((publishError: unknown) => {
+              this.logger.warn(
+                `[Claude ${this.runtimeSessionId}] output publish failed`,
+                publishError,
+              );
+            });
         }
         if (message.type === "result") {
           if (observedRunEpoch === this.runEpoch) {
