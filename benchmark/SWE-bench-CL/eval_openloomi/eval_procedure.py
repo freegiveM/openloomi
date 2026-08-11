@@ -174,9 +174,10 @@ def setup_repository(repo_identifier: str,
                 ["git", "clone", f"https://github.com/{repo_identifier}.git", str(local)],
                 check=True, timeout=900, capture_output=True,
             )
-        # git fetch 网络抖动 retry：偶发 "Recv failure: Connection was reset"
-        # (典型是访问 github.com 时被 GFW/ISP TCP RST)，用指数退避自动恢复。
-        fetch_attempts = 4   # 1 原始 + 3 retry
+        # Retry git fetch on transient network failures (e.g. "Recv failure:
+        # Connection was reset" when an upstream ISP sends a TCP RST). We use
+        # exponential backoff so the loop self-heals without manual intervention.
+        fetch_attempts = 4   # 1 original + 3 retries
         fetch_ok = False
         last_fetch_err: Optional[Exception] = None
         for fa in range(fetch_attempts):

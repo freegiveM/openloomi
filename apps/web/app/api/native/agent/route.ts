@@ -10,7 +10,6 @@ import type { MemoryApplicabilityContext } from "@openloomi/memory-consolidation
 import type { Session } from "next-auth";
 import type { NextRequest } from "next/server";
 
-import { appendFileSync as _appendFileSync } from "node:fs";
 import { auth } from "@/app/(auth)/auth";
 import { resolveNativeAgentProviderRequest } from "@/lib/ai/native-agent/provider-env";
 import {
@@ -28,28 +27,14 @@ import { recordUsage } from "@/lib/llm-usage/recorder";
 // NOTE: Vercel has hard limits (Hobby: 10s, Pro: 800s).
 export const maxDuration = 800;
 
-// Server-only probe: writes lines into a fixed file so we can inspect SSE
-// behaviour even when the OpenLoomi tauri:dev console isn't reachable.
-// Path is hard-coded (matches HANDOVER_2026-08-07.md §3.2) so it's
-// greppable on every host. Remove this block once the SSE flushing bug
-// is fixed.
-const PROBE_PATH = "D:/openloomi3/openloomi/agent_api_probe.log";
-const probeLog = (line: string) => {
-  try {
-    _appendFileSync(PROBE_PATH, `[${new Date().toISOString()}] ${line}\n`);
-  } catch {
-    /* best-effort */
-  }
+// Server-only probe — disabled (no-op). The earlier version wrote to a
+// hard-coded path on the developer's machine, which is rejected by review.
+// All `probeLog(...)` calls in this file are intentionally preserved as
+// no-ops so that future SSE instrumentation can be wired back in without
+// re-introducing the hard-coded path.
+const probeLog = (_line: string) => {
+  /* intentionally disabled */
 };
-// Touch the file at import time so the user can see we have write access.
-try {
-  _appendFileSync(
-    PROBE_PATH,
-    `[${new Date().toISOString()}] [AgentAPI_PROBE] route.ts module loaded\n`,
-  );
-} catch {
-  /* ignore */
-}
 
 // Always run as a Node.js route handler and disable any caching layer. SSE
 // must stream frame-by-frame; Next.js's default route handler can otherwise
@@ -120,7 +105,7 @@ function createSSEStream(
           return;
         }
         try {
-          probeLog(`heartbeat-tick`);
+          probeLog("heartbeat-tick");
           // SSE comments are ignored by clients but keep the connection hot.
           controller.enqueue(encoder.encode(": keep-alive\n\n"));
         } catch {
@@ -130,7 +115,7 @@ function createSSEStream(
 
       void (async () => {
         try {
-          probeLog(`for-await loop entered`);
+          probeLog("for-await loop entered");
           for await (const message of generator) {
             probeEventCount += 1;
             probeLog(

@@ -28,6 +28,8 @@ import {
   readFileSync,
   statSync,
   writeFileSync,
+  type Dirent,
+  type Stats,
 } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -342,7 +344,7 @@ export function recursiveSignature(
 ): string {
   const lines: string[] = [];
   const walk = (dir: string, prefix: string) => {
-    let dirents;
+    let dirents: Dirent[];
     try {
       dirents = readdirSync(dir, { withFileTypes: true });
     } catch {
@@ -491,7 +493,7 @@ export async function runFsPollingFallback(args: {
     if (sig !== lastSig) {
       lastSig = sig;
       lastChangeMs = Date.now();
-      fsLog(`fs-polling: recursive signature changed`);
+      fsLog("fs-polling: recursive signature changed");
     } else if (Date.now() - lastChangeMs >= fsIdleDoneMs) {
       fsLog(
         `fs-polling: no signature change for ${fsIdleDoneMs}ms; declaring done`,
@@ -508,7 +510,7 @@ export async function runFsPollingFallback(args: {
     .map((line) => line.split("::", 2)[1])
     .filter((n): n is string => typeof n === "string" && n.length > 0)
     .filter(
-      (n) => !FS_POLLING_IGNORE.some((p) => n === p || n.startsWith(p + "/")),
+      (n) => !FS_POLLING_IGNORE.some((p) => n === p || n.startsWith(`${p}/`)),
     );
 
   for (const rel of allRelative) {
@@ -523,7 +525,7 @@ export async function runFsPollingFallback(args: {
     }
     const absolute = join(workDir, rel);
     if (!existsSync(absolute)) continue;
-    let stat;
+    let stat: Stats;
     try {
       stat = statSync(absolute);
     } catch {
@@ -643,7 +645,7 @@ export async function callOpenLoomiAgent(
     process.env.OPENLOOMI_DEBUG_SSE === "1" ||
     process.env.OPENLOOMI_DEBUG_SSE === "true";
   const debugPath = debugSse
-    ? join(options.workDir, `_openloomi_sse_debug.log`)
+    ? join(options.workDir, "_openloomi_sse_debug.log")
     : null;
   let streamExitReason = "unknown";
   if (debugSse && debugPath) {

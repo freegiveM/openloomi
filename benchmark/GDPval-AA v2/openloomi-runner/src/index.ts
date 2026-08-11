@@ -409,8 +409,8 @@ async function main() {
               !Array.isArray(p.deliverables) ||
               p.deliverables.length === 0 ||
               // Recovered from workdir scan (no live SSE data)
-              (p as any).metadata === undefined ||
-              (p as any).metadata === null,
+              p.metadata === undefined ||
+              p.metadata === null,
           )
           .map((p) => p.task_id),
       )
@@ -421,7 +421,7 @@ async function main() {
     );
   } else if (args.retryZeroDeliverables) {
     console.log(
-      `[GDPval-AA v2] --retry-zero-deliverables: no matching tasks`,
+      "[GDPval-AA v2] --retry-zero-deliverables: no matching tasks",
     );
   }
   // Drop retryable zero-deliverable tasks from the `completed` set so the
@@ -656,7 +656,7 @@ async function main() {
           duration_ms: prediction.duration_ms,
           // Drop the live metadata so the next retry treats this as
           // recovered-with-files rather than as a live-with-no-deliverable.
-          metadata: undefined as any,
+          metadata: undefined,
         };
         await saveRunResult(args.output, baseResult, predictions);
         continue;
