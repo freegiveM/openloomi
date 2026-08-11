@@ -20,12 +20,12 @@ import {
   createGraphAwareRetrievalDryRunRetriever,
 } from "@openloomi/memory-consolidation";
 
-import { resolveMemoryGraphWritePolicy } from "@/lib/memory/memory-graph-write-policy";
+import { resolveMemoryGraphWritePolicy } from "@openloomi/memory-store/memory-graph-write-policy";
 import {
   type RawMessageStorageManagerWithSearch,
   getRawMessageManager,
   isRawMessageStorageAvailable,
-} from "@/lib/memory/raw-message-store";
+} from "@openloomi/memory-store/raw-message-store";
 
 const DEFAULT_MEMORY_CONTEXT_PAGE_SIZE = 6;
 const MAX_MEMORY_CONTEXT_ITEM_CHARS = 600;

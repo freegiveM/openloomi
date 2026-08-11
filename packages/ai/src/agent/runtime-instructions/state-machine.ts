@@ -27,7 +27,7 @@ const GOAL_TRANSITIONS: Readonly<Record<GoalStatus, readonly GoalStatus[]>> = {
 const RUN_TRANSITIONS: Readonly<
   Record<GoalRunStatus, readonly GoalRunStatus[]>
 > = {
-  queued: ["running", "paused", "cancelled", "failed"],
+  queued: ["running", "evaluating", "paused", "cancelled", "failed"],
   running: [
     "evaluating",
     "continuing",
@@ -39,9 +39,12 @@ const RUN_TRANSITIONS: Readonly<
     "failed",
   ],
   evaluating: [
+    "running",
     "continuing",
+    "paused",
     "blocked",
     "completed",
+    "cancelled",
     "budget_limited",
     "failed",
   ],

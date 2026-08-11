@@ -1,6 +1,6 @@
 {
 	"name": "web",
-	"version": "0.8.8",
+	"version": "0.9.0",
 	"private": true,
 	"type": "module",
 	"scripts": {
@@ -34,13 +34,14 @@
 		"db:up": "drizzle-kit up",
 		"pretest:unit": "node -e \"const fs=require('node:fs');fs.mkdirSync('coverage/unit/.tmp',{recursive:true});\"",
 		"test": "vitest run --coverage",
-		"test:benchmark": "tsx tests/benchmark/run-live.ts",
 		"tsc": "node ./scripts/run-cross-env.cjs NODE_OPTIONS=--max-old-space-size=16384 node ../../node_modules/typescript/bin/tsc",
 		"tauri:dev": "node ./scripts/run-cross-env.cjs IS_TAURI=true PORT=3515 pnpm tauri dev --config src-tauri/tauri.conf.dev.json",
 		"tauri:build": "pnpm tauri build && node scripts/check-cli-bundled.js . && node scripts/optimize-tauri-bundle.js",
 		"tauri:build:debug": "node ./scripts/run-cross-env.cjs IS_TAURI=true SKIP_TYPE_CHECK=true NODE_OPTIONS=--max-old-space-size=16384 tsx lib/db/migrate && next build && pnpm tauri build && node scripts/optimize-tauri-bundle.js",
 		"db:generate:sqlite": "drizzle-kit generate --config=drizzle.config.sqlite.ts",
-		"loop": "node ./scripts/loop-cli.mjs"
+		"loop": "node ./scripts/loop-cli.mjs",
+		"memory:http": "openloomi-memory-http",
+		"memory:mcp": "openloomi-memory-mcp"
 	},
 	"dependencies": {
 		"@agentclientprotocol/sdk": "^0.22.1",
@@ -50,12 +51,18 @@
 		"@openloomi/ai": "workspace:*",
 		"@openloomi/api": "workspace:*",
 		"@openloomi/audit": "workspace:*",
+		"@openloomi/cron": "workspace:*",
 		"@openloomi/hooks": "workspace:*",
 		"@openloomi/i18n": "workspace:*",
 		"@openloomi/indexeddb": "workspace:*",
 		"@openloomi/insights": "workspace:*",
 		"@openloomi/integrations": "workspace:*",
+		"@openloomi/integrations-runtime": "workspace:*",
+		"@openloomi/env-config": "workspace:*",
+		"@openloomi/ui-runtime": "workspace:*",
+		"@openloomi/loop": "workspace:*",
 		"@openloomi/memory-consolidation": "workspace:*",
+		"@openloomi/memory-store": "workspace:*",
 		"@openloomi/rag": "workspace:*",
 		"@openloomi/rss": "workspace:*",
 		"@openloomi/search": "workspace:*",

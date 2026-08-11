@@ -1302,6 +1302,8 @@ describe("memory query api", () => {
               ownerScope: { userId: "foreign-user" },
               rankedNodeIds: ["r2"],
               hiddenDeprecatedNodeIds: ["r1"],
+              withheldBaselineNodes: [],
+              addedBeyondBaselineNodes: [],
               expandedClusterIds: [],
               reasonCodes: ["foreign_scope_result"],
             };
@@ -1339,6 +1341,8 @@ describe("memory query api", () => {
               ownerScope: graphOwnerScope,
               rankedNodeIds: ["r2", "r1"],
               hiddenDeprecatedNodeIds: [],
+              withheldBaselineNodes: [],
+              addedBeyondBaselineNodes: [],
               expandedClusterIds: [],
               auditTrail: [
                 {
@@ -1471,6 +1475,8 @@ describe("memory query api", () => {
                 ownerScope,
                 rankedNodeIds: ["summary-materialized", "r1"],
                 hiddenDeprecatedNodeIds: [],
+                withheldBaselineNodes: [],
+                addedBeyondBaselineNodes: [],
                 expandedClusterIds: ["cluster-1"],
                 reasonCodes: ["materialized_representative"],
               };
@@ -1590,6 +1596,8 @@ describe("memory query api", () => {
               ownerScope: graphOwnerScope,
               rankedNodeIds: ["r2"],
               hiddenDeprecatedNodeIds: [],
+              withheldBaselineNodes: [],
+              addedBeyondBaselineNodes: [],
               expandedClusterIds: [],
               reasonCodes: ["partial_graph_ranking"],
             };

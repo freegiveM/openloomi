@@ -31,9 +31,16 @@ delete instructions.
 
 ## Roadmap
 
-See [memory consolidation roadmap](./docs/roadmap.md) for the staged plan
-from offline diagnostics to semantic memory candidates, dry-run runtime
-integration, controlled persistence, retrieval integration, and temporal memory.
+Dynamic Memory Cluster Evolution is the active track. Its authority set is
+[requirements](./docs/memory-graph-evolution-requirements.md) for product
+outcomes, [architecture](./docs/memory-graph-evolution-architecture.md) for
+boundaries and invariants, the [ADR index](./docs/adr/README.md) for durable
+decisions, and the
+[execution plan](./docs/memory-graph-evolution-execution-plan.md) for delivery
+status, phase numbering, and authorization.
+
+Earlier package-local planning notes are kept in
+[docs/archive](./docs/archive/README.md) for history only.
 
 ## Scope
 

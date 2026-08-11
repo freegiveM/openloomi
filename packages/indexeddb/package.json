@@ -1,11 +1,35 @@
 {
   "name": "@openloomi/indexeddb",
-  "version": "0.8.8",
-  "private": true,
+  "version": "0.9.0",
   "type": "module",
-  "exports": {
-    ".": "./src/index.ts"
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
   },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js",
+    "./storage": "./dist/storage.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/melandlabs/openloomi.git",
+    "directory": "packages/indexeddb"
+  },
+  "homepage": "https://github.com/melandlabs/openloomi/tree/main/packages/indexeddb",
+  "bugs": {
+    "url": "https://github.com/melandlabs/openloomi/issues"
+  },
+  "license": "Apache-2.0",
+  "description": "OpenLoomi · indexeddb module",
+  "keywords": [
+    "openloomi"
+  ],
   "dependencies": {},
   "peerDependencies": {
     "react": ">=18.0.0"
@@ -15,6 +39,7 @@
     "typescript": "^5.6.3"
   },
   "scripts": {
-    "build": "echo no build needed"
+    "build": "tsup",
+    "prepublishOnly": "pnpm build"
   }
 }

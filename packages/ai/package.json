@@ -1,30 +1,53 @@
 {
   "name": "@openloomi/ai",
-  "version": "0.8.8",
-  "private": true,
+  "version": "0.9.0",
   "type": "module",
-  "exports": {
-    ".": "./src/index.ts",
-    "./types": "./src/types.ts",
-    "./memory": "./src/memory/index.ts",
-    "./store": "./src/store/index.ts",
-    "./audio": "./src/audio/index.ts",
-    "./agent": "./src/agent/index.ts",
-    "./agent/native-cli": "./src/agent/native-cli/index.ts",
-    "./agent/native-runner": "./src/agent/native-runner/index.ts",
-    "./agent/runtime": "./src/agent/runtime/index.ts",
-    "./agent/supplemental-input": "./src/agent/supplemental-input/index.ts",
-    "./agent/runtime-instructions": "./src/agent/runtime-instructions/index.ts",
-    "./agent/image-gen": "./src/agent/image-gen/index.ts",
-    "./agent/sandbox": "./src/agent/sandbox/index.ts",
-    "./agent/sandbox/types": "./src/agent/sandbox/types.ts",
-    "./agent/sandbox/plugin": "./src/agent/sandbox/plugin.ts",
-    "./agent/sandbox/registry": "./src/agent/sandbox/registry.ts",
-    "./agent/sandbox/providers/native": "./src/agent/sandbox/providers/native.ts",
-    "./agent/sandbox/providers/claude": "./src/agent/sandbox/providers/claude.ts",
-    "./agent/sandbox/providers/vercel": "./src/agent/sandbox/providers/vercel.ts",
-    "./agent/ai": "./src/agent/index.ts"
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
   },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js",
+    "./types": "./dist/types.js",
+    "./memory": "./dist/memory/index.js",
+    "./store": "./dist/store/index.js",
+    "./audio": "./dist/audio/index.js",
+    "./agent": "./dist/agent/index.js",
+    "./agent/native-cli": "./dist/agent/native-cli/index.js",
+    "./agent/native-runner": "./dist/agent/native-runner/index.js",
+    "./agent/runtime": "./dist/agent/runtime/index.js",
+    "./agent/supplemental-input": "./dist/agent/supplemental-input/index.js",
+    "./agent/runtime-instructions": "./dist/agent/runtime-instructions/index.js",
+    "./agent/image-gen": "./dist/agent/image-gen/index.js",
+    "./agent/sandbox": "./dist/agent/sandbox/index.js",
+    "./agent/sandbox/types": "./dist/agent/sandbox/types.js",
+    "./agent/sandbox/plugin": "./dist/agent/sandbox/plugin.js",
+    "./agent/sandbox/registry": "./dist/agent/sandbox/registry.js",
+    "./agent/sandbox/providers/native": "./dist/agent/sandbox/providers/native.js",
+    "./agent/sandbox/providers/claude": "./dist/agent/sandbox/providers/claude.js",
+    "./agent/sandbox/providers/vercel": "./dist/agent/sandbox/providers/vercel.js",
+    "./agent/ai": "./dist/agent/index.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/melandlabs/openloomi.git",
+    "directory": "packages/ai"
+  },
+  "homepage": "https://github.com/melandlabs/openloomi/tree/main/packages/ai",
+  "bugs": {
+    "url": "https://github.com/melandlabs/openloomi/issues"
+  },
+  "license": "Apache-2.0",
+  "description": "OpenLoomi · ai module",
+  "keywords": [
+    "openloomi"
+  ],
   "dependencies": {
     "openai": "^4.0.0",
     "nanoid": "^5.1.3",
@@ -42,6 +65,7 @@
     "typescript": "^5.6.3"
   },
   "scripts": {
-    "build": "echo no build needed"
+    "build": "tsup",
+    "prepublishOnly": "pnpm build"
   }
 }

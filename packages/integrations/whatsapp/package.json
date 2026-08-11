@@ -1,16 +1,40 @@
 {
   "name": "@openloomi/integrations-whatsapp",
-  "version": "0.8.8",
-  "private": true,
+  "version": "0.9.0",
   "type": "module",
-  "exports": {
-    ".": "./src/index.ts",
-    "./conversation-store": "./src/conversation-store.ts",
-    "./markdown": "./src/markdown.ts",
-    "./client-registry": "./src/client-registry.ts"
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
   },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js",
+    "./conversation-store": "./dist/conversation-store.js",
+    "./markdown": "./dist/markdown.js",
+    "./client-registry": "./dist/client-registry.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/melandlabs/openloomi.git",
+    "directory": "packages/integrations/whatsapp"
+  },
+  "homepage": "https://github.com/melandlabs/openloomi/tree/main/packages/integrations/whatsapp",
+  "bugs": {
+    "url": "https://github.com/melandlabs/openloomi/issues"
+  },
+  "license": "Apache-2.0",
+  "description": "OpenLoomi \u00b7 integrations/whatsapp module",
+  "keywords": [
+    "openloomi"
+  ],
   "dependencies": {
     "@openloomi/ai": "workspace:*",
+    "@openloomi/integrations": "workspace:*",
     "@whiskeysockets/baileys": "^7.0.0-rc.9"
   },
   "devDependencies": {
@@ -19,8 +43,9 @@
     "vitest": "^2.1.8"
   },
   "scripts": {
-    "build": "echo no build needed",
+    "build": "tsup",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "prepublishOnly": "pnpm build"
   }
 }

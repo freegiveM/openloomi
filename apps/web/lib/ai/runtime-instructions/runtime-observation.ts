@@ -1,4 +1,8 @@
 import type {
+  AgentGoalRun,
+  GoalEvaluationResult,
+  GoalEvidence,
+  GoalRunStatus,
   GoalEvidenceType,
   RuntimeDeliveryReceipt,
   RuntimeInstruction,
@@ -39,7 +43,52 @@ export interface RuntimeProviderEventObservation {
   terminal?: boolean;
   usage?: RuntimeUsageDelta;
   context?: RuntimeObservationContext;
+  acknowledgedContexts?: RuntimeObservationContext[];
   evidence?: RuntimeEvidenceDraft[];
+}
+
+export interface RuntimeGoalEvaluationSnapshot {
+  run: AgentGoalRun;
+  evidence: GoalEvidence[];
+}
+
+export type RuntimeGoalEvaluationOutcome = Extract<
+  GoalRunStatus,
+  "continuing" | "blocked" | "completed" | "budget_limited" | "failed"
+>;
+
+export interface RuntimeGoalEvaluationJournalPort {
+  beginGoalEvaluation(input: {
+    ownerId: string;
+    runtimeSessionId: string;
+    goalId: string;
+    goalRevision: number;
+    runEpoch: number;
+    evaluationKey: string;
+    recordedAt: string;
+  }): Promise<RuntimeGoalEvaluationSnapshot | null>;
+
+  finishGoalEvaluation(input: {
+    ownerId: string;
+    runtimeSessionId: string;
+    goalId: string;
+    goalRevision: number;
+    runEpoch: number;
+    evaluationKey: string;
+    evaluation: GoalEvaluationResult;
+    outcome: RuntimeGoalEvaluationOutcome;
+    recordedAt: string;
+  }): Promise<boolean>;
+
+  abandonGoalEvaluation(input: {
+    ownerId: string;
+    runtimeSessionId: string;
+    goalId: string;
+    goalRevision: number;
+    runEpoch: number;
+    evaluationKey: string;
+    recordedAt: string;
+  }): Promise<boolean>;
 }
 
 export interface RuntimeDeliveryJournalPort {
@@ -108,7 +157,8 @@ export interface RuntimeObservationJournalPort
   extends
     RuntimeDeliveryJournalPort,
     RuntimeLifecycleObservationPort,
-    RuntimeProviderObservationPort {}
+    RuntimeProviderObservationPort,
+    RuntimeGoalEvaluationJournalPort {}
 
 /** Observation recording is best effort and must not undo Goal commands. */
 export async function recordRuntimeObservation(

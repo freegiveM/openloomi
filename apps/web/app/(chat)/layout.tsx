@@ -7,7 +7,6 @@ import "../../i18n";
 import { SessionProvider } from "next-auth/react";
 import { isTauriMode } from "@/lib/env/constants";
 import { Suspense } from "react";
-import { GlobalInsightDrawerProvider } from "@/components/global-insight-drawer";
 import { SidePanelShell } from "@/components/agent/side-panel-shell";
 import { SidePanelProvider } from "@/components/agent/side-panel-context";
 import { ChatContextProvider } from "@/components/chat-context";
@@ -41,7 +40,6 @@ export default async function Layout({
                 {/* SidePanelShell renders main content + temporary sidebar (flex-row) */}
                 <SidePanelProvider>
                   <ChatContextProvider>
-                    <GlobalInsightDrawerProvider>
                       <ScreenMemoryCaptureProvider />
                       {/*
                         LoopNavBridge mounts the openloomi:navigate-decision
@@ -81,7 +79,6 @@ export default async function Layout({
                           version raced against. Tauri-only. */}
                       <ScheduledJobsInit />
                       <SidePanelShell>{children}</SidePanelShell>
-                    </GlobalInsightDrawerProvider>
                   </ChatContextProvider>
                 </SidePanelProvider>
               </Suspense>

@@ -17,10 +17,10 @@ import { useChatContext } from "../chat-context";
 import { ArrowUpIcon, ArrowDownIcon } from "@/components/icons";
 import { Button } from "@openloomi/ui";
 import { WorkspaceFloatPanel } from "./workspace-float-panel";
-import { useGlobalInsightDrawer } from "@/components/global-insight-drawer";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { useConversationApiConfiguration } from "@/components/conversation-api-onboarding-guard";
 import { ConversationApiSetup } from "@/components/conversation-api-setup";
+import { getTextFromMessage } from "@/lib/utils";
 
 interface AgentChatPanelProps {
   chatId?: string | null; // External chatId; if null, creates a new chat
@@ -63,6 +63,9 @@ export function AgentChatPanel({
   const scrollButtonTimerRef = useRef<NodeJS.Timeout | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
+  const lastSpokenAssistantMessageIdRef = useRef<string | null>(null);
+  const wasAgentRunningRef = useRef(false);
+  const lastTtsChatIdRef = useRef<string | null>(null);
 
   // Get chat context (must be called before using status)
   const {
@@ -70,17 +73,12 @@ export function AgentChatPanel({
     sendMessage,
     setMessages,
     stop,
-    isAgentRunning,
-    setIsAgentRunning,
     activeChatId: contextActiveChatId,
     switchChatId,
     isVaultOpen,
     setVaultOpen,
     getIsAgentRunningByChatId,
   } = useChatContext();
-
-  // Use global drawer context (same approach as global search to open drawer)
-  const { openDrawer } = useGlobalInsightDrawer();
 
   const handleCloseVault = useCallback(
     () => setVaultOpen(false),
@@ -95,6 +93,35 @@ export function AgentChatPanel({
   // Get isAgentRunning for THIS chat panel's chatId (not the activeChatId)
   // This ensures the side panel shows correct status even when activeChatId changes
   const isAgentRunningForChat = getIsAgentRunningByChatId(chatId);
+
+  useEffect(() => {
+    if (lastTtsChatIdRef.current !== chatId) {
+      lastTtsChatIdRef.current = chatId;
+      wasAgentRunningRef.current = isAgentRunningForChat;
+      lastSpokenAssistantMessageIdRef.current = null;
+      return;
+    }
+
+    const wasRunning = wasAgentRunningRef.current;
+    wasAgentRunningRef.current = isAgentRunningForChat;
+
+    if (!wasRunning || isAgentRunningForChat) {
+      return;
+    }
+
+    const latestAssistantMessage = [...messages]
+      .reverse()
+      .find((message) => message.role === "assistant" && message.id);
+    if (!latestAssistantMessage?.id) return;
+    if (lastSpokenAssistantMessageIdRef.current === latestAssistantMessage.id) {
+      return;
+    }
+
+    const text = getTextFromMessage(latestAssistantMessage).trim();
+    if (!text) return;
+
+    lastSpokenAssistantMessageIdRef.current = latestAssistantMessage.id;
+  }, [isAgentRunningForChat, messages]);
 
   // Per-chat input persistence: track previous chat for saving input on switch
   const prevChatIdForInputRef = useRef<string | null>(null);
@@ -367,14 +394,14 @@ export function AgentChatPanel({
       }
 
       // Check if AI is already responding to prevent duplicate submissions
-      if (isAgentRunning) {
+      if (isAgentRunningForChat) {
         console.warn("[sendMessage] Agent is already running");
         return Promise.reject(new Error("Agent is already running"));
       }
 
       return sendMessage(message, requestOptions);
     },
-    [apiConfigurationState, sendMessage, isAgentRunning],
+    [apiConfigurationState, sendMessage, isAgentRunningForChat],
   );
 
   /** Auto-send initialMessageToSend after mount (e.g., from onboarding "Chat with openloomi" click): switches to new chat first, then sends, runs only once; if from URL send param, clears after sending */
@@ -419,14 +446,6 @@ export function AgentChatPanel({
     sendMessagePresent,
     switchChatId,
   ]);
-
-  /**
-   * Refresh insights data
-   * Wrapped in useCallback to maintain reference stability and prevent infinite re-renders
-   */
-  const handleRefresh = useCallback(async () => {
-    // Empty function for now - can be extended later if needed
-  }, []);
 
   // Fetch vote data
   const { data: votes } = useSWR<Array<any>>(
@@ -482,11 +501,6 @@ export function AgentChatPanel({
             onOpenWorkspace={
               chatId ? () => openWorkspacePanel(chatId) : undefined
             }
-            onOpenInsight={(insight) => {
-              // Use global drawer context to open drawer
-              openDrawer(insight);
-              setVaultOpen(false);
-            }}
             className="absolute top-full right-0 mt-2"
           />
         </div>
@@ -511,7 +525,6 @@ export function AgentChatPanel({
                       messages={messages}
                       sendMessage={sendMessagePresent}
                       setMessages={setMessages}
-                      onRefresh={handleRefresh}
                       isAgentRunning={isAgentRunningForChat}
                     />
                   </div>
@@ -563,7 +576,7 @@ export function AgentChatPanel({
                 value={input}
                 setValue={handleSetInput}
                 onStop={stop}
-                isAgentRunning={isAgentRunning}
+                isAgentRunning={isAgentRunningForChat}
                 attachments={attachments}
                 setAttachments={setAttachments}
                 onSubmit={async ({ text, attachments: submitAttachments }) => {

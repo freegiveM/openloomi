@@ -26,6 +26,10 @@ export interface RuntimeInstructionTransportDrainInput extends RuntimeInstructio
   transport: RuntimeInstructionTransportPort;
 }
 
+export interface RuntimeInstructionInlineAcceptanceInput extends RuntimeInstructionTransportDrainInput {
+  receipt: RuntimeDeliveryReceipt;
+}
+
 export type RuntimeInstructionControlBarrierPolicy =
   | "preserve_predecessors"
   | "supersede_predecessors";
@@ -194,6 +198,91 @@ export class RuntimeInstructionDispatcher {
         input.transport,
       ),
     );
+  }
+
+  /**
+   * Records an instruction that a provider-specific control channel writes
+   * directly into the active turn. Claude Stop-hook continuation uses this
+   * path so the same instruction is not also queued through AsyncIterable.
+   */
+  acceptInline(
+    input: RuntimeInstructionInlineAcceptanceInput,
+  ): Promise<Extract<RuntimeInstructionDispatch, { status: "accepted" }>> {
+    const parsedInput = parseDrainIdentifiers(input);
+    assertTransportTargetsSession(
+      input.transport,
+      parsedInput.runtimeSessionId,
+    );
+    const scope = sessionScope(
+      parsedInput.ownerId,
+      parsedInput.runtimeSessionId,
+    );
+    return this.deliveries.run(scope, async () => {
+      const parsed = await this.readCanonicalOutbox(parsedInput);
+      if (parsed.target.kind !== "goal.continue") {
+        throw new RuntimeInstructionDispatcherError(
+          "invalid_drain",
+          `Instruction ${parsed.target.id} is not an inline Goal continuation`,
+        );
+      }
+      const resolved = await this.resolveTransport(parsed);
+      if (resolved !== input.transport) {
+        throw new RuntimeInstructionDispatcherError(
+          "outbox_progress_conflict",
+          `Runtime Session ${parsed.runtimeSessionId} changed before inline instruction acceptance`,
+        );
+      }
+      const progress = this.getProgress(
+        input.transport,
+        scope,
+        parsed.instructions,
+      );
+      const cached = progress.acceptedBySequence.get(parsed.target.sequence);
+      if (cached) {
+        assertSameProgressInstruction(cached, parsed.target);
+        return accepted(cached.receipt);
+      }
+      if (parsed.target.sequence !== progress.acceptedThroughSequence + 1) {
+        throw new RuntimeInstructionDispatcherError(
+          "outbox_progress_conflict",
+          `Inline continuation sequence ${parsed.target.sequence} cannot skip accepted sequence ${progress.acceptedThroughSequence}`,
+        );
+      }
+
+      const receipt = validateReceipt(input.receipt, parsed.target);
+      if (receipt.state !== "written_to_sdk") {
+        throw new RuntimeInstructionDispatcherError(
+          "invalid_drain",
+          "An inline continuation must be written to the SDK before it is accepted",
+        );
+      }
+      await recordRuntimeObservation(
+        "prepare inline instruction delivery",
+        () =>
+          this.deliveryJournal?.prepareDelivery({
+            ownerId: parsed.ownerId,
+            instruction: parsed.target,
+          }),
+      );
+      await recordRuntimeObservation("record inline instruction delivery", () =>
+        this.deliveryJournal?.recordDeliveryReceipt({
+          ownerId: parsed.ownerId,
+          instruction: parsed.target,
+          receipt,
+        }),
+      );
+      const acceptedInstruction: AcceptedInstruction = {
+        instructionId: parsed.target.id,
+        instruction: structuredClone(parsed.target),
+        receipt: structuredClone(receipt),
+      };
+      progress.acceptedBySequence.set(
+        parsed.target.sequence,
+        acceptedInstruction,
+      );
+      progress.acceptedThroughSequence = parsed.target.sequence;
+      return accepted(receipt);
+    });
   }
 
   /**

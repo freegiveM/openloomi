@@ -8,7 +8,6 @@
 
 import { Suspense, memo } from "react";
 import { SessionProvider } from "next-auth/react";
-import { InsightOptimisticProvider } from "@/components/insight-optimistic-context";
 import { MobileLayoutWrapper } from "@/components/mobile-layout-wrapper";
 import { MobileBackButton } from "@/components/mobile-back-button";
 import { TelegramSelfListenerInit } from "@/components/telegram-self-listener-init";
@@ -22,11 +21,9 @@ import {
   WeixinListenerInit,
 } from "@/components/feishu-listener-init";
 import { CloudSyncInit } from "@/components/cloud-sync-init";
-import { InsightRefreshInit } from "@/components/insight-refresh-init";
-import { NewInsightsProvider } from "@/components/insights-new-context";
 import { RawMessagesMigrationInit } from "@/components/raw-messages-migration-init";
+import { InsightRefreshInit } from "@/components/insight-refresh-init";
 import { TelegramTokenFormProvider } from "@/components/platform-integrations";
-import { VoiceProvider } from "@/components/audio/voice-provider";
 
 // Lazy load initialization components - use Suspense boundaries to avoid blocking initial render
 const IntegrationInitComponents = memo(() => (
@@ -40,8 +37,8 @@ const IntegrationInitComponents = memo(() => (
     <QQBotListenerInit />
     <WeixinListenerInit />
     <CloudSyncInit />
-    <InsightRefreshInit />
     <RawMessagesMigrationInit />
+    <InsightRefreshInit />
   </Suspense>
 ));
 
@@ -57,17 +54,6 @@ const MobileComponents = memo(() => (
 MobileComponents.displayName = "MobileComponents";
 
 /**
- * Core app content - only includes necessary initialization
- */
-export function AppContent({ children }: { children: React.ReactNode }) {
-  return (
-    <NewInsightsProvider>
-      <InsightOptimisticProvider>{children}</InsightOptimisticProvider>
-    </NewInsightsProvider>
-  );
-}
-
-/**
  * Complete app Provider tree
  */
 export function AppProviders({ children }: { children: React.ReactNode }) {
@@ -76,12 +62,10 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
       {/* Lazy load integration initialization components */}
       <IntegrationInitComponents />
       <TelegramTokenFormProvider>
-        <VoiceProvider>
           <MobileLayoutWrapper>
-            <AppContent>{children}</AppContent>
+            {children}
             <MobileComponents />
           </MobileLayoutWrapper>
-        </VoiceProvider>
       </TelegramTokenFormProvider>
     </SessionProvider>
   );

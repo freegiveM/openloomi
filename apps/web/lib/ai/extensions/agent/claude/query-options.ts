@@ -12,7 +12,10 @@ import {
 
 import { createCanUseToolOption } from "./permissions";
 import { createClaudeSupplementalInputHooks } from "./runtime";
-import type { ClaudeRuntimeToolHookObserver } from "./runtime/supplemental-hooks";
+import type {
+  ClaudeRuntimeStopHookObserver,
+  ClaudeRuntimeToolHookObserver,
+} from "./runtime/supplemental-hooks";
 import type { ClaudeRuntimeLogger } from "./skills";
 
 // Baseline tool surface for Claude Code sessions. Extra tool groups, such as
@@ -75,6 +78,7 @@ export function createClaudeQueryOptions({
   agentOptions,
   supplementalInput,
   toolObserver,
+  stopObserver,
   abortController,
   env,
   config,
@@ -101,6 +105,7 @@ export function createClaudeQueryOptions({
   >;
   supplementalInput?: AgentSupplementalInputSource;
   toolObserver?: ClaudeRuntimeToolHookObserver;
+  stopObserver?: ClaudeRuntimeStopHookObserver;
   abortController: AbortController;
   env: Record<string, string>;
   config: AgentConfig;
@@ -120,6 +125,7 @@ export function createClaudeQueryOptions({
   const supplementalHooks = createClaudeSupplementalInputHooks({
     supplementalInput,
     toolObserver,
+    stopObserver,
     sessionId,
     logger,
   });

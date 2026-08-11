@@ -1,22 +1,45 @@
 {
-  "name": "@openloomi/rag",
-  "version": "0.8.8",
-  "private": true,
+  "name": "@openloomi/ai-rag",
+  "version": "0.9.0",
   "type": "module",
-  "exports": {
-    ".": "./src/index.ts",
-    "./chunking": "./src/chunking.ts",
-    "./embeddings": "./src/embeddings.ts",
-    "./vector-service": "./src/vector-service.ts",
-    "./unified-vector-search-service": "./src/unified-vector-search-service.ts",
-    "./parsers": "./src/parsers.ts",
-    "./embedding-provider": "./src/embedding-provider.ts",
-    "./local-transformers-embedding-provider": "./src/local-transformers-embedding-provider.ts",
-    "./universal-embeddings": "./src/universal-embeddings.ts",
-    "./chroma-store": "./src/chroma-store.ts",
-    "./sqlite-vec-store": "./src/sqlite-vec-store.ts",
-    "./pgvector-store": "./src/pgvector-store.ts"
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
   },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js",
+    "./chunking": "./dist/chunking.js",
+    "./embeddings": "./dist/embeddings.js",
+    "./vector-service": "./dist/vector-service.js",
+    "./unified-vector-search-service": "./dist/unified-vector-search-service.js",
+    "./parsers": "./dist/parsers.js",
+    "./embedding-provider": "./dist/embedding-provider.js",
+    "./local-transformers-embedding-provider": "./dist/local-transformers-embedding-provider.js",
+    "./universal-embeddings": "./dist/universal-embeddings.js",
+    "./chroma-store": "./dist/chroma-store.js",
+    "./sqlite-vec-store": "./dist/sqlite-vec-store.js",
+    "./pgvector-store": "./dist/pgvector-store.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/melandlabs/openloomi.git",
+    "directory": "packages/ai/rag"
+  },
+  "homepage": "https://github.com/melandlabs/openloomi/tree/main/packages/ai/rag",
+  "bugs": {
+    "url": "https://github.com/melandlabs/openloomi/issues"
+  },
+  "license": "Apache-2.0",
+  "description": "OpenLoomi · rag module",
+  "keywords": [
+    "openloomi"
+  ],
   "dependencies": {
     "@chroma-core/default-embed": "^0.1.9",
     "@huggingface/transformers": "^3.8.1",
@@ -39,6 +62,7 @@
     "typescript": "^5.6.3"
   },
   "scripts": {
-    "build": "echo no build needed"
+    "build": "tsup",
+    "prepublishOnly": "pnpm build"
   }
 }

@@ -13,6 +13,7 @@
  */
 
 import { isTauriMode } from "@/lib/env";
+import { randomUUID } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { getAppDataDir, joinPath } from "@/lib/utils/path";
@@ -51,5 +52,24 @@ export async function writeFile(
   const dirPath = path.dirname(fsPath);
   await createDirectory(dirPath);
 
-  await fs.promises.writeFile(fsPath, content, "utf-8");
+  const tempPath = path.join(
+    dirPath,
+    `.${path.basename(fsPath)}.${randomUUID()}.tmp`,
+  );
+
+  try {
+    const tempFile = await fs.promises.open(tempPath, "w");
+    try {
+      await tempFile.writeFile(content, "utf8");
+      await tempFile.sync();
+    } finally {
+      await tempFile.close();
+    }
+    await fs.promises.rename(tempPath, fsPath);
+  } catch (error) {
+    await fs.promises.rm(tempPath, { force: true }).catch((cleanupError) => {
+      console.error("[MemoryFsSync] Failed to remove temp file:", cleanupError);
+    });
+    throw error;
+  }
 }

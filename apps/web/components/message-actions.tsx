@@ -12,40 +12,12 @@ import equal from "fast-deep-equal";
 import { toast } from "sonner";
 import type { ChatMessage } from "@openloomi/shared";
 import { useTranslation } from "react-i18next";
-import { useInsightPagination } from "@/hooks/use-insight-data";
 import IntegrationIcon from "./integration-icon";
 import { RemixIcon } from "@/components/remix-icon";
 
 /**
- * Extract cited Insight IDs from message text
- */
-function extractCitationIds(message: ChatMessage): string[] {
-  const textFromParts = message.parts
-    ?.filter((part) => part.type === "text")
-    .map((part) => part.text)
-    .join("\n")
-    .trim();
-
-  if (!textFromParts) return [];
-
-  const citationRegex = /\^\[([^\]]+)\]\^/g;
-  const ids: string[] = [];
-  let match: RegExpExecArray | null = citationRegex.exec(textFromParts);
-
-  while (match !== null) {
-    const insightId = match[1].toString();
-    if (insightId && !ids.includes(insightId)) {
-      ids.push(insightId);
-    }
-    match = citationRegex.exec(textFromParts);
-  }
-
-  return ids;
-}
-
-/**
  * Platform icon group component
- * Displays the collection of cited Insight source platforms
+ * Displays the collection of cited source platforms
  */
 export function PlatformAvatarGroup({
   platforms,
@@ -108,13 +80,11 @@ export function PureMessageActions({
   message,
   vote,
   isLoading,
-  onSourcesClick,
 }: {
   chatId: string;
   message: ChatMessage;
   vote: Vote | undefined;
   isLoading: boolean;
-  onSourcesClick?: () => void;
 }) {
   const { mutate } = useSWRConfig();
   const [_, copyToClipboard] = useCopyToClipboard();
@@ -128,7 +98,6 @@ export function PureMessageActions({
   }, [vote]);
 
   const { t, i18n } = useTranslation();
-  const { insightData } = useInsightPagination();
 
   // Extract message timestamp for inline display
   const messageTimestamp = useMemo(() => {
@@ -150,70 +119,6 @@ export function PureMessageActions({
     const locale = i18n.language.startsWith("zh") ? zhCN : enUS;
     return format(messageTimestamp, "MMM d, h:mm a", { locale });
   }, [messageTimestamp, i18n.language]);
-
-  /**
-   * Extract cited Insight platform info from message
-   *
-   * Get insights data from tool-result in message.parts
-   * These are the insights actually used when AI generates responses
-   */
-  const citedPlatforms = useMemo(() => {
-    const citationIds = extractCitationIds(message);
-    if (citationIds.length === 0) return [];
-
-    // Find chatInsights tool result from message.parts
-    const chatInsightsPart = message.parts?.find(
-      (part) =>
-        (part as any).type === "tool-result" &&
-        (part as any).toolName === "chatInsights",
-    );
-
-    let insights: any[] = [];
-
-    if (chatInsightsPart && (chatInsightsPart as any).result) {
-      try {
-        const result =
-          typeof (chatInsightsPart as any).result === "string"
-            ? JSON.parse((chatInsightsPart as any).result)
-            : (chatInsightsPart as any).result;
-        insights = result?.data?.insights || [];
-      } catch (e) {
-        console.error(
-          "[MessageActions] Failed to parse chatInsights result:",
-          e,
-        );
-      }
-    }
-
-    // If no insights in message parts, try current insightData (fallback)
-    if (insights.length === 0 && insightData?.items) {
-      insights = insightData.items;
-    }
-
-    if (insights.length === 0) return [];
-
-    const platformMap = new Map<string, { platform: string; label: string }>();
-
-    for (const insightId of citationIds) {
-      const insight = insights.find((i: any) => i.id === insightId);
-
-      if (insight?.platform) {
-        const platform = insight.platform.toLowerCase();
-        // Normalize platform name
-        const normalizedPlatform = platform === "tg" ? "telegram" : platform;
-        const label = insight.platform;
-
-        if (!platformMap.has(normalizedPlatform)) {
-          platformMap.set(normalizedPlatform, {
-            platform: normalizedPlatform,
-            label,
-          });
-        }
-      }
-    }
-
-    return Array.from(platformMap.values());
-  }, [message, insightData.items]);
 
   /**
    * Check if message has actual content
@@ -402,21 +307,6 @@ export function PureMessageActions({
         <TooltipContent>{t("common.downvoteResponse")}</TooltipContent>
       </Tooltip>
 
-      {/* Source display badge */}
-      {citedPlatforms.length > 0 && (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              className="py-1 px-2 h-fit text-muted-foreground"
-              variant="outline"
-              onClick={onSourcesClick}
-            >
-              <PlatformAvatarGroup platforms={citedPlatforms} />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{t("common.sources")}</TooltipContent>
-        </Tooltip>
-      )}
       {/* Time display on the right side for assistant messages */}
       <span className="flex items-center text-xs text-muted-foreground/60 ml-1">
         {formattedMessageTime}
@@ -431,7 +321,6 @@ export const MessageActions = memo(
     if (!equal(prevProps.vote, nextProps.vote)) return false;
     if (prevProps.isLoading !== nextProps.isLoading) return false;
     if (!equal(prevProps.message, nextProps.message)) return false;
-    if (prevProps.onSourcesClick !== nextProps.onSourcesClick) return false;
 
     return true;
   },

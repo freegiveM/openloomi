@@ -3,35 +3,9 @@
 import useSWR from "swr";
 import { useMemo } from "react";
 import { getAuthToken } from "@/lib/auth/token-manager";
+import type { IntegrationId } from "@openloomi/contracts/integration-id";
 
-export type IntegrationId =
-  | "telegram"
-  | "whatsapp"
-  | "slack"
-  | "discord"
-  | "gmail"
-  | "outlook"
-  | "linkedin"
-  | "instagram"
-  | "twitter"
-  | "google_calendar"
-  | "google_meet"
-  | "outlook_calendar"
-  | "teams"
-  | "facebook_messenger"
-  | "google_drive"
-  | "google_docs"
-  | "hubspot"
-  | "notion"
-  | "github"
-  | "asana"
-  | "jira"
-  | "linear"
-  | "imessage"
-  | "feishu"
-  | "dingtalk"
-  | "qqbot"
-  | "weixin";
+export type { IntegrationId };
 
 export type IntegrationAccountClient = {
   id: string;

@@ -1,5 +1,6 @@
 import {
   GoalEvidenceSchema,
+  GoalEvaluationResultSchema,
   RuntimeInstructionSchema,
   assertDeliveryStateTransition,
   assertGoalRunStatusTransition,
@@ -8,6 +9,7 @@ import {
   type AgentGoalStatePort,
   type DeliveryState,
   type GoalEvidence,
+  type GoalEvaluationResult,
   type GoalRunStatus,
   type RuntimeClockPort,
   type RuntimeDeliveryReceipt,
@@ -22,6 +24,8 @@ import type {
   RuntimeObservationContext,
   RuntimeObservationJournalPort,
   RuntimeProviderEventObservation,
+  RuntimeGoalEvaluationOutcome,
+  RuntimeGoalEvaluationSnapshot,
   RuntimeUsageDelta,
 } from "./runtime-observation";
 
@@ -46,6 +50,15 @@ interface RuntimeObservationSession {
   runIdsByGoalEpoch: Map<string, string>;
   evidence: Map<string, GoalEvidence>;
   processedProviderEvents: Set<string>;
+  goalEvaluations: Map<string, StoredGoalEvaluation>;
+}
+
+interface StoredGoalEvaluation {
+  goalId: string;
+  goalRevision: number;
+  runEpoch: number;
+  goalRunId: string;
+  phase: "evaluating" | "finished" | "abandoned";
 }
 
 interface MaterializedEvidence {
@@ -304,6 +317,12 @@ export class InMemoryRuntimeObservationJournal implements RuntimeObservationJour
       const context = parsed.context
         ? this.validateContext(session, parsed.context, parsed.runEpoch)
         : this.latestWrittenContext(session, parsed.runEpoch);
+      const acknowledgedContexts = this.acknowledgedContexts(
+        session,
+        parsed.runEpoch,
+        context,
+        parsed.acknowledgedContexts,
+      );
       const evidence = context
         ? this.materializeEvidence(session, context, parsed.evidence ?? [])
         : [];
@@ -324,24 +343,30 @@ export class InMemoryRuntimeObservationJournal implements RuntimeObservationJour
       if (parsed.providerSessionId) {
         this.assignProviderSession(session, parsed.providerSessionId);
       }
-      this.markWrittenDeliveriesObserved(
-        session,
-        parsed.runEpoch,
-        parsed.providerEventId,
-        parsed.observedAt,
-      );
-      if (parsed.terminal) {
-        this.markNormalDeliveriesApplied(
+      for (const acknowledged of acknowledgedContexts) {
+        this.markWrittenDeliveriesObserved(
           session,
-          parsed.runEpoch,
+          acknowledged,
           parsed.providerEventId,
           parsed.observedAt,
         );
       }
+      if (parsed.terminal) {
+        for (const acknowledged of acknowledgedContexts) {
+          this.markNormalDeliveriesApplied(
+            session,
+            acknowledged,
+            parsed.providerEventId,
+            parsed.observedAt,
+          );
+        }
+      }
 
       if (!context || !run) return true;
       if (!isRunTerminal(run.status)) {
-        if (run.status === "queued") this.transitionRun(run, "running");
+        if (run.status === "queued" || run.status === "continuing") {
+          this.transitionRun(run, "running");
+        }
         run.lastActivityAt = latestTimestamp(
           run.lastActivityAt,
           parsed.observedAt,
@@ -355,6 +380,208 @@ export class InMemoryRuntimeObservationJournal implements RuntimeObservationJour
       for (const item of evidence) {
         session.evidence.set(item.dedupeKey, item.evidence);
       }
+      return true;
+    });
+  }
+
+  async beginGoalEvaluation(input: {
+    ownerId: string;
+    runtimeSessionId: string;
+    goalId: string;
+    goalRevision: number;
+    runEpoch: number;
+    evaluationKey: string;
+    recordedAt: string;
+  }): Promise<RuntimeGoalEvaluationSnapshot | null> {
+    const ownerId = requiredIdentifier(input.ownerId, "ownerId");
+    const runtimeSessionId = requiredIdentifier(
+      input.runtimeSessionId,
+      "runtimeSessionId",
+    );
+    const goalId = requiredIdentifier(input.goalId, "goalId");
+    const goalRevision = positiveInteger(input.goalRevision, "goalRevision");
+    const runEpoch = nonNegativeInteger(input.runEpoch, "runEpoch");
+    const evaluationKey = requiredText(
+      input.evaluationKey,
+      "evaluationKey",
+      1_024,
+    );
+    const recordedAt = isoTimestamp(input.recordedAt, "recordedAt");
+    const scope = sessionScope(ownerId, runtimeSessionId);
+
+    return this.mutations.run(scope, async () => {
+      const authoritativeEpoch = await this.goals.getRuntimeSessionRunEpoch(
+        ownerId,
+        runtimeSessionId,
+      );
+      if (authoritativeEpoch !== runEpoch) return null;
+      const active = await this.goals.getActivePrimaryGoal(
+        ownerId,
+        runtimeSessionId,
+      );
+      if (
+        !active ||
+        active.goal.id !== goalId ||
+        active.goal.revision !== goalRevision
+      ) {
+        return null;
+      }
+
+      const session = this.sessions.get(scope);
+      if (!session || session.goalEvaluations.has(evaluationKey)) return null;
+      const runId = session.runIdsByGoalEpoch.get(goalRunKey(goalId, runEpoch));
+      const run = runId ? session.runs.get(runId) : undefined;
+      if (
+        !run ||
+        run.goalRevision !== goalRevision ||
+        run.runEpoch !== runEpoch ||
+        run.status === "paused" ||
+        run.status === "blocked" ||
+        isRunTerminal(run.status)
+      ) {
+        return null;
+      }
+      if (run.status === "queued") this.transitionRun(run, "running");
+      if (run.status === "evaluating") return null;
+      this.transitionRun(run, "evaluating");
+      run.lastActivityAt = latestTimestamp(run.lastActivityAt, recordedAt);
+      session.goalEvaluations.set(evaluationKey, {
+        goalId,
+        goalRevision,
+        runEpoch,
+        goalRunId: run.id,
+        phase: "evaluating",
+      });
+
+      return {
+        run: structuredClone(run),
+        evidence: [...session.evidence.values()]
+          .filter(
+            (item) =>
+              item.goalRunId === run.id &&
+              item.goalId === goalId &&
+              item.goalRevision === goalRevision,
+          )
+          .sort((left, right) =>
+            left.observedAt.localeCompare(right.observedAt),
+          )
+          .map((item) => structuredClone(item)),
+      };
+    });
+  }
+
+  async finishGoalEvaluation(input: {
+    ownerId: string;
+    runtimeSessionId: string;
+    goalId: string;
+    goalRevision: number;
+    runEpoch: number;
+    evaluationKey: string;
+    evaluation: GoalEvaluationResult;
+    outcome: RuntimeGoalEvaluationOutcome;
+    recordedAt: string;
+  }): Promise<boolean> {
+    const ownerId = requiredIdentifier(input.ownerId, "ownerId");
+    const runtimeSessionId = requiredIdentifier(
+      input.runtimeSessionId,
+      "runtimeSessionId",
+    );
+    const goalId = requiredIdentifier(input.goalId, "goalId");
+    const goalRevision = positiveInteger(input.goalRevision, "goalRevision");
+    const runEpoch = nonNegativeInteger(input.runEpoch, "runEpoch");
+    const evaluationKey = requiredText(
+      input.evaluationKey,
+      "evaluationKey",
+      1_024,
+    );
+    const recordedAt = isoTimestamp(input.recordedAt, "recordedAt");
+    const evaluation = GoalEvaluationResultSchema.parse(input.evaluation);
+    const outcome = parseEvaluationOutcome(input.outcome);
+    if (
+      (outcome === "completed") !== evaluation.completed ||
+      (outcome === "continuing" && evaluation.missingCriteria.length === 0)
+    ) {
+      throw journalError(
+        "invalid_observation",
+        `Evaluation result is inconsistent with Goal Run outcome ${outcome}`,
+      );
+    }
+    const scope = sessionScope(ownerId, runtimeSessionId);
+
+    return this.mutations.run(scope, () => {
+      const session = this.sessions.get(scope);
+      const stored = session?.goalEvaluations.get(evaluationKey);
+      if (
+        !session ||
+        !stored ||
+        stored.phase !== "evaluating" ||
+        stored.goalId !== goalId ||
+        stored.goalRevision !== goalRevision ||
+        stored.runEpoch !== runEpoch
+      ) {
+        return false;
+      }
+      const run = session.runs.get(stored.goalRunId);
+      if (!run || run.status !== "evaluating") return false;
+
+      this.transitionRun(run, outcome);
+      run.lastEvaluation = structuredClone(evaluation);
+      run.lastActivityAt = latestTimestamp(run.lastActivityAt, recordedAt);
+      if (
+        outcome === "completed" ||
+        outcome === "budget_limited" ||
+        outcome === "failed"
+      ) {
+        run.completedAt = run.lastActivityAt;
+      }
+      stored.phase = "finished";
+      return true;
+    });
+  }
+
+  async abandonGoalEvaluation(input: {
+    ownerId: string;
+    runtimeSessionId: string;
+    goalId: string;
+    goalRevision: number;
+    runEpoch: number;
+    evaluationKey: string;
+    recordedAt: string;
+  }): Promise<boolean> {
+    const ownerId = requiredIdentifier(input.ownerId, "ownerId");
+    const runtimeSessionId = requiredIdentifier(
+      input.runtimeSessionId,
+      "runtimeSessionId",
+    );
+    const goalId = requiredIdentifier(input.goalId, "goalId");
+    const goalRevision = positiveInteger(input.goalRevision, "goalRevision");
+    const runEpoch = nonNegativeInteger(input.runEpoch, "runEpoch");
+    const evaluationKey = requiredText(
+      input.evaluationKey,
+      "evaluationKey",
+      1_024,
+    );
+    const recordedAt = isoTimestamp(input.recordedAt, "recordedAt");
+    const scope = sessionScope(ownerId, runtimeSessionId);
+
+    return this.mutations.run(scope, () => {
+      const session = this.sessions.get(scope);
+      const stored = session?.goalEvaluations.get(evaluationKey);
+      if (
+        !session ||
+        !stored ||
+        stored.phase !== "evaluating" ||
+        stored.goalId !== goalId ||
+        stored.goalRevision !== goalRevision ||
+        stored.runEpoch !== runEpoch
+      ) {
+        return false;
+      }
+      const run = session.runs.get(stored.goalRunId);
+      if (!run || run.status !== "evaluating") return false;
+      this.transitionRun(run, "running");
+      run.lastActivityAt = latestTimestamp(run.lastActivityAt, recordedAt);
+      stored.phase = "abandoned";
       return true;
     });
   }
@@ -558,6 +785,7 @@ export class InMemoryRuntimeObservationJournal implements RuntimeObservationJour
       runIdsByGoalEpoch: new Map(),
       evidence: new Map(),
       processedProviderEvents: new Set(),
+      goalEvaluations: new Map(),
     };
     this.sessions.set(scope, created);
     return created;
@@ -692,6 +920,7 @@ export class InMemoryRuntimeObservationJournal implements RuntimeObservationJour
     );
     if (
       run.status === "queued" ||
+      run.status === "continuing" ||
       run.status === "paused" ||
       run.status === "blocked"
     ) {
@@ -771,51 +1000,67 @@ export class InMemoryRuntimeObservationJournal implements RuntimeObservationJour
     return context;
   }
 
-  private markWrittenDeliveriesObserved(
+  private acknowledgedContexts(
     session: RuntimeObservationSession,
     runEpoch: number,
+    primary: RuntimeObservationContext | null,
+    acknowledged: RuntimeObservationContext[] | undefined,
+  ): RuntimeObservationContext[] {
+    const contexts = new Map<string, RuntimeObservationContext>();
+    for (const candidate of [primary, ...(acknowledged ?? [])]) {
+      if (!candidate) continue;
+      const valid = this.validateContext(session, candidate, runEpoch);
+      if (valid) contexts.set(valid.instructionId, valid);
+    }
+    return [...contexts.values()];
+  }
+
+  private markWrittenDeliveriesObserved(
+    session: RuntimeObservationSession,
+    context: RuntimeObservationContext | null,
     providerEventId: string,
     observedAt: string,
   ): void {
-    // Claude does not echo an OpenLoomi instruction ID in output events. The
-    // first causal provider event therefore acknowledges every instruction
-    // already handed to this provider turn, scoped by the current runEpoch.
-    for (const stored of session.deliveries.values()) {
-      if (
-        stored.runEpoch === runEpoch &&
-        !isInterruptControl(stored.instruction) &&
-        stored.delivery.state === "written_to_sdk"
-      ) {
-        this.transitionDelivery(
-          stored.delivery,
-          "observed",
-          observedAt,
-          providerEventId,
-        );
-      }
+    if (!context) return;
+    const stored = session.deliveries.get(context.instructionId);
+    if (
+      stored?.runEpoch !== context.runEpoch ||
+      stored.delivery.goalRunId !== context.goalRunId ||
+      isInterruptControl(stored.instruction) ||
+      stored.delivery.state !== "written_to_sdk"
+    ) {
+      return;
     }
+    this.transitionDelivery(
+      stored.delivery,
+      "observed",
+      observedAt,
+      providerEventId,
+    );
   }
 
   private markNormalDeliveriesApplied(
     session: RuntimeObservationSession,
-    runEpoch: number,
+    context: RuntimeObservationContext | null,
     providerEventId: string,
     observedAt: string,
   ): void {
-    for (const stored of session.deliveries.values()) {
-      if (
-        stored.runEpoch === runEpoch &&
-        stored.delivery.state === "observed" &&
-        !isInterruptControl(stored.instruction)
-      ) {
-        this.transitionDelivery(
-          stored.delivery,
-          "applied",
-          observedAt,
-          providerEventId,
-        );
-      }
+    if (!context) return;
+    const stored = session.deliveries.get(context.instructionId);
+    if (
+      stored?.runEpoch !== context.runEpoch ||
+      stored.delivery.goalRunId !== context.goalRunId ||
+      stored.delivery.state !== "observed" ||
+      isInterruptControl(stored.instruction)
+    ) {
+      return;
     }
+    this.transitionDelivery(
+      stored.delivery,
+      "applied",
+      observedAt,
+      providerEventId,
+    );
   }
 
   private materializeEvidence(
@@ -1018,6 +1263,9 @@ function parseProviderObservation(
     ...(input.context === undefined
       ? {}
       : { context: structuredClone(input.context) }),
+    ...(input.acknowledgedContexts === undefined
+      ? {}
+      : { acknowledgedContexts: structuredClone(input.acknowledgedContexts) }),
     ...(input.evidence === undefined
       ? {}
       : { evidence: structuredClone(input.evidence) }),
@@ -1030,6 +1278,24 @@ function parseUsage(usage: RuntimeUsageDelta): RuntimeUsageDelta {
     tokensUsed: nonNegativeInteger(usage.tokensUsed, "usage.tokensUsed"),
     turnsUsed: nonNegativeInteger(usage.turnsUsed, "usage.turnsUsed"),
   };
+}
+
+function parseEvaluationOutcome(
+  outcome: RuntimeGoalEvaluationOutcome,
+): RuntimeGoalEvaluationOutcome {
+  if (
+    outcome !== "continuing" &&
+    outcome !== "blocked" &&
+    outcome !== "completed" &&
+    outcome !== "budget_limited" &&
+    outcome !== "failed"
+  ) {
+    throw journalError(
+      "invalid_observation",
+      "Goal evaluation outcome is invalid",
+    );
+  }
+  return outcome;
 }
 
 function assertSameInstruction(
@@ -1136,6 +1402,16 @@ function nonNegativeInteger(value: unknown, field: string): number {
     throw journalError(
       "invalid_observation",
       `${field} must be a non-negative integer`,
+    );
+  }
+  return value as number;
+}
+
+function positiveInteger(value: unknown, field: string): number {
+  if (!Number.isSafeInteger(value) || (value as number) <= 0) {
+    throw journalError(
+      "invalid_observation",
+      `${field} must be a positive integer`,
     );
   }
   return value as number;

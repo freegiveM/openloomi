@@ -115,6 +115,55 @@ const FAILURE_PATTERNS: RegExp[] = [
   /\bexception\s+(?:thrown|caught)\b/i,
 ];
 
+// ---------------------------------------------------------------------------
+// Success-pattern heuristic (#RSVP fix)
+// ---------------------------------------------------------------------------
+//
+// When the agent emits a bare `"success"` (or `"ok"` / `"true"`) string as
+// its `result` content instead of the structured `{outcome, ...}` payload,
+// the structured branch returns null and the old parser fell through to
+// "no external action performed". Real-life agents (notably the CLI bridge)
+// wrap Composio calls in bash and end with `result: "success"` when the
+// side-effect succeeded. A text-side success confirmation is the second
+// safety net — agents that omit the result event entirely but narrate
+// success in plain text (e.g. "RSVP executed successfully against Google
+// Calendar") should also reach `executed`.
+
+const STRING_SUCCESS_VALUES = new Set([
+  "success",
+  "successful",
+  "succeeded",
+  "ok",
+  "true",
+  "yes",
+  "done",
+  "completed",
+]);
+
+/**
+ * True if the agent's plain-text stream reports a successful external
+ * side-effect. Scoped to phrases that real agents emit after a Composio
+ * call so we don't over-fire on casual words like "great" or "done".
+ */
+export function isSuccessText(text: string): boolean {
+  if (!text) return false;
+  // #RSVP — keep the net narrow. The strongest signal is the agent
+  // reporting a specific event-id / responseStatus change plus a verb
+  // that proves an external write happened. We avoid generic verbs
+  // ("done", "completed") here so casual closing prose doesn't tip an
+  // empty run into `executed`.
+  const patterns: RegExp[] = [
+    /\b(?:rsvp|calendar)\b[^.]*\b(?:executed|succeeded|accepted|sent|created|updated|patched)\b[^.]*(?:google\s*calendar|event)/i,
+    /\b(?:executed|succeeded)\s+successfully\b/i,
+    /\b(?:rsvp|event|message|email)\b\s+(?:was|has been|now|is)\s+(?:accepted|created|sent|updated|published|delivered)/i,
+    /\b(?:response\s*status|responseStatus)\s*[:=]\s*["']?(?:accepted|declined|tentative)["']?/i,
+  ];
+  for (const re of patterns) {
+    if (re.test(text)) return true;
+  }
+  return false;
+}
+
 export function isFailureText(text: string): boolean {
   if (!text) return false;
   for (const re of FAILURE_PATTERNS) {
@@ -131,12 +180,27 @@ export function isFailureText(text: string): boolean {
  * Coerce an unknown `result` payload into a partial execution. Returns
  * `null` when nothing recognisable is present — callers fall through to
  * the heuristic + final-default branches.
+ *
+ * #RSVP fix — agents that close the SSE stream with a bare success
+ * string (`"success"`, `"ok"`, `"true"`) instead of the structured
+ * `{outcome, reason, evidence}` payload used to fall through to "no
+ * external action performed". Treat those string values as `executed`
+ * so a successful Composio/CLI call isn't reported as a silent skip.
  */
 function readStructuredOutcome(result: unknown): {
   outcome: ExecutionOutcome;
   reason?: string;
   evidence?: LoopDecisionExecution["evidence"];
 } | null {
+  // #RSVP — bare success string. The CLI bridge and some upstream
+  // adapters emit `result: "success"` after a tool succeeded.
+  if (typeof result === "string") {
+    const lower = result.trim().toLowerCase();
+    if (STRING_SUCCESS_VALUES.has(lower)) {
+      return { outcome: "executed", reason: "agent reported success" };
+    }
+    return null;
+  }
   if (!result || typeof result !== "object") return null;
   const r = result as Record<string, unknown>;
   const raw = r.outcome ?? r.status ?? r.verdict;
@@ -171,15 +235,20 @@ function evaluatedAt(): string {
  * Parse the agent's SSE response into a structured execution outcome.
  *
  * Order of precedence:
- *   1. Structured `{outcome, reason?, evidence?}` in the `result` payload.
+ *   1. Structured `{outcome, reason?, evidence?}` in the `result` payload
+ *      OR bare success strings like `"success"` / `"ok"` (#RSVP fix).
  *   2. Refusal heuristic over the streamed text → `skipped`.
  *   3. Failure heuristic over the streamed text → `failed` (e.g. 401,
  *      OAuth expired, connector down). Comes BEFORE the no-events
  *      fallback so an error narrative always wins over "no tools fired".
- *   4. No tool events AND positive text → `skipped` ("no external action
+ *   4. Success heuristic over the streamed text → `executed` (#RSVP fix).
+ *      Agents that narrate a successful external write ("RSVP executed
+ *      successfully against Google Calendar") but omit the structured
+ *      result should not be silently marked as `skipped`.
+ *   5. No tool events AND positive text → `skipped` ("no external action
  *      performed"). An agent that produced prose but no tool calls
  *      effectively did nothing — but text exists so we can describe why.
- *   5. Final fallback (no text, no events) → `failed` ("agent returned no
+ *   6. Final fallback (no text, no events) → `failed` ("agent returned no
  *      verifiable outcome"). All-empty input means we cannot conclude
  *      anything went right; the safer default is "failed" so the user
  *      sees a retryable pending decision instead of a false success.
@@ -210,6 +279,17 @@ export function parseExecutionOutcome(
     return {
       outcome: "failed",
       reason: (text || "").trim().slice(0, 280) || "agent reported a failure",
+      evaluatedAt: evaluatedAt(),
+    };
+  }
+  // #RSVP — success-side heuristic. Must run BEFORE the "no external
+  // action performed" fallback so an agent that narrates a successful
+  // external write (Composio call, calendar patch, RSVP accept) is
+  // treated as `executed` instead of silently `skipped`.
+  if (isSuccessText(text)) {
+    return {
+      outcome: "executed",
+      reason: (text || "").trim().slice(0, 280) || "agent reported success",
       evaluatedAt: evaluatedAt(),
     };
   }

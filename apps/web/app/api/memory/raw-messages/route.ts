@@ -1,18 +1,18 @@
 import { auth } from "@/app/(auth)/auth";
 import { botExists } from "@/lib/db/queries";
-import { resolveMemoryGraphCorrectionPolicy } from "@/lib/memory/memory-graph-correction-policy";
-import { upsertRawMessagesToChroma } from "@/lib/memory/chroma-memory-index";
+import { resolveMemoryGraphCorrectionPolicy } from "@openloomi/memory-store/memory-graph-correction-policy";
+import { upsertRawMessagesToChroma } from "@openloomi/memory-store/chroma-memory-index";
 import {
   isReservedChatMemoryEvidenceId,
   isReservedMemoryGraphSummaryId,
   resolveUntrustedRawMemoryGraphWritePolicy,
   sanitizeUntrustedMemoryMetadata,
-} from "@/lib/memory/memory-graph-write-policy";
+} from "@openloomi/memory-store/memory-graph-write-policy";
 import {
   getRawMessageManager,
   getRawMessageStorageBackend,
   isRawMessageStorageAvailable,
-} from "@/lib/memory/raw-message-store";
+} from "@openloomi/memory-store/raw-message-store";
 import type {
   MemorySummaryRecord,
   RawMessage,

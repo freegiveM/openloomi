@@ -62,14 +62,105 @@ To get started, type `/skill-creator` in any chat.
 
 OpenLoomi's core capabilities are packaged as standalone, open-source Skills. Integrate them into any Agent that supports MCP — Claude Code, Codex, OpenClaw, Hermes, and more.
 
-| Skill                                                                                                                                                | Description                                                                                                                                                                                   |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **[openloomi-memory](#openloomi-memory)** ([GitHub](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi-memory/SKILL.md))             | Search memory files, knowledge base, and chat insights. Memory search, knowledge base, documents, insights                                                                                    |
-| **[openloomi-connectors](#openloomi-connectors)** ([GitHub](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi-connectors/SKILL.md)) | Manage platform integrations — OAuth connections, list accounts, check status, disconnect. Connect Telegram, WhatsApp, WeChat, Slack, Discord, Gmail, and more                                |
-| **[openloomi-api](#openloomi-api)** ([GitHub](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi-api/SKILL.md))                      | OpenLoomi API documentation — authentication, backend routes, integrations, billing, and server-side functionality                                                                            |
-| **[openloomi-loop](#openloomi-loop)** ([GitHub](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi-loop/SKILL.md))                   | Proactive execution brain — pulls signals from Gmail/Calendar/GitHub/Slack via Composio MCP, enriches through openloomi-memory, classifies into typed decisions, and executes via Claude Code |
+### Install via Skills.sh
+
+For agents that consume the [skills.sh](https://skills.sh/) skill protocol, install the OpenLoomi skill set directly from this repository:
+
+```bash
+npx skills add https://github.com/melandlabs/openloomi/tree/main/skills \
+  --skill openloomi openloomi-setup openloomi-memory openloomi-connectors openloomi-loop openloomi-api openloomi-feature-guide composio \
+  -y
+```
+
+Start with the `openloomi` or `openloomi-setup` skill — it verifies the local OpenLoomi runtime is reachable and walks you through first-use setup. For other runtimes, see the [Plugins](/docs/plugins) page.
+
+### What's included
+
+| Skill                                                                                                                                                         | Description                                                                                                                                                                                                                                                                      |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **[openloomi](#openloomi)** ([GitHub](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi/SKILL.md))                                           | OpenLoomi entrypoint for skill-only agent runtimes without a plugin mechanism. Routes requests to the right narrow skill — setup, memory, connectors, Loop, API, or feature guide                                                                                                |
+| **[openloomi-setup](#openloomi-setup)** ([GitHub](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi-setup/SKILL.md))                         | First-use setup and readiness guidance. Checks whether OpenLoomi Desktop is installed, the local API is reachable, and `~/.openloomi/token` exists — points to next manual step if not                                                                                           |
+| **[openloomi-memory](#openloomi-memory)** ([GitHub](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi-memory/SKILL.md))                      | Search memory files, knowledge base, and chat insights. Memory search, knowledge base, documents, insights                                                                                                                                                                       |
+| **[openloomi-connectors](#openloomi-connectors)** ([GitHub](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi-connectors/SKILL.md))          | Manage the 7 native messaging-platform connectors (Telegram, WhatsApp, iMessage, Lark/Feishu, DingTalk, QQ, WeChat) — list accounts, connect, disconnect, query contacts, send messages. Slack / Gmail / GitHub / Notion / etc. live in the paired [`composio`](#composio) skill |
+| **[openloomi-api](#openloomi-api)** ([GitHub](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi-api/SKILL.md))                               | OpenLoomi REST API reference — 131 routes across 36 modules (auth, AI, RAG, memory, loop, integrations, workspace, platform callbacks)                                                                                                                                           |
+| **[openloomi-loop](#openloomi-loop)** ([GitHub](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi-loop/SKILL.md))                            | Proactive execution brain — pulls signals from Gmail/Calendar/GitHub/Slack via Composio MCP, enriches through openloomi-memory, classifies into typed decisions, and executes via Claude Code                                                                                    |
+| **[openloomi-feature-guide](#openloomi-feature-guide)** ([GitHub](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi-feature-guide/SKILL.md)) | Explain OpenLoomi concepts, product capabilities, and user workflows. Glossary (Loop, Signal, Decision, Card, ActionKind, Attention Agent, Connector, Memory, Plugin, Composio) and usage answers                                                                                |
+| **[composio](#composio)** ([GitHub](https://github.com/melandlabs/openloomi/tree/main/skills/composio/SKILL.md))                                              | Access 1000+ external apps (Gmail, Slack, GitHub, Notion, Linear, Jira, HubSpot, Asana, …) via the Composio CLI — search tools, link accounts, execute actions, listen for triggers                                                                                              |
 
 These Skills are open-source under Apache 2.0. Fork them, extend them, or integrate them into your own Agent workflow.
+
+---
+
+### openloomi
+
+> **Front door for skill-only runtimes.** The entrypoint that routes requests to the right narrow OpenLoomi skill — no plugin required.
+
+The [openloomi](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi) skill is the **starting point** for agents that can load skills but do not have an OpenLoomi plugin (for example WorkBuddy and other skill-capable agents). It does not call the desktop runtime itself — it tells the agent which narrow skill to invoke next.
+
+### When to Use
+
+- 🧭 **First touch with OpenLoomi** in a runtime that has no plugin — start here, then jump to [openloomi-setup](#openloomi-setup) if readiness is unknown
+- 🔀 **Routing** — when a request could land on memory, connectors, Loop, API, or feature-guide, `openloomi` picks the right one
+- 🧱 **Composition** — chain setup → memory → connectors (or composio) without re-implementing OpenLoomi logic in the agent
+
+### Boundaries
+
+- ❌ Does not store anything itself — that's [openloomi-memory](#openloomi-memory)
+- ❌ Does not connect platforms — that's [openloomi-connectors](#openloomi-connectors)
+- ❌ Does not judge signals — that's [openloomi-loop](#openloomi-loop)
+- ❌ Does not duplicate OpenLoomi business logic inside the agent — use the narrow skills
+
+### Reference
+
+- **Full routing guide:** [openloomi SKILL.md on GitHub](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi/SKILL.md)
+- **Source code:** [`skills/openloomi/`](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi)
+- **Apache 2.0 license** — fork it, extend it, integrate it.
+
+---
+
+### openloomi-setup
+
+> **Readiness in one CLI call.** Verifies that OpenLoomi Desktop is installed, the local API is up, and a token exists — surfaces the next manual step when anything is missing.
+
+The [openloomi-setup](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi-setup) skill is what an agent runs **first** when OpenLoomi readiness is unknown. It is intentionally lightweight and manual-first — it never asks the user to paste tokens or API keys into chat.
+
+### When to Use
+
+- 🩺 **Pre-flight check** before any other OpenLoomi skill — confirms Desktop installed, local API reachable on `3414`/`3515`, `~/.openloomi/token` present
+- 🧭 **Recovery guidance** — when readiness is false, returns the `nextAction` and the official Getting Started link
+- 🚪 **Handoff contract** — once `ready: true`, hand off to [openloomi-memory](#openloomi-memory), [openloomi-connectors](#openloomi-connectors), [openloomi-loop](#openloomi-loop), or [openloomi-api](#openloomi-api)
+
+### Quick Start
+
+```bash
+node "$SKILL_DIR/scripts/openloomi-setup.cjs" status
+```
+
+**Expected output:**
+
+```json
+{
+  "ready": true,
+  "desktopInstalled": true,
+  "localApiReachable": true,
+  "tokenPresent": true,
+  "nextAction": "ok"
+}
+```
+
+If `ready` is false, surface the returned `nextAction` and the official install path (`https://openloomi.ai/docs/getting-started`) instead of guessing.
+
+### Boundaries
+
+- ❌ Does not install OpenLoomi Desktop — direct the user to official docs
+- ❌ Does not refresh tokens or run OAuth flows — that's the desktop app's job
+- ❌ Does not store secrets in chat — tokens and API keys stay on the user's machine
+
+### Reference
+
+- **Full setup guide:** [openloomi-setup SKILL.md on GitHub](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi-setup/SKILL.md)
+- **Source code:** [`skills/openloomi-setup/`](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi-setup)
+- **Apache 2.0 license** — fork it, extend it, integrate it.
 
 ---
 
@@ -370,15 +461,21 @@ All endpoints require `Authorization: Bearer $TOKEN` where `$TOKEN` is the **bas
 
 ### openloomi-connectors
 
-> **26 platforms, one CLI.** OAuth flows, app-password auth, and bot credentials unified into a single command-line tool that any MCP-compatible Agent can drive.
+> **7 native messaging bots, plus the OAuth layer for ~1000+ more.** This skill covers the platforms OpenLoomi maintains directly. Slack, Gmail, GitHub, Notion, and the rest live behind the paired [composio](#composio) skill.
 
-The [openloomi-connectors](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi-connectors) skill exposes OpenLoomi's platform-integration layer to **any Agent that supports MCP**. It is the doorway through which [openloomi-memory](#openloomi-memory) ingests raw messages and through which [openloomi-loop](#openloomi-loop) pulls fresh signals.
+The [openloomi-connectors](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi-connectors) skill exposes OpenLoomi's **native** platform-integration layer to **any Agent that supports MCP**. OpenLoomi ships connectors through two layers — keep them straight:
+
+- **Native (this skill)** — 7 messaging-platform bots maintained directly by OpenLoomi: Telegram, WhatsApp, iMessage, Lark/Feishu, DingTalk, QQ, WeChat. CLI covers OAuth / app-credential / QR / interactive setup, list, status, disconnect, contact query, and message send.
+- **Composio (paired `composio` skill)** — a hosted OAuth broker that authorizes ~1000+ apps including Slack, Discord, X, Gmail, Outlook, Google Calendar/Drive/Docs, GitHub, Notion, Linear, HubSpot, LinkedIn, Jira, Asana. Composio handles **"is this user authorised?"**; OpenLoomi's Loop channels consume the events as Signals.
+
+When the user asks "what am I connected to?" or "list my accounts", run **both** — `list-accounts` here **and** the composio connection listing — and present the union. This skill is the **doorway** through which [openloomi-memory](#openloomi-memory) ingests raw messages and through which [openloomi-loop](#openloomi-loop) pulls fresh signals.
 
 For the full per-platform setup walkthroughs (Lark/Feishu permission lists, DingTalk Stream mode, iMessage macOS permissions, etc.), see the [Connectors deep-dive](/docs/connectors).
 
 ### When to Use Connectors
 
-- 🔌 **Connect a platform** — Slack, Discord, Gmail, Outlook, X, GitHub, Telegram, WhatsApp, WeChat, Feishu, DingTalk, QQ, iMessage, plus 13 more
+- 🔌 **Connect a native platform** — Telegram, WhatsApp, iMessage, Lark/Feishu, DingTalk, QQ, or WeChat
+- 🔗 **Connect an OAuth-backed platform** (Slack, Gmail, GitHub, Notion, …) — use the paired [composio](#composio) skill instead
 - 📋 **List connected accounts** — see what's already linked, get the `botId` you need to send from
 - 🩺 **Check status** — is a platform connected, expired, or disconnected?
 - 🔌 **Disconnect** — revoke access for one account
@@ -391,38 +488,21 @@ It is **not** designed for:
 - ❌ Real-time event subscription — the connectors sync on a schedule; if you need push-style events, use the platform's native webhook or the [openloomi-loop](#openloomi-loop) tick
 - ❌ Building a customer-facing bot from scratch — for that, set up the platform's bot credentials and point them at OpenLoomi's listener endpoints (see [Connectors deep-dive → Feishu setup](/docs/connectors#larkfeishu))
 
-### Supported Platforms (26)
+### Supported Platforms (7 native)
 
-| ID                   | Display Name       | Auth method                          |
-| -------------------- | ------------------ | ------------------------------------ |
-| `telegram`           | Telegram           | QR / Phone (browser)                 |
-| `whatsapp`           | WhatsApp           | QR / Pair code (browser)             |
-| `slack`              | Slack              | OAuth (auto-opens browser)           |
-| `discord`            | Discord            | OAuth (auto-opens browser)           |
-| `gmail`              | Gmail              | App Password                         |
-| `outlook`            | Outlook            | App Password                         |
-| `linkedin`           | LinkedIn           | OAuth                                |
-| `instagram`          | Instagram          | OAuth                                |
-| `twitter`            | X / Twitter        | OAuth (auto-opens browser)           |
-| `google_calendar`    | Google Calendar    | OAuth                                |
-| `outlook_calendar`   | Outlook Calendar   | OAuth                                |
-| `teams`              | Microsoft Teams    | OAuth                                |
-| `facebook_messenger` | Facebook Messenger | OAuth                                |
-| `google_drive`       | Google Drive       | OAuth                                |
-| `google_docs`        | Google Docs        | OAuth                                |
-| `hubspot`            | HubSpot            | OAuth                                |
-| `notion`             | Notion             | OAuth                                |
-| `github`             | GitHub             | OAuth                                |
-| `asana`              | Asana              | OAuth                                |
-| `jira`               | Jira               | OAuth                                |
-| `linear`             | Linear             | OAuth                                |
-| `imessage`           | iMessage           | Local (macOS only, browser)          |
-| `feishu`             | Lark / Feishu      | App Credentials (App ID + Secret)    |
-| `dingtalk`           | DingTalk           | App Credentials (Client ID + Secret) |
-| `qqbot`              | QQ                 | App Credentials (App ID + Token)     |
-| `weixin`             | WeChat             | iLink Token                          |
+The CLI `list-platforms` returns these 7 native platforms. Other connectable platforms (Slack, Discord, X, Gmail, Outlook, LinkedIn, Google Calendar / Drive / Docs, HubSpot, Notion, GitHub, Linear, Asana, Jira, etc.) are managed via the desktop UI or the [`composio`](#composio) skill — see "Connection Methods" below.
 
-Aliases are supported (case-insensitive, English + Chinese): `gh` → `github`, `gcal` → `google_calendar`, `微信` → `weixin`, `飞书` → `feishu`, `钉钉` → `dingtalk`, etc.
+| ID         | Display Name  | Auth method                          |
+| ---------- | ------------- | ------------------------------------ |
+| `telegram` | Telegram      | QR / Phone (browser)                 |
+| `whatsapp` | WhatsApp      | QR / Pair code (browser)             |
+| `imessage` | iMessage      | Local (macOS only, browser)          |
+| `feishu`   | Lark / Feishu | App Credentials (App ID + Secret)    |
+| `dingtalk` | DingTalk      | App Credentials (Client ID + Secret) |
+| `qqbot`    | QQ            | App Credentials (App ID + Token)     |
+| `weixin`   | WeChat        | iLink Token                          |
+
+Aliases are supported (case-insensitive, English + Chinese): `tg` → `telegram`, `lark` / `飞书` → `feishu`, `钉钉` → `dingtalk`, `wechat` / `微信` → `weixin`, etc.
 
 ### Quick Start
 
@@ -445,17 +525,22 @@ node $SKILL_DIR/scripts/openloomi-connectors.cjs list-platforms
 {
   "platforms": [
     { "id": "telegram", "displayName": "Telegram", "aliases": ["tg"] },
-    { "id": "slack", "displayName": "Slack", "aliases": [] },
-    { "id": "gmail", "displayName": "Gmail", "aliases": ["google_mail"] },
+    { "id": "whatsapp", "displayName": "WhatsApp", "aliases": [] },
+    { "id": "imessage", "displayName": "iMessage", "aliases": [] },
     {
       "id": "feishu",
       "displayName": "Lark/Feishu",
       "aliases": ["lark", "飞书"]
-    }
+    },
+    { "id": "dingtalk", "displayName": "DingTalk", "aliases": ["钉钉"] },
+    { "id": "qqbot", "displayName": "QQ", "aliases": ["qq", "qq_bot"] },
+    { "id": "weixin", "displayName": "WeChat", "aliases": ["wechat", "微信"] }
   ],
-  "total": 26
+  "total": 7
 }
 ```
+
+> 💡 **For Slack / Gmail / GitHub / Notion / Linear / HubSpot / Jira / Asana / Google Calendar / Drive / Docs**, use the paired [`composio`](#composio) skill — those live in the Composio OAuth layer.
 
 **Step 2 — See what's already connected**
 
@@ -469,54 +554,54 @@ node $SKILL_DIR/scripts/openloomi-connectors.cjs list-accounts
 {
   "accounts": [
     {
-      "id": "int_gmail_001",
-      "platform": "gmail",
-      "externalId": "me@gmail.com",
-      "displayName": "Personal Gmail",
+      "id": "int_feishu_001",
+      "platform": "feishu",
+      "externalId": "cli_xxx",
+      "displayName": "Acme Workspace Bot",
       "status": "active",
-      "botId": "bot_gmail_001"
+      "botId": "bot_feishu_001"
     },
     {
-      "id": "int_slack_001",
-      "platform": "slack",
-      "externalId": "T0ABC123",
-      "displayName": "Acme Workspace",
+      "id": "int_telegram_001",
+      "platform": "telegram",
+      "externalId": "+15551234567",
+      "displayName": "Personal Telegram",
       "status": "active",
-      "botId": "bot_slack_001"
+      "botId": "bot_telegram_001"
     }
   ],
   "total": 2
 }
 ```
 
-> 💡 **Note `botId`**: it is different from the account `id`. You'll need `botId` to send messages.
+> 💡 **Note `botId`**: it is different from the account `id`. You'll need `botId` to send messages. To see OAuth-backed accounts (Slack, Gmail, GitHub, …), use the [`composio`](#composio) skill.
 
 **Step 3 — Connect a new platform**
 
 ```bash
-# OAuth — opens the browser automatically
-node $SKILL_DIR/scripts/openloomi-connectors.cjs connect slack
-
-# App Password
-node $SKILL_DIR/scripts/openloomi-connectors.cjs connect gmail --email=me@gmail.com --password=xxxx-xxxx-xxxx-xxxx
+# QR scan — CLI opens the browser
+node $SKILL_DIR/scripts/openloomi-connectors.cjs connect telegram
 
 # App Credentials
 node $SKILL_DIR/scripts/openloomi-connectors.cjs connect feishu --appId=cli_xxx --appSecret=xxx
+
+# iLink Token
+node $SKILL_DIR/scripts/openloomi-connectors.cjs connect weixin --token=xxx
 ```
 
-**Expected output** (OAuth):
+**Expected output** (App Credentials):
 
 ```
-→ Opening browser to https://slack.com/oauth/v2/authorize?...
+→ Verifying app credentials with feishu open platform…
 ✓ Authorization received
-✓ Account int_slack_002 created (botId=bot_slack_002)
+✓ Account int_feishu_002 created (botId=bot_feishu_002)
 ```
 
 **Step 4 — Send a message**
 
 ```bash
 node $SKILL_DIR/scripts/openloomi-connectors.cjs send-reply \
-  --botId=bot_slack_002 \
+  --botId=bot_feishu_002 \
   --recipients=John \
   --message="Heads up — Q2 review tomorrow at 10am."
 ```
@@ -527,42 +612,42 @@ node $SKILL_DIR/scripts/openloomi-connectors.cjs send-reply \
 {
   "success": true,
   "messageId": "msg_abc123",
-  "deliveredAt": "2026-06-26T10:00:00Z"
+  "deliveredAt": "2026-08-04T10:00:00Z"
 }
 ```
 
-### Scenario Walkthrough: Connect Slack and send a message to John
+### Scenario Walkthrough: Connect Feishu and send a message to John
 
-**Step 1 — Check whether Slack is already connected**
+**Step 1 — Check whether Feishu is already connected**
 
 ```bash
-node $SKILL_DIR/scripts/openloomi-connectors.cjs status slack
+node $SKILL_DIR/scripts/openloomi-connectors.cjs status feishu
 ```
 
 **Expected output:**
 
 ```json
-{ "platform": "slack", "connected": false, "accounts": [] }
+{ "platform": "feishu", "connected": false, "accounts": [] }
 ```
 
 **Step 2 — Connect it**
 
 ```bash
-node $SKILL_DIR/scripts/openloomi-connectors.cjs connect slack
+node $SKILL_DIR/scripts/openloomi-connectors.cjs connect feishu --appId=cli_xxx --appSecret=xxx
 ```
 
-This opens the default browser to Slack's OAuth page. You approve the permissions (the CLI prints which scopes are requested), Slack redirects back, and the CLI prints the new account ID and `botId`.
+This calls Feishu's open platform to verify the app credentials. Once verified, the CLI prints the new account ID and `botId`. The app must be **published** in the Feishu admin console before messages can reach end users (see [Connectors deep-dive → Feishu setup](/docs/connectors#larkfeishu) for the full publish step).
 
 **Expected output:**
 
 ```
-→ Opening browser to Slack OAuth...
+→ Verifying app credentials with feishu open platform…
 ✓ Authorization received
 {
-  "accountId": "int_slack_002",
-  "botId": "bot_slack_002",
-  "workspace": "Acme Workspace",
-  "scopes": ["chat:write", "channels:read", "im:history", ...]
+  "accountId": "int_feishu_002",
+  "botId": "bot_feishu_002",
+  "appId": "cli_xxx",
+  "scopes": ["im:message", "im:message.group_at_msg", "contact:user.id:readonly", ...]
 }
 ```
 
@@ -580,14 +665,14 @@ node $SKILL_DIR/scripts/openloomi-connectors.cjs query-contacts --name=John --pa
     {
       "id": "contact_001",
       "name": "John Doe",
-      "type": "slack",
-      "botId": "bot_slack_002"
+      "type": "feishu",
+      "botId": "bot_feishu_002"
     },
     {
       "id": "contact_002",
       "name": "John Smith",
-      "type": "slack",
-      "botId": "bot_slack_002"
+      "type": "feishu",
+      "botId": "bot_feishu_002"
     }
   ]
 }
@@ -599,7 +684,7 @@ node $SKILL_DIR/scripts/openloomi-connectors.cjs query-contacts --name=John --pa
 
 ```bash
 node $SKILL_DIR/scripts/openloomi-connectors.cjs send-reply \
-  --botId=bot_slack_002 \
+  --botId=bot_feishu_002 \
   --recipients="John Doe" \
   --message="Heads up — Q2 review tomorrow at 10am."
 ```
@@ -610,17 +695,17 @@ node $SKILL_DIR/scripts/openloomi-connectors.cjs send-reply \
 {
   "success": true,
   "messageId": "msg_xyz789",
-  "channel": "D0ABC123",
-  "deliveredAt": "2026-06-26T10:01:23Z"
+  "channel": "oc_xxx",
+  "deliveredAt": "2026-08-04T10:01:23Z"
 }
 ```
 
-The message lands in John Doe's Slack DM, sent by the OpenLoomi bot.
+The message lands in John Doe's Feishu DM, sent by the OpenLoomi bot.
 
 **Step 5 (optional) — Disconnect later**
 
 ```bash
-node $SKILL_DIR/scripts/openloomi-connectors.cjs disconnect int_slack_002
+node $SKILL_DIR/scripts/openloomi-connectors.cjs disconnect int_feishu_002
 ```
 
 **Expected output:**
@@ -628,36 +713,36 @@ node $SKILL_DIR/scripts/openloomi-connectors.cjs disconnect int_slack_002
 ```json
 {
   "success": true,
-  "deletedAccountId": "int_slack_002",
-  "deletedBotIds": ["bot_slack_002"]
+  "deletedAccountId": "int_feishu_002",
+  "deletedBotIds": ["bot_feishu_002"]
 }
 ```
 
 ### Connection Methods by Platform
 
-The CLI normalizes four different platform auth models:
+The CLI normalizes four different platform auth models for the 7 native platforms:
 
-| Method               | Platforms                                                                                                          | Flow                                                                |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------- |
-| **OAuth (auto)**     | `slack`, `discord`, `x`, `linkedin`, `google_*`, `github`, `hubspot`, `notion`, `asana`, `jira`, `linear`, `teams` | CLI opens the browser → you approve → callback writes account       |
-| **App Password**     | `gmail`, `outlook`                                                                                                 | Pass `--email` + `--password` flags                                 |
-| **App Credentials**  | `feishu`, `dingtalk`, `qqbot`                                                                                      | Pass `--appId` + `--appSecret` (or `--clientId` + `--clientSecret`) |
-| **iLink Token**      | `weixin`                                                                                                           | Pass `--token`                                                      |
-| **Browser required** | `whatsapp`, `telegram`, `imessage`                                                                                 | CLI opens browser for QR scan / interactive auth                    |
+| Method               | Platforms                          | Flow                                                                |
+| -------------------- | ---------------------------------- | ------------------------------------------------------------------- |
+| **App Credentials**  | `feishu`, `dingtalk`, `qqbot`      | Pass `--appId` + `--appSecret` (or `--clientId` + `--clientSecret`) |
+| **iLink Token**      | `weixin`                           | Pass `--token`                                                      |
+| **Browser required** | `whatsapp`, `telegram`, `imessage` | CLI opens browser for QR scan / interactive auth                    |
 
 For `feishu` / `dingtalk` / `qqbot`, the app must be **published** in the platform's admin console before messages can reach it — see the [Connectors deep-dive → Feishu setup](/docs/connectors#larkfeishu) for the full publish step.
 
+For the OAuth-backed apps (Slack, Discord, X, Gmail, Outlook, LinkedIn, Google Calendar / Drive / Docs, GitHub, HubSpot, Notion, Linear, Jira, Asana, Teams, Facebook Messenger, …), use the paired [`composio`](#composio) skill.
+
 ### Command Reference
 
-| Command                                        | Purpose                                                    |
-| ---------------------------------------------- | ---------------------------------------------------------- |
-| `list-platforms`                               | List all 26 supported platforms with IDs and aliases       |
-| `list-accounts`                                | List all connected accounts (includes `botId` per account) |
-| `status <platform>`                            | Check if a platform is connected                           |
-| `connect <platform> [flags]`                   | Connect a platform (auth-method-aware)                     |
-| `disconnect <accountId>`                       | Disconnect a specific account by ID                        |
-| `query-contacts [--name=] [--page=]`           | Paginated, name-filtered contact lookup                    |
-| `send-reply --botId= --recipients= --message=` | Send a message via a connected bot                         |
+| Command                                        | Purpose                                                                                                            |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `list-platforms`                               | List all 7 native platforms with IDs and aliases                                                                   |
+| `list-accounts`                                | List all native connected accounts (includes `botId` per account); pair with `composio` for the OAuth-backed layer |
+| `status <platform>`                            | Check if a platform is connected                                                                                   |
+| `connect <platform> [flags]`                   | Connect a platform (auth-method-aware)                                                                             |
+| `disconnect <accountId>`                       | Disconnect a specific account by ID                                                                                |
+| `query-contacts [--name=] [--page=]`           | Paginated, name-filtered contact lookup                                                                            |
+| `send-reply --botId= --recipients= --message=` | Send a message via a connected bot                                                                                 |
 
 ### Companion Skills
 
@@ -695,11 +780,11 @@ Each platform also has its own callback / listener init endpoint — see the [Co
 
 ### openloomi-api
 
-> **129+ endpoints, 12 modules, one base URL.** Auth, chat, messages, files, RAG, integrations, AI, insights, billing — all the same OpenLoomi server your desktop app talks to, exposed as a REST API for any Agent to drive.
+> **131 route handlers, 36 modules, one base URL.** Auth, AI, files, RAG, integrations, memory, loop, pet, workspace, platform callbacks — all the same OpenLoomi server your desktop app talks to, exposed as a REST API for any Agent to drive.
 
 The [openloomi-api](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi-api) skill is the open-source **server-side reference** for OpenLoomi's backend. It is the lowest-level of the open-source stack — the [memory](#openloomi-memory), [connectors](#openloomi-connectors), and [loop](#openloomi-loop) skills all eventually call into these endpoints, but you can call them directly when you need full control or want to build a custom integration.
 
-For the full endpoint-by-endpoint reference (all 129+ routes, request/response schemas), see the [openloomi-api SKILL.md on GitHub](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi-api/SKILL.md).
+For the full endpoint-by-endpoint reference (all 131 routes across 36 modules, request/response schemas), see the [openloomi-api SKILL.md on GitHub](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi-api/SKILL.md).
 
 ### When to Use the API
 
@@ -707,8 +792,9 @@ For the full endpoint-by-endpoint reference (all 129+ routes, request/response s
 - 🧠 **Build a custom RAG pipeline** — upload, chunk, embed, search documents against the same store the desktop app uses
 - 💬 **Stream chat completions** — the same `/api/ai/chat` endpoint the desktop chat UI uses
 - 🗂️ **Manage workspace artifacts and skills** — CRUD on `artifacts/`, `files/`, `skills/`
-- 🔍 **Programmatic access to memory** — read insights, record views, run analytics
-- 💳 **Billing introspection** — pull the ledger for your own dashboards
+- 🔍 **Programmatic access to memory** — read insights, record views, run analytics, query the entity registry
+- 🪝 **Programmatic access to Loop state** — preferences, channels, decisions, classifier rules
+- 🐾 **Pet / attention-agent state** — mirror, theme, pause/resume
 
 It is **not** designed for:
 
@@ -718,21 +804,34 @@ It is **not** designed for:
 
 ### Module Overview
 
-| Module           | Base Path                                 | What it covers                                      |
-| ---------------- | ----------------------------------------- | --------------------------------------------------- |
-| **Auth**         | `/api/auth/*`, `/api/remote-auth/*`       | Login, register, OAuth, token refresh, current user |
-| **User**         | `/api/user/*`                             | Identity, entitlements, password change             |
-| **Chat**         | `/api/chat/*`                             | Chat / character CRUD                               |
-| **Messages**     | `/api/messages/*`                         | Send, list, sync, check, fetch raw                  |
-| **Files**        | `/api/files/*`                            | Upload, list, get, save, storage usage              |
-| **Storage**      | `/api/storage/*`                          | Disk usage, sessions, cleanup                       |
-| **Integrations** | `/api/integrations/*`, `/api/*/callback`  | OAuth start/exchange, callbacks, listener init      |
-| **RAG**          | `/api/rag/*`                              | Document upload, search, stats, async upload        |
-| **Workspace**    | `/api/workspace/*`                        | Artifacts, files, skills CRUD                       |
-| **Native**       | `/api/native/*`                           | Native agent operations                             |
-| **AI**           | `/api/ai/*`                               | Chat, embeddings, image gen, TTS, STT, models list  |
-| **Insights**     | `/api/insights/*`, `/api/chat-insights/*` | Analytics, brief categories, insight tabs           |
-| **Billing**      | `/api/billing/*`                          | Billing ledger                                      |
+The 36 modules split into 21 **functional** modules plus 12 **platform-callback** modules (one per platform). The functional modules:
+
+| Module            | Base Path                                                     | What it covers                                        |
+| ----------------- | ------------------------------------------------------------- | ----------------------------------------------------- |
+| **Auth**          | `/api/auth/*`, `/api/remote-auth/*`, `/api/remote-feedback/*` | Guest session, token, user probe, feedback            |
+| **AI**            | `/api/ai/*`                                                   | Chat, images, audio, embeddings                       |
+| **Audit**         | `/api/audit/*`                                                | Audit log retrieval                                   |
+| **Chat Insights** | `/api/chat-insights/*`                                        | Per-chat insight records                              |
+| **Chronicle**     | `/api/chronicle/*`                                            | Meeting detection, analysis, memories                 |
+| **Contacts**      | `/api/contacts/*`                                             | Contact query                                         |
+| **DB Init**       | `/api/db/*`                                                   | Bootstrap database                                    |
+| **Files**         | `/api/files/*`                                                | File storage, upload, download                        |
+| **Insight Tabs**  | `/api/insight-tabs/*`                                         | Tab CRUD + reorder                                    |
+| **Integrations**  | `/api/integrations/*`                                         | OAuth start/exchange + connected accounts             |
+| **Listeners**     | `/api/listeners/*`                                            | Listener cleanup                                      |
+| **LLM Usage**     | `/api/llm/*`                                                  | Usage summary                                         |
+| **Loop**          | `/api/loop/*`                                                 | Attention loop, decisions, channels, classifier rules |
+| **Markmap**       | `/api/markmap/*`                                              | Markmap generation                                    |
+| **Memory**        | `/api/memory/*`                                               | Memory search, raw messages                           |
+| **Messages**      | `/api/messages/*`                                             | Send, sync, status, raw                               |
+| **Native**        | `/api/native/*`                                               | Native agent operations, providers, skills            |
+| **Pet**           | `/api/pet/*`                                                  | Pet state mirror                                      |
+| **Proxy**         | `/api/proxy/*`                                                | CSS/JS proxy                                          |
+| **RAG**           | `/api/rag/*`                                                  | Document upload, search, stats                        |
+| **Storage**       | `/api/storage/*`                                              | Disk usage, sessions, cleanup                         |
+| **Workspace**     | `/api/workspace/*`                                            | Artifacts, files, skills, previews                    |
+
+The 12 platform-callback modules (`/api/slack/*`, `/api/discord/*`, `/api/feishu/*`, `/api/dingtalk/*`, `/api/qqbot/*`, `/api/weixin/*`, `/api/telegram/*`, `/api/whatsapp/*`, `/api/imessage/*`, `/api/hubspot/*`, `/api/linkedin/*`, `/api/notion/*`) handle listener init, message routing, and per-platform OAuth callbacks.
 
 ### Authentication
 
@@ -998,7 +1097,7 @@ The API is the **foundation layer** — every other open-source skill calls into
 
 ### Reference
 
-- **Full endpoint reference (all 129+ routes, schemas):** [openloomi-api SKILL.md on GitHub](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi-api/SKILL.md)
+- **Full endpoint reference (all 131 routes across 36 modules, schemas):** [openloomi-api SKILL.md on GitHub](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi-api/SKILL.md)
 - **Local API base URL:** `http://localhost:3414` (fallback `3515`)
 - **Token location:** `~/.openloomi/token` (base64-encoded JWT)
 - **Source code:** [`skills/openloomi-api/`](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi-api)
@@ -1294,6 +1393,89 @@ POST /api/notify               fire macOS desktop test notification
 - **Full skill reference (commands, env vars, troubleshooting):** [openloomi-loop SKILL.md on GitHub](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi-loop/SKILL.md)
 - **Source code:** [`skills/openloomi-loop/`](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi-loop)
 - **Apache 2.0 license** — fork it, extend it, integrate it into your own Agent workflow.
+
+---
+
+### openloomi-feature-guide
+
+> **Concept dictionary + how-it-fits-together map.** When a user asks "what is Loop?" or "how do Connectors work?", this is the skill to reach for.
+
+The [openloomi-feature-guide](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi-feature-guide) skill is the **concept layer** of OpenLoomi. Where the other open-source skills expose CLI / API surfaces, this one explains what those surfaces mean and how they compose into the larger product.
+
+### When to Use
+
+- ❓ **Conceptual questions** — "What is a Decision Card?", "How does the attention agent work?", "What is a classifier rule?"
+- 🗺️ **Concept disambiguation** — pairs that get confused (Connector vs Signal vs Loop channel, Memory vs Knowledge Base vs Insight, Plugin vs Agent Runtime)
+- 🧭 **Product tour** — when the agent needs to walk a new user through what OpenLoomi is and how the pieces fit
+- 🛠️ **Capability overview** — Attention Agent, Holistic Context, Platform Connectors, Proactive Tasks, Any Agent Integration
+
+### Quick Example Questions
+
+- "How do I extend Loop with custom types?"
+- "How do I plug openloomi into Claude Code / Codex?"
+- "What platforms does openloomi support?"
+- "How do scheduled tasks work?"
+- "What is Loop?"
+
+### Companion Skills
+
+| When you want…                                         | Use                                                 |
+| ------------------------------------------------------ | --------------------------------------------------- |
+| Install / readiness                                    | [openloomi-setup](#openloomi-setup)                 |
+| End-to-end concept chain (Inputs → Judgement → Action) | [openloomi-feature-guide](#openloomi-feature-guide) |
+| Memory storage with structured CLI                     | [openloomi-memory](#openloomi-memory)               |
+| Platform connection management                         | [openloomi-connectors](#openloomi-connectors)       |
+| Server-side access to all of the above                 | [openloomi-api](#openloomi-api)                     |
+
+### Reference
+
+- **Full feature guide + glossary:** [openloomi-feature-guide SKILL.md on GitHub](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi-feature-guide/SKILL.md)
+- **Source code:** [`skills/openloomi-feature-guide/`](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi-feature-guide)
+- **Apache 2.0 license** — fork it, extend it, integrate it.
+
+---
+
+### composio
+
+> **1000+ external apps, one CLI.** The OAuth broker behind many of OpenLoomi's connectors — also useful on its own for any Agent that needs to reach external tools.
+
+The [composio](https://github.com/melandlabs/openloomi/tree/main/skills/composio) skill drives [Composio](https://composio.dev/) — the hosted OAuth broker that authorizes several Connector flows behind the scenes (Google Calendar / Docs / Drive, GitHub, Notion, Linear, HubSpot, Jira, Asana, Outlook Calendar, and similar). It is **not** an OpenLoomi-specific skill — it ships as a standalone capability that any MCP-compatible Agent can use.
+
+### When to Use
+
+- 🔌 **Reach a third-party OAuth app** — Gmail, Slack, GitHub, Notion, Linear, Jira, HubSpot, Asana, Google Calendar, Outlook, and 1000+ more
+- 🤖 **Build an agent or app** that integrates with external tools via the Composio SDK
+- 🔔 **Listen for real-time trigger events** from connected toolkits
+- 🔗 **Multi-user apps** that need per-user connections to external services
+
+### Quick Start
+
+```bash
+# Install the CLI (if not already)
+curl -fsSL https://composio.dev/install | bash
+
+# Authenticate
+composio login       # OAuth; interactive org/project picker (use -y to skip)
+composio whoami      # verify org_id, project_id, user_id
+
+# Search → link → execute
+composio search "send gmail"
+composio link gmail --no-wait
+composio execute GMAIL_SEND_EMAIL -d '{"to":"...","subject":"...","body":"..."}'
+```
+
+For agents without direct browser access: `composio login --no-wait | jq` to get URL/key, share URL with user, then `composio login --key <cli_key> --no-wait` once they complete login.
+
+### How It Relates to OpenLoomi
+
+Composio is the **authorization backbone** for several OpenLoomi Connectors. [openloomi-connectors](#openloomi-connectors) handles account management + bot messaging; Composio handles the OAuth flow + tool execution behind those connectors. When the user wants to **post to Slack, draft an email, or summarize a Notion page**, the route is typically `openloomi-setup → openloomi-connectors → composio`.
+
+### Reference
+
+- **Full skill reference:** [composio SKILL.md on GitHub](https://github.com/melandlabs/openloomi/tree/main/skills/composio/SKILL.md)
+- **Source code:** [`skills/composio/`](https://github.com/melandlabs/openloomi/tree/main/skills/composio)
+- **Composio docs:** [https://composio.dev](https://composio.dev)
+- **Apache 2.0 license** — fork it, extend it, integrate it.
 
 ---
 

@@ -1,23 +1,35 @@
 {
   "name": "@openloomi/integrations-channels",
-  "version": "0.8.8",
-  "private": true,
+  "version": "0.9.0",
   "type": "module",
-  "exports": {
-    ".": "./src/index.ts",
-    "./telegram": "./src/telegram.ts",
-    "./whatsapp": "./src/whatsapp.ts",
-    "./weixin": "./src/weixin.ts",
-    "./dingtalk": "./src/dingtalk.ts",
-    "./feishu": "./src/feishu.ts",
-    "./qqbot": "./src/qqbot.ts",
-    "./discord": "./src/discord.ts",
-    "./gmail": "./src/gmail.ts",
-    "./imessage": "./src/imessage.ts",
-    "./docs": "./src/docs.ts",
-    "./hubspot": "./src/hubspot.ts",
-    "./sources/types": "./src/sources/types.ts"
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
   },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js",
+    "./sources/types": "./dist/sources/types.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/melandlabs/openloomi.git",
+    "directory": "packages/integrations/channels"
+  },
+  "homepage": "https://github.com/melandlabs/openloomi/tree/main/packages/integrations/channels",
+  "bugs": {
+    "url": "https://github.com/melandlabs/openloomi/issues"
+  },
+  "license": "Apache-2.0",
+  "description": "OpenLoomi · integrations/channels module",
+  "keywords": [
+    "openloomi"
+  ],
   "dependencies": {
     "@openloomi/shared": "workspace:*",
     "zod": "^4.3.6"
@@ -27,6 +39,7 @@
     "typescript": "^5.6.3"
   },
   "scripts": {
-    "build": "echo no build needed"
+    "build": "tsup",
+    "prepublishOnly": "pnpm build"
   }
 }

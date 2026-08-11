@@ -29,19 +29,7 @@ The memory is not a document library, nor a chat log. It is a **living archive w
 
 5. **Source and credibility** — every belief carries a source tag distinguishing "the user said it" from "the AI inferred it." The two have different weights. A VP's approval in a private Slack DM is high-weight evidence; an AI-inferred possibility is low-weight evidence.
 
-<Callout type="warning">
-  Source and credibility grading is **not yet fully implemented**. Today, every
-  Insight is treated as equally trustworthy; the weighting described above is
-  the target design.
-</Callout>
-
 6. **Scope boundaries** — which memories belong to which user, workspace, and tenant is strictly isolated at the architecture level. Cross-tenant access requires an explicit relationship; sharing is never the default.
-
-<Callout type="warning">
-  Multi-tenant scope isolation is **not yet fully implemented**. Single-user
-  isolation is in place; cross-tenant / cross-workspace boundaries are the next
-  step.
-</Callout>
 
 ---
 
@@ -126,7 +114,7 @@ Current agent memory systems suffer from four critical challenges:
 
 4. **Evaluation Gap** — Industry benchmarks lack standard maintenance and continuous improvement, making it impossible to quantitatively measure progress in real business scenarios.
 
-### The Solution
+## The Solution
 
 Unlike traditional memory systems that merely store and retrieve messages, the Holistic Context builds structured knowledge from raw data through a self-evolving closed loop:
 
@@ -800,6 +788,19 @@ OpenLoomi achieves **96%+ accuracy** on LoCoMo and LongMemEval-S500 benchmarks, 
 
 Memory is also available as a standalone **Skill** for integration with other Agent systems. This allows any AI agent to connect to OpenLoomi's memory capabilities and leverage the same tiered storage, vector search, and knowledge base features.
 
+### Install the Memory Skill
+
+Pick the runtime you live in:
+
+| Runtime                    | Install                                                                                                                                                                                                            |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Skills.sh / skill-only** | `npx skills add https://github.com/melandlabs/openloomi/tree/main/skills --skill openloomi openloomi-setup openloomi-memory openloomi-connectors openloomi-loop openloomi-api openloomi-feature-guide composio -y` |
+| **Claude Code**            | `/plugin marketplace add melandlabs/plugins` then `/plugin install openloomi`                                                                                                                                      |
+| **Codex CLI**              | `codex plugin marketplace add melandlabs/plugins` then `codex plugin add openloomi@openloomi`                                                                                                                      |
+| **MCP runtime**            | `pnpm --filter @openloomi/mcp build` then `node packages/ai/mcp/dist/cli.js`                                                                                                                                       |
+
+Start with the `openloomi` or `openloomi-setup` skill — it verifies the local OpenLoomi runtime is reachable, then routes you into `/openloomi:memory` (or the agent-native equivalent) for full read/write access to the three memory stores. See the [Plugins](/docs/plugins) page for the full runtime matrix.
+
 ### Skill Capabilities
 
 The Memory Skill exposes the following capabilities:
@@ -840,6 +841,253 @@ The skill exposes REST endpoints at `http://localhost:3414/api/`:
 The CLI automatically reads authentication tokens from `~/.openloomi/token` (base64 encoded JWT).
 
 For full integration details, visit the [openloomi-memory Skill](https://github.com/melandlabs/openloomi/blob/main/skills/openloomi-memory/SKILL.md).
+
+---
+
+## Memory as a Standalone Service
+
+The Memory brain is not tied to the OpenLoomi web app. The same storage and search layer ships as a separate `@openloomi/memory-store` workspace package, exposing three entry points so non-web hosts — CLI daemons, custom servers, agent runtimes — can consume memory without dragging the web UI along.
+
+### Which entry point do I pick?
+
+| Entry point | When to use it |
+| --- | --- |
+| **SDK** (`@openloomi/memory-store`) | You are embedding memory into a Node.js application — a CLI, a custom server, a long-running agent loop. You want the strongest control over backend selection, embedding wiring, and lifecycle. |
+| **HTTP daemon** (`openloomi-memory-http`) | You want memory exposed as a small REST service to multiple clients on a host, or behind a reverse proxy / sidecar. JSON in, JSON out, no client SDK required. |
+| **MCP daemon** (`openloomi-memory-mcp`) | You want memory to appear as tools (`memory.health`, `memory.searchUnified`, `memory.writeRawMessage`, `memory.getRawMessage`) inside an MCP-aware client — Claude Desktop, Cursor, Cline, or any agent shell that speaks the Model Context Protocol over stdio. |
+
+All three share the same backend semantics: storage is DI'd via `MemoryStoreConfig`, vector indexing is a pluggable backend (`sqlite-vec` or `chroma`), and cross-source unified search accepts host-supplied providers for embeddings, knowledge RAG, and insights.
+
+### SDK: `createMemoryStore()`
+
+The SDK gives you a `MemoryStore` facade — the raw-message manager, the unified search facade, and convenience helpers. The host passes its own env, Drizzle tables, embedding provider, and cross-source searchers. Nothing inside the package reads `process.env` directly except for fallbacks; if you wire it up explicitly, it stays under your control.
+
+#### Postgres backend
+
+When running outside Tauri (server, agent daemon, cloud worker), point the package at your Drizzle handle and register the postgres manager factory so the internal manager resolver can find it:
+
+```ts
+import { drizzle } from "drizzle-orm/postgres-js";
+import {
+  createMemoryStore,
+  registerPostgresFactory,
+  type PostgresRawMessageManagerLike,
+} from "@openloomi/memory-store";
+import { myPostgresRawMessageManager } from "./postgres-raw-message-store";
+import * as schema from "./schema";
+
+registerPostgresFactory<typeof myPostgresRawMessageManager>(
+  async () => myPostgresRawMessageManager as unknown as PostgresRawMessageManagerLike,
+);
+
+const db = drizzle(process.env.DATABASE_URL!, { schema });
+
+const store = await createMemoryStore({
+  db: {
+    getDb: () => db,
+    tables: {
+      rawMessages: schema.rawMessages,
+      memorySummaries: schema.memorySummaries,
+    },
+  },
+  env: { isTauriMode: () => false },
+  unified: {
+    embedQuery: async ({ query }) => myEmbedder.embedQuery(query),
+    searchInsights: mySearchInsights,
+    searchKnowledge: mySearchKnowledge,
+    searchRawMessagesAnn: async ({ userId, queryEmbedding, limit, threshold, botId }) => {
+      // delegate to your postgres-side ANN (pgvector / sqlite-vec / etc.)
+      return myAnnSearch({ userId, queryEmbedding, limit, threshold, botId });
+    },
+  },
+});
+
+const hits = await store.searchUnifiedMemory({
+  userId: "u-1",
+  query: "what did VP Zhang approve last quarter?",
+  limit: 10,
+  threshold: 0.7,
+  sources: ["memory", "insights", "knowledge"],
+});
+```
+
+#### Tauri / SQLite-vec backend
+
+For local desktop clients (Tauri), the package picks the sqlite path automatically when `env.isTauriMode()` returns true. Pass the data dir:
+
+```ts
+import { createMemoryStore } from "@openloomi/memory-store";
+
+const store = await createMemoryStore({
+  env: {
+    isTauriMode: () => true,
+    getTauriDataDir: () => appDataDir(),
+    getTauriDbPath: () => `${appDataDir()}/memory.sqlite`,
+  },
+  vector: {
+    backend: "sqlite-vec",
+    sqliteVec: { dbPath: `${appDataDir()}/vectors.sqlite` },
+  },
+  unified: {
+    embedQuery: async ({ query }) => localOnnxEmbedder.embed(query),
+  },
+});
+```
+
+#### Chroma backend
+
+Chroma replaces sqlite-vec when you want a managed vector store. Toggle with `vector.backend: "chroma"` and point at your server:
+
+```ts
+const store = await createMemoryStore({
+  env: { isTauriMode: () => false },
+  vector: {
+    backend: "chroma",
+    chroma: {
+      url: process.env.CHROMA_URL ?? "http://127.0.0.1:8000",
+      rawMessagesCollection: "openloomi_raw_messages",
+      insightsCollection: "openloomi_insights",
+    },
+  },
+  unified: { embedQuery: myEmbedder },
+});
+```
+
+If both Chroma is reachable and the host's postgres manager exposes `searchMessagesSemantically`, Chroma wins and the database path is the fallback — same semantics as the web app's behaviour.
+
+### HTTP daemon
+
+The HTTP entry point is a Hono app that talks to the raw-message + vector layers only. It does not expose RAG or insights — those need wiring and stay server-side. Useful for embedding service clients that don't want to embed the SDK.
+
+```bash
+# install + run
+pnpm add @openloomi/memory-store
+openloomi-memory-http --port 7421 --host 127.0.0.1
+```
+
+Endpoints (all JSON, JSON in / JSON out):
+
+| Method + path | Purpose |
+| --- | --- |
+| `GET  /health` | `{ ok: true, store: "memory", ts: <unix-ms> }` |
+| `POST /v1/search` | Run `searchUnifiedMemory` — needs `userId` + `query` |
+| `POST /v1/raw-messages` | Upsert raw messages — needs `userId` + `messages[]` |
+| `GET  /v1/raw-messages/:id` | Fetch a single raw message — needs `?userId=` |
+
+For LAN / container deployment, bind to `0.0.0.0` and put it behind a reverse proxy:
+
+```bash
+MEMORY_HTTP_HOST=0.0.0.0 MEMORY_HTTP_PORT=7421 \
+  openloomi-memory-http
+```
+
+```nginx
+# /etc/nginx/sites-enabled/memory.conf
+location /memory/ {
+  proxy_pass         http://127.0.0.1:7421/;
+  proxy_set_header   X-Forwarded-User $remote_user;
+  proxy_read_timeout 60s;
+}
+```
+
+Sample `POST /v1/search` request body:
+
+```json
+{
+  "userId": "u-1",
+  "query": "what was the last Q4 roadmap decision?",
+  "limit": 10,
+  "threshold": 0.7,
+  "sources": ["memory", "insights", "knowledge"],
+  "botIds": ["bot-42"]
+}
+```
+
+The response is the same `UnifiedMemorySearchOutput` shape as the SDK — `query`, `sources`, `results`, `count`, and `warnings[]` describing any sources that weren't configured on the host.
+
+### MCP daemon
+
+The MCP entry point exposes the memory store as four tools over stdio, so any MCP-aware client can call them directly. To enable unified search, the host must `registerPostgresFactory(...)` (or supply its own raw-message manager) before spawning the CLI; otherwise the search tools return empty results with a `raw_message_storage_unavailable` warning — same semantics as the SDK.
+
+```bash
+openloomi-memory-mcp
+```
+
+The four tools registered:
+
+| Tool | Purpose |
+| --- | --- |
+| `memory.health` | `{ ok: true }` liveness check |
+| `memory.searchUnified` | Cross-source semantic search (`userId`, `query`, `limit`, `threshold`, `botIds`, `documentIds`, `sources`) |
+| `memory.writeRawMessage` | Persist one raw message (`userId`, `message`) |
+| `memory.getRawMessage` | Fetch one raw message (`userId`, `messageId`) |
+
+#### Connecting to Claude Desktop
+
+Add an entry to `claude_desktop_config.json` (macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "openloomi-memory": {
+      "command": "npx",
+      "args": ["-y", "@openloomi/memory-store", "memory-mcp"],
+      "env": {
+        "DATABASE_URL": "postgres://user:pass@host:5432/openloomi"
+      }
+    }
+  }
+}
+```
+
+For local-only development where the CLI lives in this monorepo, point at the built entry directly:
+
+```json
+{
+  "mcpServers": {
+    "openloomi-memory": {
+      "command": "node",
+      "args": ["/path/to/openloomi/packages/memory-store/dist/server/cli-mcp.js"]
+    }
+  }
+}
+```
+
+#### Connecting to Cursor
+
+Same shape — Cursor reads `mcpServers` from its MCP settings (Cursor → Settings → MCP → Add new global MCP server):
+
+```json
+{
+  "mcpServers": {
+    "openloomi-memory": {
+      "command": "openloomi-memory-mcp"
+    }
+  }
+}
+```
+
+After registering, the four `memory.*` tools become available to the agent inside the editor; tool calls show up in the chat like any other MCP tool.
+
+### When to use which subpath export
+
+The package re-exports individual building blocks as subpath entries so consumers can compose only the bits they need:
+
+| Subpath | What it gives you |
+| --- | --- |
+| `@openloomi/memory-store` | Top-level `createMemoryStore` facade |
+| `@openloomi/memory-store/http` | `startHttpServer()` + `StartHttpServerOptions` |
+| `@openloomi/memory-store/mcp` | `startMcpServer()` |
+| `@openloomi/memory-store/unified-search` | `createUnifiedSearch(deps)` factory + result types |
+| `@openloomi/memory-store/raw-message-store` | `createRawMessageStore`, `getRawMessageManager`, `isRawMessageStorageAvailable` |
+| `@openloomi/memory-store/sqlite-raw-message-store` | SQLite-vec raw-message manager (Tauri / desktop) |
+| `@openloomi/memory-store/postgres-raw-message-factory` | `registerPostgresFactory` / `resolvePostgresFactory` |
+| `@openloomi/memory-store/sqlite-vector-index` | Direct sqlite-vec insight index helpers |
+| `@openloomi/memory-store/chroma-memory-index` | Direct chroma upsert / search helpers |
+| `@openloomi/memory-store/memory-graph-write-policy` | `resolveMemoryGraphWritePolicy`, allowlist gating |
+| `@openloomi/memory-store/memory-graph-correction-policy` | `resolveMemoryGraphCorrectionPolicy` |
+
+See [`packages/memory-store/README.md`](https://github.com/melandlabs/openloomi/blob/main/packages/memory-store/README.md) for the canonical API surface and the full `MemoryStoreConfig` schema.
 
 ---
 

@@ -7,7 +7,8 @@
  */
 
 import type { NextRequest } from "next/server";
-import { auth, type UserType } from "@/app/(auth)/auth";
+import { auth } from "@/app/(auth)/auth";
+import type { UserType } from "@openloomi/contracts/user-type";
 import { verifyToken, extractToken } from "@/lib/auth/remote-auth-utils";
 import { getUserById, getUserTypeForService } from "@/lib/db/queries";
 

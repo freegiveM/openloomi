@@ -1,54 +1,11 @@
-import type { JobAgentStreamEvent } from "./types";
+// Phase 5 — re-export shim over `@openloomi/cron/stream-response`. The
+// leaf module owns the SSE response creator used by manual job
+// executions. Pure dep-free helper (no DB / agent / integrations), so
+// the runtime package and the UI can both import it without depending
+// on the rest of `apps/web/lib/cron/*`.
 
-export function createJobExecutionStreamResponse(
-  run: (send: (event: JobAgentStreamEvent) => void) => Promise<void>,
-) {
-  const encoder = new TextEncoder();
-
-  const stream = new ReadableStream({
-    start(controller) {
-      let closed = false;
-      const enqueue = (value: string) => {
-        if (closed) return;
-        try {
-          controller.enqueue(encoder.encode(value));
-        } catch {
-          closed = true;
-        }
-      };
-      const send = (event: JobAgentStreamEvent) => {
-        enqueue(`data: ${JSON.stringify(event)}\n\n`);
-      };
-      const heartbeat = setInterval(() => {
-        enqueue(": ping\n\n");
-      }, 15000);
-
-      run(send)
-        .catch((error) => {
-          send({
-            type: "error",
-            content: error instanceof Error ? error.message : String(error),
-          });
-        })
-        .finally(() => {
-          clearInterval(heartbeat);
-          if (!closed) {
-            closed = true;
-            try {
-              controller.close();
-            } catch {
-              // Client disconnected.
-            }
-          }
-        });
-    },
-  });
-
-  return new Response(stream, {
-    headers: {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache, no-transform",
-      Connection: "keep-alive",
-    },
-  });
-}
+export { createJobExecutionStreamResponse } from "@openloomi/cron/stream-response";
+// `JobAgentStreamEvent` lives in `@openloomi/cron/types` (it represents
+// the event protocol the stream emits, not anything specific to the
+// stream-response constructor).
+export type { JobAgentStreamEvent } from "@openloomi/cron/types";

@@ -4,12 +4,18 @@ export default defineConfig({
   entry: {
     index: "src/index.ts",
     cli: "src/cli.ts",
-    server: "src/server.ts",
   },
-  dts: true,
   format: ["esm"],
-  platform: "node",
-  target: "node18",
-  splitting: false,
+  dts: true,
+  sourcemap: true,
   clean: true,
+  splitting: false,
+  treeshake: true,
+  external: [
+    "react",
+    "react-dom",
+    "@tauri-apps/api",
+    "better-sqlite3",
+    "sqlite-vec",
+  ],
 });

@@ -1,9 +1,11 @@
 "use client";
 
 import { useTranslation } from "react-i18next";
+import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { RemixIcon } from "@/components/remix-icon";
 import { Button } from "@/components/ui/button";
+import { MISSING_API_KEY_REASON } from "@/lib/ai/conversation-api-configuration";
 import type { ChatMessage } from "@openloomi/shared";
 import type { UseChatHelpers } from "@ai-sdk/react";
 
@@ -33,6 +35,7 @@ export function ErrorMessageDisplay({
   sendMessage,
 }: ErrorMessageDisplayProps) {
   const { t } = useTranslation();
+  const router = useRouter();
 
   // Provider-timeout interruption path — render an actionable card that
   // explicitly invites the user to continue the task. We deliberately do not
@@ -327,6 +330,36 @@ export function ErrorMessageDisplay({
       };
     }
 
+    // Claude runtime not signed in (e.g. provider-env preflight emits
+    // "Run `claude auth login` to authenticate the Claude runtime").
+    // This is more specific than the generic "unauthorized" branch
+    // below, so check it first and surface a card that names the two
+    // real remediation paths instead of the catch-all "permission
+    // error" wording. Mirrors alloomi's `authentication_error` policy
+    // entry in apps/web/lib/errors/known-errors.ts.
+    if (
+      lowerError.includes("not logged in") ||
+      lowerError.includes("not signed in") ||
+      lowerError.includes("claude auth login") ||
+      lowerError.includes("claude runtime is not authenticated") ||
+      /please.*claude auth login/i.test(error) ||
+      /run `?claude auth login`? to authenticate/i.test(error)
+    ) {
+      const suggestions = t("auth.errors.runtimeNotLoggedIn.suggestions", {
+        returnObjects: true,
+      });
+      return {
+        title: t("auth.errors.runtimeNotLoggedIn.title"),
+        description: t("auth.errors.runtimeNotLoggedIn.description"),
+        suggestions: Array.isArray(suggestions) ? suggestions : [],
+        icon: "key_2",
+        severity: "warning" as const,
+        // Triggers the "Open API Settings" button — same shape as
+        // `showCodexDocs` below. Renders inside the card.
+        showApiSettings: true,
+      };
+    }
+
     // Permission errors
     if (
       lowerError.includes("permission") ||
@@ -487,6 +520,21 @@ export function ErrorMessageDisplay({
               >
                 {t("common.errors.codexCompatibilityError.docsAction")}
               </a>
+            </Button>
+          ) : null}
+          {"showApiSettings" in errorDetails &&
+          errorDetails.showApiSettings === true ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                router.push(
+                  `/?page=ai-api-settings&reason=${MISSING_API_KEY_REASON}`,
+                );
+              }}
+            >
+              {t("auth.errors.runtimeNotLoggedIn.apiSettingsAction")}
             </Button>
           ) : null}
         </div>

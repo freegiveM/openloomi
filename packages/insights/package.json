@@ -1,11 +1,34 @@
 {
   "name": "@openloomi/insights",
-  "version": "0.8.8",
-  "private": true,
+  "version": "0.9.0",
   "type": "module",
-  "exports": {
-    ".": "./src/index.ts"
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
   },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/melandlabs/openloomi.git",
+    "directory": "packages/insights"
+  },
+  "homepage": "https://github.com/melandlabs/openloomi/tree/main/packages/insights",
+  "bugs": {
+    "url": "https://github.com/melandlabs/openloomi/issues"
+  },
+  "license": "Apache-2.0",
+  "description": "OpenLoomi · insights module",
+  "keywords": [
+    "openloomi"
+  ],
   "dependencies": {
     "zod": "^4.3.6"
   },
@@ -17,6 +40,7 @@
     "typescript": "^5.6.3"
   },
   "scripts": {
-    "build": "echo no build needed"
+    "build": "tsup",
+    "prepublishOnly": "pnpm build"
   }
 }

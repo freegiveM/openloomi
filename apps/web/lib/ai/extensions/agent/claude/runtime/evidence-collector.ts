@@ -8,6 +8,7 @@ const MAX_NAME_CHARACTERS = 256;
 const MAX_SUMMARY_CHARACTERS = 1_000;
 const MAX_COMMAND_CHARACTERS = 4_000;
 const MAX_DETAIL_CHARACTERS = 8_000;
+const MAX_COMMAND_RESPONSE_PREVIEW_CHARACTERS = 3_000;
 const MAX_PATH_CHARACTERS = 512;
 const MAX_PATHS = 16;
 const MAX_JSON_DEPTH = 4;
@@ -49,6 +50,12 @@ type RuntimeEvidenceJsonValue =
   | RuntimeEvidenceJsonValue[]
   | { [key: string]: RuntimeEvidenceJsonValue };
 
+interface ClaudeAssistantEvidenceInput {
+  providerEventId: string;
+  text: string;
+  observedAt: string;
+}
+
 interface ClaudeToolEvidenceInput {
   providerEventId: string;
   toolUseId: string;
@@ -69,6 +76,14 @@ interface ExplicitToolOutcome {
 function truncate(value: string, maximum: number): string {
   if (value.length <= maximum) return value;
   return `${value.slice(0, Math.max(0, maximum - 16))}\n...[truncated]`;
+}
+
+function truncateEdges(value: string, maximum: number): string {
+  if (value.length <= maximum) return value;
+  const marker = "\n...[truncated]...\n";
+  const retained = Math.max(0, maximum - marker.length);
+  const head = Math.ceil(retained / 2);
+  return `${value.slice(0, head)}${marker}${value.slice(-(retained - head))}`;
 }
 
 function redactSensitiveText(value: string): string {
@@ -209,8 +224,19 @@ function stableSourceEventId(
   if (raw.length <= MAX_SOURCE_EVENT_ID_CHARACTERS) return raw;
 
   const digest = createHash("sha256").update(raw).digest("hex");
-  const prefix = truncate(providerEventId, 170).replace(/\s+/g, "-");
+  const prefix = truncate(raw, 170).replace(/\s+/g, "-");
   return `${prefix}:tool:${digest}`.slice(0, MAX_SOURCE_EVENT_ID_CHARACTERS);
+}
+
+function stableAssistantSourceEventId(providerEventId: string): string {
+  const raw = `${providerEventId}:assistant`;
+  if (raw.length <= MAX_SOURCE_EVENT_ID_CHARACTERS) return raw;
+
+  const digest = createHash("sha256").update(raw).digest("hex");
+  return `${providerEventId.slice(0, 170)}:assistant:${digest}`.slice(
+    0,
+    MAX_SOURCE_EVENT_ID_CHARACTERS,
+  );
 }
 
 function boundedJsonValue(
@@ -307,6 +333,47 @@ function responsePreview(value: unknown): string | undefined {
   }
 }
 
+function commandResponsePreview(value: unknown): string | undefined {
+  if (value === undefined) return undefined;
+  const response = asRecord(value);
+  const stdout =
+    typeof value === "string"
+      ? value
+      : findRecordValue(response, ["stdout", "output"]);
+  const stderr = findRecordValue(response, ["stderr"]);
+  const sections: string[] = [];
+  if (typeof stdout === "string" && stdout.trim()) {
+    sections.push(`stdout:\n${compactRepeatedLines(stdout)}`);
+  }
+  if (typeof stderr === "string" && stderr.trim()) {
+    sections.push(`stderr:\n${compactRepeatedLines(stderr)}`);
+  }
+  const preview =
+    sections.length > 0 ? sections.join("\n\n") : responsePreview(value);
+  return preview === undefined
+    ? undefined
+    : truncateEdges(preview, MAX_COMMAND_RESPONSE_PREVIEW_CHARACTERS);
+}
+
+function compactRepeatedLines(value: string): string {
+  const lines = redactSensitiveText(value).replace(/\r\n/g, "\n").split("\n");
+  const counts = new Map<string, number>();
+  for (const line of lines) {
+    if (line.trim()) counts.set(line, (counts.get(line) ?? 0) + 1);
+  }
+  const emitted = new Set<string>();
+  return lines
+    .flatMap((line) => {
+      const count = counts.get(line) ?? 1;
+      if (!line.trim() || count === 1) return [line];
+      if (emitted.has(line)) return [];
+      emitted.add(line);
+      return [line, `[repeated ${count} times]`];
+    })
+    .join("\n")
+    .trim();
+}
+
 function safeDuration(durationMs: number | undefined): number | undefined {
   return typeof durationMs === "number" &&
     Number.isFinite(durationMs) &&
@@ -392,7 +459,9 @@ export function collectClaudeToolEvidence({
   if (FILE_CHANGE_TOOLS.has(normalizedName)) {
     payload.inputContentRetained = false;
   } else {
-    const preview = responsePreview(toolResponse);
+    const preview = isCommandTool(toolName)
+      ? commandResponsePreview(toolResponse)
+      : responsePreview(toolResponse);
     if (preview !== undefined) payload.outputPreview = preview;
     if (!isCommandTool(toolName)) payload.input = boundedDetail(toolInput);
   }
@@ -403,6 +472,37 @@ export function collectClaudeToolEvidence({
     summary: summaryFor(type, toolName, outcome.success, command, paths),
     success: outcome.success,
     payload,
+    observedAt,
+  };
+}
+
+/**
+ * Captures the bounded assistant report that a semantic evaluator is asked to
+ * judge. It is evidence input, not proof of success, so `success` is omitted.
+ */
+export function collectClaudeAssistantEvidence({
+  providerEventId,
+  text,
+  observedAt,
+}: ClaudeAssistantEvidenceInput): RuntimeEvidenceDraft | undefined {
+  const normalized = text.trim();
+  if (!normalized) return undefined;
+
+  const report = truncate(
+    redactSensitiveText(normalized),
+    MAX_DETAIL_CHARACTERS,
+  );
+  return {
+    type: "agent_report",
+    sourceEventId: stableAssistantSourceEventId(providerEventId),
+    summary: truncate(
+      `Claude assistant report: ${report}`,
+      MAX_SUMMARY_CHARACTERS,
+    ),
+    payload: {
+      provider: "claude",
+      outputPreview: report,
+    },
     observedAt,
   };
 }

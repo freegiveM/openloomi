@@ -307,135 +307,11 @@ export interface LoopSignal {
   sourceAccount?: ConnectorAccount;
 }
 
-// ---------------------------------------------------------------------------
-// Quiet-day filler module ids (#316)
-// ---------------------------------------------------------------------------
-//
-// Selected via `LoopPreferences.quietDayFiller` when a brief / wrap snapshot
-// comes up empty. Each id maps to a `QuietDayModule` implementation in
-// `quiet-modules.ts`; new modules are drop-in additions to the
-// `QUIET_DAY_MODULES` registry. "none" is the deliberate no-op default —
-// empty day → no card, no badge, snapshot still on disk.
-
-export type QuietDayFillerId =
-  | "none"
-  | "ai-news-digest"
-  | "weather-calendar"
-  | "memory-resurface";
-
-export interface LoopPreferences {
-  enabled: boolean;
-  /** 24h HH:MM local time. */
-  briefTime: string;
-  /** 24h HH:MM local time. */
-  wrapTime: string;
-  /** Tick interval seconds. */
-  intervalSec: number;
-  /** Hard-skip patterns. */
-  noReplySkip: boolean;
-  promotionSkip: boolean;
-  /**
-   * IANA timezone the brief/wrap cron rows should be anchored to. Empty
-   * (or omitted) means "derive from the host's `Intl.DateTimeFormat`". The
-   * settings panel populates this from `Intl.DateTimeFormat().resolvedOptions().timeZone`
-   * on PUT so a containerised server (whose Intl is usually UTC) still
-   * honours the user's wall-clock 09:00 / 21:00.
-   */
-  timezone?: string;
-  /**
-   * Generate agentic narrative summary for brief/wrap. When `false`, brief
-   * and wrap fall back to the deterministic templated dialogue. Default
-   * `true` — opt-out via `PUT /api/loop/preferences { narrative: false }`.
-   */
-  narrative?: boolean;
-  /**
-   * Send native macOS / OS desktop notifications for high-priority Loop
-   * events. Default `false` because the Loomi Pet bubble/card is the
-   * primary desktop surface and is always on. Opt-in via
-   * `PUT /api/loop/preferences { desktopNotifications: true }`.
-   */
-  desktopNotifications?: boolean;
-  /**
-   * When `true`, a *user-created* scheduled cron job POSTs a transient
-   * Loomi pet **bubble** message on completion (both success and error).
-   * This is a bubble-only surface — explicitly NOT a decision card, so it
-   * carries no Run/Dismiss buttons and auto-dismisses on the bubble's own
-   * timer. Loop's own jobs (`loop.tick` / `loop.brief` / `loop.wrap` /
-   * `loop.action`) are excluded — they already reach the pet as decision
-   * cards via the `decisions.json` watcher.
-   *
-   * Default `false` — opt-in via
-   * `PUT /api/loop/preferences { cronCompletionPetNotify: true }`.
-   */
-  cronCompletionPetNotify?: boolean;
-  /**
-   * SP-4 — daily OS-notification budget. Caps the number of native
-   * desktop notifications fired by `notifyForDecisions` per
-   * user-local day, so a slack flood can't bury the user.
-   *
-   * `daily`         — max notifications per day. Default `3`.
-   * `p0BypassBudget`— when `true` (default), P0-priority decisions
-   *                   always notify regardless of the daily count.
-   *                   Set to `false` to enforce the budget
-   *                   uniformly.
-   *
-   * Lives on `LoopPreferences` (next to `desktopNotifications`,
-   * which gates the same fan-out) rather than as a new top-level
-   * setting, so the same PUT body that opts the user in also
-   * shapes how often they want to be pestered. The counter itself
-   * is persisted to `~/.openloomi/loop/attention.json` (NOT
-   * `config.json`) to avoid a write-race on the preferences path.
-   */
-  attentionBudget?: {
-    daily: number;
-    p0BypassBudget?: boolean;
-  };
-  /**
-   * SP-4 — per-source cooldown. When a user dismisses a notification,
-   * the dismiss writes a `cooldown_until` onto the matching mute
-   * rule. `notifyForDecisions` consults this window before firing
-   * another OS notification for the same source, suppressing
-   * repeated pings of an action the user already swiped away.
-   *
-   * `windowSec` — seconds to suppress after a dismiss. Default
-   *               `1800` (30 min). Set to `0` to disable.
-   *
-   * Shared storage with `MuteRule` so dismiss-driven cooldowns
-   * inherit the existing on-disk shape + cache-invalidation
-   * discipline. Cooldown is additive: it does NOT replace
-   * `mutes.has()` — a muted rule still blocks; a cooldown-only
-   * rule just throttles the next nudge.
-   */
-  cooldown?: {
-    windowSec: number;
-  };
-  /**
-   * When the brief or wrap snapshot is empty (no surfaced items /
-   * highlights), skip the templated "nothing to do" card entirely.
-   * Snapshot still gets persisted to `~/.openloomi/loop/{brief,wrap}.json`
-   * for history; the pet bubble stays silent and no badge increments.
-   *
-   * Default `true` — opt-out via
-   * `PUT /api/loop/preferences { quietWhenEmpty: false }` to restore the
-   * legacy "open a card to dismiss nothing" behaviour. See issue #316.
-   */
-  quietWhenEmpty?: boolean;
-  /**
-   * Optional content module to run when the quiet path fires. The module
-   * produces a `type:"quiet_digest"` decision card in place of the
-   * templated empty card, turning "nothing to dismiss" into "the card
-   * worth opening" — e.g. a news digest, weather + first meeting, or a
-   * resurfaced memory.
-   *
-   * Default `"none"` (skip the card entirely). Built-ins:
-   *   - "ai-news-digest"  → 3 last-24h AI / tech headlines
-   *   - "weather-calendar" → weather + first 2 calendar events
-   *   - "memory-resurface" → 2 stale insights from the user's memory
-   *
-   * No-op when `quietWhenEmpty === false`. See issue #316.
-   */
-  quietDayFiller?: QuietDayFillerId;
-}
+import type {
+  LoopPreferences,
+  QuietDayFillerId,
+} from "@openloomi/loop/preferences";
+export type { LoopPreferences, QuietDayFillerId };
 
 /** Mute rule scope — discriminated union keyed by signal type. */
 export type MuteScope =
@@ -475,34 +351,6 @@ export interface LoopMutes {
   /** Flattened keys — recomputed from `rules` on every write. */
   keys: string[];
 }
-
-export const DEFAULT_LOOP_PREFERENCES: LoopPreferences = {
-  enabled: true,
-  briefTime: "09:00",
-  wrapTime: "21:00",
-  intervalSec: 600,
-  noReplySkip: true,
-  promotionSkip: true,
-  narrative: true,
-  desktopNotifications: false, // NEW
-  cronCompletionPetNotify: false, // NEW — opt-in transient pet bubble
-  quietWhenEmpty: true, // NEW (#316) — opt-out via prefs
-  quietDayFiller: "none", // NEW (#316) — opt into a module
-  // SP-4 — daily OS-notification budget. Three notifications per
-  // user-local day is enough for a typical "morning brief + a
-  // urgent PR + an evening wrap" flow; anything beyond that almost
-  // always indicates either a stuck watcher or a sender that
-  // shouldn't have hit Loop at all. P0 still bypasses by default
-  // so a real urgent signal (RSVP in <1h, hard deadline) never
-  // gets dropped.
-  attentionBudget: { daily: 3, p0BypassBudget: true },
-  // SP-4 — 30-minute per-source cooldown after a dismiss. Long
-  // enough to ride out a "boss said something, then said it again
-  // in a thread reply" pattern, short enough that an actually
-  // distinct follow-up from the same sender still reaches the
-  // user before EOD.
-  cooldown: { windowSec: 1800 },
-};
 
 /**
  * Capability states for a connector (#361). The Loop is fully agentic and
@@ -649,6 +497,13 @@ export interface LoopState {
      */
     unsupportedSignals: number;
   };
+  /**
+   * #516 — when the supervisor check refused the most recent tick,
+   * mirror the reason here. UI surfaces this as a banner: "Loop
+   * disabled — desktop app supervisor not detected". `null` while a
+   * normal supervisor is present OR while no tick has run yet.
+   */
+  orphanSupervisor?: "stamp_missing" | "stamp_stale" | "stamp_mismatch" | null;
   lastTickAt?: string;
   connectors: ConnectorEntry[];
   /**
@@ -673,6 +528,14 @@ export interface LoopTickResult {
    * zero decisions.
    */
   unsupportedSignals?: number;
+  /**
+   * #516 — present (and tick is zero-yield) when the supervisor
+   * check in `handleTick` (`lib/loop/parent-watch.ts`) refused to
+   * run. Surface in `LoopState` so the UI can render a clear "Loop
+   * disabled — supervisor gone" banner instead of silently pretending
+   * the tick was a normal no-signal run.
+   */
+  orphanSupervisor?: "stamp_missing" | "stamp_stale" | "stamp_mismatch";
 }
 
 // ---------------------------------------------------------------------------

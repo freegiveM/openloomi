@@ -12,10 +12,7 @@ import {
 } from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import type { ChatMessage } from "@openloomi/shared";
-
-import type { Insight } from "@/lib/db/schema";
 import {
-  buildNavigationUrl,
   generateUUID,
   getTextFromMessage,
 } from "@/lib/utils";
@@ -23,12 +20,15 @@ import { mutate } from "swr";
 import { dismissToast, toast } from "@/components/toast";
 import { streamNativeAgentResponse } from "@/lib/ai/router/index";
 import { isTauri } from "@/lib/tauri";
-import {
-  useModelPreference,
-  getModelConfig,
-} from "@/components/agent/model-selector";
 import { useTranslation } from "react-i18next";
 import { saveMessagesToDatabase } from "@/lib/ai/chat/save-messages";
+import {
+  attachChatSessionAbort,
+  finishChatSession,
+  getChatSessionState as readChatSessionState,
+  setChatSessionRunning,
+  type ChatSessionState,
+} from "@/lib/ai/chat/runtime-state";
 import { getAuthToken } from "@/lib/auth/token-manager";
 import { uploadImageTUS } from "@/lib/files/tus-upload";
 import type { ImageAttachment as AgentImageAttachment } from "@openloomi/ai/agent/types";
@@ -101,13 +101,6 @@ type ChatHistoryCache = {
   [key: string]: unknown;
 };
 
-// Independent state per chat
-type ChatSessionState = {
-  isAgentRunning: boolean;
-  focusedInsights: Insight[];
-  abortFn: (() => void) | null;
-};
-
 export interface ChatContextValue {
   // Current chat ID
   activeChatId: string | null;
@@ -135,21 +128,7 @@ export interface ChatContextValue {
 
   // Per-chat session states
   isAgentRunning: boolean;
-  focusedInsights: Insight[];
   setIsAgentRunning: (running: boolean, chatId?: string) => void;
-  setFocusedInsight: (insight: Insight) => void;
-  /** Set focused insight for a specific chatId (used when navigating from other pages to associate insight) */
-  setFocusedInsightForChat: (chatId: string, insight: Insight) => void;
-  removeFocusedInsight: (insightId: string) => void;
-  clearFocusedInsights: () => void;
-  toggleFocusedInsight: (insight: Insight) => void;
-
-  // Insight detail drawer state
-  selectedInsight: Insight | null;
-  setSelectedInsight: (insight: Insight | null) => void;
-  isInsightDrawerOpen: boolean;
-  setIsInsightDrawerOpen: (open: boolean) => void;
-  toggleInsightDrawer: (insight: Insight | null) => void;
 
   // File preview state
   previewFile: {
@@ -289,9 +268,6 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const { t } = useTranslation();
-
-  // Model selection state
-  const [selectedModel] = useModelPreference();
 
   // =====================================================================
   // Chat state management
@@ -637,21 +613,19 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
   const setIsAgentRunningForChatFn = useCallback(
     (chatId: string, running: boolean) => {
       if (!chatId) return;
-      setChatSessionStates((prev) => {
-        const newMap = new Map(prev);
-        const currentState =
-          newMap.get(chatId) ||
-          ({
-            isAgentRunning: false,
-            focusedInsights: [],
-            abortFn: null,
-          } as ChatSessionState);
-        newMap.set(chatId, { ...currentState, isAgentRunning: running });
-        return newMap;
-      });
+      setChatSessionStates((prev) =>
+        setChatSessionRunning(prev, chatId, running),
+      );
     },
     [],
   );
+
+  const finishNativeAgentRun = useCallback((chatId: string | null) => {
+    abortFnRef.current = null;
+    setIsSending(false);
+    if (!chatId) return;
+    setChatSessionStates((prev) => finishChatSession(prev, chatId));
+  }, []);
 
   const saveChatMessageImmediately = useCallback(
     (message: ChatMessage, chatId: string) => {
@@ -1073,8 +1047,7 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
         : await requestLifestyleImageSkillRoute({
             message: messageContent,
             hasReferenceImage: hasLifestyleReferenceImage,
-            model:
-              selectedModel === "default" ? DEFAULT_AI_MODEL : selectedModel,
+            model: DEFAULT_AI_MODEL,
           });
       const lifestyleSkillDecision = lifestyleSkillRoute.decision;
       const shouldGenerateFromClassifierFallback =
@@ -1164,7 +1137,7 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
         return Promise.resolve();
       }
 
-      // Extract image attachments, file attachments, RAG documents and focused insights from message
+      // Extract image attachments, file attachments, RAG documents from message
       const images: AgentImageDataInput[] = [];
       const fileAttachments: Array<{
         name: string;
@@ -1172,15 +1145,6 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
         mimeType: string;
       }> = [];
       let ragDocuments: Array<{ id: string; name: string }> = [];
-      let focusedInsightIds: string[] = [];
-      let focusedInsights: Array<{
-        id: string;
-        title: string;
-        description?: string | null;
-        details?: any[] | null;
-        groups?: string[] | null;
-        platform?: string | null;
-      }> = [];
 
       if (message && typeof message === "object") {
         // Extract image attachments as base64-only agent inputs. URLs remain
@@ -1344,14 +1308,6 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
         if ((message as any).metadata?.ragDocuments) {
           ragDocuments = (message as any).metadata.ragDocuments;
         }
-
-        // Extract focused insights
-        if ((message as any).metadata?.focusedInsights) {
-          focusedInsights = (message as any).metadata.focusedInsights;
-        }
-        if ((message as any).metadata?.focusedInsightIds) {
-          focusedInsightIds = (message as any).metadata.focusedInsightIds;
-        }
       }
 
       // Add user message to conversation history (preserve original parts and metadata)
@@ -1361,7 +1317,7 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
         parts: (message as any).parts || [
           { type: "text" as const, text: messageContent },
         ],
-        metadata: (message as any).metadata, // Preserve metadata (includes ragDocuments and focusedInsights)
+        metadata: (message as any).metadata, // Preserve metadata (includes ragDocuments)
         id: generateUUID(),
       } as ChatMessage;
       setMessages((prev) => [...prev, userMessage], chatIdForMessages);
@@ -1501,17 +1457,13 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
         }
 
         // Configure to use local API endpoint in Tauri mode
-        const effectiveModel =
-          selectedModel === "default" ? DEFAULT_AI_MODEL : selectedModel;
-        const modelCfg = getModelConfig(selectedModel);
+        const effectiveModel = DEFAULT_AI_MODEL;
         const modelConfig = cloudAuthToken
           ? {
               baseUrl: AI_PROXY_BASE_URL, // SDK will automatically add /v1/messages
               apiKey: cloudAuthToken, // User's auth token
               model: effectiveModel, // Use user-selected model
-              thinkingLevel: modelCfg?.supportsThinking
-                ? (modelCfg.defaultThinkingLevel ?? "adaptive")
-                : undefined,
+              thinkingLevel: undefined,
             }
           : undefined;
 
@@ -1546,31 +1498,18 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
           fileAttachments:
             fileAttachments.length > 0 ? fileAttachments : undefined,
           ragDocuments,
-          focusedInsightIds,
-          focusedInsights,
           authToken: cloudAuthToken,
           // Immediately save abortFn to ref and state, reduce race conditions
           onAbortFnReady: (abortFn) => {
             // Update both ref and state simultaneously to ensure stop function can access synchronously
             abortFnRef.current = abortFn;
             if (chatIdForAbort) {
-              setChatSessionStates((prev) => {
-                const newMap = new Map(prev);
-                const currentState = getChatSessionState(chatIdForAbort);
-                newMap.set(chatIdForAbort, { ...currentState, abortFn });
-                return newMap;
-              });
+              setChatSessionStates((prev) =>
+                attachChatSessionAbort(prev, chatIdForAbort, abortFn),
+              );
             }
           },
           onUpdate: async (data) => {
-            // Ensure state is true when receiving message.
-            // Pass the captured chatIdForAbort so the running flag is set on the
-            // SAME chat that onDone/onError later clears. Without this, updates
-            // default to the current activeChatId, which can drift (e.g. when the
-            // user switches chats mid-stream), leaving the flag stuck true and the
-            // send button locked in the loading/stop state after completion.
-            setIsAgentRunningFn(true, chatIdForAbort ?? undefined);
-
             // Deduplicate based on messageId - avoid duplicate messages
             const messageId = (data as { messageId?: string }).messageId;
             if (messageId) {
@@ -1864,31 +1803,6 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
                   text: newReasoning,
                 });
               }
-            } else if (data.type === "insightsRefresh") {
-              // Insight change notification for optimistic update
-              // Create a data-insightsRefresh part
-              const insightPart = {
-                type: "data-insightsRefresh" as const,
-                data: {
-                  action: data.action,
-                  insightId: data.insightId,
-                  insight: data.insight,
-                },
-              };
-
-              parts.push(insightPart);
-
-              setMessages((prev) => {
-                const updated = [...prev];
-                const lastIndex = updated.length - 1;
-                if (lastIndex >= 0 && updated[lastIndex].role === "assistant") {
-                  updated[lastIndex] = {
-                    ...updated[lastIndex],
-                    parts: [...parts],
-                  } as ChatMessage;
-                }
-                return updated;
-              }, chatIdForMessages);
             } else if (data.type === "permission_request") {
               // Permission request from SDK - needs user confirmation
               const permissionPart = {
@@ -2078,6 +1992,7 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
                   return updated;
                 }, chatIdForMessages);
               }
+              finishNativeAgentRun(chatIdForAbort || activeChatId);
             }
 
             // Save AI message parts on every update
@@ -2088,26 +2003,7 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
           modelConfig,
           onDone: async () => {
             codexTransportStatus.clear();
-            // Clear sending lock
-            setIsSending(false);
-            // Cleanup native agent state - use chatIdForAbort to ensure lock is cleared for correct chat
-            // Fallback to activeChatId if chatIdForAbort is not available (should not happen but safety check)
-            const chatIdToClear = chatIdForAbort || activeChatId;
-            // Clear abort function in ref FIRST to prevent race with stop()
-            abortFnRef.current = null;
-            // Clear abort function and isAgentRunning for current conversation atomically
-            if (chatIdToClear) {
-              setChatSessionStates((prev) => {
-                const newMap = new Map(prev);
-                const currentState = getChatSessionState(chatIdToClear);
-                newMap.set(chatIdToClear, {
-                  ...currentState,
-                  isAgentRunning: false,
-                  abortFn: null,
-                });
-                return newMap;
-              });
-            }
+            finishNativeAgentRun(chatIdForAbort || activeChatId);
 
             // Reset stream error retry count and retry flag (execution success)
             setStreamRetryCount(0);
@@ -2138,27 +2034,8 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
           },
           onError: (error) => {
             codexTransportStatus.clear();
-            // Clear sending lock
-            setIsSending(false);
             console.error("[NativeAgent] Stream error:", error);
-            // Cleanup native agent state - use chatIdForAbort to ensure lock is cleared for correct chat
-            // Fallback to activeChatId if chatIdForAbort is not available (should not happen but safety check)
-            const chatIdToClear = chatIdForAbort || activeChatId;
-            // Clear abort function in ref FIRST to prevent race with stop()
-            abortFnRef.current = null;
-            // Clear abort function and isAgentRunning for current conversation atomically
-            if (chatIdToClear) {
-              setChatSessionStates((prev) => {
-                const newMap = new Map(prev);
-                const currentState = getChatSessionState(chatIdToClear);
-                newMap.set(chatIdToClear, {
-                  ...currentState,
-                  isAgentRunning: false,
-                  abortFn: null,
-                });
-                return newMap;
-              });
-            }
+            finishNativeAgentRun(chatIdForAbort || activeChatId);
 
             // Safely extract error properties
             const errorName =
@@ -2336,12 +2213,9 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
 
         // Save abort function for current conversation so it can still abort after switching conversations
         if (chatIdForAbort) {
-          setChatSessionStates((prev) => {
-            const newMap = new Map(prev);
-            const currentState = getChatSessionState(chatIdForAbort);
-            newMap.set(chatIdForAbort, { ...currentState, abortFn });
-            return newMap;
-          });
+          setChatSessionStates((prev) =>
+            attachChatSessionAbort(prev, chatIdForAbort, abortFn),
+          );
         }
 
         return Promise.resolve();
@@ -2381,8 +2255,7 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
           }
           return updated;
         }, chatIdForMessages);
-        // Bug fix: clear isSending lock to allow future messages
-        setIsSending(false);
+        finishNativeAgentRun(stableActiveChatId);
         return Promise.reject(error);
       }
     },
@@ -2392,6 +2265,7 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
       setMessages,
       t,
       setIsAgentRunningForChatFn,
+      finishNativeAgentRun,
       saveUserMessageAndUpdateHistory,
       saveChatMessageImmediately,
       generateLifestyleImageReply,
@@ -2404,10 +2278,6 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
   // =====================================================================
   // UI state
   // =====================================================================
-
-  // Insight drawer state
-  const [selectedInsight, setSelectedInsight] = useState<Insight | null>(null);
-  const [isInsightDrawerOpen, setIsInsightDrawerOpen] = useState(false);
 
   // Vault state
   const [isVaultOpen, setIsVaultOpen] = useState(false);
@@ -2425,105 +2295,35 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // =====================================================================
-  // Per-chat state management (persisted to localStorage)
+  // Per-chat transient runtime state
   // =====================================================================
-
-  // Load chatSessionStates from localStorage
-  const loadChatSessionStatesFromStorage = (): Map<
-    string,
-    ChatSessionState
-  > => {
-    if (typeof window === "undefined") return new Map();
-    try {
-      const saved = localStorage.getItem("chatSessionStates");
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        // Convert plain object back to Map
-        const map = new Map<string, ChatSessionState>();
-        for (const [key, value] of Object.entries(parsed)) {
-          map.set(key, value as ChatSessionState);
-        }
-        return map;
-      }
-    } catch (e) {
-      console.error("[ChatContext] Failed to load chatSessionStates:", e);
-    }
-    return new Map();
-  };
 
   const [chatSessionStates, setChatSessionStates] = useState<
     Map<string, ChatSessionState>
-  >(loadChatSessionStatesFromStorage);
+  >(() => new Map());
 
   // Use ref to store current abortFn, ensure stop function can access synchronously
   // Avoid issues caused by React state async updates
   const abortFnRef = useRef<(() => void) | null>(null);
 
-  // Persist chatSessionStates to localStorage - use debounced async write to avoid blocking main thread
-  // Limit stored sessions to prevent localStorage quota exceeded errors
-  const MAX_STORED_SESSIONS = 20;
-  const MAX_FOCUSED_INSIGHTS = 10;
+  // Runtime state cannot survive a reload because abort functions are not
+  // serializable. Remove legacy persisted flags so a stale `true` value cannot
+  // resurrect a stop button without a live request.
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const timeoutId = setTimeout(() => {
-      try {
-        // Convert Map to plain object for JSON serialization
-        // Limit to most recent sessions to prevent localStorage quota exceeded
-        const entries = Array.from(chatSessionStates.entries());
-        const recentEntries = entries.slice(-MAX_STORED_SESSIONS);
-        const obj: Record<string, Omit<ChatSessionState, "abortFn">> = {};
-        recentEntries.forEach(([key, value]) => {
-          // eslint-disable-next-line @typescript-eslint/no-unused-vars
-          const { abortFn, focusedInsights, ...rest } = value;
-          obj[key] = {
-            ...rest,
-            // Limit focusedInsights per session to prevent quota exceeded
-            focusedInsights:
-              focusedInsights?.slice(-MAX_FOCUSED_INSIGHTS) ?? [],
-          };
-        });
-        localStorage.setItem("chatSessionStates", JSON.stringify(obj));
-      } catch (e) {
-        // Handle QuotaExceededError specifically - clear old data and retry with fewer sessions
-        if (
-          e instanceof DOMException &&
-          (e.name === "QuotaExceededError" || e.code === 22)
-        ) {
-          console.warn(
-            "[ChatContext] localStorage quota exceeded, clearing old sessions",
-          );
-          try {
-            // Keep only the most recent 5 sessions and minimal data
-            const entries = Array.from(chatSessionStates.entries());
-            const recentEntries = entries.slice(-5);
-            const obj: Record<string, Omit<ChatSessionState, "abortFn">> = {};
-            recentEntries.forEach(([key, value]) => {
-              // eslint-disable-next-line @typescript-eslint/no-unused-vars
-              const { abortFn, ...rest } = value;
-              obj[key] = { ...rest, focusedInsights: [] };
-            });
-            localStorage.setItem("chatSessionStates", JSON.stringify(obj));
-          } catch {
-            // If even that fails, clear entirely
-            localStorage.removeItem("chatSessionStates");
-          }
-        } else {
-          console.error("[ChatContext] Failed to save chatSessionStates:", e);
-        }
-      }
-    }, 100);
-    return () => clearTimeout(timeoutId);
-  }, [chatSessionStates]);
+    try {
+      localStorage.removeItem("chatSessionStates");
+    } catch (error) {
+      console.warn(
+        "[ChatContext] Failed to remove legacy chat runtime state:",
+        error,
+      );
+    }
+  }, []);
 
   const getChatSessionState = useCallback(
     (chatId: string): ChatSessionState => {
-      return (
-        chatSessionStates.get(chatId) || {
-          isAgentRunning: false,
-          focusedInsights: [],
-          abortFn: null,
-        }
-      );
+      return readChatSessionState(chatSessionStates, chatId);
     },
     [chatSessionStates],
   );
@@ -2538,7 +2338,7 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
 
   const currentSessionState = activeChatId
     ? getChatSessionState(activeChatId)
-    : { isAgentRunning: false, focusedInsights: [], abortFn: null };
+    : { isAgentRunning: false, abortFn: null };
 
   // stop function - iterate all sessions to find and abort running agent
   const stop = useCallback(() => {
@@ -2578,6 +2378,8 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error("[stop] Error aborting native agent:", error);
     } finally {
+      abortFnRef.current = null;
+      setIsSending(false);
       // Clear abort functions and running state for all conversations
       setChatSessionStates((prev) => {
         const newMap = new Map(prev);
@@ -2600,117 +2402,11 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
     (running: boolean, chatId?: string) => {
       const targetChatId = chatId ?? activeChatId;
       if (!targetChatId) return;
-      setChatSessionStates((prev) => {
-        const newMap = new Map(prev);
-        const currentState = getChatSessionState(targetChatId);
-        newMap.set(targetChatId, { ...currentState, isAgentRunning: running });
-        return newMap;
-      });
+      setChatSessionStates((prev) =>
+        setChatSessionRunning(prev, targetChatId, running),
+      );
     },
-    [activeChatId, getChatSessionState],
-  );
-
-  const setFocusedInsightFn = useCallback(
-    (insight: Insight) => {
-      if (!activeChatId) return;
-      setChatSessionStates((prev) => {
-        const newMap = new Map(prev);
-        const currentState = getChatSessionState(activeChatId);
-        if (currentState.focusedInsights.some((i) => i.id === insight.id)) {
-          return prev;
-        }
-        const newInsights = [...currentState.focusedInsights, insight];
-        newMap.set(activeChatId, {
-          ...currentState,
-          focusedInsights: newInsights,
-        });
-        return newMap;
-      });
-    },
-    [activeChatId, getChatSessionState],
-  );
-
-  // Set focused insight for a specific chatId
-  const setFocusedInsightForChatFn = useCallback(
-    (chatId: string, insight: Insight) => {
-      setChatSessionStates((prev) => {
-        const newMap = new Map(prev);
-        const currentState = getChatSessionState(chatId);
-        if (currentState.focusedInsights.some((i) => i.id === insight.id)) {
-          return prev;
-        }
-        const newInsights = [...currentState.focusedInsights, insight];
-        newMap.set(chatId, {
-          ...currentState,
-          focusedInsights: newInsights,
-        });
-        return newMap;
-      });
-    },
-    [getChatSessionState],
-  );
-
-  const removeFocusedInsightFn = useCallback(
-    (insightId: string) => {
-      if (!activeChatId) return;
-      setChatSessionStates((prev) => {
-        const newMap = new Map(prev);
-        const currentState = getChatSessionState(activeChatId);
-        const newInsights = currentState.focusedInsights.filter(
-          (i) => i.id !== insightId,
-        );
-        newMap.set(activeChatId, {
-          ...currentState,
-          focusedInsights: newInsights,
-        });
-        return newMap;
-      });
-    },
-    [activeChatId, getChatSessionState],
-  );
-
-  const clearFocusedInsightsFn = useCallback(() => {
-    if (!activeChatId) return;
-    setChatSessionStates((prev) => {
-      const newMap = new Map(prev);
-      const currentState = getChatSessionState(activeChatId);
-      newMap.set(activeChatId, { ...currentState, focusedInsights: [] });
-      return newMap;
-    });
-  }, [activeChatId, getChatSessionState]);
-
-  const toggleFocusedInsightFn = useCallback(
-    (insight: Insight) => {
-      if (!activeChatId) return;
-      setChatSessionStates((prev) => {
-        const newMap = new Map(prev);
-        const currentState = getChatSessionState(activeChatId);
-        const exists = currentState.focusedInsights.some(
-          (i) => i.id === insight.id,
-        );
-        let newInsights: Insight[];
-        if (exists) {
-          newInsights = currentState.focusedInsights.filter(
-            (i) => i.id !== insight.id,
-          );
-        } else {
-          if (currentState.focusedInsights.length >= 5) {
-            toast({
-              type: "info",
-              description: "You can only focus on up to 5 Insights",
-            });
-            return prev;
-          }
-          newInsights = [...currentState.focusedInsights, insight];
-        }
-        newMap.set(activeChatId, {
-          ...currentState,
-          focusedInsights: newInsights,
-        });
-        return newMap;
-      });
-    },
-    [activeChatId, getChatSessionState],
+    [activeChatId],
   );
 
   const openFilePreviewPanel = useCallback(
@@ -2720,44 +2416,12 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
     [],
   );
 
-  const toggleInsightDrawer = useCallback(
-    (insight: Insight | null) => {
-      setSelectedInsight(insight);
-      setIsInsightDrawerOpen(!!insight);
-      if (insight?.id) {
-        const newPath = buildNavigationUrl({
-          pathname,
-          searchParams,
-          paramsToUpdate: { insightDetailId: insight.id },
-        });
-        router.replace(newPath);
-      } else {
-        if (searchParams.get("insightDetailId")) {
-          const newPath = buildNavigationUrl({
-            pathname,
-            searchParams,
-            paramsToUpdate: { insightDetailId: null },
-          });
-          router.replace(newPath);
-        }
-      }
-    },
-    [pathname, searchParams, router],
-  );
-
   // =====================================================================
   // Switch Chat
   // =====================================================================
 
   const switchChatId = useCallback(
     async (newChatId: string | null, forceRefresh?: boolean) => {
-      // Close drawer when switching conversations
-      setIsInsightDrawerOpen(false);
-      setSelectedInsight(null);
-      // Close drawer when switching conversations
-      setIsInsightDrawerOpen(false);
-      setSelectedInsight(null);
-
       // Prevent chat switching while sending a message
       if (isSending) {
         return;
@@ -2825,19 +2489,7 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
       stop,
       // Per-chat states
       isAgentRunning: currentSessionState.isAgentRunning,
-      focusedInsights: currentSessionState.focusedInsights,
       setIsAgentRunning: setIsAgentRunningFn,
-      setFocusedInsight: setFocusedInsightFn,
-      setFocusedInsightForChat: setFocusedInsightForChatFn,
-      removeFocusedInsight: removeFocusedInsightFn,
-      clearFocusedInsights: clearFocusedInsightsFn,
-      toggleFocusedInsight: toggleFocusedInsightFn,
-      // Insight drawer
-      selectedInsight,
-      setSelectedInsight,
-      isInsightDrawerOpen,
-      setIsInsightDrawerOpen,
-      toggleInsightDrawer,
       // File preview
       previewFile,
       openFilePreviewPanel,
@@ -2860,13 +2512,6 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
     currentSessionState,
     chatSessionStates,
     setIsAgentRunningFn,
-    setFocusedInsightFn,
-    removeFocusedInsightFn,
-    clearFocusedInsightsFn,
-    toggleFocusedInsightFn,
-    selectedInsight,
-    isInsightDrawerOpen,
-    toggleInsightDrawer,
     previewFile,
     openFilePreviewPanel,
     closeFilePreviewPanel,

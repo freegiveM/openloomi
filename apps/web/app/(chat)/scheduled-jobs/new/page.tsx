@@ -12,7 +12,7 @@ import {
   type NovelInstructionEditorRef,
 } from "@/components/novel-instruction-editor-dynamic";
 import "@/i18n";
-import { TwoPaneSidebarLayout } from "@/components/layout/two-panel-sidebar-layout";
+import { TwoPanelSidebarLayout } from "@/components/layout/two-panel-sidebar-layout";
 import { DatePicker } from "@openloomi/ui";
 import { TimePicker } from "@openloomi/ui";
 import { MultiCombobox } from "@openloomi/ui";
@@ -26,7 +26,6 @@ import {
 } from "@openloomi/ui";
 import { RemixIcon } from "@/components/remix-icon";
 import { Spinner } from "@/components/spinner";
-import type { ModelType } from "@/components/agent/model-selector";
 
 type CronPreset = "daily" | "weekly" | "monthly" | "custom";
 type CronScheduleSelectValue =
@@ -50,7 +49,6 @@ interface EditFormState {
   intervalMinutes: number;
   intervalHours: number;
   scheduledAt: string;
-  selectedModel: ModelType;
   enabled: boolean;
 }
 
@@ -194,7 +192,6 @@ export default function ScheduledJobCreatePage() {
     intervalMinutes: 60,
     intervalHours: 1,
     scheduledAt: "",
-    selectedModel: "default",
     enabled: true,
   });
 
@@ -302,9 +299,6 @@ export default function ScheduledJobCreatePage() {
           ? {
               baseUrl: AI_PROXY_BASE_URL,
               apiKey: cloudAuthToken,
-              ...(form.selectedModel !== "default"
-                ? { model: form.selectedModel }
-                : {}),
             }
           : undefined;
 
@@ -454,7 +448,7 @@ export default function ScheduledJobCreatePage() {
         </div>
       </div>
 
-      <TwoPaneSidebarLayout
+      <TwoPanelSidebarLayout
         isSidebarOpen={false}
         breakpoint="lg"
         sidebarClassName="lg:min-w-[420px] lg:max-w-[420px]"
@@ -1110,7 +1104,7 @@ export default function ScheduledJobCreatePage() {
             </div>
           </div>
         </div>
-      </TwoPaneSidebarLayout>
+      </TwoPanelSidebarLayout>
     </div>
   );
 }

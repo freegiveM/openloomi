@@ -1,12 +1,35 @@
 {
   "name": "@openloomi/integrations-asana",
-  "version": "0.8.8",
-  "private": true,
+  "version": "0.9.0",
   "type": "module",
-  "exports": {
-    ".": "./src/index.ts",
-    "./client": "./src/client.ts"
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
   },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js",
+    "./client": "./dist/client.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/melandlabs/openloomi.git",
+    "directory": "packages/integrations/asana"
+  },
+  "homepage": "https://github.com/melandlabs/openloomi/tree/main/packages/integrations/asana",
+  "bugs": {
+    "url": "https://github.com/melandlabs/openloomi/issues"
+  },
+  "license": "Apache-2.0",
+  "description": "OpenLoomi · integrations/asana module",
+  "keywords": [
+    "openloomi"
+  ],
   "dependencies": {
     "@openloomi/shared": "workspace:*",
     "zod": "^4.3.6"
@@ -19,6 +42,7 @@
     "typescript": "^5.6.3"
   },
   "scripts": {
-    "build": "echo no build needed"
+    "build": "tsup",
+    "prepublishOnly": "pnpm build"
   }
 }

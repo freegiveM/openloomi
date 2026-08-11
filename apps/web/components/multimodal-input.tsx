@@ -21,14 +21,12 @@ import { RemixIcon } from "@/components/remix-icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 import { ScrollArea } from "./ui/scroll-area";
-import { EventSearchDialog } from "./event-search-dialog";
 import useSWR from "swr";
 import { fetcher, fetcherWithCloudAuth } from "@/lib/utils";
 import equal from "fast-deep-equal";
 import type { UseChatHelpers } from "@ai-sdk/react";
 import type { Attachment, ChatMessage } from "@openloomi/shared";
 import { useTranslation } from "react-i18next";
-import type { Insight } from "@/lib/db/schema";
 import type { SuggestedPrompt } from "./suggested-actions";
 import { SUPPORTED_FILE_EXTENSIONS } from "@/lib/files/config";
 import { uploadFile, uploadRagFile } from "@/lib/files/upload";
@@ -50,11 +48,6 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 import { getAuthToken } from "@/lib/auth/token-manager";
-import {
-  MODELS,
-  type ModelType,
-  useModelPreference,
-} from "@/components/agent/model-selector";
 
 /**
  * Detect if running in Tauri environment
@@ -978,67 +971,14 @@ function AtMentionChannelForm({
   );
 }
 
-/** @ cascade sub-view: Events (unified popup + global search + select one as badge) */
-function AtMentionEventList({
-  onSelect,
-  onBack,
-}: {
-  onSelect: (insight: { id: string; title?: string | null }) => void;
-  onBack: () => void;
-}) {
-  const { t } = useTranslation();
-
-  return (
-    <AtMentionSearchableList<{ id: string; title?: string | null }>
-      onBack={onBack}
-      searchPlaceholder={t("chat.searchEvents", "Search events")}
-      getItemKey={(i) => i.id}
-      getItemLabel={(i) => i.title || i.id}
-      onSelect={onSelect}
-      emptyMessage={t(
-        "chat.noEventsHint",
-        "No events, please focus or add an event first",
-      )}
-      fetchConfig={{
-        getFetchKey: (q) => {
-          // Use search API when there is a search term, recent events API when there is no search term
-          if (q) {
-            return `/api/search?q=${encodeURIComponent(q)}&types=events&limit=50`;
-          }
-          return "/api/insights?limit=50&days=0";
-        },
-        parseResponse: (data: unknown) => {
-          // Search API response format: { events: SearchResultItem[] }
-          // Recent events API response format: { items: Insight[] }
-          const searchResult = data as
-            | { events?: Array<{ id: string; title?: string | null }> }
-            | undefined;
-          if (searchResult?.events) {
-            return searchResult.events;
-          }
-          const listResult = data as
-            | { items?: Array<{ id: string; title?: string | null }> }
-            | undefined;
-          return listResult?.items ?? [];
-        },
-      }}
-    />
-  );
-}
-
 function PureMultimodalInput({
   chatId,
   input,
   setInput,
-  stop,
   attachments,
   setAttachments,
-  setMessages,
   sendMessage,
   className,
-  selectedInsight,
-  remainingSuggestions = [],
-  onSuggestionClick,
 }: {
   chatId: string;
   input: string;
@@ -1049,18 +989,13 @@ function PureMultimodalInput({
   setMessages: UseChatHelpers<ChatMessage>["setMessages"];
   sendMessage: UseChatHelpers<ChatMessage>["sendMessage"];
   className?: string;
-  selectedInsight?: Insight;
   remainingSuggestions?: SuggestedPrompt[];
   onSuggestionClick?: (suggestion: SuggestedPrompt) => void;
 }) {
   const {
-    focusedInsights,
-    clearFocusedInsights,
-    toggleFocusedInsight,
     isAgentRunning,
   } = useChatContext();
   const { t } = useTranslation();
-  const [selectedModel, setSelectedModel] = useModelPreference();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const inputWrapperRef = useRef<HTMLDivElement>(null);
   const atMentionListRef = useRef<HTMLDivElement>(null);
@@ -1208,7 +1143,6 @@ function PureMultimodalInput({
   >([]);
   const [isDraggingFile, setIsDraggingFile] = useState(false);
   const dragCounterRef = useRef(0);
-  const [isEventSearchDialogOpen, setIsEventSearchDialogOpen] = useState(false);
   const [uploadedRagDocuments, setUploadedRagDocuments] = useState<
     Array<{ id: string; name: string }>
   >([]);
@@ -1940,9 +1874,6 @@ function PureMultimodalInput({
     // Use ref to get the latest RAG document list, avoiding closure issues
     const currentRagDocuments = uploadedRagDocumentsRef.current;
 
-    // Capture current focusedInsights before sending message, avoiding being affected by subsequent clearFocusedInsights
-    const currentFocusedInsights = focusedInsights;
-
     // Check if sendMessage exists (chat instance may not be fully initialized)
     if (!sendMessage) {
       toast.error(
@@ -1973,7 +1904,7 @@ function PureMultimodalInput({
           text: input,
         },
       ],
-      // Store RAG documents and Insights info in metadata
+      // Store RAG documents info in metadata
       // People/action items/channels parsed from [[ref:...]] in input content
       metadata: {
         ...(currentRagDocuments.length > 0
@@ -1982,12 +1913,6 @@ function PureMultimodalInput({
         ...(workspaceFileRefs.length > 0 ? { workspaceFileRefs } : {}),
         ...(() => {
           const refs = extractRefsFromContent(input);
-          const insightsToSend = currentFocusedInsights;
-          const fromRefs = refs.eventIds ?? [];
-          const fromInsights = insightsToSend.map((i) => i.id);
-          const mergedInsightIds = Array.from(
-            new Set([...fromRefs, ...fromInsights]),
-          );
           return {
             ...(refs.people.length > 0
               ? { referencedPeople: refs.people }
@@ -1998,20 +1923,6 @@ function PureMultimodalInput({
             ...(refs.channels.length > 0
               ? { referencedChannels: refs.channels }
               : {}),
-            ...(mergedInsightIds.length > 0
-              ? {
-                  focusedInsights: insightsToSend.map((insight) => ({
-                    id: insight.id,
-                    title: insight.title,
-                    description: insight.description,
-                    details: insight.details,
-                    groups: insight.groups,
-                    platform: insight.platform,
-                  })),
-                  focusedInsightIds: mergedInsightIds,
-                  referencedContextInsightIds: mergedInsightIds,
-                }
-              : {}),
           };
         })(),
       },
@@ -2019,9 +1930,6 @@ function PureMultimodalInput({
 
     sendMessage(messageObj)
       .then(() => {
-        if (currentFocusedInsights.length > 0) {
-          clearFocusedInsights();
-        }
         setInput("");
         setAttachments([]);
         setUploadedRagDocuments([]);
@@ -2054,8 +1962,6 @@ function PureMultimodalInput({
     chatId,
     uploadedRagDocuments,
     setUploadedRagDocuments,
-    focusedInsights,
-    clearFocusedInsights,
     workspaceFileRefs,
   ]);
 
@@ -2508,41 +2414,6 @@ function PureMultimodalInput({
                         onBack={() => setAtMentionSelectedCategory(null)}
                       />
                     )}
-                    {atMentionSelectedCategory === "event" && (
-                      <AtMentionEventList
-                        onSelect={async (insight) => {
-                          // Immediately close menu, prevent setInput from triggering handleInput to reopen
-                          setIsAtMentionOpen(false);
-                          setAtMentionSelectedCategory(null);
-                          // Remove @ from input box
-                          const range = atMentionRangeRef.current;
-                          if (range) {
-                            setInput(
-                              (prev) =>
-                                prev.slice(0, range.start) +
-                                prev.slice(range.end),
-                            );
-                            atMentionRangeRef.current = null;
-                          }
-                          // Get full insight data and add to focused list
-                          try {
-                            const response = await fetch(
-                              `/api/insights/${insight.id}?fetch=true`,
-                            );
-                            if (response.ok) {
-                              const data = await response.json();
-                              const fullInsight = data.insight;
-                              if (fullInsight) {
-                                toggleFocusedInsight(fullInsight);
-                              }
-                            }
-                          } catch (e) {
-                            console.error("Failed to fetch insight:", e);
-                          }
-                        }}
-                        onBack={() => setAtMentionSelectedCategory(null)}
-                      />
-                    )}
                   </>
                 ) : filteredAtMentionCategories.length === 0 ? (
                   <div
@@ -2854,73 +2725,10 @@ function PureMultimodalInput({
                   disabled={isUploadingFile}
                 />
               </div>
-
-              <div className="shrink-0 ml-2 flex items-center gap-2">
-                {/* Model selection: shows current model name + down arrow, placed to the left of send button */}
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="h-9 shrink-0 gap-1 rounded-lg px-2 text-xs font-medium text-muted-foreground hover:text-foreground"
-                      aria-label={t("common.model", "Model")}
-                    >
-                      <span className="max-w-[120px] truncate">
-                        {MODELS[selectedModel]?.name ?? selectedModel}
-                      </span>
-                      <RemixIcon name="arrow_down_s" size="size-3.5" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent
-                    align="end"
-                    className="w-[160px] max-h-[400px] overflow-y-auto"
-                  >
-                    {Object.entries(MODELS).map(([id, model]) => {
-                      const isSelected = selectedModel === id;
-                      return (
-                        <DropdownMenuItem
-                          key={id}
-                          onClick={() => setSelectedModel(id as ModelType)}
-                          className={cx(
-                            "flex items-center justify-between gap-2 p-1.5 cursor-pointer",
-                            isSelected ? "bg-accent" : "",
-                          )}
-                        >
-                          <span className="text-xs font-medium">
-                            {model.name}
-                          </span>
-                          {isSelected && (
-                            <RemixIcon
-                              name="check"
-                              size="size-3"
-                              className="text-primary"
-                            />
-                          )}
-                        </DropdownMenuItem>
-                      );
-                    })}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-                {isAgentRunning ? (
-                  <StopButton stop={stop} setMessages={setMessages} />
-                ) : (
-                  <SendButton
-                    input={input}
-                    submitForm={submitForm}
-                    isUploadingFile={isUploadingFile}
-                  />
-                )}
-              </div>
             </div>
           </div>
         </div>
       </div>
-
-      <EventSearchDialog
-        open={isEventSearchDialogOpen}
-        onOpenChange={setIsEventSearchDialogOpen}
-      />
 
       {/* Workspace file selection */}
       <Dialog

@@ -75,6 +75,10 @@ export async function startClaudeGoalRuntimeSession(
   const goalRuntime = input.goalRuntime ?? getAgentGoalRuntime();
   let registration: RuntimeSessionRegistration | undefined;
   try {
+    await goalRuntime.runtimeSessions.ensure(
+      ownerId,
+      input.runtime.runtimeSessionId,
+    );
     const expectedRunEpoch = await goalRuntime.goals.getRuntimeSessionRunEpoch(
       ownerId,
       input.runtime.runtimeSessionId,
@@ -99,14 +103,40 @@ export async function startClaudeGoalRuntimeSession(
         goalRuntime.observations,
       ),
     );
-    registration = goalRuntime.sessions.register({
+    input.runtime.attachGoalStopController(
+      goalRuntime.controller.forSession({
+        ownerId,
+        runtimeSessionId: input.runtime.runtimeSessionId,
+        transport: input.runtime,
+      }),
+    );
+    const registryRegistration = goalRuntime.sessions.register({
       ownerId,
       transport: input.runtime,
     });
+    let released = false;
+    registration = {
+      ...registryRegistration,
+      release: () => {
+        if (released) return;
+        released = true;
+        registryRegistration.release();
+        void goalRuntime.runtimeSessions
+          .releaseProviderSession(ownerId, input.runtime.runtimeSessionId)
+          .catch((error) => {
+            console.error(
+              "[Agent Goal Runtime] Failed to release Claude provider session",
+              error,
+            );
+          });
+      },
+    };
     input.runtime.start(input.start);
-    const replay = await goalRuntime.goals.replayPendingInstructions(
-      ownerId,
-      input.runtime.runtimeSessionId,
+    const replay = await input.runtime.replayInitialInstructions(() =>
+      goalRuntime.goals.replayPendingInstructions(
+        ownerId,
+        input.runtime.runtimeSessionId,
+      ),
     );
     if (replay !== null && replay.status !== "accepted") {
       throw new ClaudeGoalRuntimeRegistrationError(replay);

@@ -12,7 +12,7 @@ import {
   type ExtractedMessageInfo,
 } from "@openloomi/integrations/channels/sources/types";
 import { ingestAttachmentForUser } from "@/lib/integrations/utils/attachments";
-import type { UserType } from "@/app/(auth)/auth";
+import type { UserType } from "@openloomi/contracts/user-type";
 import { updateIntegrationAccount } from "@/lib/db/queries";
 
 const GRAPH_BASE = "https://graph.microsoft.com/v1.0";

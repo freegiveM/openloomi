@@ -2,7 +2,7 @@ import { auth } from "@/app/(auth)/auth";
 import {
   getRawMessageManager,
   getRawMessageStorageBackend,
-} from "@/lib/memory/raw-message-store";
+} from "@openloomi/memory-store/raw-message-store";
 import { AppError } from "@openloomi/shared/errors";
 
 /**

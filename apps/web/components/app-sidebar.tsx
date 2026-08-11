@@ -3,14 +3,7 @@
 import { RemixIcon } from "@/components/remix-icon";
 import { useMobileDetection } from "@/hooks/use-mobile-detection";
 import { generateUUID } from "@/lib/utils";
-import { useCustomEvent } from "@openloomi/hooks/use-custom-event";
-import { Button } from "@openloomi/ui";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@openloomi/ui";
+import { Button, DropdownMenuTrigger } from "@openloomi/ui";
 import { signOut, useSession } from "next-auth/react";
 import Image from "next/image";
 import Link from "next/link";
@@ -30,11 +23,9 @@ import { useUserProfile } from "@/hooks/use-user-profile";
 import { saveLanguage } from "@/i18n";
 import { guestRegex } from "@/lib/env/constants";
 import { isTauri } from "@/lib/tauri";
-import { cn, fetcher, getHomePath } from "@/lib/utils";
+import { cn, getHomePath } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@openloomi/ui";
 import dynamic from "next/dynamic";
-import useSWR from "swr";
-import { useLocalStorage } from "usehooks-ts";
 import { toast } from "./toast";
 
 /**
@@ -91,19 +82,6 @@ export function AppSidebar() {
   const [isMyStuffExpanded, setIsMyStuffExpanded] = useState(true);
 
   // Use custom hooks for localStorage sync
-  const [contextTimeFilter, setContextTimeFilter] = useLocalStorage<
-    "all" | "24h" | "today"
-  >("openloomi_focusTimeFilter", "24h");
-
-  const [categoryStats, setCategoryStats] = useLocalStorage<
-    Record<string, number>
-  >("openloomi_categoryStats", {});
-
-  // Total insights count (not affected by filter conditions)
-  const [totalCategoryStats, setTotalCategoryStats] = useLocalStorage<
-    Record<string, number>
-  >("openloomi_totalCategoryStats", {});
-
   const [plan, setPlan] = useState<string | null>(null);
   const { profile } = useUserProfile();
 
@@ -116,68 +94,6 @@ export function AppSidebar() {
 
   const { data: session, status, update: updateSession } = useSession();
   const router = useRouter();
-
-  // Get user category list
-  const { data: categoriesData } = useSWR<{
-    categories: Array<{
-      id: string;
-      name: string;
-      isActive: boolean;
-      sortOrder: number;
-    }>;
-  }>(session?.user ? "/api/categories" : null, fetcher, {
-    revalidateOnFocus: false,
-    revalidateOnReconnect: false,
-    dedupingInterval: 60000,
-  });
-
-  /**
-   * Get enabled category list (maintains sortOrder order)
-   */
-  const activeCategories = useMemo(() => {
-    if (!categoriesData?.categories) {
-      return [];
-    }
-    return categoriesData.categories
-      .filter((cat) => cat.isActive)
-      .sort((a, b) => a.sortOrder - b.sortOrder) // Sort by sortOrder
-      .map((cat) => cat.name);
-  }, [categoriesData]);
-
-  /**
-   * Get insights count per category (read from localStorage, synced by EventsPanel)
-   * All count uses totalCategoryStats (not affected by filter conditions), individual category counts use categoryStats (affected by filter conditions)
-   *
-   * Optimization: Use JSON.stringify for stable dependency comparison to avoid
-   * unnecessary recalculations when the objects are re-created but values are same
-   */
-  const categoryCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-
-    // Initialize all enabled category counts to 0
-    activeCategories.forEach((category) => {
-      counts[category] = 0;
-    });
-    counts.all = 0;
-    counts.Other = 0;
-
-    // Use category stats synced from EventsPanel (individual category counts)
-    if (categoryStats) {
-      Object.assign(counts, categoryStats);
-    }
-
-    // All count uses totalCategoryStats (not affected by time/read/read filter)
-    if (totalCategoryStats && totalCategoryStats.all !== undefined) {
-      counts.all = totalCategoryStats.all;
-    }
-
-    return counts;
-    // Use stringified values for stable comparison - only recalculate when values actually change
-  }, [
-    JSON.stringify(categoryStats),
-    JSON.stringify(totalCategoryStats),
-    activeCategories,
-  ]);
 
   /**
    * Toggle visibility of the "My stuff" list.
@@ -209,26 +125,6 @@ export function AppSidebar() {
   const location = searchParamsString
     ? `${deferredPathname}?${searchParamsString}`
     : deferredPathname;
-
-  // Listen for category stats updates from EventsPanel
-  useCustomEvent<Record<string, number>>(
-    "openloomi:categoryStatsUpdate",
-    (stats) => {
-      if (stats) {
-        setCategoryStats(stats);
-      }
-    },
-  );
-
-  // Listen for total category stats updates (unfiltered count) from EventsPanel
-  useCustomEvent<Record<string, number>>(
-    "openloomi:totalCategoryStatsUpdate",
-    (stats) => {
-      if (stats) {
-        setTotalCategoryStats(stats);
-      }
-    },
-  );
 
   /**
    * Get user display name (nickname)
@@ -806,7 +702,6 @@ export function AppSidebar() {
                         );
                       })}
 
-                      {/* New Chat - opens as right panel under Focus/Tracking, keeping left Insight/Focus visible; otherwise chat page only */}
                       {isNavVisible("chat") &&
                         (() => {
                           const isNewChatActive =
@@ -1069,89 +964,6 @@ export function AppSidebar() {
                         </Tooltip>
                       )}
 
-                      {/* When collapsed: hide context submenu trigger per UX requirement */}
-                      {false && isCollapsed && !isMobile && (
-                        <DropdownMenu>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <DropdownMenuTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  className="w-full justify-center gap-2 px-3 py-2 h-auto rounded-md transition-colors text-sidebar-foreground hover:bg-sidebar-hover hover:text-sidebar-hover-foreground flex items-center"
-                                >
-                                  <RemixIcon
-                                    name="radar"
-                                    size={SIDEBAR_NAV_ICON_SIZE}
-                                  />
-                                </Button>
-                              </DropdownMenuTrigger>
-                            </TooltipTrigger>
-                          </Tooltip>
-                          <DropdownMenuContent
-                            side="right"
-                            align="start"
-                            sideOffset={8}
-                            className="min-w-[10rem] max-h-[min(20rem,70vh)] overflow-y-auto border border-border bg-card text-card-foreground z-[9999]"
-                          >
-                            {/* All */}
-                            <DropdownMenuItem
-                              onSelect={() => {
-                                // Direct jump to /inbox, not preserving any current params
-                                window.location.href = "/inbox";
-                              }}
-                              className="cursor-pointer"
-                            >
-                              <span className="flex-1">
-                                {t("nav.contextAll", "All")}
-                              </span>
-                              {categoryCounts.all > 0 && (
-                                <span className="ml-auto rounded-full px-1 py-px text-xs font-medium bg-primary/10 text-primary">
-                                  {categoryCounts.all}
-                                </span>
-                              )}
-                            </DropdownMenuItem>
-                            {/* Each context category */}
-                            {(activeCategories.length > 0
-                              ? [...activeCategories, "Other"]
-                              : []
-                            ).map((category) => {
-                              const isActive =
-                                searchParams?.get("category") === category;
-                              return (
-                                <DropdownMenuItem
-                                  key={category}
-                                  onSelect={() => {
-                                    // Use startTransition to prioritize navigation
-                                    startTransition(() => {
-                                      router.push(
-                                        `/inbox?category=${encodeURIComponent(category)}`,
-                                      );
-                                    });
-                                  }}
-                                  className={cn(
-                                    "cursor-pointer",
-                                    isActive && "bg-sidebar-hover font-normal",
-                                  )}
-                                >
-                                  <span className="flex-1">
-                                    {category === "Other"
-                                      ? t("nav.contextOther", "Other")
-                                      : t(
-                                          `settings.contextTemplates.${category}.name`,
-                                          category,
-                                        )}
-                                  </span>
-                                  {categoryCounts[category] > 0 && (
-                                    <span className="ml-auto rounded-full px-1 py-px text-xs font-medium bg-primary/10 text-primary">
-                                      {categoryCounts[category]}
-                                    </span>
-                                  )}
-                                </DropdownMenuItem>
-                              );
-                            })}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      )}
                     </>
                   )}
                 </nav>

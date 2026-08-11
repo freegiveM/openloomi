@@ -3,7 +3,6 @@
 import cx from "classnames";
 import { AnimatePresence, motion } from "framer-motion";
 import { memo, useEffect, useRef, useState, useCallback, useMemo } from "react";
-import ReactDOM from "react-dom";
 import type { Vote } from "@/lib/db/schema";
 import { RemixIcon } from "../remix-icon";
 import { MarkdownWithCitations } from "../markdown-with-citations";
@@ -22,18 +21,12 @@ import { useIntegrations } from "@/hooks/use-integrations";
 import { PreviewAttachment } from "../preview-attachment";
 import { MindMapPreviewDynamic } from "./mindmap-preview-dynamic";
 import { MessageMmarkFile } from "./message-mmark-file";
-import type { Insight } from "@/lib/db/schema";
-import { CitedInsightsDrawer } from "../cited-insights-drawer";
-import InsightDetailDrawer from "../insight-detail-drawer";
-import { useInsightPagination } from "@/hooks/use-insight-data";
-import { useInsightActions } from "@/hooks/use-insight-actions";
 import { getFileIcon, getFileColor } from "@/components/file-icons";
 import { stripMalformedToolCalls } from "@/lib/utils/tool-names";
 import { QuestionInput } from "../question-input";
 import { PasswordInput } from "../password-input";
 import { PermissionDialog } from "../permission-dialog";
 import { useChatContext } from "../chat-context";
-import { useGlobalInsightDrawer } from "../global-insight-drawer";
 import type { ContentSegment } from "@openloomi/shared/ref";
 import { parseContentWithRefs } from "@openloomi/shared/ref";
 import { InlineRefBadge } from "../inline-ref-badge";
@@ -42,9 +35,7 @@ import { InlineRefBadge } from "../inline-ref-badge";
 import { ErrorMessageDisplay } from "./error-message-display";
 import { NativeToolCall } from "./native-tool-call";
 import { RawMessagesResult } from "./raw-messages-result";
-import { LifestyleImageConsent } from "./lifestyle-image-consent";
 import { ToolCallAccordion, type ToolCallPart } from "./tool-call-accordion";
-import { buildLifestyleReferenceImages } from "@/lib/ai/image-generation/lifestyle-reference-images";
 import {
   LibraryItemRow,
   type LibraryItem,
@@ -57,10 +48,6 @@ import { collectToolOutputFilesFromParts } from "./message-output-files";
 import { normalizeExtractedArtifactPath } from "@/lib/files/extract-artifact-paths";
 import { format } from "date-fns";
 import { zhCN, enUS } from "date-fns/locale";
-
-// Global set to track processed insight IDs across all message components
-// This prevents duplicate processing when components re-render
-const globallyProcessedInsightIds = new Set<string>();
 
 /**
  * Format message timestamp for hover display
@@ -101,8 +88,6 @@ const PurePreviewMessage = ({
   isLoading,
   sendMessage,
   setMessages,
-  onRefresh,
-  requiresScrollPadding,
   isHighlighted = false,
   inVisibleLoadingIds,
 }: {
@@ -113,8 +98,6 @@ const PurePreviewMessage = ({
   isLoading: boolean;
   sendMessage: UseChatHelpers<ChatMessage>["sendMessage"];
   setMessages: UseChatHelpers<ChatMessage>["setMessages"];
-  onRefresh: () => Promise<void>;
-  requiresScrollPadding: boolean;
   isHighlighted?: boolean;
   inVisibleLoadingIds?: Set<string>;
 }) => {
@@ -128,9 +111,6 @@ const PurePreviewMessage = ({
   const previousPanelIdRef = useRef(panelId);
 
   const [isHighlighting, setIsHighlighting] = useState(false);
-  const [selectedInsight, setSelectedInsight] = useState<Insight | null>(null);
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  const [isSourcesDrawerOpen, setIsSourcesDrawerOpen] = useState(false);
   const {
     openFilePreviewPanel,
     messages: contextMessages,
@@ -164,156 +144,6 @@ const PurePreviewMessage = ({
     [openFilePreviewPanel],
   );
 
-  const { insightData, mutateInsightList } = useInsightPagination();
-
-  // Global insight drawer hook
-  const globalDrawer = useGlobalInsightDrawer();
-
-  // Insight operations hook
-  const { handleFavoriteInsight, handleArchiveInsight } = useInsightActions(
-    mutateInsightList,
-    selectedInsight,
-    setSelectedInsight,
-    setIsDrawerOpen,
-  );
-
-  // Store pending insight for optimistic update (processed in useEffect)
-  const [pendingInsight, setPendingInsight] = useState<{
-    insight: Insight;
-    insightId: string;
-  } | null>(null);
-
-  // Handle optimistic update in useEffect to avoid setting state during render
-  useEffect(() => {
-    if (pendingInsight) {
-      const { insight, insightId } = pendingInsight;
-
-      // Check if already processed to prevent duplicates (using global set)
-      if (globallyProcessedInsightIds.has(insightId)) {
-        console.log(
-          "[Optimistic update] Skipping already processed insight:",
-          insightId,
-        );
-        setPendingInsight(null);
-        return;
-      }
-
-      // Mark as processed globally
-      globallyProcessedInsightIds.add(insightId);
-
-      // Optimistically update the insight list
-      mutateInsightList((currentPages) => {
-        if (!currentPages || currentPages.length === 0) {
-          return currentPages;
-        }
-
-        // Add the new insight to the first page
-        const updatedPages = currentPages.map((page, index) => {
-          if (index === 0) {
-            return {
-              ...page,
-              items: [insight, ...(page.items || [])],
-            };
-          }
-          return page;
-        });
-
-        return updatedPages;
-      }, false);
-
-      // Clear pending insight after processing
-      setPendingInsight(null);
-    }
-  }, [pendingInsight, mutateInsightList]);
-
-  /**
-   * Extract all Insight IDs referenced in the message
-   */
-  const citedInsightIds = useMemo(() => {
-    const textFromParts = message.parts
-      ?.filter((part) => part.type === "text")
-      .map((part) => part.text)
-      .join("\n")
-      .trim();
-
-    if (!textFromParts) return [];
-
-    const citationRegex = /\^\[([^\]]+)\]\^/g;
-    const ids: string[] = [];
-    let match: RegExpExecArray | null = citationRegex.exec(textFromParts);
-
-    while (match !== null) {
-      const insightId = match[1].toString();
-      if (insightId && !ids.includes(insightId)) {
-        ids.push(insightId);
-      }
-      match = citationRegex.exec(textFromParts);
-    }
-
-    return ids;
-  }, [message.parts]);
-
-  /**
-   * Get all referenced Insights
-   */
-  const citedInsights = useMemo(() => {
-    if (citedInsightIds.length === 0) return [];
-
-    return citedInsightIds
-      .map((id) => insightData.items.find((i: Insight) => i.id === id))
-      .filter((insight): insight is Insight => insight !== undefined);
-  }, [citedInsightIds, insightData.items]);
-
-  /**
-   * Handle citation badge click event - use global drawer with API fetch fallback
-   */
-  const handleCitationClick = useCallback(
-    (insightId: string) => {
-      const insight = insightData.items.find(
-        (i: Insight) => i.id === insightId,
-      );
-
-      if (!insight) {
-        // Fetch directly from API if not in paginated data
-        fetch(`/api/insights/${insightId}?fetch=true`)
-          .then((res) => res.json())
-          .then((data) => {
-            if (data?.insight && globalDrawer?.openDrawer) {
-              globalDrawer.openDrawer(data.insight);
-            }
-          })
-          .catch((err) => console.error("[Message] Direct fetch error:", err));
-      } else if (globalDrawer?.openDrawer) {
-        globalDrawer.openDrawer(insight);
-      }
-    },
-    [insightData.items, globalDrawer],
-  );
-
-  /**
-   * Handle source badge click event - open cited Insights drawer
-   */
-  const handleSourcesClick = useCallback(() => {
-    if (citedInsights.length > 0) {
-      setIsSourcesDrawerOpen(true);
-    }
-  }, [citedInsights]);
-
-  /**
-   * Close drawer
-   */
-  const handleCloseDrawer = useCallback(() => {
-    setIsDrawerOpen(false);
-    setSelectedInsight(null);
-  }, []);
-
-  /**
-   * Close sources drawer
-   */
-  const handleCloseSourcesDrawer = useCallback(() => {
-    setIsSourcesDrawerOpen(false);
-  }, []);
-
   useEffect(() => {
     if (!isHighlighted) return;
     setIsHighlighting(true);
@@ -329,60 +159,6 @@ const PurePreviewMessage = ({
       previousPanelIdRef.current = panelId;
     }
   }, [isPanelOpen, openPanel, panelId]);
-
-  // Track processed insight refresh parts to prevent duplicate processing
-  const processedInsightRefreshPartsRef = useRef<Set<string>>(new Set());
-
-  // Process data-insightsRefresh parts in useEffect to avoid infinite re-renders
-  useEffect(() => {
-    if (!message.parts) return;
-
-    message.parts.forEach((part, index) => {
-      const partId = `${message.id}-${index}`;
-      const type = (part as any).type;
-
-      if (type === "data-insightsRefresh") {
-        // Skip if already processed
-        if (processedInsightRefreshPartsRef.current.has(partId)) {
-          return;
-        }
-
-        const data = (part as any).data;
-
-        if (data?.action === "create" && data?.insight) {
-          const { insight, insightId } = data;
-
-          // Skip if already processed to prevent duplicates (using global set)
-          if (!globallyProcessedInsightIds.has(insightId)) {
-            setPendingInsight({ insight, insightId });
-          }
-        } else if (data?.action === "delete" && data?.insightId) {
-          // Optimistic update: remove deleted insight from list
-          const { insightId } = data;
-          mutateInsightList((currentData) => {
-            if (!currentData) return currentData;
-
-            return currentData.map((page) => ({
-              ...page,
-              items: page.items.filter(
-                (item: Insight) => item.id !== insightId,
-              ),
-            }));
-          }, false);
-
-          console.log(`[Message] Optimistically deleted insight: ${insightId}`);
-        }
-
-        // Mark this part as processed
-        processedInsightRefreshPartsRef.current.add(partId);
-
-        // Still call onRefresh for compatibility
-        if (onRefresh && typeof onRefresh === "function") {
-          onRefresh();
-        }
-      }
-    });
-  }, [message.id, message.parts, mutateInsightList, onRefresh]);
 
   // Filter duplicate agent plan messages, keep only the latest one
   // If message contains error and plan not executed (currentStep=0), hide the plan
@@ -824,8 +600,6 @@ const PurePreviewMessage = ({
                                 if (!isUserMessage)
                                   return (
                                     <MarkdownWithCitations
-                                      onCitationClick={handleCitationClick}
-                                      insights={insightData.items}
                                       onPreviewFile={
                                         openMessageFilePreviewPanel
                                       }
@@ -843,8 +617,6 @@ const PurePreviewMessage = ({
                                 if (!hasRefs)
                                   return (
                                     <MarkdownWithCitations
-                                      onCitationClick={handleCitationClick}
-                                      insights={insightData.items}
                                       onPreviewFile={
                                         openMessageFilePreviewPanel
                                       }
@@ -1050,42 +822,6 @@ const PurePreviewMessage = ({
                             maxHeight="400px"
                           />
                         </div>
-                      );
-                    }
-
-                    if (type === "data-lifestyleImageConsent") {
-                      const consentPart = part as {
-                        data?: {
-                          prompt?: string;
-                          referenceImages?: unknown;
-                        };
-                      };
-                      const prompt = consentPart.data?.prompt?.trim();
-                      if (!prompt) return null;
-                      const referenceImages = buildLifestyleReferenceImages(
-                        Array.isArray(consentPart.data?.referenceImages)
-                          ? consentPart.data.referenceImages
-                          : [],
-                      );
-
-                      return (
-                        <LifestyleImageConsent
-                          key={key}
-                          onConfirm={() =>
-                            confirmLifestyleImageGeneration({
-                              chatId,
-                              assistantMessageId: message.id,
-                              prompt,
-                              referenceImages,
-                            })
-                          }
-                          onDecline={() =>
-                            declineLifestyleImageGeneration({
-                              chatId,
-                              assistantMessageId: message.id,
-                            })
-                          }
-                        />
                       );
                     }
 
@@ -1315,9 +1051,6 @@ const PurePreviewMessage = ({
                       return null;
                     }
 
-                    // Note: data-insightsRefresh parts are now processed in useEffect
-                    // to avoid infinite re-renders during component render
-
                     // Handle getRawMessages tool calls
                     if (type === "tool-getRawMessages") {
                       const toolPart = part as any;
@@ -1440,38 +1173,9 @@ const PurePreviewMessage = ({
               message={message}
               vote={vote}
               isLoading={isLoading}
-              onSourcesClick={handleSourcesClick}
             />
           </div>
         </div>
-
-        {/* Cited Insights drawer */}
-        <CitedInsightsDrawer
-          insights={citedInsights}
-          isOpen={isSourcesDrawerOpen}
-          onClose={handleCloseSourcesDrawer}
-          onSelectInsight={(insight) => {
-            setSelectedInsight(insight);
-            setIsDrawerOpen(true);
-            setIsSourcesDrawerOpen(false);
-          }}
-        />
-
-        {/* Single Insight detail drawer - use Portal for fullscreen display */}
-        {isDrawerOpen &&
-          ReactDOM.createPortal(
-            <InsightDetailDrawer
-              insight={selectedInsight}
-              isOpen={isDrawerOpen}
-              onClose={() => {
-                setIsDrawerOpen(false);
-                setSelectedInsight(null);
-              }}
-              onArchive={handleArchiveInsight}
-              onFavorite={handleFavoriteInsight}
-            />,
-            document.body,
-          )}
       </motion.div>
     </AnimatePresence>
   );
@@ -1482,8 +1186,6 @@ export const PreviewMessage = memo(
   (prevProps, nextProps) => {
     if (prevProps.isLoading !== nextProps.isLoading) return false;
     if (prevProps.message.id !== nextProps.message.id) return false;
-    if (prevProps.requiresScrollPadding !== nextProps.requiresScrollPadding)
-      return false;
     if (prevProps.isHighlighted !== nextProps.isHighlighted) return false;
     if (prevProps.isAgentRunning !== nextProps.isAgentRunning) return false;
     if (!equal(prevProps.message.parts, nextProps.message.parts)) return false;

@@ -543,8 +543,29 @@ describe("raw-message memory graph evolution runtime", () => {
     });
 
     const snapshot = await readSnapshot(storage);
-    expect(snapshot.edges).toEqual([]);
+    // Separate is the guarantee: three clusters, none merged, no competition.
     expect(snapshot.clusters).toHaveLength(3);
+    expect(
+      snapshot.clusters.map((cluster) => cluster.applicability?.key).sort(),
+    ).toEqual(["project-1", "task-a", "task-b"]);
+    expect(
+      snapshot.clusters.some((cluster) => cluster.competitionKey !== undefined),
+    ).toBe(false);
+    // The two task-scoped observations of the same preference are topically
+    // related, which MR-1 asks be distinguishable from no relation at all, and
+    // which cross-context broadening later reads. Recording it is not merging
+    // it, and one unrelated topic relates to nothing.
+    expect(
+      snapshot.edges.map((edge) => ({
+        pair: [edge.fromNodeId, edge.toNodeId].sort(),
+        kind: edge.kind,
+        mismatch: edge.reasonCodes.includes(
+          "candidate_related_applicability_mismatch",
+        ),
+      })),
+    ).toEqual([
+      { pair: ["task-a", "task-b"], kind: "related", mismatch: true },
+    ]);
   });
 
   it("records topical relation without forcing cluster membership", async () => {
@@ -880,5 +901,90 @@ describe("raw-message memory graph evolution runtime", () => {
 
     expect((await legacyStore.readSnapshot()).nodes).toEqual([]);
     expect("readAppliedOperations" in legacyStore).toBe(false);
+  });
+
+  // MR-3 forbids counting repetition from one duplicated source as independent
+  // confirmation, and MR-4 lets only independent contexts widen a scoped
+  // memory. Source-identity deduplication stops that reaching the graph through
+  // ingestion, so this exercises the rule where independence is actually
+  // counted, over a snapshot that already carries the duplication.
+  it("does not widen a scoped memory across contexts that share one source", () => {
+    function scopedSnapshot(sourceIds: string[]): MemoryGraphSnapshot {
+      const contexts = [
+        { scope: "task" as const, key: "t1" },
+        { scope: "task" as const, key: "t2" },
+        { scope: "conversation" as const, key: "c3" },
+      ];
+      const ids = contexts.map((_, index) => `en-${index + 1}`);
+      return {
+        ownerScope: OWNER,
+        capturedAt: NOW,
+        nodes: ids.map((id, index) => ({
+          id,
+          ownerScope: OWNER,
+          type: "raw" as const,
+          sourceId: sourceIds[index] as string,
+          createdAt: NOW,
+          visibility: "default" as const,
+          applicability: contexts[index],
+          metadata: { relationGroup: "language", relationValue: "en" },
+        })),
+        clusters: ids.map((id, index) => ({
+          clusterId: `cluster:${id}`,
+          ownerScope: OWNER,
+          nodeIds: [id],
+          lifecycleStatus: "forming" as const,
+          supportScore: 0,
+          updatedAt: NOW,
+          reasonCodes: ["new_evidence_cluster"],
+          applicability: contexts[index],
+        })),
+        // The record of agreement that applicability alone prevented.
+        edges: [
+          [0, 1],
+          [0, 2],
+          [1, 2],
+        ].map(([left, right]) => ({
+          id: `edge:related:${ids[left as number]}:${ids[right as number]}`,
+          ownerScope: OWNER,
+          fromNodeId: ids[left as number] as string,
+          toNodeId: ids[right as number] as string,
+          kind: "related" as const,
+          weight: 0.45,
+          evidenceNodeIds: [],
+          reasonCodes: [
+            "candidate_related",
+            "candidate_related_applicability_mismatch",
+          ],
+          createdAt: NOW,
+        })),
+      };
+    }
+
+    const broadenedScopes = (snapshot: MemoryGraphSnapshot) =>
+      buildMemoryGraphEvolutionPlan({
+        ownerScope: OWNER,
+        newEvidence: [],
+        candidateEvidence: [],
+        snapshot,
+        now: NOW + 1000,
+        persistence: { mode: "dry-run", enabled: true },
+      })
+        .candidateClusters?.filter((cluster) =>
+          cluster.reasonCodes.includes(
+            "applicability_broadened_across_contexts",
+          ),
+        )
+        .map((cluster) => cluster.applicability?.scope);
+
+    // One source echoed into three contexts is one observation, not three.
+    expect(broadenedScopes(scopedSnapshot(["echo", "echo", "echo"]))).toEqual(
+      [],
+    );
+    // Distinct sources are the control: same structure, same edges, three
+    // genuinely independent contexts.
+    expect(
+      broadenedScopes(scopedSnapshot(["src-a", "src-b", "src-c"])),
+    ).toEqual(["global", "global", "global"]);
   });
 });

@@ -10,11 +10,12 @@ First-party plugins that turn external agent shells into a coding surface for a 
 
 ## Choose your path
 
-| If you already live in… | Install                                                                                       | First-run setup                   |
-| ----------------------- | --------------------------------------------------------------------------------------------- | --------------------------------- |
-| **Claude Code**         | `/plugin marketplace add melandlabs/plugins` then `/plugin install openloomi`                 | `/openloomi:setup`                |
-| **Codex CLI**           | `codex plugin marketplace add melandlabs/plugins` then `codex plugin add openloomi@openloomi` | `@OpenLoomi Run first-use setup.` |
-| **MCP runtime**         | `pnpm --filter @openloomi/mcp build` then `node dist/cli.js`                                  | `openloomi_setup`                 |
+| If you already live in… | Install                                                                                                                                                                                                                   | First-run setup                                     |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
+| **Claude Code**         | `/plugin marketplace add melandlabs/plugins` then `/plugin install openloomi`                                                                                                                                             | `/openloomi:setup`                                  |
+| **Codex CLI**           | `codex plugin marketplace add melandlabs/plugins` then `codex plugin add openloomi@openloomi`                                                                                                                             | `@OpenLoomi Run first-use setup.`                   |
+| **MCP runtime**         | `pnpm --filter @openloomi/mcp build` then `node dist/cli.js`                                                                                                                                                              | `openloomi_setup`                                   |
+| **Skills.sh runtime**   | `npx skills add https://github.com/melandlabs/openloomi/tree/main/skills` then `--skill openloomi openloomi-setup openloomi-memory openloomi-connectors openloomi-loop openloomi-api openloomi-feature-guide composio -y` | `/openloomi:setup` (or the agent-native equivalent) |
 
 ## Overview
 
@@ -52,6 +53,18 @@ Both plugins follow the same contract:
 
 - **[Claude Code Plugin](/docs/plugins/claude)** — Wire Claude Code into the local OpenLoomi runtime with `/openloomi:*` slash commands, a first-run setup wizard, and opt-in Pet mirror + Stop-archive hooks.
 - **[Codex Plugin](/docs/plugins/codex)** — Use Codex CLI as your coding surface while OpenLoomi owns memory, connectors, and the runtime. Ships 13 bridge commands, 8 workflow skills, and a switch that makes Codex the default agent provider.
+
+## Skills.sh / skill-only runtimes
+
+For agents that only consume the [`skills.sh`](https://skills.sh/) skill protocol, install the OpenLoomi skill set directly from this repository:
+
+```bash
+npx skills add https://github.com/melandlabs/openloomi/tree/main/skills \
+  --skill openloomi openloomi-setup openloomi-memory openloomi-connectors openloomi-loop openloomi-api openloomi-feature-guide composio \
+  -y
+```
+
+Start with the `openloomi` or `openloomi-setup` skill. The setup pass verifies that the OpenLoomi desktop app is installed, the local API is reachable, and a session token is available; if the desktop app is missing, the skill points you back to [Getting Started](/docs/getting-started) before continuing.
 
 ## Related
 

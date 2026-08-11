@@ -1,5 +1,15 @@
+export * from "./goal-controller";
+export * from "./goal-evaluator";
 export * from "./goal-service";
 export * from "./goal-replacement-coordinator";
 export type { RuntimeInstructionDispatch } from "./instruction-dispatcher";
-export { getAgentGoalRuntime, type AgentGoalRuntime } from "./runtime";
+export {
+  createSqliteAgentGoalRuntime,
+  getAgentGoalRuntime,
+  type AgentGoalRuntime,
+} from "./runtime";
+export {
+  RuntimeSessionPersistenceError,
+  type RuntimeSessionPersistencePort,
+} from "./runtime-session-persistence";
 export type { RuntimeSessionRegistration } from "./runtime-session-registry";

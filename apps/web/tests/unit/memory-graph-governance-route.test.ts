@@ -18,7 +18,7 @@ const {
 }));
 
 vi.mock("@/app/(auth)/auth", () => ({ auth: authMock }));
-vi.mock("@/lib/memory/raw-message-store", () => ({
+vi.mock("@openloomi/memory-store/raw-message-store", () => ({
   getRawMessageManager: getRawMessageManagerMock,
   getRawMessageStorageBackend: vi.fn(),
   isRawMessageStorageAvailable: isRawMessageStorageAvailableMock,

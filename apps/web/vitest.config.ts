@@ -9,6 +9,30 @@ export default defineConfig({
     alias: [
       // Specific paths first (higher priority)
       {
+        find: "@openloomi/contracts/user-type",
+        replacement: alias("../../packages/contracts/src/user-type.ts"),
+      },
+      {
+        find: "@openloomi/contracts/integration-id",
+        replacement: alias("../../packages/contracts/src/integration-id.ts"),
+      },
+      {
+        find: "@openloomi/contracts/errors",
+        replacement: alias("../../packages/contracts/src/errors.ts"),
+      },
+      {
+        find: "@openloomi/contracts/schemas",
+        replacement: alias("../../packages/contracts/src/schemas.ts"),
+      },
+      {
+        find: "@openloomi/contracts/*",
+        replacement: alias("../../packages/contracts/src/*"),
+      },
+      {
+        find: "@openloomi/contracts",
+        replacement: alias("../../packages/contracts/src/index.ts"),
+      },
+      {
         find: "@openloomi/shared/errors",
         replacement: alias("../../packages/shared/src/errors.ts"),
       },
@@ -300,6 +324,207 @@ export default defineConfig({
         find: "@openloomi/storage",
         replacement: alias("../../packages/storage/src/local.ts"),
       },
+      // @openloomi/memory-store subpaths - must come before the bare package alias
+      {
+        find: "@openloomi/memory-store/unified-search",
+        replacement: alias("../../packages/memory-store/src/search/unified-search.ts"),
+      },
+      {
+        find: "@openloomi/memory-store/raw-message-store",
+        replacement: alias("../../packages/memory-store/src/storage/raw-message-store.ts"),
+      },
+      {
+        find: "@openloomi/memory-store/sqlite-raw-message-store",
+        replacement: alias("../../packages/memory-store/src/storage/sqlite-raw-message-store.ts"),
+      },
+      {
+        find: "@openloomi/memory-store/sqlite-vector-index",
+        replacement: alias("../../packages/memory-store/src/storage/sqlite-vector-index.ts"),
+      },
+      {
+        find: "@openloomi/memory-store/chroma-memory-index",
+        replacement: alias("../../packages/memory-store/src/storage/chroma-memory-index.ts"),
+      },
+      {
+        find: "@openloomi/memory-store/postgres-raw-message-factory",
+        replacement: alias("../../packages/memory-store/src/storage/postgres-raw-message-factory.ts"),
+      },
+      {
+        find: "@openloomi/memory-store/memory-graph-write-policy",
+        replacement: alias("../../packages/memory-store/src/policies/memory-graph-write-policy.ts"),
+      },
+      {
+        find: "@openloomi/memory-store/memory-graph-correction-policy",
+        replacement: alias("../../packages/memory-store/src/policies/memory-graph-correction-policy.ts"),
+      },
+      {
+        find: "@openloomi/memory-store/*",
+        replacement: alias("../../packages/memory-store/src/*"),
+      },
+      {
+        find: "@openloomi/memory-store",
+        replacement: alias("../../packages/memory-store/src/index.ts"),
+      },
+      // @openloomi/cron (Phase 5)
+      {
+        find: "@openloomi/cron/types",
+        replacement: alias("../../packages/cron/src/types.ts"),
+      },
+      {
+        find: "@openloomi/cron/scheduler",
+        replacement: alias("../../packages/cron/src/scheduler.ts"),
+      },
+      {
+        find: "@openloomi/cron/stream-response",
+        replacement: alias("../../packages/cron/src/stream-response.ts"),
+      },
+      {
+        find: "@openloomi/cron/*",
+        replacement: alias("../../packages/cron/src/*"),
+      },
+      {
+        find: "@openloomi/cron",
+        replacement: alias("../../packages/cron/src/index.ts"),
+      },
+      // @openloomi/loop (Phase 5)
+      {
+        find: "@openloomi/loop/paths",
+        replacement: alias("../../packages/loop/src/paths.ts"),
+      },
+      {
+        find: "@openloomi/loop/cli-path",
+        replacement: alias("../../packages/loop/src/cli-path.ts"),
+      },
+      {
+        find: "@openloomi/loop/preferences",
+        replacement: alias("../../packages/loop/src/preferences.ts"),
+      },
+      {
+        find: "@openloomi/loop/*",
+        replacement: alias("../../packages/loop/src/*"),
+      },
+      {
+        find: "@openloomi/loop",
+        replacement: alias("../../packages/loop/src/index.ts"),
+      },
+      // @openloomi/integrations-runtime (Phase 7)
+      {
+        find: "@openloomi/integrations-runtime/authorization-errors",
+        replacement: alias(
+          "../../packages/integrations-runtime/src/authorization-errors.ts",
+        ),
+      },
+      {
+        find: "@openloomi/integrations-runtime/oauth-callback-script",
+        replacement: alias(
+          "../../packages/integrations-runtime/src/oauth-callback-script.ts",
+        ),
+      },
+      {
+        find: "@openloomi/integrations-runtime/platform-connectability",
+        replacement: alias(
+          "../../packages/integrations-runtime/src/platform-connectability.ts",
+        ),
+      },
+      {
+        find: "@openloomi/integrations-runtime/platform-visuals",
+        replacement: alias(
+          "../../packages/integrations-runtime/src/platform-visuals.ts",
+        ),
+      },
+      {
+        find: "@openloomi/integrations-runtime/task-integration-inference",
+        replacement: alias(
+          "../../packages/integrations-runtime/src/task-integration-inference.ts",
+        ),
+      },
+      {
+        find: "@openloomi/integrations-runtime/*",
+        replacement: alias("../../packages/integrations-runtime/src/*"),
+      },
+      {
+        find: "@openloomi/integrations-runtime",
+        replacement: alias("../../packages/integrations-runtime/src/index.ts"),
+      },
+      // @openloomi/env-config (Phase 8)
+      {
+        find: "@openloomi/env-config/client-constants",
+        replacement: alias(
+          "../../packages/env-config/src/client-constants.ts",
+        ),
+      },
+      {
+        find: "@openloomi/env-config/client-mode",
+        replacement: alias("../../packages/env-config/src/client-mode.ts"),
+      },
+      {
+        find: "@openloomi/env-config/tauri-paths",
+        replacement: alias("../../packages/env-config/src/tauri-paths.ts"),
+      },
+      {
+        find: "@openloomi/env-config/*",
+        replacement: alias("../../packages/env-config/src/*"),
+      },
+      {
+        find: "@openloomi/env-config",
+        replacement: alias("../../packages/env-config/src/index.ts"),
+      },
+      // @openloomi/ui-runtime (Phase 8)
+      {
+        find: "@openloomi/ui-runtime/platform/env",
+        replacement: alias("../../packages/ui-runtime/src/platform/env.ts"),
+      },
+      {
+        find: "@openloomi/ui-runtime/platform/filesystem",
+        replacement: alias("../../packages/ui-runtime/src/platform/filesystem.ts"),
+      },
+      {
+        find: "@openloomi/ui-runtime/platform/adapters/tauri/filesystem",
+        replacement: alias(
+          "../../packages/ui-runtime/src/platform/adapters/tauri/filesystem.ts",
+        ),
+      },
+      {
+        find: "@openloomi/ui-runtime/platform/adapters/browser/filesystem",
+        replacement: alias(
+          "../../packages/ui-runtime/src/platform/adapters/browser/filesystem.ts",
+        ),
+      },
+      {
+        find: "@openloomi/ui-runtime/platform",
+        replacement: alias("../../packages/ui-runtime/src/platform/index.ts"),
+      },
+      {
+        find: "@openloomi/ui-runtime/*",
+        replacement: alias("../../packages/ui-runtime/src/*"),
+      },
+      {
+        find: "@openloomi/ui-runtime",
+        replacement: alias("../../packages/ui-runtime/src/index.ts"),
+      },
+      // @openloomi/db subpaths (Phase 4)
+      {
+        find: "@openloomi/db/batch",
+        replacement: alias("../../packages/db/src/batch.ts"),
+      },
+      {
+        find: "@openloomi/db/utils",
+        replacement: alias("../../packages/db/src/utils.ts"),
+      },
+      {
+        find: "@openloomi/db/agent-goal-runtime-schema-types",
+        replacement: alias(
+          "../../packages/db/src/agent-goal-runtime-schema-types.ts",
+        ),
+      },
+      {
+        find: "@openloomi/db/*",
+        replacement: alias("../../packages/db/src/*"),
+      },
+      {
+        find: "@openloomi/db",
+        replacement: alias("../../packages/db/src/index.ts"),
+      },
       {
         find: "@openloomi/integrations/channels",
         replacement: alias("../../packages/integrations/channels/src/index.ts"),
@@ -470,6 +695,28 @@ export default defineConfig({
         replacement: alias("../../packages/ai/src/agent/index.ts"),
       },
       {
+        find: "@openloomi/insights/constants",
+        replacement: alias("../../packages/insights/src/constants.ts"),
+      },
+      {
+        find: "@openloomi/insights/grouping",
+        replacement: alias("../../packages/insights/src/grouping.ts"),
+      },
+      {
+        find: "@openloomi/insights/platform-filter-config",
+        replacement: alias(
+          "../../packages/insights/src/platform-filter-config.ts",
+        ),
+      },
+      {
+        find: "@openloomi/insights/refresh-telemetry",
+        replacement: alias("../../packages/insights/src/refresh-telemetry.ts"),
+      },
+      {
+        find: "@openloomi/insights/resolve-language",
+        replacement: alias("../../packages/insights/src/resolve-language.ts"),
+      },
+      {
         find: "@openloomi/insights",
         replacement: alias("../../packages/insights/src/index.ts"),
       },
@@ -497,7 +744,6 @@ export default defineConfig({
       "tests/unit/*/*.test.ts",
       "tests/api/*.test.ts",
       "tests/api/*.smoke.ts",
-      "tests/benchmark/*.test.ts",
     ],
     exclude: ["node_modules", ".next", "out"],
     globals: true,

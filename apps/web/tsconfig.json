@@ -25,6 +25,8 @@
 			"cookie": ["./lib/compat/cookie.ts"],
 			"@openloomi/ui": ["./components/ui/index.ts"],
 			"@openloomi/ui/*": ["./components/ui/*"],
+			"@openloomi/contracts": ["../../packages/contracts/src/index.ts"],
+			"@openloomi/contracts/*": ["../../packages/contracts/src/*"],
 			"@openloomi/shared": ["../../packages/shared/src/index.ts"],
 			"@openloomi/indexeddb": ["../../packages/indexeddb/src/index.ts"],
 			"@openloomi/sqlite": ["../../packages/sqlite/src/index.ts"],
@@ -83,6 +85,8 @@
 				"../../packages/billing/src/entitlements.ts"
 			],
 			"@openloomi/indexeddb/*": ["../../packages/indexeddb/src/*"],
+			"@openloomi/db": ["../../packages/db/src/index.ts"],
+			"@openloomi/db/*": ["../../packages/db/src/*"],
 			"@openloomi/insights/*": ["../../packages/insights/src/*"],
 			"@openloomi/integrations/composio": [
 				"../../packages/integrations/composio/src/index.ts"
@@ -225,7 +229,29 @@
 			"@openloomi/voice-kokoro": ["../../packages/voice-kokoro/src/index.ts"],
 			"@openloomi/voice-kokoro/*": ["../../packages/voice-kokoro/src/*"],
 			"@openloomi/voice-whisper": ["../../packages/voice-whisper/src/index.ts"],
-			"@openloomi/voice-whisper/*": ["../../packages/voice-whisper/src/*"]
+			"@openloomi/voice-whisper/*": ["../../packages/voice-whisper/src/*"],
+			"@openloomi/memory-store": ["../../packages/memory-store/src/index.ts"],
+			"@openloomi/memory-store/*": [
+				"../../packages/memory-store/src/*",
+				"../../packages/memory-store/src/storage/*",
+				"../../packages/memory-store/src/search/*",
+				"../../packages/memory-store/src/policies/*",
+				"../../packages/memory-store/src/server/*"
+			],
+			"@openloomi/cron": ["../../packages/cron/src/index.ts"],
+			"@openloomi/cron/*": ["../../packages/cron/src/*"],
+			"@openloomi/loop": ["../../packages/loop/src/index.ts"],
+			"@openloomi/loop/*": ["../../packages/loop/src/*"],
+			"@openloomi/integrations-runtime": [
+				"../../packages/integrations-runtime/src/index.ts"
+			],
+			"@openloomi/integrations-runtime/*": [
+				"../../packages/integrations-runtime/src/*"
+			],
+			"@openloomi/env-config": ["../../packages/env-config/src/index.ts"],
+			"@openloomi/env-config/*": ["../../packages/env-config/src/*"],
+			"@openloomi/ui-runtime": ["../../packages/ui-runtime/src/index.ts"],
+			"@openloomi/ui-runtime/*": ["../../packages/ui-runtime/src/*"]
 		},
 		"typeRoots": ["./node_modules/@types"]
 	},

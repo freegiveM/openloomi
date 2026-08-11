@@ -24,10 +24,6 @@ interface ChatHeaderPanelProps {
   chatId?: string | null; // Current chat ID
   onChatIdChange?: (chatId: string | null) => void; // Callback when chatId changes
   /**
-   * When provided, uses /api/insights/:insightId/history as chat list (for Insight detail fullscreen, etc.)
-   */
-  insightId?: string | null;
-  /**
    * Right-side action buttons like close (passed from layout.tsx)
    */
   children?: React.ReactNode;
@@ -39,18 +35,6 @@ interface ChatHeaderPanelProps {
    * Toggle right history panel (controlled by parent whether to show)
    */
   onToggleHistoryPanel?: () => void;
-  /**
-   * Whether to show new insights panel (controls button selected state)
-   */
-  isNewInsightsPanelOpen?: boolean;
-  /**
-   * Toggle new insights panel (controlled by parent)
-   */
-  onToggleNewInsightsPanel?: () => void;
-  /**
-   * Count of new insights (to show badge on button)
-   */
-  newInsightsCount?: number;
 }
 
 /**
@@ -65,13 +49,9 @@ interface ChatHeaderPanelProps {
 export function ChatHeaderPanel({
   chatId: externalChatId,
   onChatIdChange,
-  insightId,
   children,
   isHistoryPanelOpen,
   onToggleHistoryPanel,
-  isNewInsightsPanelOpen,
-  onToggleNewInsightsPanel,
-  newInsightsCount,
 }: ChatHeaderPanelProps = {}) {
   const { t } = useTranslation();
 
@@ -113,10 +93,7 @@ export function ChatHeaderPanel({
     return result;
   }, [chatContext?.activeChatId, externalChatId]);
 
-  // Get historical chat list (use that insight's chat history for insight scenario, otherwise global)
-  const historyUrl = insightId
-    ? `/api/insights/${insightId}/history`
-    : "/api/history?limit=100";
+  const historyUrl = "/api/history?limit=100";
   const { data: chatHistory } = useSWR<ChatHistoryResponse>(
     historyUrl,
     fetcher,

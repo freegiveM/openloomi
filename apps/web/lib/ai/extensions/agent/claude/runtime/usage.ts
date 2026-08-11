@@ -1,6 +1,13 @@
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { RuntimeUsageDelta } from "@/lib/ai/runtime-instructions/runtime-observation";
 
+interface ClaudeAssistantUsage {
+  input_tokens: unknown;
+  output_tokens: unknown;
+  cache_creation_input_tokens?: unknown;
+  cache_read_input_tokens?: unknown;
+}
+
 interface ClaudeResultUsage {
   input_tokens: unknown;
   output_tokens: unknown;
@@ -10,6 +17,51 @@ interface ClaudeResultUsage {
 
 function isNonNegativeSafeInteger(value: unknown): value is number {
   return Number.isSafeInteger(value) && (value as number) >= 0;
+}
+
+function optionalTokenCount(value: unknown): number | undefined {
+  return value === undefined
+    ? 0
+    : isNonNegativeSafeInteger(value)
+      ? value
+      : undefined;
+}
+
+/**
+ * Captures the current model turn before the Stop hook evaluates the Goal.
+ * Cache counters are optional on assistant messages in some Claude versions.
+ */
+export function extractClaudeAssistantUsage(
+  message: SDKMessage,
+): RuntimeUsageDelta | undefined {
+  if (message.type !== "assistant") return undefined;
+  const candidate = (
+    message as SDKMessage & {
+      message?: { usage?: unknown };
+    }
+  ).message?.usage;
+  if (!candidate || typeof candidate !== "object") return undefined;
+
+  const usage = candidate as ClaudeAssistantUsage;
+  const inputTokens = usage.input_tokens;
+  const outputTokens = usage.output_tokens;
+  const cacheCreationTokens = optionalTokenCount(
+    usage.cache_creation_input_tokens,
+  );
+  const cacheReadTokens = optionalTokenCount(usage.cache_read_input_tokens);
+  if (
+    !isNonNegativeSafeInteger(inputTokens) ||
+    !isNonNegativeSafeInteger(outputTokens) ||
+    cacheCreationTokens === undefined ||
+    cacheReadTokens === undefined
+  ) {
+    return undefined;
+  }
+
+  const tokensUsed =
+    inputTokens + outputTokens + cacheCreationTokens + cacheReadTokens;
+  if (!Number.isSafeInteger(tokensUsed)) return undefined;
+  return { tokensUsed, turnsUsed: 1 };
 }
 
 /** Normalizes Claude's finalized result roll-up into a Goal Run delta. */

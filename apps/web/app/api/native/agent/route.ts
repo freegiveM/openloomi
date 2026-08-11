@@ -285,6 +285,19 @@ async function resolveTrustedApplicabilityContexts(input: {
   }
 }
 
+async function rejectsForeignClaudeSession(input: {
+  sessionId: unknown;
+  userId: string;
+}): Promise<boolean> {
+  const sessionId =
+    typeof input.sessionId === "string" ? input.sessionId.trim() : "";
+  if (!sessionId) return false;
+  const selectedChat = await getChatById({ id: sessionId });
+  // A newly-created chat can race its asynchronous initial save. Missing is
+  // therefore allowed, but an existing chat owned by somebody else is not.
+  return selectedChat !== undefined && selectedChat.userId !== input.userId;
+}
+
 // POST /api/native/agent - Run agent.
 export async function POST(req: NextRequest) {
   const abortController = new AbortController();
@@ -328,6 +341,15 @@ export async function POST(req: NextRequest) {
     }
 
     const resolvedProviderBody = resolveNativeAgentProviderRequest(body);
+    if (
+      resolvedProviderBody.provider === "claude" &&
+      (await rejectsForeignClaudeSession({
+        sessionId: body.sessionId,
+        userId: authUser.id,
+      }))
+    ) {
+      return Response.json({ error: "Runtime Session not found" }, { status: 404 });
+    }
     const applicabilityContexts = await resolveTrustedApplicabilityContexts({
       sessionId: body.sessionId,
       userId: authUser.id,

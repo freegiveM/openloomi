@@ -174,7 +174,6 @@ export function LibraryItemRow({
   t,
   onOpenFile,
   onLocateToChat,
-  onOpenEvent,
   onPreviewKnowledgeFile,
   onDeleteKnowledgeFile,
   onDeleteWorkspaceFile,
@@ -194,7 +193,6 @@ export function LibraryItemRow({
     type?: string;
   }) => void;
   onLocateToChat?: (chatId: string) => void;
-  onOpenEvent?: (insightId: string) => void;
   onPreviewKnowledgeFile?: (documentId: string) => void;
   onDeleteKnowledgeFile?: (documentId: string) => void;
   onDeleteWorkspaceFile?: (wf: { taskId: string; path: string }) => void;
@@ -372,8 +370,7 @@ export function LibraryItemRow({
       {item.kind === "knowledge_file" &&
         item.knowledgeFile &&
         (onPreviewKnowledgeFile ||
-          onDeleteKnowledgeFile ||
-          (item.knowledgeFile.insightId && onOpenEvent)) && (
+          onDeleteKnowledgeFile) && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -397,18 +394,6 @@ export function LibraryItemRow({
                 >
                   <RemixIcon name="eye" size="size-4" />
                   <span>{t("library.preview", "Preview")}</span>
-                </DropdownMenuItem>
-              )}
-              {item.knowledgeFile?.insightId && onOpenEvent && (
-                <DropdownMenuItem
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    const insightId = item.knowledgeFile?.insightId;
-                    if (insightId) onOpenEvent(insightId);
-                  }}
-                >
-                  <RemixIcon name="external_link" size="size-4" />
-                  <span>{t("library.openEvent", "Open event")}</span>
                 </DropdownMenuItem>
               )}
               {onDeleteKnowledgeFile && (

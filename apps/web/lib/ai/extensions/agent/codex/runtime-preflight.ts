@@ -5,9 +5,10 @@ import { StringDecoder } from "node:string_decoder";
 import spawn from "cross-spawn";
 
 import {
-  appendCapturedCliOutput,
-  buildCliEnvironment,
   MAX_CLI_PROTOCOL_LINE_CHARS,
+  appendCapturedCliOutput,
+  buildAgentCliSearchPath,
+  buildCliEnvironment,
   shouldDetachCliProcess,
   terminateCliProcessTree,
 } from "../cli-process";
@@ -384,7 +385,10 @@ class CodexAppServerProbeClient {
     try {
       proc = spawn(this.command, this.args, {
         cwd: this.options.cwd,
-        env: buildCliEnvironment(this.options.env),
+        env: buildCliEnvironment({
+          ...this.options.env,
+          PATH: buildAgentCliSearchPath(this.options.env?.PATH),
+        }),
         detached: shouldDetachCliProcess(),
         windowsHide: true,
       }) as ChildProcessWithoutNullStreams;

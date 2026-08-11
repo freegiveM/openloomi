@@ -18,7 +18,7 @@ import {
 import { type AddressObject, type ParsedMail, simpleParser } from "mailparser";
 import type { Attachment } from "@openloomi/shared";
 import { ingestAttachmentForUser } from "@/lib/integrations/utils/attachments";
-import type { UserType } from "@/app/(auth)/auth";
+import type { UserType } from "@openloomi/contracts/user-type";
 import {
   formatTimingError,
   shouldLogTimingEvent,

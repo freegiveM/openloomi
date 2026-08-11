@@ -7,7 +7,7 @@
  * Re-exports core context functions from @openloomi/ai and adds app-specific helpers.
  */
 
-import type { UserType } from "@/app/(auth)/auth";
+import type { UserType } from "@openloomi/contracts/user-type";
 import { NextRequest } from "next/server";
 import { setAIUserContext } from "@openloomi/ai/agent/model";
 import { getUserLlmProviderConfig } from "@/lib/ai/user-llm-api-settings";

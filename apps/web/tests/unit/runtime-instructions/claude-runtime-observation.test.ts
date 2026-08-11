@@ -12,6 +12,7 @@ import {
   startClaudeGoalRuntimeSession,
 } from "@/lib/ai/extensions/agent/claude/runtime";
 import { collectClaudeToolEvidence } from "@/lib/ai/extensions/agent/claude/runtime/evidence-collector";
+import type { GoalSemanticEvaluatorPort } from "@/lib/ai/runtime-instructions";
 import { createInMemoryAgentGoalRuntime } from "@/lib/ai/runtime-instructions/runtime";
 import {
   createControlledClaudeQuery,
@@ -60,15 +61,34 @@ function initMessage(): SDKMessage {
   } as unknown as SDKMessage;
 }
 
-function assistantMessage(): SDKMessage {
+function assistantMessage(uuid = ASSISTANT_EVENT_ID): SDKMessage {
   return {
     type: "assistant",
-    uuid: ASSISTANT_EVENT_ID,
+    uuid,
     session_id: PROVIDER_SESSION_ID,
     parent_tool_use_id: null,
     message: {
       role: "assistant",
       content: [{ type: "text", text: "I am applying the active Goal." }],
+    },
+  } as unknown as SDKMessage;
+}
+
+function assistantMessageWithUsage(): SDKMessage {
+  return {
+    type: "assistant",
+    uuid: "10000000-0000-4000-8000-000000000004",
+    session_id: PROVIDER_SESSION_ID,
+    parent_tool_use_id: null,
+    message: {
+      role: "assistant",
+      content: [{ type: "text", text: "I am applying the active Goal." }],
+      usage: {
+        input_tokens: 5,
+        output_tokens: 2,
+        cache_creation_input_tokens: 1,
+        cache_read_input_tokens: 2,
+      },
     },
   } as unknown as SDKMessage;
 }
@@ -165,6 +185,12 @@ describe("Claude runtime Goal observations", () => {
       deliveryState(harness.runtime, activated.instruction.id),
     ).resolves.toMatchObject({ state: "written_to_sdk" });
 
+    harness.handle.push(resultMessage("pre-goal-turn-result"));
+    await vi.waitFor(() => expect(harness.claude.sdkMessageCount).toBe(2));
+    await expect(
+      deliveryState(harness.runtime, activated.instruction.id),
+    ).resolves.toMatchObject({ state: "written_to_sdk" });
+
     harness.handle.push(assistantMessage());
     await vi.waitFor(async () => {
       await expect(
@@ -202,13 +228,161 @@ describe("Claude runtime Goal observations", () => {
       ...result,
       subtype: "error_max_turns",
     } as unknown as SDKMessage);
-    await vi.waitFor(() => expect(harness.claude.sdkMessageCount).toBe(4));
+    await vi.waitFor(() => expect(harness.claude.sdkMessageCount).toBe(5));
     const runs = await harness.runtime.observations.listGoalRuns(
       OWNER_ID,
       SESSION_ID,
     );
     expect(runs).toHaveLength(1);
     expect(runs[0]).toMatchObject({ tokensUsed: 22, turnsUsed: 2 });
+
+    harness.registration?.release();
+    await harness.claude.close();
+  });
+
+  it("evaluates a startup-replayed Goal on Claude's first assistant turn", async () => {
+    const handle = createControlledClaudeQuery();
+    const sdk = createFakeClaudeSdkTransport(handle);
+    const claude = new ClaudeRuntimeSession({
+      runtimeSessionId: SESSION_ID,
+      runEpoch: 0,
+      sdkTransport: sdk.transport,
+      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+      createMessageId: () => "startup-replay-message",
+    });
+    const semanticEvaluator: GoalSemanticEvaluatorPort = {
+      evaluate: async (input) => ({
+        completed: true,
+        confidence: 1,
+        satisfiedCriteria: ["runtime-observed"],
+        missingCriteria: [],
+        evidence: [
+          {
+            criterionId: "runtime-observed",
+            evidenceIds: input.evidence.map(({ id }) => id),
+          },
+        ],
+        reason: "Claude's first assistant turn satisfies the Goal.",
+      }),
+    };
+    const runtime = createInMemoryAgentGoalRuntime({
+      clock: new FixedRuntimeClock(NOW),
+      idGenerator: new DeterministicRuntimeIds("60500000"),
+      observationIdGenerator: new DeterministicRuntimeIds("90500000"),
+      semanticEvaluator,
+    });
+    const activated = await runtime.goals.activate({
+      ownerId: OWNER_ID,
+      runtimeSessionId: SESSION_ID,
+      idempotencyKey: "startup-replay-activate",
+      source: { type: "user", authority: "user" },
+      goal: goalInput("Complete the Goal on Claude's first turn"),
+    });
+    expect(activated.dispatch.status).toBe("unavailable");
+
+    const registration = await startClaudeGoalRuntimeSession({
+      session: { user: { id: OWNER_ID } },
+      runtime: claude,
+      start: { initialPrompt: "Initial chat prompt" },
+      goalRuntime: runtime,
+    });
+    const sdkInput = (sdk.queryInput?.prompt as AsyncIterable<SDKUserMessage>)[
+      Symbol.asyncIterator
+    ]();
+    await sdkInput.next();
+    const replayed = await sdkInput.next();
+    expect(replayed.value).toMatchObject({
+      priority: "now",
+      message: { content: expect.stringContaining('kind="goal.activate"') },
+    });
+
+    handle.push(initMessage());
+    handle.push(assistantMessageWithUsage());
+    await vi.waitFor(async () => {
+      await expect(
+        runtime.observations.listGoalRuns(OWNER_ID, SESSION_ID),
+      ).resolves.toMatchObject([{ turnsUsed: 1, tokensUsed: 10 }]);
+    });
+    await expect(
+      claude.evaluateStop({
+        assistantTurnId: "10000000-0000-4000-8000-000000000004",
+        lastAssistantMessage: "I am applying the active Goal.",
+        stopHookActive: false,
+      }),
+    ).resolves.toMatchObject({ decision: "allow", outcome: "completed" });
+    await expect(
+      runtime.observations.listEvidence(OWNER_ID, SESSION_ID),
+    ).resolves.toMatchObject([{ type: "agent_report" }]);
+    const goal = await runtime.state.getGoal(OWNER_ID, activated.goal.goal.id);
+    expect(goal?.goal.status).toBe("completed");
+
+    registration?.release();
+    await claude.close();
+  });
+
+  it("keeps a later same-epoch instruction pending until the active turn result", async () => {
+    const harness = await createHarness("61000000");
+    await harness.sdkInput.next();
+    const activated = await harness.runtime.goals.activate({
+      ownerId: OWNER_ID,
+      runtimeSessionId: SESSION_ID,
+      idempotencyKey: "causal-activate",
+      source: { type: "user", authority: "user" },
+      goal: goalInput("Keep provider results causally scoped"),
+    });
+    await harness.sdkInput.next();
+    harness.handle.push(resultMessage("pre-goal-turn-result"));
+    await vi.waitFor(() => expect(harness.claude.sdkMessageCount).toBe(1));
+    harness.handle.push(assistantMessage("activation-turn-assistant"));
+    await vi.waitFor(() => expect(harness.claude.sdkMessageCount).toBe(2));
+
+    const updated = await harness.runtime.goals.update({
+      ownerId: OWNER_ID,
+      runtimeSessionId: SESSION_ID,
+      goalId: activated.goal.goal.id,
+      expectedRevision: 1,
+      idempotencyKey: "causal-update",
+      source: { type: "user", authority: "user" },
+      update: { priority: 90 },
+    });
+    await harness.sdkInput.next();
+    await vi.waitFor(async () => {
+      await expect(
+        deliveryState(harness.runtime, updated.instruction.id),
+      ).resolves.toMatchObject({ state: "written_to_sdk" });
+    });
+
+    harness.handle.push(resultMessage("activation-turn-result"));
+    await vi.waitFor(async () => {
+      await expect(
+        deliveryState(harness.runtime, activated.instruction.id),
+      ).resolves.toMatchObject({
+        state: "applied",
+        providerEventId: "activation-turn-result",
+      });
+    });
+    await expect(
+      deliveryState(harness.runtime, updated.instruction.id),
+    ).resolves.toMatchObject({ state: "written_to_sdk" });
+
+    harness.handle.push({
+      ...resultMessage("activation-turn-result"),
+      subtype: "error_max_turns",
+    } as unknown as SDKMessage);
+    await vi.waitFor(() => expect(harness.claude.sdkMessageCount).toBe(4));
+    await expect(
+      deliveryState(harness.runtime, updated.instruction.id),
+    ).resolves.toMatchObject({ state: "written_to_sdk" });
+
+    harness.handle.push(assistantMessage());
+    await vi.waitFor(async () => {
+      await expect(
+        deliveryState(harness.runtime, updated.instruction.id),
+      ).resolves.toMatchObject({
+        state: "observed",
+        providerEventId: ASSISTANT_EVENT_ID,
+      });
+    });
 
     harness.registration?.release();
     await harness.claude.close();
@@ -312,6 +486,56 @@ describe("Claude runtime Goal observations", () => {
     expect(retry).toMatchObject({ state: "written_to_sdk", attempt: 2 });
   });
 
+  it("uses assistant-turn usage before Stop without adding aggregate result usage twice", async () => {
+    const harness = await createHarness("65000000");
+    const activated = await harness.runtime.goals.activate({
+      ownerId: OWNER_ID,
+      runtimeSessionId: SESSION_ID,
+      idempotencyKey: "assistant-usage-activate",
+      source: { type: "user", authority: "user" },
+      goal: goalInput("Count each Claude turn exactly once"),
+    });
+    await harness.sdkInput.next();
+    await harness.sdkInput.next();
+    await vi.waitFor(async () => {
+      await expect(
+        deliveryState(harness.runtime, activated.instruction.id),
+      ).resolves.toMatchObject({ state: "written_to_sdk" });
+    });
+
+    harness.handle.push(initMessage());
+    harness.handle.push(resultMessage("pre-goal-turn-result"));
+    await vi.waitFor(() => expect(harness.claude.sdkMessageCount).toBe(2));
+    harness.handle.push(assistantMessageWithUsage());
+    await vi.waitFor(async () => {
+      await expect(
+        harness.runtime.observations.listGoalRuns(OWNER_ID, SESSION_ID),
+      ).resolves.toMatchObject([{ tokensUsed: 10, turnsUsed: 1 }]);
+    });
+    await expect(
+      harness.runtime.observations.listEvidence(OWNER_ID, SESSION_ID),
+    ).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "agent_report",
+          sourceEventId: "10000000-0000-4000-8000-000000000004:assistant",
+          payload: expect.objectContaining({
+            outputPreview: "I am applying the active Goal.",
+          }),
+        }),
+      ]),
+    );
+
+    harness.handle.push(resultMessage());
+    await vi.waitFor(() => expect(harness.claude.sdkMessageCount).toBe(4));
+    await expect(
+      harness.runtime.observations.listGoalRuns(OWNER_ID, SESSION_ID),
+    ).resolves.toMatchObject([{ tokensUsed: 10, turnsUsed: 1 }]);
+
+    harness.registration?.release();
+    await harness.claude.close();
+  });
+
   it("records next-boundary context as written when PostToolBatch consumes it", async () => {
     const harness = await createHarness("70000000");
     await harness.sdkInput.next();
@@ -323,6 +547,8 @@ describe("Claude runtime Goal observations", () => {
       goal: goalInput("Consume context at the next tool boundary"),
     });
     await harness.sdkInput.next();
+    harness.handle.push(resultMessage("pre-goal-turn-result"));
+    await vi.waitFor(() => expect(harness.claude.sdkMessageCount).toBe(1));
 
     const context = await harness.runtime.goals.upsertContext({
       ownerId: OWNER_ID,
@@ -444,6 +670,15 @@ describe("Claude runtime Goal observations", () => {
       ]),
     );
 
+    harness.handle.push(resultMessage("shared-boundary-result"));
+    await vi.waitFor(() => expect(harness.claude.sdkMessageCount).toBe(2));
+    await expect(
+      deliveryState(harness.runtime, activated.instruction.id),
+    ).resolves.toMatchObject({ state: "applied" });
+    await expect(
+      deliveryState(harness.runtime, context.instruction.id),
+    ).resolves.toMatchObject({ state: "applied" });
+
     harness.registration?.release();
     await harness.claude.close();
   });
@@ -547,6 +782,44 @@ describe("Claude runtime Goal observations", () => {
     });
     expect(JSON.stringify(evidence[2])).not.toContain(privateWriteBody);
     expect(JSON.stringify(evidence)).not.toContain(privateToken);
+  });
+
+  it("keeps decisive command output visible after repeated warning noise", () => {
+    const warning = 'npm warn Unknown env config "node-linker"';
+    const privateToken = "PRIVATE_COMMAND_TOKEN";
+    const commandEvidence = collectClaudeToolEvidence({
+      providerEventId: "provider-browser-assertion",
+      toolUseId: "tool-browser-assertion",
+      toolName: "Bash",
+      outcome: "succeeded",
+      toolInput: { command: "npx agent-browser eval assertions" },
+      toolResponse: {
+        stdout: [
+          ...Array.from({ length: 80 }, () => warning),
+          'ASSERTION {"score":10,"length":4,"status":"game over"}',
+          "x".repeat(4_000),
+          "FINAL_ASSERTION restartVisible=true",
+        ].join("\n"),
+        stderr: `TOKEN=${privateToken}`,
+        interrupted: false,
+      },
+      observedAt: NOW.toISOString(),
+    });
+    if (
+      typeof commandEvidence.payload !== "object" ||
+      commandEvidence.payload === null ||
+      !("outputPreview" in commandEvidence.payload)
+    ) {
+      throw new Error("Expected command evidence to include an output preview");
+    }
+    const preview = String(commandEvidence.payload.outputPreview);
+
+    expect(preview.length).toBeLessThanOrEqual(3_000);
+    expect(preview).toContain("[repeated 80 times]");
+    expect(preview).toContain('ASSERTION {"score":10,"length":4');
+    expect(preview).toContain("FINAL_ASSERTION restartVisible=true");
+    expect(preview).toContain("stderr:");
+    expect(preview).not.toContain(privateToken);
   });
 
   it("rejects stale provider observations after cancellation advances the real runtime epoch", async () => {

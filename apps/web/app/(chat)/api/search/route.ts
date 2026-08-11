@@ -2,7 +2,18 @@ import { auth } from "@/app/(auth)/auth";
 import { AppError } from "@openloomi/shared/errors";
 import type { NextRequest } from "next/server";
 import { searchEvents, searchChats, searchFiles } from "@/lib/db/queries";
-import type { SearchResultItem } from "@/components/global-search-dialog";
+
+type SearchType = "events" | "chats" | "files";
+
+interface SearchResultItem {
+  id: string;
+  type: SearchType;
+  title: string;
+  subtitle?: string;
+  timestamp?: string;
+  platform?: string;
+  extra?: Record<string, unknown>;
+}
 
 /**
  * Global search API

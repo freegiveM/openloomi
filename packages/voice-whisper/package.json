@@ -1,18 +1,40 @@
 {
   "name": "@openloomi/voice-whisper",
-  "version": "0.8.8",
-  "private": true,
+  "version": "0.9.0",
   "type": "module",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./dist/index.js"
   },
-  "main": "src/index.ts",
-  "types": "src/index.ts",
-  "scripts": {
-    "build": "echo 'no build needed'"
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/melandlabs/openloomi.git",
+    "directory": "packages/voice-whisper"
   },
+  "homepage": "https://github.com/melandlabs/openloomi/tree/main/packages/voice-whisper",
+  "bugs": {
+    "url": "https://github.com/melandlabs/openloomi/issues"
+  },
+  "license": "Apache-2.0",
+  "description": "OpenLoomi · voice-whisper module",
+  "keywords": [
+    "openloomi"
+  ],
   "dependencies": {},
   "devDependencies": {
     "typescript": "^5.6.3"
+  },
+  "scripts": {
+    "build": "tsup",
+    "prepublishOnly": "pnpm build"
   }
 }

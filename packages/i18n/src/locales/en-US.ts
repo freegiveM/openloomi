@@ -904,7 +904,7 @@ const enUS = {
     probeKindDesc: {
       cli_not_found: "Install it with `npm i -g @composio/cli`, then retry.",
       cli_unauthorized:
-        "Ask the agent to sign in, or run `composio login` in your terminal.",
+        "Sign in via Composio, run `claude auth login` for the agent runtime, or open API Settings to configure an Anthropic-compatible provider.",
       timeout:
         "Lower the probe interval in `~/.openloomi/loop/preferences.json` or check your network.",
       transport_error:
@@ -922,7 +922,8 @@ const enUS = {
     probeKindCopied: "Copied",
     probeKindSignIn: "Sign in via agent",
     probeKindSignInPrompt:
-      "Please run `composio login --no-wait` in the user's terminal so the Loop probe can authenticate, then retry.",
+      "Please help the user fix the Composio CLI auth so the Loop probe can run. The fastest path is `composio login --no-wait` in the terminal, but if they prefer, also mention that they can (a) run `claude auth login` to authenticate the Claude runtime directly, or (b) open OpenLoomi's API Settings (/?page=ai-api-settings) to add an Anthropic-compatible provider. Then retry the probe.",
+    probeKindOpenSettings: "Open API Settings",
     probeKindHttpTooltip: "Upstream status: {{status}}",
     healthOk: "Healthy",
     healthDegraded: "Degraded",
@@ -2576,6 +2577,21 @@ const enUS = {
           "Try again",
           "If the problem persists, please contact support",
         ],
+      },
+      // Surfaces when the agent preflight reports the built-in Claude
+      // runtime isn't authenticated (e.g. `claude auth login` was never
+      // run, or the session has been cleared). Mirrors alloomi's
+      // `authentication_error` policy entry but names the two
+      // remediation paths explicitly.
+      runtimeNotLoggedIn: {
+        title: "Claude runtime not signed in",
+        description:
+          "The chat is using the built-in Claude runtime, but no Claude credentials were found. Sign in to the Claude runtime, or point OpenLoomi at an Anthropic-compatible API key.",
+        suggestions: [
+          "Run `claude auth login` in your terminal, then retry",
+          "Or open API Settings and add an Anthropic-compatible provider",
+        ],
+        apiSettingsAction: "Open API Settings",
       },
     },
   },

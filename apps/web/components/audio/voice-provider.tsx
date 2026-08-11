@@ -1,6 +1,12 @@
 "use client";
 
-import React, { createContext, useContext, useState, useMemo } from "react";
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  useMemo,
+} from "react";
 import { KokoroPlugin } from "@openloomi/voice-kokoro";
 import { WhisperPlugin } from "@openloomi/voice-whisper";
 
@@ -12,26 +18,52 @@ interface VoiceContextValue {
 }
 
 const VoiceContext = createContext<VoiceContextValue | undefined>(undefined);
+const DISABLED_ENV_VALUES = new Set(["0", "false", "off", "no", "disabled"]);
+
+function isEnabledByEnv(value: string | undefined): boolean {
+  const normalized = value?.trim().toLowerCase();
+  if (!normalized) return true;
+  return !DISABLED_ENV_VALUES.has(normalized);
+}
+
+const isKokoroEnabledByEnv = isEnabledByEnv(
+  process.env.NEXT_PUBLIC_ENABLE_KOKORO,
+);
+const isWhisperEnabledByEnv = isEnabledByEnv(
+  process.env.NEXT_PUBLIC_ENABLE_WHISPER,
+);
 
 export function VoiceProvider({ children }: { children: React.ReactNode }) {
   // We initialize the plugins and allow toggling them dynamically via state
-  const [kokoro] = useState(() => new KokoroPlugin({ enabled: true }));
-  const [whisper] = useState(() => new WhisperPlugin({ enabled: true }));
+  const [kokoro] = useState(
+    () => new KokoroPlugin({ enabled: isKokoroEnabledByEnv }),
+  );
+  const [whisper] = useState(
+    () => new WhisperPlugin({ enabled: isWhisperEnabledByEnv }),
+  );
 
-  // Dummy state updates to force re-renders if enabled flags change
-  const [, setTick] = useState(0);
+  // Bump this when runtime toggles change so effects can react.
+  const [voiceVersion, setVoiceVersion] = useState(0);
+
+  useEffect(() => {
+    if (!kokoro.enabled) return;
+
+    void kokoro.warmup().catch((error) => {
+      console.warn("[VoiceProvider] Kokoro warmup failed:", error);
+    });
+  }, [kokoro, voiceVersion]);
 
   const contextValue = useMemo(
     () => ({
       kokoro,
       whisper,
       setKokoroEnabled: (enabled: boolean) => {
-        kokoro.enabled = enabled;
-        setTick((t) => t + 1);
+        kokoro.enabled = isKokoroEnabledByEnv && enabled;
+        setVoiceVersion((version) => version + 1);
       },
       setWhisperEnabled: (enabled: boolean) => {
-        whisper.enabled = enabled;
-        setTick((t) => t + 1);
+        whisper.enabled = isWhisperEnabledByEnv && enabled;
+        setVoiceVersion((version) => version + 1);
       },
     }),
     [kokoro, whisper],

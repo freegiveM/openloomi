@@ -1,12 +1,37 @@
 {
   "name": "@openloomi/integrations-qqbot",
-  "version": "0.8.8",
-  "private": true,
+  "version": "0.9.0",
   "type": "module",
-  "exports": {
-    ".": "./src/index.ts"
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
   },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/melandlabs/openloomi.git",
+    "directory": "packages/integrations/qqbot"
+  },
+  "homepage": "https://github.com/melandlabs/openloomi/tree/main/packages/integrations/qqbot",
+  "bugs": {
+    "url": "https://github.com/melandlabs/openloomi/issues"
+  },
+  "license": "Apache-2.0",
+  "description": "OpenLoomi \u00b7 integrations/qqbot module",
+  "keywords": [
+    "openloomi"
+  ],
   "dependencies": {
+    "@openloomi/ai": "workspace:*",
+    "@openloomi/integrations": "workspace:*",
     "@openloomi/integrations-channels": "workspace:*"
   },
   "devDependencies": {
@@ -14,6 +39,7 @@
     "typescript": "^5.6.3"
   },
   "scripts": {
-    "build": "echo no build needed"
+    "build": "tsup",
+    "prepublishOnly": "pnpm build"
   }
 }

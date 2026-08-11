@@ -1,10 +1,21 @@
 import { defineConfig } from "tsup";
 
 export default defineConfig({
-  entry: ["src/index.ts"],
+  entry: {
+    index: "src/index.ts",
+    errors: "src/errors.ts",
+  },
+  format: ["esm"],
   dts: true,
-  format: ["esm", "cjs"],
-  external: ["react"],
-  splitting: false,
+  sourcemap: true,
   clean: true,
+  splitting: false,
+  treeshake: true,
+  external: [
+    "react",
+    "react-dom",
+    "@tauri-apps/api",
+    "better-sqlite3",
+    "sqlite-vec",
+  ],
 });

@@ -3,6 +3,8 @@
   "compilerOptions": {
     "outDir": "./dist",
     "baseUrl": ".",
+    "incremental": false,
+    "noEmit": false,
     "paths": {
       "@openloomi/memory-consolidation": [
         "./memory-consolidation/src/index.ts"

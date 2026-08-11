@@ -3,8 +3,22 @@ import {
   type NativeAgentRequest,
 } from "@openloomi/ai/agent/native-runner";
 import type { AgentProvider } from "@openloomi/ai/agent/types";
+import {
+  readAgentRuntimePreference,
+  type SelectableAgentRuntime,
+} from "./runtime-preference";
 
 type EnvSource = Record<string, string | undefined>;
+
+interface ProviderResolutionOptions {
+  preferencePath?: string;
+}
+
+export interface ConfiguredAgentProviderResolution {
+  provider: AgentProvider;
+  preference?: SelectableAgentRuntime;
+  source: "preference" | "environment" | "default";
+}
 
 const DEFAULT_AGENT_PROVIDER: AgentProvider = "claude";
 const ENV_PROVIDER_KEY = "OPENLOOMI_AGENT_PROVIDER";
@@ -22,18 +36,37 @@ const SUPPORTED_ENV_PROVIDERS = new Set([
 
 export function getConfiguredDefaultAgentProvider(
   env: EnvSource = process.env,
+  options: ProviderResolutionOptions = {},
 ): AgentProvider {
-  return resolveEnvAgentProvider(env) ?? DEFAULT_AGENT_PROVIDER;
+  return getConfiguredAgentProviderResolution(env, options).provider;
+}
+
+export function getConfiguredAgentProviderResolution(
+  env: EnvSource = process.env,
+  options: ProviderResolutionOptions = {},
+): ConfiguredAgentProviderResolution {
+  if (isTauriEnvironment(env)) {
+    const preference = readAgentRuntimePreference(options.preferencePath);
+    if (preference) {
+      return { provider: preference, preference, source: "preference" };
+    }
+  }
+
+  const environmentProvider = resolveEnvAgentProvider(env);
+  return environmentProvider
+    ? { provider: environmentProvider, source: "environment" }
+    : { provider: DEFAULT_AGENT_PROVIDER, source: "default" };
 }
 
 export function resolveNativeAgentProviderRequest(
   body: NativeAgentRequest,
   env: EnvSource = process.env,
+  options: ProviderResolutionOptions = {},
 ): NativeAgentRequest {
   // Runtime selection is deployment configuration, not an HTTP request
   // option. External CLI agents inherit host credentials and can execute local
   // tools, so allowing callers to switch providers would cross a trust boundary.
-  const provider = getConfiguredDefaultAgentProvider(env);
+  const provider = getConfiguredDefaultAgentProvider(env, options);
 
   if (provider === HERMES_PROVIDER) {
     const hermesEnvConfig = resolveHermesEnvConfig(env);
@@ -90,6 +123,10 @@ export function resolveNativeAgentProviderRequest(
       : undefined,
     providerConfig: opencodeEnvConfig.providerConfig,
   };
+}
+
+function isTauriEnvironment(env: EnvSource): boolean {
+  return typeof env.TAURI_MODE === "string" || env.IS_TAURI === "true";
 }
 
 function resolveEnvAgentProvider(env: EnvSource): AgentProvider | undefined {

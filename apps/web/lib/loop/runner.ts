@@ -3,8 +3,7 @@
  * native agent endpoint.
  *
  * POSTs to `/api/native/agent` with `{ prompt }` and parses the SSE
- * response. Reuses the same endpoint the locomo benchmark uses — full
- * agentic tool-use, memory writes, multi-round reasoning.
+ * response. Full agentic tool-use, memory writes, multi-round reasoning.
  *
  * The actual SSE parsing happens inside `/api/native/agent/route.ts`. From
  * the runner's perspective we just POST a prompt, wait for the result event

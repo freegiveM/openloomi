@@ -6,7 +6,13 @@
  * localized reason + an affordance tailored to each `ProbeErrorKind`:
  *
  *   - `cli_not_found`        → copyable `npm i -g @composio/cli`
- *   - `cli_unauthorized`     → "Sign in via agent" deep-link
+ *   - `cli_unauthorized`     → "Sign in via agent" deep-link AND
+ *                             "Open API Settings" deep-link (mirrors
+ *                             the chat-side `ErrorMessageDisplay`
+ *                             `runtimeNotLoggedIn` card, so users get
+ *                             the same three remediation paths:
+ *                             composio login / claude auth login /
+ *                             API Settings)
  *   - `timeout`              → plain suggestion to lower `intervalSec`
  *   - `transport_error`      → tooltip with the upstream status parsed
  *   - `agent_http_error`       from `error.message`
@@ -30,6 +36,7 @@ import { useTranslation } from "react-i18next";
 
 import { Button } from "@openloomi/ui";
 import { RemixIcon } from "@/components/remix-icon";
+import { MISSING_API_KEY_REASON } from "@/lib/ai/conversation-api-configuration";
 import type { ProbeErrorInfo, ProbeErrorKind } from "@/lib/loop/types";
 
 const COMPOSIO_CLI_INSTALL_CMD = "npm i -g @composio/cli";
@@ -120,11 +127,14 @@ export function ProbeErrorCallout({
   // Sign-in-via-agent: prefer the in-process bridge (same pattern as
   // `personalization-linked-accounts.tsx::handleConnectMoreViaComposio`)
   // and fall back to the URL `?page=chat&send=` pipe when the bridge
-  // hasn't mounted (e.g. very early dev-mode click).
+  // hasn't mounted (e.g. very early dev-mode click). The prompt lists
+  // all three remediation paths (composio login, claude auth login,
+  // API Settings) so the agent's reply covers the same options as
+  // the inline "Open API Settings" button next to it.
   const handleSignInViaAgent = useCallback(() => {
     const prompt = t(
       "connectors.probeKindSignInPrompt",
-      "Please run `composio login --no-wait` in the user's terminal so the Loop probe can authenticate, then retry.",
+      "Please help the user fix the Composio CLI auth so the Loop probe can run. The fastest path is `composio login --no-wait` in the terminal, but if they prefer, also mention that they can (a) run `claude auth login` to authenticate the Claude runtime directly, or (b) open OpenLoomi's API Settings (/?page=ai-api-settings) to add an Anthropic-compatible provider. Then retry the probe.",
     );
     const bridge = (
       globalThis as { __petChatBridgeSend?: (text: string) => void }
@@ -135,6 +145,15 @@ export function ProbeErrorCallout({
     }
     router.push(`/?page=chat&send=${encodeURIComponent(prompt)}`);
   }, [router, t]);
+
+  // One-click deep-link to OpenLoomi's API Settings. The "missing-api-key"
+  // reason flag is what the settings page already uses to render the
+  // "Required for chat" notice, so the user lands on the screen that's
+  // actually relevant. Same `MISSING_API_KEY_REASON` constant used by
+  // the chat-side `ErrorMessageDisplay` so the two surfaces stay in sync.
+  const handleOpenApiSettings = useCallback(() => {
+    router.push(`/?page=ai-api-settings&reason=${MISSING_API_KEY_REASON}`);
+  }, [router]);
 
   return (
     <div
@@ -157,7 +176,7 @@ export function ProbeErrorCallout({
             </div>
           ) : null}
           {error.kind === "cli_unauthorized" ? (
-            <div className="mt-2">
+            <div className="mt-2 flex flex-wrap gap-2">
               <Button
                 type="button"
                 variant="outline"
@@ -167,6 +186,16 @@ export function ProbeErrorCallout({
               >
                 <RemixIcon name="user" size="size-3.5" />
                 {t("connectors.probeKindSignIn", "Sign in via agent")}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleOpenApiSettings}
+                className="h-7 gap-1.5 border-amber-300 bg-white text-amber-800 hover:bg-amber-50"
+              >
+                <RemixIcon name="settings_3" size="size-3.5" />
+                {t("connectors.probeKindOpenSettings", "Open API Settings")}
               </Button>
             </div>
           ) : null}

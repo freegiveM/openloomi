@@ -227,6 +227,8 @@ export type MemoryGraphRolloutGateReasonCode =
   | "correction_command_gate_failed"
   | "rollback_command_gate_passed"
   | "rollback_command_gate_failed"
+  | "runtime_observed_evidence_gate_passed"
+  | "runtime_observed_evidence_gate_failed"
   | MemoryGovernanceAuditScenarioReasonCode
   | MemoryGovernanceCommandReasonCode
   | (string & {});
@@ -714,6 +716,17 @@ export function buildMemoryGraphRolloutGovernanceReport(
     );
   }
 
+  // These two gates accept an applied operation or, failing that, a command
+  // that merely validated. That is a real difference in what was established,
+  // so the gate records which one backed it instead of reporting the same pass
+  // for both.
+  const commandEvidenceSource =
+    input.runtimeEvidence !== undefined
+      ? "runtime-observed"
+      : input.commandReport !== undefined
+        ? "command-dry-run"
+        : "absent";
+
   if (thresholds.requireCorrectionCommand) {
     const validCorrectionCount =
       input.runtimeEvidence?.correctionOperationIds.length ??
@@ -729,6 +742,7 @@ export function buildMemoryGraphRolloutGovernanceReport(
         threshold: 1,
         passReasonCode: "correction_command_gate_passed",
         failReasonCode: "correction_command_gate_failed",
+        metadata: { evidenceSource: commandEvidenceSource },
       }),
     );
   }
@@ -748,9 +762,34 @@ export function buildMemoryGraphRolloutGovernanceReport(
         threshold: 1,
         passReasonCode: "rollback_command_gate_passed",
         failReasonCode: "rollback_command_gate_failed",
+        metadata: { evidenceSource: commandEvidenceSource },
       }),
     );
   }
+
+  // A rollout decision has to rest on behaviour observed in the runtime being
+  // enabled. Every other gate here is satisfiable by dry-run scenarios and
+  // validated commands, so without this one a report can reach
+  // `ready-for-limited-rollout` having watched nothing actually run. This gate
+  // is added unconditionally: a gate that could not be evaluated has to be
+  // distinguishable from one that passed, and a conditional gate disappears
+  // into a `failedGateCount === 0` that reads as success.
+  const observedOperationCount =
+    input.runtimeEvidence?.operationIds.length ?? 0;
+  gates.push(
+    buildGate({
+      gateId: "runtime.observed-evidence",
+      passed: observedOperationCount > 0,
+      actual: observedOperationCount,
+      threshold: 1,
+      passReasonCode: "runtime_observed_evidence_gate_passed",
+      failReasonCode: "runtime_observed_evidence_gate_failed",
+      metadata: {
+        ownerScopeKey: input.runtimeEvidence?.ownerScopeKey,
+        snapshotVersion: input.runtimeEvidence?.snapshotVersion,
+      },
+    }),
+  );
 
   if (input.runtimeEvidence) {
     const pendingSummaryIds = input.runtimeEvidence.pendingSummaryIds ?? [];

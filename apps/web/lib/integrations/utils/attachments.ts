@@ -1,4 +1,4 @@
-import type { UserType } from "@/app/(auth)/auth";
+import type { UserType } from "@openloomi/contracts/user-type";
 import {
   type AttachmentDownloadPayload,
   ingestExternalAttachment,

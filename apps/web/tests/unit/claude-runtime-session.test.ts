@@ -50,13 +50,14 @@ function assistantMessage(text: string): SDKMessage {
   } as SDKMessage;
 }
 
-function resultMessage(): SDKMessage {
+function resultMessage(overrides: Record<string, unknown> = {}): SDKMessage {
   return {
     type: "result",
     subtype: "success",
     duration_ms: 10,
     total_cost_usd: 0.01,
     usage: { input_tokens: 4, output_tokens: 2 },
+    ...overrides,
   } as SDKMessage;
 }
 
@@ -364,6 +365,7 @@ describe("ClaudeRuntimeSession", () => {
       logger: logger(),
       createMessageId: () => "message-id",
     });
+    const output = session.subscribe()[Symbol.asyncIterator]();
     session.start({ initialPrompt: "initial request" });
 
     const prompt = sdk.queryInput?.prompt as AsyncIterable<SDKUserMessage>;
@@ -383,6 +385,21 @@ describe("ClaudeRuntimeSession", () => {
     });
     expect(handle.interrupt).toHaveBeenCalledOnce();
 
+    handle.push(assistantMessage("in-flight response"));
+    handle.push(
+      resultMessage({
+        subtype: "error_during_execution",
+        errors: ["Request was aborted."],
+      }),
+    );
+    handle.push(assistantMessage("goal response"));
+    await expect(output.next()).resolves.toMatchObject({
+      value: { type: "text", content: "in-flight response" },
+    });
+    await expect(output.next()).resolves.toMatchObject({
+      value: { type: "text", content: "goal response" },
+    });
+
     await session.interrupt("manual replacement");
     expect(handle.interrupt).toHaveBeenCalledTimes(2);
     const boundary = session.captureTurnBoundary();
@@ -390,10 +407,18 @@ describe("ClaudeRuntimeSession", () => {
       expectedRunEpoch: 2,
       afterTerminalSequence: boundary.terminalSequence,
     });
-    handle.push(resultMessage());
+    handle.push(
+      resultMessage({
+        subtype: "error_during_execution",
+        errors: ["upstream failed"],
+      }),
+    );
     await expect(terminal).resolves.toMatchObject({
       runEpoch: 2,
       state: "idle",
+    });
+    await expect(output.next()).resolves.toMatchObject({
+      value: { type: "result", content: "error_during_execution" },
     });
     session.advanceRunEpoch({
       expectedRunEpoch: 2,

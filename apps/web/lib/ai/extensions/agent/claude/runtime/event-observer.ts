@@ -6,8 +6,11 @@ import type {
   RuntimeObservationContext,
   RuntimeProviderObservationPort,
 } from "@/lib/ai/runtime-instructions/runtime-observation";
-import { collectClaudeToolEvidence } from "./evidence-collector";
-import { extractClaudeResultUsage } from "./usage";
+import {
+  collectClaudeAssistantEvidence,
+  collectClaudeToolEvidence,
+} from "./evidence-collector";
+import { extractClaudeAssistantUsage, extractClaudeResultUsage } from "./usage";
 
 export interface ClaudeRuntimeToolStart {
   toolUseId: string;
@@ -24,14 +27,31 @@ export interface ClaudeRuntimeToolOutcome extends ClaudeRuntimeToolStart {
   durationMs?: number;
 }
 
+export interface ClaudeRuntimeStopReport {
+  assistantTurnId: string;
+  text: string;
+  providerSessionId?: string;
+  runEpoch: number;
+  contexts: RuntimeObservationContext[];
+}
+
+export type ClaudeInstructionTurnHandoff = "current_turn" | "next_turn";
+
 export interface ClaudeRuntimeEventObserverPort {
   instructionWritten(input: {
     instructionId: string;
     runEpoch: number;
+    turnHandoff: ClaudeInstructionTurnHandoff;
     recordedAt?: string;
   }): Promise<void>;
 
+  captureTurnContexts(
+    runEpoch: number,
+  ): Promise<RuntimeObservationContext[]>;
+
   observeSdkMessage(message: SDKMessage, runEpoch: number): Promise<void>;
+
+  observeStopAssistantReport(input: ClaudeRuntimeStopReport): Promise<void>;
 
   captureToolStart(input: ClaudeRuntimeToolStart): Promise<void>;
 
@@ -42,7 +62,12 @@ export interface ClaudeRuntimeEventObserverPort {
 
 interface CapturedToolContext {
   runEpoch: number;
-  context: RuntimeObservationContext | null;
+  contexts: RuntimeObservationContext[];
+}
+
+interface ClaudeTurnContexts {
+  active: RuntimeObservationContext[];
+  pending: RuntimeObservationContext[][];
 }
 
 /**
@@ -52,8 +77,11 @@ interface CapturedToolContext {
  */
 export class ClaudeRuntimeEventObserver implements ClaudeRuntimeEventObserverPort {
   private readonly toolContexts = new Map<string, CapturedToolContext>();
+  private readonly turnContexts = new Map<number, ClaudeTurnContexts>();
+  private readonly terminalEventKeys = new Set<string>();
   private tail: Promise<void> = Promise.resolve();
   private providerSessionId?: string;
+  private readonly epochsWithAssistantUsage = new Set<number>();
 
   constructor(
     private readonly ownerId: string,
@@ -65,17 +93,57 @@ export class ClaudeRuntimeEventObserver implements ClaudeRuntimeEventObserverPor
   instructionWritten(input: {
     instructionId: string;
     runEpoch: number;
+    turnHandoff: ClaudeInstructionTurnHandoff;
     recordedAt?: string;
   }): Promise<void> {
     return this.enqueue(async () => {
-      await this.observations.recordInstructionHandoff({
+      const recorded = await this.observations.recordInstructionHandoff({
         ownerId: this.ownerId,
         runtimeSessionId: this.runtimeSessionId,
         instructionId: input.instructionId,
         runEpoch: input.runEpoch,
         recordedAt: input.recordedAt ?? this.now().toISOString(),
       });
+      if (!recorded) {
+        throw new Error(
+          `Runtime rejected the handoff for instruction ${input.instructionId}`,
+        );
+      }
+      const context = await this.observations.captureContext({
+        ownerId: this.ownerId,
+        runtimeSessionId: this.runtimeSessionId,
+        runEpoch: input.runEpoch,
+      });
+      if (!context || context.instructionId !== input.instructionId) {
+        throw new Error(
+          `Runtime did not expose the handoff context for instruction ${input.instructionId}`,
+        );
+      }
+      const existing = this.turnContexts.get(input.runEpoch);
+      if (!existing) {
+        this.turnContexts.set(input.runEpoch, {
+          active:
+            input.turnHandoff === "current_turn"
+              ? [structuredClone(context)]
+              : [],
+          pending:
+            input.turnHandoff === "next_turn"
+              ? [[structuredClone(context)]]
+              : [],
+        });
+        return;
+      }
+      if (hasInstructionContext(existing, context.instructionId)) return;
+      if (input.turnHandoff === "current_turn") {
+        existing.active.push(structuredClone(context));
+      } else {
+        existing.pending.push([structuredClone(context)]);
+      }
     });
+  }
+
+  captureTurnContexts(runEpoch: number): Promise<RuntimeObservationContext[]> {
+    return this.enqueue(async () => this.activeContexts(runEpoch));
   }
 
   observeSdkMessage(message: SDKMessage, runEpoch: number): Promise<void> {
@@ -95,20 +163,94 @@ export class ClaudeRuntimeEventObserver implements ClaudeRuntimeEventObserverPor
         return;
       }
       if (!identity || !isCausalProviderMessage(message)) return;
+      const terminal = message.type === "result";
+      if (terminal && this.terminalEventKeys.has(identity.eventKey)) return;
 
-      const usage = extractClaudeResultUsage(message);
+      const observedAt = sdkTimestamp(message) ?? this.now().toISOString();
+      const assistantMessage = message.type === "assistant";
+      const contexts = this.activeContexts(runEpoch);
+      const context = contexts.at(-1);
+      if (!context) {
+        if (terminal) this.finishTerminalEvent(runEpoch, identity.eventKey);
+        return;
+      }
+      const assistantEvidence = assistantMessage
+        ? collectClaudeAssistantEvidence({
+            providerEventId: identity.providerEventId,
+            text: assistantMessageText(message),
+            observedAt,
+          })
+        : undefined;
+      const assistantUsage = extractClaudeAssistantUsage(message);
+      const usage =
+        assistantUsage ??
+        (terminal && !this.epochsWithAssistantUsage.has(runEpoch)
+          ? extractClaudeResultUsage(message)
+          : undefined);
+      let accepted: boolean;
+      try {
+        accepted = await this.observations.observeProviderEvent({
+          ownerId: this.ownerId,
+          runtimeSessionId: this.runtimeSessionId,
+          runEpoch,
+          eventKey: identity.eventKey,
+          providerEventId: identity.providerEventId,
+          ...(identity.providerSessionId === undefined
+            ? {}
+            : { providerSessionId: identity.providerSessionId }),
+          observedAt,
+          terminal,
+          context,
+          acknowledgedContexts: contexts,
+          ...(assistantEvidence === undefined
+            ? {}
+            : { evidence: [assistantEvidence] }),
+          ...(usage === undefined ? {} : { usage }),
+        });
+      } finally {
+        if (terminal) this.finishTerminalEvent(runEpoch, identity.eventKey);
+      }
+      if (accepted && assistantUsage !== undefined) {
+        this.epochsWithAssistantUsage.add(runEpoch);
+      }
+    });
+  }
+
+  observeStopAssistantReport(input: ClaudeRuntimeStopReport): Promise<void> {
+    return this.enqueue(async () => {
+      if (input.providerSessionId) {
+        this.assertProviderSession(input.providerSessionId);
+      }
+      const providerSessionId =
+        input.providerSessionId ?? this.providerSessionId;
+      const observedAt = this.now().toISOString();
+      const evidence = collectClaudeAssistantEvidence({
+        providerEventId: input.assistantTurnId,
+        text: input.text,
+        observedAt,
+      });
+      if (!evidence) return;
+
+      const context = input.contexts.at(-1);
+      if (!context) return;
+
       await this.observations.observeProviderEvent({
         ownerId: this.ownerId,
         runtimeSessionId: this.runtimeSessionId,
-        runEpoch,
-        eventKey: identity.eventKey,
-        providerEventId: identity.providerEventId,
-        ...(identity.providerSessionId === undefined
-          ? {}
-          : { providerSessionId: identity.providerSessionId }),
-        observedAt: sdkTimestamp(message) ?? this.now().toISOString(),
-        terminal: message.type === "result",
-        ...(usage === undefined ? {} : { usage }),
+        runEpoch: input.runEpoch,
+        eventKey: boundedProviderEventId(
+          [
+            "claude-stop-report",
+            providerSessionId ?? "unknown",
+            input.assistantTurnId,
+          ].join(":"),
+        ),
+        providerEventId: input.assistantTurnId,
+        ...(providerSessionId === undefined ? {} : { providerSessionId }),
+        observedAt,
+        context,
+        acknowledgedContexts: input.contexts,
+        evidence: [evidence],
       });
     });
   }
@@ -120,12 +262,8 @@ export class ClaudeRuntimeEventObserver implements ClaudeRuntimeEventObserverPor
       }
       const key = toolKey(input.providerSessionId, input.toolUseId);
       if (this.toolContexts.has(key)) return;
-      const context = await this.observations.captureContext({
-        ownerId: this.ownerId,
-        runtimeSessionId: this.runtimeSessionId,
-        runEpoch: input.runEpoch,
-      });
-      this.toolContexts.set(key, { runEpoch: input.runEpoch, context });
+      const contexts = this.activeContexts(input.runEpoch);
+      this.toolContexts.set(key, { runEpoch: input.runEpoch, contexts });
     });
   }
 
@@ -138,6 +276,8 @@ export class ClaudeRuntimeEventObserver implements ClaudeRuntimeEventObserverPor
       const captured = this.toolContexts.get(key);
       if (!captured) return;
       this.toolContexts.delete(key);
+      const context = captured.contexts.at(-1);
+      if (!context) return;
 
       const providerEventId = boundedProviderEventId(
         `claude-tool:${input.providerSessionId ?? this.providerSessionId ?? "unknown"}:${input.toolUseId}`,
@@ -145,25 +285,23 @@ export class ClaudeRuntimeEventObserver implements ClaudeRuntimeEventObserverPor
       const providerSessionId =
         input.providerSessionId ?? this.providerSessionId;
       const observedAt = this.now().toISOString();
-      const evidence = captured.context
-        ? [
-            collectClaudeToolEvidence({
-              providerEventId,
-              toolUseId: input.toolUseId,
-              toolName: input.toolName,
-              outcome: input.outcome,
-              toolInput: input.toolInput,
-              ...(input.toolResponse === undefined
-                ? {}
-                : { toolResponse: input.toolResponse }),
-              ...(input.error === undefined ? {} : { error: input.error }),
-              ...(input.durationMs === undefined
-                ? {}
-                : { durationMs: input.durationMs }),
-              observedAt,
-            }),
-          ]
-        : undefined;
+      const evidence = [
+        collectClaudeToolEvidence({
+          providerEventId,
+          toolUseId: input.toolUseId,
+          toolName: input.toolName,
+          outcome: input.outcome,
+          toolInput: input.toolInput,
+          ...(input.toolResponse === undefined
+            ? {}
+            : { toolResponse: input.toolResponse }),
+          ...(input.error === undefined ? {} : { error: input.error }),
+          ...(input.durationMs === undefined
+            ? {}
+            : { durationMs: input.durationMs }),
+          observedAt,
+        }),
+      ];
 
       await this.observations.observeProviderEvent({
         ownerId: this.ownerId,
@@ -173,8 +311,9 @@ export class ClaudeRuntimeEventObserver implements ClaudeRuntimeEventObserverPor
         providerEventId,
         ...(providerSessionId === undefined ? {} : { providerSessionId }),
         observedAt,
-        ...(captured.context === null ? {} : { context: captured.context }),
-        ...(evidence === undefined ? {} : { evidence }),
+        context,
+        acknowledgedContexts: captured.contexts,
+        evidence,
       });
     });
   }
@@ -183,9 +322,12 @@ export class ClaudeRuntimeEventObserver implements ClaudeRuntimeEventObserverPor
     return this.tail;
   }
 
-  private enqueue(operation: () => Promise<void>): Promise<void> {
+  private enqueue<T>(operation: () => Promise<T>): Promise<T> {
     const pending = this.tail.then(operation);
-    this.tail = pending.catch(() => {});
+    this.tail = pending.then(
+      () => undefined,
+      () => undefined,
+    );
     return pending;
   }
 
@@ -200,6 +342,35 @@ export class ClaudeRuntimeEventObserver implements ClaudeRuntimeEventObserverPor
     }
     this.providerSessionId = providerSessionId;
   }
+
+  private activeContexts(runEpoch: number): RuntimeObservationContext[] {
+    return structuredClone(this.turnContexts.get(runEpoch)?.active ?? []);
+  }
+
+  private advanceTurnContext(runEpoch: number): void {
+    const contexts = this.turnContexts.get(runEpoch);
+    if (!contexts) return;
+    const next = contexts.pending.shift();
+    if (!next) {
+      this.turnContexts.delete(runEpoch);
+      return;
+    }
+    contexts.active = next;
+  }
+
+  private finishTerminalEvent(runEpoch: number, eventKey: string): void {
+    this.terminalEventKeys.add(eventKey);
+    this.advanceTurnContext(runEpoch);
+  }
+}
+
+function hasInstructionContext(
+  contexts: ClaudeTurnContexts,
+  instructionId: string,
+): boolean {
+  return [contexts.active, ...contexts.pending].some((turn) =>
+    turn.some((context) => context.instructionId === instructionId),
+  );
 }
 
 interface ClaudeSdkMessageIdentity {
@@ -253,6 +424,31 @@ function isCausalProviderMessage(message: SDKMessage): boolean {
     message.type === "user" ||
     message.type === "result"
   );
+}
+
+function assistantMessageText(message: SDKMessage): string {
+  if (message.type !== "assistant") return "";
+  const content = (
+    message as SDKMessage & {
+      message?: { content?: unknown };
+    }
+  ).message?.content;
+  if (!Array.isArray(content)) return "";
+
+  return content
+    .flatMap((block) => {
+      if (
+        block !== null &&
+        typeof block === "object" &&
+        (block as { type?: unknown }).type === "text" &&
+        typeof (block as { text?: unknown }).text === "string"
+      ) {
+        return [(block as { text: string }).text];
+      }
+      return [];
+    })
+    .join("\n")
+    .trim();
 }
 
 function sdkTimestamp(message: SDKMessage): string | undefined {

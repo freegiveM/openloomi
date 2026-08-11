@@ -85,6 +85,12 @@ export type MemoryRelationJudgmentReasonCode =
   | "same_relation_value"
   | "different_relation_value"
   | "candidate_related"
+  /**
+   * Agreement that only differing applicability prevented. Kept distinct from
+   * `candidate_related` because it is the sole record cross-context broadening
+   * can read; an ordinary weak relation must not be mistaken for it.
+   */
+  | "candidate_related_applicability_mismatch"
   | "uncertain_candidate";
 
 export interface MemoryRelationJudgmentDecision {
