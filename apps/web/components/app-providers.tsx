@@ -22,6 +22,7 @@ import {
 } from "@/components/feishu-listener-init";
 import { CloudSyncInit } from "@/components/cloud-sync-init";
 import { RawMessagesMigrationInit } from "@/components/raw-messages-migration-init";
+import { InsightRefreshInit } from "@/components/insight-refresh-init";
 import { TelegramTokenFormProvider } from "@/components/platform-integrations";
 
 // Lazy load initialization components - use Suspense boundaries to avoid blocking initial render
@@ -37,6 +38,7 @@ const IntegrationInitComponents = memo(() => (
     <WeixinListenerInit />
     <CloudSyncInit />
     <RawMessagesMigrationInit />
+    <InsightRefreshInit />
   </Suspense>
 ));
 
