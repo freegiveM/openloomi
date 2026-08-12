@@ -88,6 +88,22 @@ async function closeFixture(fixture: Fixture) {
   await fixture.claude.close();
 }
 
+async function expectPausedGoal(fixture: Fixture, goalId: string) {
+  await expect(
+    fixture.runtime.queries.getById({
+      ownerId: OWNER_ID,
+      runtimeSessionId: SESSION_ID,
+      goalId,
+    }),
+  ).resolves.toMatchObject({
+    goal: { goal: { status: "paused", revision: 2 } },
+    latestRun: {
+      status: "paused",
+      lastEvaluation: { completed: false },
+    },
+  });
+}
+
 async function observeAssistantTurn(
   fixture: Fixture,
   assistantTurnId: string,
@@ -214,10 +230,10 @@ describe("GoalController Claude Stop integration", () => {
     }
   });
 
-  it("fails closed on recursive Stop without a new assistant turn", async () => {
+  it("pauses on recursive Stop without a new assistant turn", async () => {
     const fixture = await createFixture();
     try {
-      await activateGoal(fixture, commandGoal());
+      const activation = await activateGoal(fixture, commandGoal());
       await observeAssistantTurn(fixture, "assistant-recursive-stop");
       await fixture.claude.evaluateStop({
         runEpoch: 0,
@@ -233,7 +249,8 @@ describe("GoalController Claude Stop integration", () => {
           lastAssistantMessage: "The test has not run yet.",
           stopHookActive: true,
         }),
-      ).resolves.toMatchObject({ decision: "allow", outcome: "blocked" });
+      ).resolves.toMatchObject({ decision: "allow", outcome: "paused" });
+      await expectPausedGoal(fixture, activation.goal.goal.id);
     } finally {
       await closeFixture(fixture);
     }
@@ -262,7 +279,7 @@ describe("GoalController Claude Stop integration", () => {
     }
   });
 
-  it("allows Stop and completes the Goal when deterministic command evidence satisfies it", async () => {
+  it("finalizes without continuation when durable command evidence satisfies the Goal", async () => {
     const fixture = await createFixture();
     try {
       await activateGoal(fixture, commandGoal());
@@ -300,11 +317,16 @@ describe("GoalController Claude Stop integration", () => {
       });
 
       await expect(
-        fixture.claude.evaluateStop({
+        fixture.runtime.controller
+          .forSession({
+            ownerId: OWNER_ID,
+            runtimeSessionId: SESSION_ID,
+            transport: fixture.claude,
+          })
+          .finalizeWithoutContinuation({
           runEpoch: 0,
-          assistantTurnId: "assistant-turn-complete",
-          lastAssistantMessage: "The required test passed.",
-          stopHookActive: false,
+          evaluationId: "provider-failure-complete",
+          turnContext: context,
         }),
       ).resolves.toMatchObject({ decision: "allow", outcome: "completed" });
     } finally {
@@ -410,10 +432,10 @@ describe("GoalController Claude Stop integration", () => {
     }
   });
 
-  it("never automatically completes a manual criterion", async () => {
+  it("pauses instead of automatically completing a manual criterion", async () => {
     const fixture = await createFixture();
     try {
-      await activateGoal(fixture, {
+      const activation = await activateGoal(fixture, {
         objective: "Obtain approval",
         successCriteria: [
           {
@@ -439,19 +461,20 @@ describe("GoalController Claude Stop integration", () => {
           lastAssistantMessage: "I believe the result is ready.",
           stopHookActive: false,
         }),
-      ).resolves.toMatchObject({ decision: "allow", outcome: "blocked" });
+      ).resolves.toMatchObject({ decision: "allow", outcome: "paused" });
+      await expectPausedGoal(fixture, activation.goal.goal.id);
     } finally {
       await closeFixture(fixture);
     }
   });
 
-  it("fails closed when the semantic evaluator fails", async () => {
+  it("pauses when the semantic evaluator fails", async () => {
     const semanticEvaluator = {
       evaluate: vi.fn().mockRejectedValue(new Error("evaluator unavailable")),
     };
     const fixture = await createFixture({ semanticEvaluator });
     try {
-      await activateGoal(fixture, {
+      const activation = await activateGoal(fixture, {
         objective: "Verify the implementation semantically",
         successCriteria: [
           {
@@ -481,7 +504,8 @@ describe("GoalController Claude Stop integration", () => {
           lastAssistantMessage: "The implementation appears complete.",
           stopHookActive: false,
         }),
-      ).resolves.toMatchObject({ decision: "allow", outcome: "blocked" });
+      ).resolves.toMatchObject({ decision: "allow", outcome: "paused" });
+      await expectPausedGoal(fixture, activation.goal.goal.id);
       expect(semanticEvaluator.evaluate).toHaveBeenCalledTimes(1);
       expect(semanticEvaluator.evaluate).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -495,6 +519,211 @@ describe("GoalController Claude Stop integration", () => {
             }),
           ]),
         }),
+      );
+
+      const resumed = await fixture.runtime.goals.resume({
+        ownerId: OWNER_ID,
+        runtimeSessionId: SESSION_ID,
+        goalId: activation.goal.goal.id,
+        expectedRevision: 2,
+        idempotencyKey: "resume-after-evaluator-error",
+        source: { type: "user", authority: "user" },
+      });
+      expect(resumed).toMatchObject({
+        goal: { goal: { status: "active", revision: 3 } },
+        instruction: { kind: "goal.resume", goalRevision: 3 },
+        dispatch: { status: "accepted" },
+      });
+      await fixture.sdkInput.next();
+      await vi.waitFor(async () => {
+        await expect(
+          fixture.runtime.queries.getById({
+            ownerId: OWNER_ID,
+            runtimeSessionId: SESSION_ID,
+            goalId: activation.goal.goal.id,
+          }),
+        ).resolves.toMatchObject({
+          goal: { goal: { status: "active", revision: 3 } },
+          latestRun: {
+            status: "running",
+            goalRevision: 3,
+            lastEvaluation: expect.objectContaining({
+              completed: false,
+              reason: expect.stringContaining(
+                "The semantic Goal evaluator failed",
+              ),
+            }),
+          },
+        });
+      });
+    } finally {
+      await closeFixture(fixture);
+    }
+  });
+
+  it("pauses without creating a continuation when final evidence is incomplete", async () => {
+    const fixture = await createFixture();
+    try {
+      const activation = await activateGoal(fixture, commandGoal());
+      const context = await fixture.runtime.observations.captureContext({
+        ownerId: OWNER_ID,
+        runtimeSessionId: SESSION_ID,
+        runEpoch: 0,
+      });
+      if (context === null) {
+        throw new Error("Expected an active Goal observation context");
+      }
+
+      await expect(
+        fixture.runtime.controller
+          .forSession({
+            ownerId: OWNER_ID,
+            runtimeSessionId: SESSION_ID,
+            transport: fixture.claude,
+          })
+          .finalizeWithoutContinuation({
+            runEpoch: 0,
+            evaluationId: "provider-failure-incomplete",
+            turnContext: context,
+          }),
+      ).resolves.toMatchObject({ decision: "allow", outcome: "paused" });
+      await expectPausedGoal(fixture, activation.goal.goal.id);
+      await expect(
+        fixture.runtime.state.listInstructions(OWNER_ID, SESSION_ID),
+      ).resolves.toEqual([
+        expect.objectContaining({ kind: "goal.activate" }),
+      ]);
+    } finally {
+      await closeFixture(fixture);
+    }
+  });
+
+  it("preserves proven criteria when final semantic evaluation fails", async () => {
+    const fixture = await createFixture({
+      semanticEvaluator: {
+        evaluate: vi.fn().mockRejectedValue(new Error("evaluator unavailable")),
+      },
+    });
+    try {
+      const activation = await activateGoal(
+        fixture,
+        commandGoal({
+          completionPolicy: "model_evaluator",
+          successCriteria: [
+            {
+              id: "tests-pass",
+              description: "Required tests pass",
+              verification: {
+                type: "command_result",
+                commandPattern: "pnpm test",
+                expectedExitCode: 0,
+              },
+              required: true,
+            },
+            {
+              id: "behavior-correct",
+              description: "The behavior is correct",
+              verification: { type: "model_evidence" },
+              required: true,
+            },
+          ],
+        }),
+      );
+      const context = await fixture.runtime.observations.captureContext({
+        ownerId: OWNER_ID,
+        runtimeSessionId: SESSION_ID,
+        runEpoch: 0,
+      });
+      if (context === null) {
+        throw new Error("Expected an active Goal observation context");
+      }
+      await fixture.runtime.observations.observeProviderEvent({
+        ownerId: OWNER_ID,
+        runtimeSessionId: SESSION_ID,
+        runEpoch: 0,
+        eventKey: "provider-failure-test-result",
+        providerEventId: "provider-failure-test-result",
+        observedAt: NOW.toISOString(),
+        context,
+        evidence: [
+          {
+            type: "test_result",
+            sourceEventId: "provider-failure-test-result",
+            summary: "Test command succeeded: pnpm test",
+            success: true,
+            payload: {
+              provider: "claude",
+              toolName: "Bash",
+              command: "pnpm test",
+              exitCode: 0,
+            },
+            observedAt: NOW.toISOString(),
+          },
+        ],
+      });
+
+      await expect(
+        fixture.runtime.controller
+          .forSession({
+            ownerId: OWNER_ID,
+            runtimeSessionId: SESSION_ID,
+            transport: fixture.claude,
+          })
+          .finalizeWithoutContinuation({
+            runEpoch: 0,
+            evaluationId: "provider-failure-preserves-progress",
+            turnContext: context,
+          }),
+      ).resolves.toMatchObject({ decision: "allow", outcome: "paused" });
+      await expect(
+        fixture.runtime.queries.getById({
+          ownerId: OWNER_ID,
+          runtimeSessionId: SESSION_ID,
+          goalId: activation.goal.goal.id,
+        }),
+      ).resolves.toMatchObject({
+        goal: { goal: { status: "paused" } },
+        latestRun: {
+          status: "paused",
+          lastEvaluation: {
+            satisfiedCriteria: ["tests-pass"],
+            missingCriteria: ["behavior-correct"],
+          },
+        },
+        progress: { completedCriteria: 1, totalCriteria: 2 },
+      });
+    } finally {
+      await closeFixture(fixture);
+    }
+  });
+
+  it("pauses after repeated evaluations make no progress", async () => {
+    const fixture = await createFixture();
+    try {
+      const activation = await activateGoal(fixture, commandGoal());
+      for (let attempt = 1; attempt <= 3; attempt += 1) {
+        const assistantTurnId = `assistant-no-progress-${attempt}`;
+        await observeAssistantTurn(fixture, assistantTurnId);
+        const decision = await fixture.claude.evaluateStop({
+          runEpoch: 0,
+          assistantTurnId,
+          lastAssistantMessage: "The required test has not run yet.",
+          stopHookActive: false,
+        });
+        expect(decision).toMatchObject(
+          attempt < 3
+            ? { decision: "block", outcome: "continue" }
+            : { decision: "allow", outcome: "paused" },
+        );
+      }
+
+      await expectPausedGoal(fixture, activation.goal.goal.id);
+      const [run] = await fixture.runtime.observations.listGoalRuns(
+        OWNER_ID,
+        SESSION_ID,
+      );
+      expect(run?.lastEvaluation?.reason).toContain(
+        "Automatic continuation stopped after 3 evaluations without new evidence or satisfied criteria.",
       );
     } finally {
       await closeFixture(fixture);
@@ -616,6 +845,54 @@ describe("GoalController Claude Stop integration", () => {
         goalRevision: 1,
       });
       expect(semanticEvaluator.evaluate).not.toHaveBeenCalled();
+    } finally {
+      await closeFixture(fixture);
+    }
+  });
+
+  it("invalidates the prior evaluation when the Goal definition changes", async () => {
+    const fixture = await createFixture();
+    try {
+      const activated = await activateGoal(fixture, commandGoal());
+      await observeAssistantTurn(fixture, "assistant-before-goal-update");
+      await expect(
+        fixture.claude.evaluateStop({
+          runEpoch: 0,
+          assistantTurnId: "assistant-before-goal-update",
+          lastAssistantMessage: "The required test has not run yet.",
+          stopHookActive: false,
+        }),
+      ).resolves.toMatchObject({ decision: "block", outcome: "continue" });
+      await expect(
+        fixture.runtime.queries.getById({
+          ownerId: OWNER_ID,
+          runtimeSessionId: SESSION_ID,
+          goalId: activated.goal.goal.id,
+        }),
+      ).resolves.toMatchObject({
+        latestRun: { lastEvaluation: expect.objectContaining({ completed: false }) },
+      });
+
+      await fixture.runtime.goals.update({
+        ownerId: OWNER_ID,
+        runtimeSessionId: SESSION_ID,
+        goalId: activated.goal.goal.id,
+        expectedRevision: 1,
+        idempotencyKey: "change-goal-definition",
+        source: { type: "user", authority: "user" },
+        update: { objective: "Run and preserve the revised test result" },
+      });
+      await fixture.sdkInput.next();
+
+      await expect(
+        fixture.runtime.queries.getById({
+          ownerId: OWNER_ID,
+          runtimeSessionId: SESSION_ID,
+          goalId: activated.goal.goal.id,
+        }),
+      ).resolves.toMatchObject({
+        latestRun: { goalRevision: 2, lastEvaluation: undefined },
+      });
     } finally {
       await closeFixture(fixture);
     }

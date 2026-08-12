@@ -7,6 +7,7 @@ import {
 import type {
   AgentRuntimeRecovery,
   AgentRuntimeRecoveryContinuationResult,
+  AgentRuntimeRecoveryGoalFinalizationResult,
 } from "@openloomi/ai/agent/types";
 import type {
   RuntimeObservationLeaseFencePort,
@@ -256,6 +257,8 @@ export async function startClaudeGoalRuntimeSession(
         ownerId,
       });
 
+      const recoveryAttemptId =
+        input.recovery.recoveryLeaseToken ?? crypto.randomUUID();
       await input.recovery.onProviderSessionInitialized?.({
         runtimeSessionId: input.runtime.runtimeSessionId,
         providerSessionId,
@@ -265,8 +268,14 @@ export async function startClaudeGoalRuntimeSession(
           ownerId,
           goalRuntime,
           goalStopController,
-          input.recovery.recoveryLeaseToken ?? crypto.randomUUID(),
+          recoveryAttemptId,
         ),
+        finalizeGoalWithoutContinuation:
+          createRecoveryFinalizationTrigger(
+            input.runtime,
+            recoveryAttemptId,
+            input.recovery.recoveryLeaseToken,
+          ),
       });
     } else {
       await replayPendingInstructions({
@@ -507,6 +516,32 @@ function createRecoveryContinuationTrigger(
     try {
       decision = await inFlight;
       return recoveryContinuationResult(decision);
+    } finally {
+      inFlight = null;
+    }
+  };
+}
+
+function createRecoveryFinalizationTrigger(
+  runtime: ClaudeRuntimeSession,
+  recoveryAttemptId: string,
+  runtimeLeaseToken?: string,
+): () => Promise<AgentRuntimeRecoveryGoalFinalizationResult> {
+  let result: AgentRuntimeRecoveryGoalFinalizationResult | null = null;
+  let inFlight: Promise<AgentRuntimeRecoveryGoalFinalizationResult> | null =
+    null;
+  return async () => {
+    if (result) return result;
+    if (inFlight) return inFlight;
+
+    inFlight = runtime.finalizeGoalWithoutContinuation(
+      `recovery-terminal:${runtime.runtimeSessionId}:${runtime.runEpoch}:${recoveryAttemptId}`,
+      runtimeLeaseToken,
+    );
+    try {
+      const finalized = await inFlight;
+      result = finalized;
+      return finalized;
     } finally {
       inFlight = null;
     }

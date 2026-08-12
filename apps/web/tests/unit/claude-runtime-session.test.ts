@@ -416,6 +416,7 @@ describe("Claude Goal runtime registration", () => {
         providerSessionId: "claude-provider-session",
         runEpoch: 4,
         continueGoal: expect.any(Function),
+        finalizeGoalWithoutContinuation: expect.any(Function),
       }),
     );
     expect(captureContext).toHaveBeenCalledWith({
@@ -438,9 +439,14 @@ describe("Claude Goal runtime registration", () => {
       4,
     );
     const assistantTurnIds: string[] = [];
+    const finalizationIds: string[] = [];
     vi.spyOn(goalRuntime.controller, "forSession").mockImplementation(() => ({
       evaluateStop: async (input) => {
         assistantTurnIds.push(input.assistantTurnId);
+        return { decision: "allow", outcome: "no_active_goal" };
+      },
+      finalizeWithoutContinuation: async (input) => {
+        finalizationIds.push(input.evaluationId);
         return { decision: "allow", outcome: "no_active_goal" };
       },
     }));
@@ -463,6 +469,7 @@ describe("Claude Goal runtime registration", () => {
           >[0],
         ) => {
           await context.continueGoal();
+          await context.finalizeGoalWithoutContinuation?.();
         },
       );
       const registrationPromise = startClaudeGoalRuntimeSession({
@@ -491,6 +498,10 @@ describe("Claude Goal runtime registration", () => {
     expect(assistantTurnIds).toEqual([
       `recovery:${SESSION_ID}:4:recovery-claim-a`,
       `recovery:${SESSION_ID}:4:recovery-claim-b`,
+    ]);
+    expect(finalizationIds).toEqual([
+      `recovery-terminal:${SESSION_ID}:4:recovery-claim-a`,
+      `recovery-terminal:${SESSION_ID}:4:recovery-claim-b`,
     ]);
   });
 
@@ -605,16 +616,59 @@ describe("ClaudeRuntimeSession", () => {
     expect(session.state).toBe("closed");
   });
 
-  it("terminates the Query when Claude emits a synthetic provider API error", async () => {
+  it("waits for normal output observation to finish before closing", async () => {
     const handle = createControlledClaudeQuery();
     const sdk = createFakeClaudeSdkTransport(handle);
-    const observeSdkMessage = vi.fn(async () => {});
+    let finishObservation!: () => void;
+    const observationPending = new Promise<void>((resolve) => {
+      finishObservation = resolve;
+    });
+    const observeSdkMessage = vi.fn(() => observationPending);
     const session = new ClaudeRuntimeSession({
       runtimeSessionId: SESSION_ID,
       runEpoch: 0,
       sdkTransport: sdk.transport,
       logger: logger(),
       createMessageId: () => "message-id",
+    });
+    session.attachEventObserver({
+      instructionWritten: vi.fn(async () => {}),
+      captureTurnContexts: vi.fn(async () => []),
+      observeSdkMessage,
+      observeStopAssistantReport: vi.fn(async () => {}),
+      captureToolStart: vi.fn(async () => {}),
+      observeToolOutcome: vi.fn(async () => {}),
+      flush: vi.fn(async () => {}),
+    });
+    session.start({ initialPrompt: "initial request" });
+    handle.push(initMessage());
+    await vi.waitFor(() => expect(observeSdkMessage).toHaveBeenCalledOnce());
+
+    let closed = false;
+    const closePromise = session.close().then(() => {
+      closed = true;
+    });
+    await Promise.resolve();
+    expect(closed).toBe(false);
+
+    finishObservation();
+    await closePromise;
+    expect(closed).toBe(true);
+    expect(session.state).toBe("closed");
+  });
+
+  it("terminates the Query when Claude emits a synthetic provider API error", async () => {
+    const handle = createControlledClaudeQuery({ hangOnIteratorReturn: true });
+    const sdk = createFakeClaudeSdkTransport(handle);
+    const observeSdkMessage = vi.fn(async () => {});
+    const abortProvider = vi.fn();
+    const session = new ClaudeRuntimeSession({
+      runtimeSessionId: SESSION_ID,
+      runEpoch: 0,
+      sdkTransport: sdk.transport,
+      logger: logger(),
+      createMessageId: () => "message-id",
+      abortProvider,
     });
     session.attachEventObserver({
       instructionWritten: vi.fn(async () => {}),
@@ -645,10 +699,50 @@ describe("ClaudeRuntimeSession", () => {
     });
     await vi.waitFor(() => expect(session.state).toBe("failed"));
     expect(handle.close).toHaveBeenCalledOnce();
+    expect(handle.iteratorReturn).not.toHaveBeenCalled();
+    expect(abortProvider).toHaveBeenCalledOnce();
     expect(observeSdkMessage).toHaveBeenCalledOnce();
 
     await session.close();
     expect(handle.close).toHaveBeenCalledOnce();
+  });
+
+  it("reports an external provider failure once without exposing diagnostics", async () => {
+    const handle = createControlledClaudeQuery({ hangOnIteratorReturn: true });
+    const sdk = createFakeClaudeSdkTransport(handle);
+    const abortProvider = vi.fn();
+    const session = new ClaudeRuntimeSession({
+      runtimeSessionId: SESSION_ID,
+      runEpoch: 4,
+      sdkTransport: sdk.transport,
+      logger: logger(),
+      createMessageId: () => "safe-error-id",
+      abortProvider,
+    });
+    const output = session.subscribe()[Symbol.asyncIterator]();
+    session.start({ initialPrompt: "initial request" });
+
+    expect(session.reportProviderFailure("stderr")).toBe(true);
+    expect(session.reportProviderFailure("session_store")).toBe(false);
+    await expect(output.next()).resolves.toEqual({
+      value: {
+        type: "error",
+        message: CLAUDE_API_ERROR_SENTINEL,
+        messageId: "safe-error-id",
+        runEpoch: 4,
+      },
+      done: false,
+    });
+    await expect(output.next()).resolves.toEqual({
+      value: undefined,
+      done: true,
+    });
+
+    expect(session.state).toBe("failed");
+    expect(abortProvider).toHaveBeenCalledOnce();
+    expect(handle.close).toHaveBeenCalledOnce();
+    expect(handle.iteratorReturn).not.toHaveBeenCalled();
+    await session.close();
   });
 
   it("confirms the expected provider session and starts recovery with no original prompt", async () => {

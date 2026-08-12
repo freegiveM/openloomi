@@ -218,6 +218,8 @@ export interface RuntimeSessionRecoveryPersistencePort extends RuntimeSessionPer
     leaseOwner: string;
     leaseToken: string;
     expectedRunEpoch: number;
+    expectedGoalId?: string;
+    expectedGoalRevision?: number;
     errorCode: string;
     errorMessage: string;
   }): Promise<void>;
@@ -1071,6 +1073,8 @@ export class SqliteRuntimeSessionPersistence implements RuntimeSessionRecoveryPe
     leaseOwner: string;
     leaseToken: string;
     expectedRunEpoch: number;
+    expectedGoalId?: string;
+    expectedGoalRevision?: number;
     errorCode: string;
     errorMessage: string;
   }): Promise<void> {
@@ -1081,6 +1085,26 @@ export class SqliteRuntimeSessionPersistence implements RuntimeSessionRecoveryPe
     );
     const errorCode = boundedText(input.errorCode, "errorCode", 128);
     const errorMessage = boundedText(input.errorMessage, "errorMessage", 8_000);
+    if (
+      (input.expectedGoalId === undefined) !==
+      (input.expectedGoalRevision === undefined)
+    ) {
+      throw new TypeError(
+        "expectedGoalId and expectedGoalRevision must be provided together",
+      );
+    }
+    const expectedGoalId =
+      input.expectedGoalId === undefined
+        ? undefined
+        : identifier(input.expectedGoalId, "expectedGoalId");
+    const expectedGoalRevision =
+      input.expectedGoalRevision === undefined
+        ? undefined
+        : positiveInteger(
+            input.expectedGoalRevision,
+            "expectedGoalRevision",
+            Number.MAX_SAFE_INTEGER,
+          );
     try {
       const paused = this.database.immediate((store) => {
         const session = store.getSession(
@@ -1105,6 +1129,14 @@ export class SqliteRuntimeSessionPersistence implements RuntimeSessionRecoveryPe
           parsed.ownerId,
           parsed.runtimeSessionId,
         );
+        if (
+          assigned?.persistedGoal.goal.status === "active" &&
+          expectedGoalId !== undefined &&
+          (assigned.persistedGoal.goal.id !== expectedGoalId ||
+            assigned.persistedGoal.goal.revision !== expectedGoalRevision)
+        ) {
+          return false;
+        }
         if (assigned?.persistedGoal.goal.status === "active") {
           const currentGoal = assigned.persistedGoal;
           assertGoalStatusTransition(currentGoal.goal.status, "paused");
@@ -1117,19 +1149,11 @@ export class SqliteRuntimeSessionPersistence implements RuntimeSessionRecoveryPe
               updatedAt: at,
             },
           };
-          const failureEvaluation = {
-            completed: false,
-            confidence: 0,
-            satisfiedCriteria: [],
-            missingCriteria: currentGoal.goal.successCriteria
-              .filter((criterion) => criterion.required)
-              .map((criterion) => criterion.id),
-            evidence: [],
-            reason: `Goal recovery paused (${errorCode}): ${errorMessage}`.slice(
+          const failureReason =
+            `Goal recovery paused (${errorCode}): ${errorMessage}`.slice(
               0,
               8_000,
-            ),
-          };
+            );
           if (
             !store.updateGoal(
               pausedGoal,
@@ -1155,6 +1179,24 @@ export class SqliteRuntimeSessionPersistence implements RuntimeSessionRecoveryPe
             )
           ) {
             assertGoalRunStatusTransition(run.status, "paused");
+            const failureEvaluation: NonNullable<
+              AgentGoalRun["lastEvaluation"]
+            > = run.lastEvaluation
+              ? {
+                  ...run.lastEvaluation,
+                  completed: false,
+                  reason: failureReason,
+                }
+              : {
+                  completed: false,
+                  confidence: 0,
+                  satisfiedCriteria: [],
+                  missingCriteria: currentGoal.goal.successCriteria
+                    .filter((criterion) => criterion.required)
+                    .map((criterion) => criterion.id),
+                  evidence: [],
+                  reason: failureReason,
+                };
             if (
               !store.updateRun(
                 run,

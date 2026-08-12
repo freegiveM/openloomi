@@ -309,9 +309,40 @@ describe("SqliteAgentGoalState", () => {
       instruction: updateDraft(revised, "revise-durable-goal", uuid(102)),
       command: command("revise-durable-goal", "c"),
     };
+    const run = database.prepare("SELECT id FROM agent_goal_runs").get() as {
+      id: string;
+    };
+    const runs = new SqliteRunRepository(runtimeDatabase);
+    await runs.updateProgress({
+      ownerId: OWNER_A,
+      runtimeSessionId: SESSION_A,
+      runId: run.id,
+      expectedRunEpoch: 0,
+      expectedStatus: "queued",
+      updatedAt: NOW.toISOString(),
+      lastEvaluation: {
+        completed: false,
+        confidence: 0,
+        satisfiedCriteria: [],
+        missingCriteria: ["durable-result"],
+        evidence: [],
+        reason: "This evaluation belongs to the old Goal definition.",
+      },
+    });
     await expect(state.commitRevision(update)).resolves.toMatchObject({
       goal: { goal: { revision: 2 } },
       instruction: { sequence: 2 },
+    });
+    await expect(
+      runs.findByGoalEpoch({
+        ownerId: OWNER_A,
+        runtimeSessionId: SESSION_A,
+        goalId: revised.id,
+        runEpoch: 0,
+      }),
+    ).resolves.toMatchObject({
+      goalRevision: 2,
+      lastEvaluation: undefined,
     });
     const dispatchable = await new SqliteDeliveryRepository(
       runtimeDatabase,
@@ -458,6 +489,152 @@ describe("SqliteAgentGoalState", () => {
       state.getActivePrimaryGoal(OWNER_A, SESSION_A),
     ).resolves.toBeNull();
   });
+
+  it("atomically pauses an evaluator-owned Goal and its current Run", async () => {
+    const { database, runtimeDatabase, state } = createHarness();
+    const input = activationInput();
+    await state.commitActivation(input);
+    const run = database.prepare("SELECT id FROM agent_goal_runs").get() as {
+      id: string;
+    };
+    await new SqliteRunRepository(runtimeDatabase).transition({
+      ownerId: OWNER_A,
+      runtimeSessionId: SESSION_A,
+      runId: run.id,
+      expectedRunEpoch: 0,
+      expectedStatus: "queued",
+      nextStatus: "evaluating",
+      updatedAt: "2026-08-05T08:00:30.000Z",
+    });
+    const paused = transitionAgentGoal({
+      current: input.goal,
+      expectedRevision: 1,
+      status: "paused",
+      now: new Date("2026-08-05T08:01:00.000Z"),
+    });
+
+    await expect(
+      state.commitEvaluationTransition({
+        ownerId: OWNER_A,
+        runtimeSessionId: SESSION_A,
+        expectedRevision: 1,
+        expectedRunEpoch: 0,
+        goal: paused,
+      }),
+    ).resolves.toMatchObject({ goal: { goal: { status: "paused" } } });
+    expect(
+      database.prepare("SELECT status, slot_state FROM agent_goals").get(),
+    ).toEqual({ status: "paused", slot_state: "assigned" });
+    expect(
+      database
+        .prepare(
+          "SELECT status, goal_revision, completed_at FROM agent_goal_runs",
+        )
+        .get(),
+    ).toEqual({ status: "paused", goal_revision: 2, completed_at: null });
+  });
+
+  it.each(["paused", "blocked"] as const)(
+    "retains the previous evaluation when resuming a %s Goal Run",
+    async (stoppedStatus) => {
+      const { database, runtimeDatabase, state } = createHarness();
+      const input = activationInput();
+      await state.commitActivation(input);
+      const run = database.prepare("SELECT id FROM agent_goal_runs").get() as {
+        id: string;
+      };
+      const runs = new SqliteRunRepository(runtimeDatabase);
+      await runs.transition({
+        ownerId: OWNER_A,
+        runtimeSessionId: SESSION_A,
+        runId: run.id,
+        expectedRunEpoch: 0,
+        expectedStatus: "queued",
+        nextStatus: "evaluating",
+        updatedAt: NOW.toISOString(),
+      });
+      const stopped = transitionAgentGoal({
+        current: input.goal,
+        expectedRevision: 1,
+        status: stoppedStatus,
+        now: new Date("2026-08-05T08:01:00.000Z"),
+      });
+      await state.commitEvaluationTransition({
+        ownerId: OWNER_A,
+        runtimeSessionId: SESSION_A,
+        expectedRevision: 1,
+        expectedRunEpoch: 0,
+        goal: stopped,
+      });
+      await runs.updateProgress({
+        ownerId: OWNER_A,
+        runtimeSessionId: SESSION_A,
+        runId: run.id,
+        expectedRunEpoch: 0,
+        expectedStatus: stoppedStatus,
+        updatedAt: NOW.toISOString(),
+        lastEvaluation: {
+          completed: false,
+          confidence: 0,
+          satisfiedCriteria: [],
+          missingCriteria: ["durable-result"],
+          evidence: [],
+          reason: "The previous evaluation could not confirm completion.",
+        },
+      });
+      const resumed = transitionAgentGoal({
+        current: stopped,
+        expectedRevision: 2,
+        status: "active",
+        now: new Date("2026-08-05T08:02:00.000Z"),
+      });
+      const idempotencyKey = `resume-${stoppedStatus}-goal`;
+
+      await expect(
+        state.commitTransition({
+          ownerId: OWNER_A,
+          runtimeSessionId: SESSION_A,
+          expectedRevision: 2,
+          goal: resumed,
+          instruction: {
+            schemaVersion: RUNTIME_INSTRUCTION_SCHEMA_VERSION,
+            id: uuid(stoppedStatus === "paused" ? 107 : 108),
+            goalId: resumed.id,
+            goalRevision: resumed.revision,
+            kind: "goal.resume",
+            deliveryMode: "steer",
+            targetSessionId: SESSION_A,
+            payload: {},
+            source: { type: "user", authority: "user" },
+            idempotencyKey,
+            issuedAt: resumed.updatedAt,
+          },
+          command: command(
+            idempotencyKey,
+            stoppedStatus === "paused" ? "7" : "8",
+          ),
+        }),
+      ).resolves.toMatchObject({
+        goal: { goal: { status: "active", revision: 3 } },
+      });
+      await expect(
+        runs.findByGoalEpoch({
+          ownerId: OWNER_A,
+          runtimeSessionId: SESSION_A,
+          goalId: resumed.id,
+          runEpoch: 0,
+        }),
+      ).resolves.toMatchObject({
+        status: "running",
+        goalRevision: 3,
+        lastEvaluation: expect.objectContaining({
+          completed: false,
+          reason: "The previous evaluation could not confirm completion.",
+        }),
+        completedAt: undefined,
+      });
+    },
+  );
 
   it("persists a cancel barrier, advances its epoch, and replays every phase exactly", async () => {
     const { database, state } = createHarness();

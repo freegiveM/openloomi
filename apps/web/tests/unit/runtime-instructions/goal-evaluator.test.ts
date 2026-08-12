@@ -1,4 +1,5 @@
 import {
+  AgentGoalSchema,
   createAgentGoal,
   type AgentGoal,
   type AgentGoalRun,
@@ -522,7 +523,117 @@ describe("GoalEvaluator", () => {
     });
     await expect(throwing.evaluate(input)).rejects.toMatchObject({
       code: "semantic_evaluator_failed",
+    });
+  });
+
+  it("carries already-proven scoped progress when semantic evaluation fails", async () => {
+    const agentGoal = goal(
+      [
+        criterion("tests-pass", {
+          type: "command_result",
+          expectedExitCode: 0,
+        }),
+        criterion("behavior-correct", { type: "model_evidence" }),
+      ],
+      "model_evaluator",
+    );
+    const commandEvidence = evidence(
+      "30000000-0000-4000-8000-000000000023",
+      agentGoal,
+      {
+        type: "test_result",
+        success: true,
+        summary: "The required command passed",
+        payload: { exitCode: 0 },
+      },
+    );
+    const evaluator = new GoalEvaluator({
+      evaluate: vi.fn().mockRejectedValue(new Error("provider unavailable")),
+    });
+
+    await expect(
+      evaluator.evaluate({
+        goal: agentGoal,
+        run: run(agentGoal),
+        evidence: [commandEvidence],
+      }),
+    ).rejects.toMatchObject({
+      code: "semantic_evaluator_failed",
+      partialEvaluation: {
+        completed: false,
+        confidence: 0,
+        satisfiedCriteria: ["tests-pass"],
+        missingCriteria: ["behavior-correct"],
+        evidence: [
+          { criterionId: "tests-pass", evidenceIds: [commandEvidence.id] },
+        ],
+        reason: expect.any(String),
+      },
     } satisfies Partial<GoalEvaluatorError>);
+  });
+
+  it("accepts lifecycle-era evidence within the semantic revision floor only", async () => {
+    const created = goal([
+      criterion("tests-pass", {
+        type: "command_result",
+        commandPattern: "vitest",
+        expectedExitCode: 0,
+      }),
+    ]);
+    const agentGoal = AgentGoalSchema.parse({
+      ...created,
+      revision: 5,
+      updatedAt: new Date(NOW.getTime() + 4_000).toISOString(),
+    });
+    const beforeFloor = evidence(
+      "30000000-0000-4000-8000-000000000020",
+      agentGoal,
+      {
+        type: "test_result",
+        success: true,
+        summary: "Test passed before the current semantic scope",
+        payload: { command: "pnpm vitest run", exitCode: 0 },
+        goalRevision: 2,
+      },
+    );
+    const lifecycleEra = evidence(
+      "30000000-0000-4000-8000-000000000021",
+      agentGoal,
+      {
+        type: "test_result",
+        success: true,
+        summary: "Test passed before a pause and resume",
+        payload: { command: "pnpm vitest run", exitCode: 0 },
+        goalRevision: 3,
+      },
+    );
+    const future = evidence(
+      "30000000-0000-4000-8000-000000000022",
+      agentGoal,
+      {
+        type: "test_result",
+        success: true,
+        summary: "Test belongs to a future Goal revision",
+        payload: { command: "pnpm vitest run", exitCode: 0 },
+        goalRevision: 6,
+      },
+    );
+
+    const result = await new GoalEvaluator().evaluate({
+      goal: agentGoal,
+      run: run(agentGoal),
+      evidence: [beforeFloor, lifecycleEra, future],
+      evidenceRevisionFloor: 3,
+    });
+
+    expect(result).toMatchObject({
+      completed: true,
+      satisfiedCriteria: ["tests-pass"],
+      missingCriteria: [],
+      evidence: [
+        { criterionId: "tests-pass", evidenceIds: [lifecycleEra.id] },
+      ],
+    });
   });
 
   it("keeps criteria with unscoped semantic evidence unsatisfied", async () => {

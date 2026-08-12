@@ -324,6 +324,7 @@ export function assertGoalEvaluationTransition(
   expectedRevision: number,
 ): void {
   const allowedStatus =
+    goal.status === "paused" ||
     goal.status === "blocked" ||
     goal.status === "completed" ||
     goal.status === "expired" ||

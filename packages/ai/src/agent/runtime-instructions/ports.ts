@@ -2,6 +2,7 @@ import type {
   AgentGoal,
   AgentGoalLifecycleTransition,
   AgentGoalReplacement,
+  GoalEvaluationResult,
   GoalLifecycleTransitionAction,
   PersistedAgentGoal,
   RuntimeDeliveryReceipt,
@@ -195,6 +196,9 @@ export interface AgentGoalEvaluationStatePort {
     expectedRevision: number;
     expectedRunEpoch: number;
     goal: AgentGoal;
+    evaluation?: GoalEvaluationResult;
+    /** Fences recovery-only terminal evaluation against lease takeover. */
+    runtimeLeaseToken?: string;
   }): Promise<GoalEvaluationTransitionCommit>;
 }
 

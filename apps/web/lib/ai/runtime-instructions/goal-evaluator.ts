@@ -40,6 +40,12 @@ export class GoalEvaluatorError extends Error {
     public readonly code: GoalEvaluatorErrorCode,
     message: string,
     public readonly cause?: unknown,
+    /**
+     * Progress that was already proven by the fenced durable snapshot before
+     * semantic evaluation failed. Callers may persist this as an incomplete
+     * result without inventing or widening evidence associations.
+     */
+    public readonly partialEvaluation?: GoalEvaluationResult,
   ) {
     super(message);
     this.name = "GoalEvaluatorError";
@@ -49,7 +55,7 @@ export class GoalEvaluatorError extends Error {
 export interface GoalSemanticEvaluationInput {
   goal: AgentGoal;
   run: AgentGoalRun;
-  /** Evidence is already fenced to this Goal, Run, and Goal revision. */
+  /** Evidence is already fenced to this Goal, Run, and semantic revision. */
   evidence: GoalEvidence[];
   /** Only unresolved, required model-evidence criteria are delegated. */
   criteria: GoalSuccessCriterion[];
@@ -65,6 +71,7 @@ export interface GoalEvaluatorInput {
   goal: AgentGoal;
   run: AgentGoalRun;
   evidence: GoalEvidence[];
+  evidenceRevisionFloor?: number;
   lastAssistantMessage?: string;
 }
 
@@ -88,11 +95,24 @@ export class GoalEvaluator {
   async evaluate(input: GoalEvaluatorInput): Promise<GoalEvaluationResult> {
     assertSnapshot(input);
 
+    const evidenceRevisionFloor =
+      input.evidenceRevisionFloor ?? input.goal.revision;
+    if (
+      !Number.isInteger(evidenceRevisionFloor) ||
+      evidenceRevisionFloor < 1 ||
+      evidenceRevisionFloor > input.goal.revision
+    ) {
+      throw new GoalEvaluatorError(
+        "invalid_evaluation_snapshot",
+        `Goal evidence revision floor ${evidenceRevisionFloor} is invalid for Goal ${input.goal.id} revision ${input.goal.revision}`,
+      );
+    }
     const evidence = input.evidence.filter(
       (item) =>
         item.goalId === input.goal.id &&
         item.goalRunId === input.run.id &&
-        item.goalRevision === input.goal.revision,
+        item.goalRevision >= evidenceRevisionFloor &&
+        item.goalRevision <= input.goal.revision,
     );
     const availableEvidenceIds = new Set(evidence.map(({ id }) => id));
     const evaluations = input.goal.successCriteria.map((criterion) =>
@@ -156,10 +176,18 @@ export class GoalEvaluator {
       });
     }
 
+    const partialEvaluation = buildResult({
+      goal: input.goal,
+      evaluations,
+      confidence: 0,
+    });
+
     if (!this.semanticEvaluator) {
       throw new GoalEvaluatorError(
         "semantic_evaluator_unavailable",
         "Required model-evidence criteria cannot be evaluated because no semantic evaluator is configured",
+        undefined,
+        partialEvaluation,
       );
     }
 
@@ -182,14 +210,28 @@ export class GoalEvaluator {
         "semantic_evaluator_failed",
         "The semantic Goal evaluator failed",
         cause,
+        partialEvaluation,
       );
     }
 
-    const semantic = validateSemanticEvaluation(
-      candidate,
-      semanticCriteria,
-      evidence,
-    );
+    let semantic: GoalEvaluationResult;
+    try {
+      semantic = validateSemanticEvaluation(
+        candidate,
+        semanticCriteria,
+        evidence,
+      );
+    } catch (error) {
+      if (error instanceof GoalEvaluatorError) {
+        throw new GoalEvaluatorError(
+          error.code,
+          error.message,
+          error.cause,
+          partialEvaluation,
+        );
+      }
+      throw error;
+    }
     const semanticSatisfied = new Set(
       semantic.confidence >= MIN_SEMANTIC_COMPLETION_CONFIDENCE
         ? semantic.satisfiedCriteria

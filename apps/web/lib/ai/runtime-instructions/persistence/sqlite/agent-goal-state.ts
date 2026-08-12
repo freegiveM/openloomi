@@ -7,6 +7,7 @@ import {
   type AgentGoalReplacement,
   type AgentGoalRun,
   type AgentGoalStatePort,
+  type GoalEvaluationResult,
   type GoalRunStatus,
   type GoalCommandIdentity,
   type GoalEvaluationTransitionCommit,
@@ -17,6 +18,7 @@ import {
   type PersistedAgentGoal,
   type RuntimeInstruction,
   type RuntimeInstructionDraft,
+  GoalEvaluationResultSchema,
   canonicalJson,
 } from "@openloomi/ai/agent/runtime-instructions";
 
@@ -356,7 +358,11 @@ export class SqliteAgentGoalState
         throw revisionConflict(expectedRevision, current.goal.revision);
       }
       const run = this.requireRun(session, goal.id);
-      this.updateRun(run, { goalRevision: goal.revision }, recordedAt);
+      this.updateRun(
+        run,
+        { goalRevision: goal.revision, lastEvaluation: null },
+        recordedAt,
+      );
       this.commitInstruction({
         session,
         instruction,
@@ -442,7 +448,10 @@ export class SqliteAgentGoalState
       const run = this.requireRun(session, goal.id);
       this.updateRun(
         run,
-        { goalRevision: goal.revision, status: "running" },
+        {
+          goalRevision: goal.revision,
+          status: "running",
+        },
         recordedAt,
       );
       this.commitInstruction({
@@ -550,6 +559,8 @@ export class SqliteAgentGoalState
     expectedRevision: number;
     expectedRunEpoch: number;
     goal: AgentGoal;
+    evaluation?: GoalEvaluationResult;
+    runtimeLeaseToken?: string;
   }): Promise<GoalEvaluationTransitionCommit> {
     const scope = validateGoalStateScope(input.ownerId, input.runtimeSessionId);
     const expectedRevision = requirePositiveGoalStateInteger(
@@ -561,12 +572,36 @@ export class SqliteAgentGoalState
       "expectedRunEpoch",
     );
     const goal = parseGoalState(input.goal);
+    const evaluation =
+      input.evaluation === undefined
+        ? undefined
+        : GoalEvaluationResultSchema.parse(input.evaluation);
+    const runtimeLeaseToken =
+      input.runtimeLeaseToken === undefined
+        ? undefined
+        : requireGoalStateIdentifier(
+            input.runtimeLeaseToken,
+            "runtimeLeaseToken",
+          );
 
     return this.mutate(() => {
+      const recordedAt = this.recordedAt();
       const session = this.requireSession(
         scope.ownerId,
         scope.runtimeSessionId,
       );
+      if (
+        runtimeLeaseToken !== undefined &&
+        (session.recoveryLeaseToken !== runtimeLeaseToken ||
+          session.recoveryLeaseExpiresAtSeconds === undefined ||
+          session.recoveryLeaseExpiresAtSeconds <=
+            Math.floor(Date.parse(recordedAt) / 1_000))
+      ) {
+        throw new DurableAgentGoalStateError(
+          "invalid_commit",
+          `Runtime Session ${scope.runtimeSessionId} recovery lease is no longer current`,
+        );
+      }
       assertNoPendingOperation(session);
       assertRunEpoch(session, expectedRunEpoch);
       const current = this.requireGoal(scope, goal.id);
@@ -598,8 +633,9 @@ export class SqliteAgentGoalState
           goalRevision: goal.revision,
           status: nextRunStatus,
           terminal: isTerminalRunStatus(nextRunStatus),
+          ...(evaluation === undefined ? {} : { lastEvaluation: evaluation }),
         },
-        this.recordedAt(),
+        recordedAt,
       );
       return { goal: clone(transitioned) };
     });
@@ -1258,6 +1294,7 @@ export class SqliteAgentGoalState
       goalRevision?: number;
       status?: GoalRunStatus;
       terminal?: boolean;
+      lastEvaluation?: GoalEvaluationResult | null;
     },
     recordedAt: string,
   ): AgentGoalRun {
@@ -1273,6 +1310,14 @@ export class SqliteAgentGoalState
       status,
       lastActivityAt,
       ...(input.terminal ? { completedAt: lastActivityAt } : {}),
+      ...(input.lastEvaluation === undefined
+        ? {}
+        : {
+            lastEvaluation:
+              input.lastEvaluation === null
+                ? undefined
+                : input.lastEvaluation,
+          }),
     };
     if (!this.storage.updateRun(run, next, recordedAt)) {
       throw new DurableAgentGoalStateError(

@@ -53,7 +53,20 @@ const RECOVERY_PAUSE_MIGRATION = readFileSync(
   ),
   "utf8",
 );
-const MIGRATIONS = [...BASE_MIGRATIONS, RECOVERY_PAUSE_MIGRATION];
+const EVALUATION_PAUSE_MIGRATION = readFileSync(
+  fileURLToPath(
+    new URL(
+      "../../../lib/db/migrations-sqlite/0110_agent_goal_evaluation_pause.sql",
+      import.meta.url,
+    ),
+  ),
+  "utf8",
+);
+const MIGRATIONS = [
+  ...BASE_MIGRATIONS,
+  RECOVERY_PAUSE_MIGRATION,
+  EVALUATION_PAUSE_MIGRATION,
+];
 
 const openDatabases = new Set<Database.Database>();
 const temporaryDirectories = new Set<string>();
@@ -1844,7 +1857,7 @@ describe("SQLite Runtime restart recovery", () => {
     ]);
   });
 
-  it("repairs only legacy restart-recovery failures into resumable paused state", async () => {
+  it("repairs legacy recovery and evaluator blocks into resumable paused state", async () => {
     const legacy = createFileBackedRuntime(BASE_MIGRATIONS);
     const blockedSessionId = "legacy-recovery-blocked";
     const failedSessionId = "legacy-recovery-failed";
@@ -1920,10 +1933,11 @@ describe("SQLite Runtime restart recovery", () => {
       .run(OWNER_ID, evaluatorBlockedSessionId);
     legacy.database
       .prepare(
-        `UPDATE agent_goal_runs SET status = 'blocked'
+        `UPDATE agent_goal_runs
+            SET status = 'blocked', last_evaluation = ?
           WHERE owner_id = ? AND runtime_session_id = ?`,
       )
-      .run(OWNER_ID, evaluatorBlockedSessionId);
+      .run(legacyEvaluation, OWNER_ID, evaluatorBlockedSessionId);
 
     legacy.database.exec(RECOVERY_PAUSE_MIGRATION);
     legacy.database.exec(RECOVERY_PAUSE_MIGRATION);
@@ -2002,6 +2016,51 @@ describe("SQLite Runtime restart recovery", () => {
       goalStatus: "blocked",
       runStatus: "blocked",
     });
+
+    legacy.database.exec(EVALUATION_PAUSE_MIGRATION);
+    legacy.database.exec(EVALUATION_PAUSE_MIGRATION);
+    expect(
+      legacy.database
+        .prepare(
+          `SELECT session.state AS sessionState, goal.status AS goalStatus,
+                  json_extract(goal.goal_snapshot, '$.status') AS snapshotStatus,
+                  run.status AS runStatus, run.completed_at AS completedAt,
+                  json_extract(run.last_evaluation, '$.reason') AS evaluationReason
+             FROM agent_runtime_sessions AS session
+             JOIN agent_goals AS goal
+               ON goal.owner_id = session.owner_id
+              AND goal.runtime_session_id = session.id
+             JOIN agent_goal_runs AS run
+               ON run.owner_id = goal.owner_id
+              AND run.runtime_session_id = goal.runtime_session_id
+              AND run.goal_id = goal.id
+              AND run.run_epoch = session.run_epoch
+            WHERE session.owner_id = ? AND session.id = ?`,
+        )
+        .get(OWNER_ID, evaluatorBlockedSessionId) as Record<string, unknown>,
+    ).toMatchObject({
+      sessionState: "interrupted",
+      goalStatus: "paused",
+      snapshotStatus: "paused",
+      runStatus: "paused",
+      completedAt: null,
+      evaluationReason:
+        "Goal recovery failed: persisted provider session was missing",
+    });
+    const normalizedEvaluator = legacy.database
+      .prepare(
+        `SELECT json_extract(goal_snapshot, '$.updatedAt') AS snapshotUpdatedAt,
+                updated_at AS goalUpdatedAt
+           FROM agent_goals
+          WHERE owner_id = ? AND runtime_session_id = ?`,
+      )
+      .get(OWNER_ID, evaluatorBlockedSessionId) as {
+      snapshotUpdatedAt: string;
+      goalUpdatedAt: number;
+    };
+    expect(
+      Math.floor(Date.parse(normalizedEvaluator.snapshotUpdatedAt) / 1_000),
+    ).toBe(normalizedEvaluator.goalUpdatedAt);
   });
 
   it("atomically pauses active Goal state when provider resume fails", async () => {
@@ -2172,6 +2231,74 @@ describe("SQLite Runtime restart recovery", () => {
       });
     },
   );
+
+  it("preserves certified progress when a later provider failure pauses recovery", async () => {
+    const runtime = createFileBackedRuntime();
+    const runtimeSessionId = "recovery-pause-preserves-progress";
+    await activate(runtime, runtimeSessionId);
+    runtime.database
+      .prepare(
+        `UPDATE agent_goal_runs
+            SET status = 'running',
+                last_evaluation = json(?)
+          WHERE owner_id = ? AND runtime_session_id = ?`,
+      )
+      .run(
+        JSON.stringify({
+          completed: false,
+          confidence: 0.8,
+          satisfiedCriteria: ["result-recorded"],
+          missingCriteria: [],
+          evidence: [
+            {
+              criterionId: "result-recorded",
+              evidenceIds: ["00000000-0000-4000-8000-000000000099"],
+            },
+          ],
+          reason: "The durable result was previously certified.",
+        }),
+        OWNER_ID,
+        runtimeSessionId,
+      );
+    const claim = await runtime.recovery.claimRecovery({
+      ownerId: OWNER_ID,
+      runtimeSessionId,
+      leaseOwner: "resume-worker",
+    });
+    if (!claim) throw new Error("Expected the Runtime to be claimed");
+
+    await runtime.recovery.pauseAfterRecoveryFailure({
+      ownerId: OWNER_ID,
+      runtimeSessionId,
+      leaseOwner: "resume-worker",
+      leaseToken: claim.leaseToken,
+      expectedRunEpoch: claim.snapshot.session.runEpoch,
+      errorCode: "provider_resume_failed",
+      errorMessage: "provider stopped after producing evidence",
+    });
+
+    const evaluation = runtime.database
+      .prepare(
+        `SELECT last_evaluation AS lastEvaluation
+           FROM agent_goal_runs
+          WHERE owner_id = ? AND runtime_session_id = ?`,
+      )
+      .get(OWNER_ID, runtimeSessionId) as { lastEvaluation: string };
+    expect(JSON.parse(evaluation.lastEvaluation)).toMatchObject({
+      completed: false,
+      confidence: 0.8,
+      satisfiedCriteria: ["result-recorded"],
+      missingCriteria: [],
+      evidence: [
+        {
+          criterionId: "result-recorded",
+          evidenceIds: ["00000000-0000-4000-8000-000000000099"],
+        },
+      ],
+      reason:
+        "Goal recovery paused (provider_resume_failed): provider stopped after producing evidence",
+    });
+  });
 
   it("deduplicates a provider event durably after the database is reopened", async () => {
     const first = createFileBackedRuntime();

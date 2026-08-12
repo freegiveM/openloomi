@@ -76,7 +76,10 @@ import {
   getExtendedPath,
   isUsingCustomApi,
 } from "./env";
-import { convertClaudeSdkMessage } from "./message-converter";
+import {
+  CLAUDE_API_ERROR_SENTINEL,
+  convertClaudeSdkMessage,
+} from "./message-converter";
 import {
   attachClaudeMcpServers,
   createClaudeQueryOptions,
@@ -86,6 +89,8 @@ import {
   claudeAgentSdkTransport,
   ClaudeRuntimeSession,
   createClaudeRecoveryInitialPrompt,
+  createClaudeProviderFailureSessionStore,
+  isFatalClaudeProviderDiagnostic,
   resolveAuthenticatedGoalRuntimeOwnerId,
   startClaudeGoalRuntimeSession,
 } from "./runtime";
@@ -1809,13 +1814,6 @@ ${formattedMessages}${truncationNotice}\n\n---\n## Current Request\n`;
       skipWebFetchPreflight: true,
     });
     const runtimeOptions: AgentOptions = options ?? {};
-    // The SDK does not wire its stderr callback when a custom spawner is
-    // supplied, so the spawner captures and line-buffers stderr directly.
-    const captureStderr = (data: string) => {
-      logger.error(
-        `[Claude ${session.id}] STDERR: ${this.redactRuntimeDiagnostic(data)}`,
-      );
-    };
     const goalRuntimeSessionId =
       runtimeRecovery?.runtimeSessionId ||
       options?.sessionId?.trim() ||
@@ -1827,8 +1825,23 @@ ${formattedMessages}${truncationNotice}\n\n---\n## Current Request\n`;
       sdkTransport: claudeAgentSdkTransport,
       logger,
       createMessageId: () => this.generateMessageId(),
+      abortProvider: (reason) => {
+        if (!session.abortController.signal.aborted) {
+          session.abortController.abort(reason);
+        }
+      },
       supplementalInput: options?.supplementalInput,
     });
+    // The SDK does not wire its stderr callback when a custom spawner is
+    // supplied, so the spawner captures and line-buffers stderr directly.
+    const captureStderr = (data: string) => {
+      logger.error(
+        `[Claude ${session.id}] STDERR: ${this.redactRuntimeDiagnostic(data)}`,
+      );
+      if (isFatalClaudeProviderDiagnostic(data)) {
+        claudeRuntime.reportProviderFailure("stderr");
+      }
+    };
     const queryOptions = createClaudeQueryOptions({
       sessionId: session.id,
       cwd: sessionCwd,
@@ -1859,6 +1872,15 @@ ${formattedMessages}${truncationNotice}\n\n---\n## Current Request\n`;
       resumeProviderSessionId: runtimeRecovery?.providerSessionId,
       permissionLogMode: "run",
     });
+    if (runtimeRecovery?.providerSessionId) {
+      queryOptions.sessionStore = createClaudeProviderFailureSessionStore({
+        expectedSessionId: runtimeRecovery.providerSessionId,
+        onProviderFailure: () => {
+          claudeRuntime.reportProviderFailure("session_store");
+        },
+      });
+      queryOptions.sessionStoreFlush = "eager";
+    }
     // MCP servers can expand the allowed tool set, so attach them after the
     // base query options are created.
     attachClaudeMcpServers({
@@ -1908,13 +1930,17 @@ ${formattedMessages}${truncationNotice}\n\n---\n## Current Request\n`;
       });
 
       for await (const agentMessage of claudeRuntime.subscribe()) {
-        if (session.abortController.signal.aborted) {
+        const safeProviderFailure =
+          agentMessage.type === "error" &&
+          agentMessage.message === CLAUDE_API_ERROR_SENTINEL;
+        if (session.abortController.signal.aborted && !safeProviderFailure) {
           console.log(
             `[Claude ${session.id}] query() abort signal detected, breaking loop`,
           );
           break;
         }
         yield agentMessage;
+        if (session.abortController.signal.aborted) break;
       }
       console.log(
         `[Claude ${session.id}] query() for-await loop completed normally. Total SDK messages: ${claudeRuntime.sdkMessageCount}`,

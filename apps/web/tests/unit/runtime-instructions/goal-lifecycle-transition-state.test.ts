@@ -125,6 +125,49 @@ function cancelInput(goal: AgentGoal) {
 }
 
 describe("InMemoryAgentGoalState lifecycle transition barriers", () => {
+  it("persists an evaluator pause while retaining the primary Goal slot", async () => {
+    const { state, goal } = await activeState();
+    const paused = transitionAgentGoal({
+      current: goal,
+      expectedRevision: goal.revision,
+      status: "paused",
+      now: TRANSITIONED_AT,
+    });
+
+    await expect(
+      state.commitEvaluationTransition({
+        ownerId: OWNER_ID,
+        runtimeSessionId: SESSION_ID,
+        expectedRevision: goal.revision,
+        expectedRunEpoch: 0,
+        goal: paused,
+      }),
+    ).resolves.toMatchObject({
+      goal: { goal: { status: "paused", revision: 2 } },
+    });
+    await expect(
+      state.getActivePrimaryGoal(OWNER_ID, SESSION_ID),
+    ).resolves.toBeNull();
+    const conflicting = newGoal(
+      uuid(7),
+      "Conflicting Goal",
+      TRANSITIONED_AT,
+    );
+    await expect(
+      state.commitActivation({
+        ownerId: OWNER_ID,
+        runtimeSessionId: SESSION_ID,
+        goal: conflicting,
+        instruction: activationDraft(
+          conflicting,
+          uuid(8),
+          "conflicting-activation",
+        ),
+        command: command("conflicting-activation", "e"),
+      }),
+    ).rejects.toMatchObject({ code: "active_primary_goal_conflict" });
+  });
+
   it("resumes a blocked Goal through the ordinary lifecycle commit", async () => {
     const { state, goal } = await activeState();
     const blocked = transitionAgentGoal({

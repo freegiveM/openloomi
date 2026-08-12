@@ -525,11 +525,235 @@ describe("GoalRuntimeRecoveryCoordinator", () => {
     expect(harness.releaseLiveRuntime).not.toHaveBeenCalled();
     expect(harness.releaseObservationLease).toHaveBeenCalledOnce();
   });
+
+  it("finalizes a completed Goal instead of pausing after a provider error", async () => {
+    const finalEvaluation = vi.fn(async () => ({
+      decision: "allow" as const,
+      outcome: "completed" as const,
+    }));
+    const harness = createHarness(recoverySnapshot("active"), {
+      nativeGenerator: async function* (context) {
+        await initializeRecoveredProvider(context, {
+          continueGoal: async () => ({
+            decision: "block",
+            outcome: "continue",
+          }),
+          finalizeGoalWithoutContinuation: finalEvaluation,
+        });
+        yield { type: "error", message: "safe provider failure" };
+      },
+    });
+
+    await expect(harness.coordinator.start()).resolves.toMatchObject({
+      outcomes: [expect.objectContaining({ status: "resumed" })],
+    });
+    await vi.waitFor(() => {
+      expect(finalEvaluation).toHaveBeenCalledOnce();
+      expect(harness.releaseLiveRuntime).toHaveBeenCalledWith(
+        expect.objectContaining({
+          ownerId: OWNER_ID,
+          runtimeSessionId: RUNTIME_SESSION_ID,
+          expectedRunEpoch: 0,
+        }),
+      );
+    });
+
+    expect(harness.pauseAfterRecoveryFailure).not.toHaveBeenCalled();
+    expect(harness.currentRuntimeState()).toBe("idle");
+    expect(harness.hasRecoveryLease()).toBe(false);
+  });
+
+  it("keeps the evaluated progress when provider failure pauses an incomplete Goal", async () => {
+    const finalEvaluation = vi.fn(async () => ({
+      decision: "allow" as const,
+      outcome: "paused" as const,
+    }));
+    const harness = createHarness(recoverySnapshot("active"), {
+      nativeGenerator: async function* (context) {
+        await initializeRecoveredProvider(context, {
+          continueGoal: async () => ({
+            decision: "block",
+            outcome: "continue",
+          }),
+          finalizeGoalWithoutContinuation: finalEvaluation,
+        });
+        yield { type: "error", message: "safe provider failure" };
+      },
+    });
+
+    await expect(harness.coordinator.start()).resolves.toMatchObject({
+      outcomes: [expect.objectContaining({ status: "resumed" })],
+    });
+    await vi.waitFor(() => {
+      expect(finalEvaluation).toHaveBeenCalledOnce();
+      expect(harness.releaseLiveRuntime).toHaveBeenCalledWith(
+        expect.objectContaining({
+          ownerId: OWNER_ID,
+          runtimeSessionId: RUNTIME_SESSION_ID,
+          expectedRunEpoch: 0,
+        }),
+      );
+    });
+
+    expect(harness.pauseAfterRecoveryFailure).not.toHaveBeenCalled();
+    expect(harness.currentRuntimeState()).toBe("idle");
+    expect(harness.hasRecoveryLease()).toBe(false);
+  });
+
+  it("pauses and releases recovery when final evaluation fails", async () => {
+    const finalEvaluation = vi.fn(async () => {
+      throw new Error("final evaluation unavailable");
+    });
+    const harness = createHarness(recoverySnapshot("active"), {
+      nativeGenerator: async function* (context) {
+        await initializeRecoveredProvider(context, {
+          continueGoal: async () => ({
+            decision: "block",
+            outcome: "continue",
+          }),
+          finalizeGoalWithoutContinuation: finalEvaluation,
+        });
+        yield { type: "error", message: "safe provider failure" };
+      },
+    });
+
+    await expect(harness.coordinator.start()).resolves.toMatchObject({
+      outcomes: [expect.objectContaining({ status: "resumed" })],
+    });
+    await vi.waitFor(() => {
+      expect(finalEvaluation).toHaveBeenCalledOnce();
+      expect(harness.pauseAfterRecoveryFailure).toHaveBeenCalledWith(
+        expect.objectContaining({
+          expectedRunEpoch: 0,
+          errorCode: "provider_resume_failed",
+          errorMessage: "safe provider failure",
+        }),
+      );
+    });
+
+    expect(harness.currentRuntimeState()).toBe("idle");
+    expect(harness.hasRecoveryLease()).toBe(false);
+  });
+
+  it("does not release an active Goal when final evaluation is stale", async () => {
+    const finalEvaluation = vi.fn(async () => ({
+      decision: "allow" as const,
+      outcome: "stale" as const,
+      goalId: "goal-id",
+      goalRevision: 1,
+    }));
+    const harness = createHarness(recoverySnapshot("active"), {
+      nativeGenerator: async function* (context) {
+        await initializeRecoveredProvider(context, {
+          continueGoal: async () => ({
+            decision: "block",
+            outcome: "continue",
+          }),
+          finalizeGoalWithoutContinuation: finalEvaluation,
+        });
+        yield { type: "error", message: "safe provider failure" };
+      },
+    });
+
+    await expect(harness.coordinator.start()).resolves.toMatchObject({
+      outcomes: [expect.objectContaining({ status: "resumed" })],
+    });
+    await vi.waitFor(() => {
+      expect(finalEvaluation).toHaveBeenCalledOnce();
+      expect(harness.pauseAfterRecoveryFailure).toHaveBeenCalledWith(
+        expect.objectContaining({
+          expectedRunEpoch: 0,
+          errorCode: "provider_resume_failed",
+        }),
+      );
+    });
+    expect(harness.releaseLiveRuntime).not.toHaveBeenCalled();
+    expect(harness.hasRecoveryLease()).toBe(false);
+  });
+
+  it("pauses and releases recovery without waiting for provider cleanup", async () => {
+    let cleanupStarted = false;
+    const cleanupNeverFinishes = new Promise<void>(() => undefined);
+    const chatRecorder: RuntimeRecoveryChatRecorder = {
+      record: vi.fn(async () => undefined),
+      flush: vi.fn(async () => undefined),
+      close: vi.fn(async () => undefined),
+    };
+    const harness = createHarness(recoverySnapshot("active"), {
+      chatRecorder,
+      nativeGenerator: async function* (context) {
+        await context.runtimeRecovery.onProviderSessionInitialized?.({
+          runtimeSessionId: RUNTIME_SESSION_ID,
+          providerSessionId: PROVIDER_SESSION_ID,
+          runEpoch: 0,
+          continueGoal: async () => ({
+            decision: "block",
+            outcome: "continue",
+          }),
+        });
+        try {
+          yield { type: "error", message: "terminal provider failure" };
+        } finally {
+          cleanupStarted = true;
+          await cleanupNeverFinishes;
+        }
+      },
+    });
+
+    await expect(harness.coordinator.start()).resolves.toMatchObject({
+      outcomes: [expect.objectContaining({ status: "resumed" })],
+    });
+    await vi.waitFor(() => {
+      expect(cleanupStarted).toBe(true);
+      expect(harness.pauseAfterRecoveryFailure).toHaveBeenCalledWith(
+        expect.objectContaining({
+          expectedRunEpoch: 0,
+          errorCode: "provider_resume_failed",
+          errorMessage: "terminal provider failure",
+        }),
+      );
+    });
+
+    expect(chatRecorder.record).toHaveBeenCalledWith({
+      type: "error",
+      message: "terminal provider failure",
+    });
+    expect(chatRecorder.close).toHaveBeenCalledOnce();
+    expect(harness.currentRuntimeState()).toBe("idle");
+    expect(harness.hasRecoveryLease()).toBe(false);
+    expect(harness.releaseLiveRuntime).not.toHaveBeenCalled();
+  });
 });
 
 type RecoveryContext = Parameters<
   RuntimeRecoveryCoordinatorDependencies["nativeRunner"]["run"]
 >[1];
+
+type RecoveredProviderInitialization = Parameters<
+  NonNullable<
+    NonNullable<
+      RecoveryContext["runtimeRecovery"]
+    >["onProviderSessionInitialized"]
+  >
+>[0];
+
+type RecoveredProviderFinalEvaluation = Pick<
+  RecoveredProviderInitialization,
+  "continueGoal" | "finalizeGoalWithoutContinuation"
+>;
+
+async function initializeRecoveredProvider(
+  context: RecoveryContext,
+  callbacks: RecoveredProviderFinalEvaluation,
+): Promise<void> {
+  const initialization: RecoveredProviderInitialization = {
+    runtimeSessionId: RUNTIME_SESSION_ID,
+    providerSessionId: PROVIDER_SESSION_ID,
+    runEpoch: 0,
+    ...callbacks,
+  };
+  await context.runtimeRecovery.onProviderSessionInitialized?.(initialization);
+}
 
 function createHarness(
   initialSnapshot: RuntimeRecoverySnapshot,

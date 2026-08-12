@@ -26,6 +26,7 @@ import type {
   RuntimeObservationLeaseRegistration,
   RuntimeProviderEventObservation,
 } from "../../runtime-observation";
+import { resolveGoalEvidenceRevisionFloor } from "../../runtime-observation";
 import type { RuntimeSessionPersistencePort } from "../../runtime-session-persistence";
 import { persistenceConflict } from "../errors";
 import type { PersistedRuntimeInstructionDelivery } from "../runtime-observation-mappers";
@@ -709,6 +710,11 @@ export class SqliteRuntimeObservationJournal implements RuntimeObservationJourna
             isTerminalRun(run.status)
           )
             return null;
+          const evidenceRevisionFloor = resolveGoalEvidenceRevisionFloor(
+            input.goalId,
+            input.goalRevision,
+            store.listInstructions(input.ownerId, input.runtimeSessionId),
+          );
           assertGoalRunStatusTransition(run.status, "evaluating");
           const next = {
             ...run,
@@ -718,9 +724,14 @@ export class SqliteRuntimeObservationJournal implements RuntimeObservationJourna
           if (!store.updateRun(run, next, input.recordedAt)) return null;
           return {
             run: next,
+            evidenceRevisionFloor,
             evidence: store
               .listEvidenceByRun(input.ownerId, input.runtimeSessionId, run.id)
-              .filter((item) => item.goalRevision === input.goalRevision),
+              .filter(
+                (item) =>
+                  item.goalRevision >= evidenceRevisionFloor &&
+                  item.goalRevision <= input.goalRevision,
+              ),
           };
         },
       );

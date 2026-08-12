@@ -31,7 +31,10 @@ import type {
 } from "@openloomi/ai/agent/types";
 
 import type { ClaudeRuntimeLogger } from "../skills";
-import { isClaudeSdkApiErrorMessage } from "../message-converter";
+import {
+  CLAUDE_API_ERROR_SENTINEL,
+  isClaudeSdkApiErrorMessage,
+} from "../message-converter";
 import type {
   ClaudeRuntimeEventObserverPort,
   ClaudeInstructionTurnHandoff,
@@ -42,10 +45,11 @@ import { ClaudeInputMultiplexer } from "./input-multiplexer";
 import { ClaudeOutputMultiplexer } from "./output-multiplexer";
 import type { ClaudeSdkTransport } from "./sdk-transport";
 import type {
+  ClaudeRuntimeGoalFinalizationDecision,
+  ClaudeRuntimeGoalStopController,
   ClaudeRuntimeStopHookDecision,
   ClaudeRuntimeStopHookInput,
   ClaudeRuntimeStopHookObserver,
-  ClaudeRuntimeGoalStopController,
 } from "./supplemental-hooks";
 
 export interface ClaudeRuntimeSessionOptions {
@@ -56,8 +60,15 @@ export interface ClaudeRuntimeSessionOptions {
   sdkTransport: ClaudeSdkTransport;
   logger: ClaudeRuntimeLogger;
   createMessageId: () => string;
+  /** Immediately terminates the provider process after a trusted fatal signal. */
+  abortProvider?: (reason: Error) => void;
   supplementalInput?: AgentSupplementalInputSource;
 }
+
+export type ClaudeProviderFailureSource =
+  | "sdk_message"
+  | "session_store"
+  | "stderr";
 
 interface TerminalWaiter {
   expectedRunEpoch: number;
@@ -86,6 +97,8 @@ export class ClaudeRuntimeSession
 
   private readonly sdkTransport: ClaudeSdkTransport;
   private readonly logger: ClaudeRuntimeLogger;
+  private readonly createMessageId: () => string;
+  private readonly abortProvider?: (reason: Error) => void;
   private readonly output: AgentOutputEventBus<AgentMessage>;
   private readonly outputMultiplexer: ClaudeOutputMultiplexer;
   private readonly inputQueue: AgentSupplementalInputQueue;
@@ -95,6 +108,8 @@ export class ClaudeRuntimeSession
 
   private query: Query | null = null;
   private outputPump: Promise<void> | null = null;
+  private providerFailureSource?: ClaudeProviderFailureSource;
+  private providerFailurePublication: Promise<void> | null = null;
   private currentState: RuntimeSessionState = "starting";
   private processedSdkMessages = 0;
   private closing = false;
@@ -125,6 +140,8 @@ export class ClaudeRuntimeSession
     this.providerOutputEpoch = options.runEpoch;
     this.sdkTransport = options.sdkTransport;
     this.logger = options.logger;
+    this.createMessageId = options.createMessageId;
+    this.abortProvider = options.abortProvider;
     this.output = new AgentOutputEventBus<AgentMessage>();
     this.outputMultiplexer = new ClaudeOutputMultiplexer(
       options.createMessageId,
@@ -161,6 +178,78 @@ export class ClaudeRuntimeSession
 
   get sdkMessageCount(): number {
     return this.processedSdkMessages;
+  }
+
+  /**
+   * Fail the OpenLoomi runtime immediately after an authoritative provider
+   * failure. Provider diagnostics are deliberately not accepted here: callers
+   * classify the signal and this boundary emits only the stable safe sentinel.
+   *
+   * Returns true only for the first accepted failure signal.
+   */
+  reportProviderFailure(source: ClaudeProviderFailureSource): boolean {
+    if (
+      this.providerFailureSource !== undefined ||
+      this.closing ||
+      this.currentState === "closed" ||
+      this.currentState === "failed"
+    ) {
+      return false;
+    }
+
+    this.providerFailureSource = source;
+    const failure = new ClaudeRuntimeSessionError(
+      "provider_failed",
+      "Claude provider failed",
+    );
+    this.logger.error(
+      `[Claude ${this.runtimeSessionId}] Terminal provider failure (${source})`,
+    );
+    this.transition("failed");
+    this.inputQueue.setInterruptHandler(null);
+    this.inputQueue.setHandoffHandler(null);
+    this.inputQueue.close();
+    this.rejectTerminalWaiters(this.terminalUnavailable("failed"));
+    this.rejectProviderSessionInitialization(
+      this.providerSessionInitializationUnavailable("failed"),
+    );
+
+    // Abort first so the custom Windows spawner terminates the whole process
+    // tree. Query.close() remains best-effort and is never awaited.
+    try {
+      this.abortProvider?.(failure);
+    } catch (error) {
+      this.logger.warn(
+        `[Claude ${this.runtimeSessionId}] Failed to abort provider process`,
+        error,
+      );
+    }
+    const query = this.query;
+    this.query = null;
+    try {
+      query?.close();
+    } catch (error) {
+      this.logger.warn(
+        `[Claude ${this.runtimeSessionId}] Failed to close SDK Query after provider failure`,
+        error,
+      );
+    }
+
+    this.providerFailurePublication = this.output
+      .publish({
+        type: "error",
+        message: CLAUDE_API_ERROR_SENTINEL,
+        messageId: this.createMessageId(),
+        runEpoch: this.providerOutputEpoch,
+      })
+      .catch((error) => {
+        this.logger.warn(
+          `[Claude ${this.runtimeSessionId}] Failed to publish provider failure`,
+          error,
+        );
+      })
+      .finally(() => this.output.close());
+    return true;
   }
 
   /**
@@ -232,6 +321,29 @@ export class ClaudeRuntimeSession
       );
     }
     this.stopController = controller;
+  }
+
+  async finalizeGoalWithoutContinuation(
+    evaluationId: string,
+    runtimeLeaseToken?: string,
+  ): Promise<ClaudeRuntimeGoalFinalizationDecision> {
+    const controller = this.stopController;
+    if (!controller) {
+      throw new ClaudeRuntimeSessionError(
+        "stop_controller_missing",
+        "Claude runtime session has no Goal Stop controller",
+      );
+    }
+
+    await this.eventObserver?.flush();
+    const turnContexts =
+      (await this.eventObserver?.captureTurnContexts(this.runEpoch)) ?? [];
+    return controller.finalizeWithoutContinuation({
+      runEpoch: this.runEpoch,
+      evaluationId,
+      turnContext: turnContexts.at(-1) ?? null,
+      ...(runtimeLeaseToken === undefined ? {} : { runtimeLeaseToken }),
+    });
   }
 
   async evaluateStop(
@@ -632,7 +744,7 @@ export class ClaudeRuntimeSession
         error,
       );
     }
-    this.output.close();
+    if (!this.providerFailurePublication) this.output.close();
     this.rejectTerminalWaiters(this.terminalUnavailable("closed"));
     this.rejectProviderSessionInitialization(
       this.providerSessionInitializationUnavailable("closed"),
@@ -641,7 +753,14 @@ export class ClaudeRuntimeSession
       this.transition("closed");
     }
 
-    if (this.outputPump) await this.outputPump;
+    // SDK iterator cleanup is provider-owned and can remain pending after a
+    // broken response stream. Runtime shutdown must not wait indefinitely for
+    // Query.return()/next() before releasing durable recovery ownership.
+    if (this.providerFailurePublication) {
+      await this.providerFailurePublication;
+    } else if (this.outputPump) {
+      await this.outputPump;
+    }
     if (this.eventObserver) {
       try {
         await this.eventObserver.flush();
@@ -656,8 +775,12 @@ export class ClaudeRuntimeSession
 
   private async pumpQuery(query: Query): Promise<void> {
     let failed = false;
+    const iterator = query[Symbol.asyncIterator]();
     try {
-      for await (const message of query) {
+      while (true) {
+        const result = await iterator.next();
+        if (result.done) break;
+        const message = result.value;
         const observedRunEpoch = this.providerOutputEpoch;
         const terminalApiError = isClaudeSdkApiErrorMessage(message);
         const expectedInterruptResult =
@@ -669,19 +792,11 @@ export class ClaudeRuntimeSession
         }
         if (terminalApiError) {
           failed = true;
-          this.logger.error(
-            `[Claude ${this.runtimeSessionId}] SDK emitted a terminal provider API error`,
-          );
-          try {
-            query.close();
-          } catch (error) {
-            this.logger.warn(
-              `[Claude ${this.runtimeSessionId}] Failed to close SDK Query after provider API error`,
-              error,
-            );
-          } finally {
-            if (this.query === query) this.query = null;
-          }
+          this.reportProviderFailure("sdk_message");
+          // Do not break out of a for-await loop here. AsyncIteratorClose would
+          // await Query.return(), which some failed provider streams never
+          // settle. The explicit iterator can be abandoned after process abort.
+          return;
         }
         if (!expectedInterruptResult) {
           for (const agentMessage of this.outputMultiplexer.convert(message)) {
@@ -691,7 +806,6 @@ export class ClaudeRuntimeSession
             });
           }
         }
-        if (terminalApiError) break;
         if (message.type === "result") {
           if (observedRunEpoch === this.runEpoch) {
             this.inputQueue.releasePendingInform();
@@ -706,9 +820,14 @@ export class ClaudeRuntimeSession
           this.recordTerminal(observedRunEpoch);
         }
       }
-      this.output.close();
+      if (!this.providerFailureSource) this.output.close();
     } catch (error) {
-      if (!this.closing) {
+      // Session-initialization failures reject their registration barrier
+      // before reaching this catch. Give that owner one microtask to close the
+      // runtime, preserving the established closed-vs-failed lifecycle race
+      // without invoking (or awaiting) the provider iterator's return().
+      await Promise.resolve();
+      if (!this.closing && !this.providerFailureSource) {
         failed = true;
         this.output.abort(error);
       }
@@ -1052,6 +1171,7 @@ export type ClaudeRuntimeSessionErrorCode =
   | "not_started"
   | "observer_already_attached"
   | "provider_session_mismatch"
+  | "provider_failed"
   | "provider_session_initialization_aborted"
   | "provider_session_initialization_unavailable"
   | "stop_controller_already_attached"

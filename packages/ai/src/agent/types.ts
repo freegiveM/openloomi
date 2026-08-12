@@ -438,6 +438,12 @@ export interface AgentRuntimeRecovery {
     providerSessionId: string;
     runEpoch: number;
     continueGoal: () => Promise<AgentRuntimeRecoveryContinuationResult>;
+    /**
+     * Evaluates durable evidence after provider loss without producing another
+     * instruction for the failed provider. Implementations either complete or
+     * pause the Goal at this boundary.
+     */
+    finalizeGoalWithoutContinuation?: () => Promise<AgentRuntimeRecoveryGoalFinalizationResult>;
   }) => void | Promise<void>;
 }
 
@@ -456,6 +462,7 @@ export type AgentRuntimeRecoveryContinuationResult =
         | "no_active_goal"
         | "stale"
         | "completed"
+        | "paused"
         | "blocked"
         | "budget_limited"
         | "expired";
@@ -464,6 +471,13 @@ export type AgentRuntimeRecoveryContinuationResult =
       decision: "block";
       outcome: "continue";
     };
+
+export type AgentRuntimeRecoveryGoalFinalizationResult = {
+  decision: "allow";
+  outcome: "no_active_goal" | "stale" | "completed" | "paused";
+  goalId?: string;
+  goalRevision?: number;
+};
 
 export interface AgentOptions {
   /** Session ID for continuing conversations */

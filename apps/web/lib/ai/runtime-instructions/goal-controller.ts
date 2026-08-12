@@ -18,7 +18,7 @@ import {
 } from "@openloomi/ai/agent/runtime-instructions";
 
 import { createGoalCommandFingerprint } from "./command-fingerprint";
-import type { GoalEvaluator } from "./goal-evaluator";
+import { GoalEvaluatorError, type GoalEvaluator } from "./goal-evaluator";
 import type { RuntimeInstructionDispatcher } from "./instruction-dispatcher";
 import { KeyedSerialExecutor } from "./keyed-serial-executor";
 import type {
@@ -39,6 +39,13 @@ export interface GoalStopEvaluationInput {
   stopHookActive: boolean;
 }
 
+export interface GoalFinalEvaluationInput {
+  runEpoch: number;
+  evaluationId: string;
+  turnContext: RuntimeObservationContext | null;
+  runtimeLeaseToken?: string;
+}
+
 export type GoalStopDecision =
   | {
       decision: "allow";
@@ -46,7 +53,7 @@ export type GoalStopDecision =
         | "no_active_goal"
         | "stale"
         | "completed"
-        | "blocked"
+        | "paused"
         | "budget_limited"
         | "expired";
       goalId?: string;
@@ -61,8 +68,18 @@ export type GoalStopDecision =
       reason: string;
     };
 
+export interface GoalFinalEvaluationDecision {
+  decision: "allow";
+  outcome: "no_active_goal" | "stale" | "completed" | "paused";
+  goalId?: string;
+  goalRevision?: number;
+}
+
 export interface RuntimeGoalStopControllerPort {
   evaluateStop(input: GoalStopEvaluationInput): Promise<GoalStopDecision>;
+  finalizeWithoutContinuation(
+    input: GoalFinalEvaluationInput,
+  ): Promise<GoalFinalEvaluationDecision>;
 }
 
 export interface GoalControllerSessionInput {
@@ -128,7 +145,128 @@ export class GoalController {
             stop,
           ),
         ),
+      finalizeWithoutContinuation: (evaluation) =>
+        this.evaluations.run(sessionScope(ownerId, runtimeSessionId), () =>
+          this.finalizeWithoutContinuationSerialized(
+            ownerId,
+            runtimeSessionId,
+            evaluation,
+          ),
+        ),
     };
+  }
+
+  private async finalizeWithoutContinuationSerialized(
+    ownerId: string,
+    runtimeSessionId: string,
+    input: GoalFinalEvaluationInput,
+  ): Promise<GoalFinalEvaluationDecision> {
+    const runEpoch = nonNegativeInteger(input.runEpoch, "runEpoch");
+    const evaluationId = requiredIdentifier(
+      input.evaluationId,
+      "evaluationId",
+    );
+    const runtimeLeaseToken =
+      input.runtimeLeaseToken === undefined
+        ? undefined
+        : requiredIdentifier(input.runtimeLeaseToken, "runtimeLeaseToken");
+    const active = await this.state.getActivePrimaryGoal(
+      ownerId,
+      runtimeSessionId,
+    );
+    if (!active) return { decision: "allow", outcome: "no_active_goal" };
+
+    const authoritativeEpoch = await this.state.getRuntimeSessionRunEpoch(
+      ownerId,
+      runtimeSessionId,
+    );
+    if (authoritativeEpoch !== runEpoch) {
+      return staleDecision(active.goal);
+    }
+    const turnContext = validateTurnContext(
+      input.turnContext,
+      ownerId,
+      runtimeSessionId,
+      runEpoch,
+    );
+    if (
+      !turnContext ||
+      turnContext.goalId !== active.goal.id ||
+      turnContext.goalRevision !== active.goal.revision
+    ) {
+      return turnContext
+        ? staleContextDecision(turnContext)
+        : staleDecision(active.goal);
+    }
+
+    const evaluationKey = createGoalCommandFingerprint({
+      runtimeSessionId,
+      runEpoch,
+      evaluationId,
+      goalId: active.goal.id,
+      goalRevision: active.goal.revision,
+    });
+    const cached = this.decisions.get(evaluationKey);
+    if (isGoalFinalEvaluationDecision(cached)) {
+      return structuredClone(cached);
+    }
+
+    const now = this.clock.now();
+    const snapshot = await this.observations.beginGoalEvaluation({
+      ownerId,
+      runtimeSessionId,
+      goalId: active.goal.id,
+      goalRevision: active.goal.revision,
+      runEpoch,
+      evaluationKey,
+      recordedAt: now.toISOString(),
+    });
+    if (!snapshot) return staleDecision(active.goal);
+
+    let evaluation: GoalEvaluationResult;
+    try {
+      evaluation = await this.evaluator.evaluate({
+        goal: active.goal,
+        run: snapshot.run,
+        evidence: snapshot.evidence,
+        ...(snapshot.evidenceRevisionFloor === undefined
+          ? {}
+          : { evidenceRevisionFloor: snapshot.evidenceRevisionFloor }),
+      });
+    } catch (error) {
+      evaluation = evaluatorFailureEvaluation(
+        active.goal,
+        `Goal evaluation failed: ${errorMessage(error)}`,
+        error,
+      );
+    }
+
+    const terminalEvaluation = GoalEvaluationResultSchema.parse({
+      ...evaluation,
+      nextInstruction: undefined,
+    });
+    const decision = await this.commitEvaluationOutcome({
+      ownerId,
+      runtimeSessionId,
+      runEpoch,
+      evaluationKey,
+      goal: active.goal,
+      evaluation: terminalEvaluation,
+      status: terminalEvaluation.completed ? "completed" : "paused",
+      outcome: terminalEvaluation.completed ? "completed" : "paused",
+      now,
+      ...(runtimeLeaseToken === undefined ? {} : { runtimeLeaseToken }),
+    });
+    if (decision.decision !== "allow") {
+      throw new Error("A terminal Goal evaluation cannot request continuation");
+    }
+    if (!isGoalFinalEvaluationDecision(decision)) {
+      throw new Error(
+        `A terminal Goal evaluation returned unsupported outcome ${decision.outcome}`,
+      );
+    }
+    this.cacheDecision(evaluationKey, decision);
+    return decision;
   }
 
   private async evaluateStopSerialized(
@@ -181,7 +319,7 @@ export class GoalController {
     const cached = this.decisions.get(evaluationKey);
     if (cached) {
       if (cached.decision === "block" && input.stopHookActive) {
-        return this.blockRecursiveStop({
+        return this.pauseRecursiveStop({
           ownerId,
           runtimeSessionId,
           runEpoch,
@@ -210,6 +348,9 @@ export class GoalController {
         goal: active.goal,
         run: snapshot.run,
         evidence: snapshot.evidence,
+        ...(snapshot.evidenceRevisionFloor === undefined
+          ? {}
+          : { evidenceRevisionFloor: snapshot.evidenceRevisionFloor }),
         ...(input.lastAssistantMessage === undefined
           ? {}
           : {
@@ -217,26 +358,27 @@ export class GoalController {
             }),
       });
     } catch (error) {
-      evaluation = failedEvaluation(
+      evaluation = evaluatorFailureEvaluation(
         active.goal,
         `Goal evaluation failed: ${errorMessage(error)}`,
+        error,
       );
-      const decision = await this.commitTerminalOutcome({
+      const decision = await this.commitEvaluationOutcome({
         ownerId,
         runtimeSessionId,
         runEpoch,
         evaluationKey,
         goal: active.goal,
         evaluation,
-        status: "blocked",
-        outcome: "blocked",
+        status: "paused",
+        outcome: "paused",
       });
       return this.cacheDecision(evaluationKey, decision);
     }
 
     const now = this.clock.now();
     if (evaluation.completed) {
-      const decision = await this.commitTerminalOutcome({
+      const decision = await this.commitEvaluationOutcome({
         ownerId,
         runtimeSessionId,
         runEpoch,
@@ -259,7 +401,7 @@ export class GoalController {
         ),
         nextInstruction: undefined,
       });
-      const decision = await this.commitTerminalOutcome({
+      const decision = await this.commitEvaluationOutcome({
         ownerId,
         runtimeSessionId,
         runEpoch,
@@ -278,15 +420,15 @@ export class GoalController {
       evaluation.missingCriteria.length === 0 ||
       hasMissingManualCriterion(active.goal, evaluation)
     ) {
-      const decision = await this.commitTerminalOutcome({
+      const decision = await this.commitEvaluationOutcome({
         ownerId,
         runtimeSessionId,
         runEpoch,
         evaluationKey,
         goal: active.goal,
         evaluation,
-        status: "blocked",
-        outcome: "blocked",
+        status: "paused",
+        outcome: "paused",
         now,
       });
       return this.cacheDecision(evaluationKey, decision);
@@ -299,15 +441,15 @@ export class GoalController {
           `${evaluation.reason}\nAutomatic continuation stopped after ${MAX_IDENTICAL_CONTINUATIONS} evaluations without new evidence or satisfied criteria.`,
         ),
       });
-      const decision = await this.commitTerminalOutcome({
+      const decision = await this.commitEvaluationOutcome({
         ownerId,
         runtimeSessionId,
         runEpoch,
         evaluationKey,
         goal: active.goal,
         evaluation: guarded,
-        status: "blocked",
-        outcome: "blocked",
+        status: "paused",
+        outcome: "paused",
         now,
       });
       return this.cacheDecision(evaluationKey, decision);
@@ -443,7 +585,7 @@ export class GoalController {
     return committed.instruction;
   }
 
-  private async commitTerminalOutcome(input: {
+  private async commitEvaluationOutcome(input: {
     ownerId: string;
     runtimeSessionId: string;
     runEpoch: number;
@@ -452,10 +594,11 @@ export class GoalController {
     evaluation: GoalEvaluationResult;
     status: Extract<
       GoalStatus,
-      "blocked" | "completed" | "budget_limited" | "expired"
+      "paused" | "completed" | "budget_limited" | "expired"
     >;
     outcome: Extract<GoalStopDecision, { decision: "allow" }>["outcome"];
     now?: Date;
+    runtimeLeaseToken?: string;
   }): Promise<GoalStopDecision> {
     const now = input.now ?? this.clock.now();
     const goal = AgentGoalSchema.parse({
@@ -471,12 +614,16 @@ export class GoalController {
         expectedRevision: input.goal.revision,
         expectedRunEpoch: input.runEpoch,
         goal,
+        evaluation: input.evaluation,
+        ...(input.runtimeLeaseToken === undefined
+          ? {}
+          : { runtimeLeaseToken: input.runtimeLeaseToken }),
       });
     } catch {
       await this.abandonEvaluation(input);
       return staleDecision(input.goal);
     }
-    await this.observations.finishGoalEvaluation({
+    const finished = await this.observations.finishGoalEvaluation({
       ownerId: input.ownerId,
       runtimeSessionId: input.runtimeSessionId,
       goalId: input.goal.id,
@@ -487,11 +634,16 @@ export class GoalController {
       outcome:
         input.status === "completed"
           ? "completed"
-          : input.status === "blocked"
-            ? "blocked"
+          : input.status === "paused"
+            ? "paused"
             : "budget_limited",
       recordedAt: now.toISOString(),
     });
+    if (!finished) {
+      throw new Error(
+        `Goal evaluation ${input.evaluationKey} lost its observation lease before finalization`,
+      );
+    }
     this.continuationProgress.delete(progressKey(input.goal));
     return {
       decision: "allow",
@@ -501,7 +653,7 @@ export class GoalController {
     };
   }
 
-  private async blockRecursiveStop(input: {
+  private async pauseRecursiveStop(input: {
     ownerId: string;
     runtimeSessionId: string;
     runEpoch: number;
@@ -519,14 +671,14 @@ export class GoalController {
       recordedAt: now,
     });
     if (!snapshot) return staleDecision(input.goal);
-    return this.commitTerminalOutcome({
+    return this.commitEvaluationOutcome({
       ...input,
       evaluation: failedEvaluation(
         input.goal,
-        "Claude invoked the Stop hook again without producing a new assistant turn; automatic continuation was blocked to prevent recursion.",
+        "Claude invoked the Stop hook again without producing a new assistant turn; automatic continuation was paused to prevent recursion.",
       ),
-      status: "blocked",
-      outcome: "blocked",
+      status: "paused",
+      outcome: "paused",
     });
   }
 
@@ -704,7 +856,39 @@ function failedEvaluation(
   });
 }
 
-function staleDecision(goal: AgentGoal): GoalStopDecision {
+function evaluatorFailureEvaluation(
+  goal: AgentGoal,
+  reason: string,
+  error: unknown,
+): GoalEvaluationResult {
+  const partial =
+    error instanceof GoalEvaluatorError ? error.partialEvaluation : undefined;
+  if (!partial) return failedEvaluation(goal, reason);
+
+  const criterionIds = new Set(
+    goal.successCriteria.map((criterion) => criterion.id),
+  );
+  const satisfiedCriteria = partial.satisfiedCriteria.filter((criterionId) =>
+    criterionIds.has(criterionId),
+  );
+  const satisfied = new Set(satisfiedCriteria);
+  return GoalEvaluationResultSchema.parse({
+    completed: false,
+    confidence: 0,
+    satisfiedCriteria,
+    missingCriteria: goal.successCriteria
+      .filter(
+        (criterion) => criterion.required && !satisfied.has(criterion.id),
+      )
+      .map((criterion) => criterion.id),
+    evidence: partial.evidence.filter(({ criterionId }) =>
+      satisfied.has(criterionId),
+    ),
+    reason: boundedReason(reason),
+  });
+}
+
+function staleDecision(goal: AgentGoal): GoalFinalEvaluationDecision {
   return {
     decision: "allow",
     outcome: "stale",
@@ -715,13 +899,25 @@ function staleDecision(goal: AgentGoal): GoalStopDecision {
 
 function staleContextDecision(
   context: RuntimeObservationContext,
-): GoalStopDecision {
+): GoalFinalEvaluationDecision {
   return {
     decision: "allow",
     outcome: "stale",
     goalId: context.goalId,
     goalRevision: context.goalRevision,
   };
+}
+
+function isGoalFinalEvaluationDecision(
+  decision: GoalStopDecision | undefined,
+): decision is GoalFinalEvaluationDecision {
+  return (
+    decision?.decision === "allow" &&
+    (decision.outcome === "no_active_goal" ||
+      decision.outcome === "stale" ||
+      decision.outcome === "completed" ||
+      decision.outcome === "paused")
+  );
 }
 
 function validateTurnContext(

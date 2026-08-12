@@ -267,6 +267,13 @@
                         "when": 1786435200000,
                         "tag": "0109_agent_goal_recovery_pause",
                         "breakpoints": true
+                    },
+                    {
+                        "idx": 38,
+                        "version": "7",
+                        "when": 1786521600000,
+                        "tag": "0110_agent_goal_evaluation_pause",
+                        "breakpoints": true
                     }
                 ]
 }

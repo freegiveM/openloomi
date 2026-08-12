@@ -1,3 +1,4 @@
+import { GoalEvaluationResultSchema } from "@openloomi/ai/agent/runtime-instructions";
 import type {
   AgentGoal,
   AgentGoalEvaluationStatePort,
@@ -5,6 +6,7 @@ import type {
   AgentGoalReplacement,
   AgentGoalStatePort,
   GoalCommandIdentity,
+  GoalEvaluationResult,
   GoalEvaluationTransitionCommit,
   GoalInstructionCommit,
   GoalLifecycleTransitionAction,
@@ -554,6 +556,8 @@ export class InMemoryAgentGoalState
     expectedRevision: number;
     expectedRunEpoch: number;
     goal: AgentGoal;
+    evaluation?: GoalEvaluationResult;
+    runtimeLeaseToken?: string;
   }): Promise<GoalEvaluationTransitionCommit> {
     const scope = validatedScope(input.ownerId, input.runtimeSessionId);
     const expectedRevision = positiveInteger(
@@ -565,6 +569,9 @@ export class InMemoryAgentGoalState
       "expectedRunEpoch",
     );
     const goal = parseGoal(input.goal);
+    if (input.evaluation !== undefined) {
+      GoalEvaluationResultSchema.parse(input.evaluation);
+    }
 
     return this.mutations.run(ownerScope(scope.ownerId), () => {
       const current = this.sessions.get(scope.key);

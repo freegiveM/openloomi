@@ -4,6 +4,7 @@ import type { RuntimeSessionState } from "@openloomi/ai/agent/runtime-instructio
 import type {
   AgentRuntimeRecovery,
   AgentRuntimeRecoveryContinuationResult,
+  AgentRuntimeRecoveryGoalFinalizationResult,
 } from "@openloomi/ai/agent/types";
 import type {
   NativeAgentRequest,
@@ -287,6 +288,9 @@ export class GoalRuntimeRecoveryCoordinator {
     let heartbeat: RecoveryLeaseHeartbeat | null = null;
     let observationLease: RuntimeObservationLeaseRegistration | undefined;
     let expectedRunEpoch = candidate.runEpoch;
+    let expectedGoal:
+      | { readonly id: string; readonly revision: number }
+      | undefined;
     try {
       claim = await this.deps.persistence.claimRecovery({
         ownerId: candidate.ownerId,
@@ -312,6 +316,7 @@ export class GoalRuntimeRecoveryCoordinator {
 
       let snapshot = claim.snapshot;
       expectedRunEpoch = snapshot.session.runEpoch;
+      expectedGoal = snapshot.activeGoal?.goal;
       if (snapshot.pendingOperation) {
         await this.deps.reconcilePendingOperation(snapshot.pendingOperation);
         // Pending lifecycle/replacement recovery can change runEpoch, Goal
@@ -321,6 +326,7 @@ export class GoalRuntimeRecoveryCoordinator {
           claimIdentity(claim),
         );
         expectedRunEpoch = snapshot.session.runEpoch;
+        expectedGoal = snapshot.activeGoal?.goal;
       }
 
       if (!shouldResume(snapshot)) {
@@ -357,7 +363,12 @@ export class GoalRuntimeRecoveryCoordinator {
     } catch (error) {
       heartbeat?.stop();
       if (claim) {
-        await this.pauseAfterRecoveryFailure(claim, expectedRunEpoch, error);
+        await this.pauseAfterRecoveryFailure(
+          claim,
+          expectedRunEpoch,
+          error,
+          expectedGoal,
+        );
       }
       this.logger.error(
         `[Agent Goal Recovery] Failed to resume ${candidate.runtimeSessionId}`,
@@ -391,10 +402,13 @@ export class GoalRuntimeRecoveryCoordinator {
     let failureFinalization: Promise<void> | undefined;
     let releasePromise: Promise<void> | undefined;
     let releaseRunEpoch = input.snapshot.session.runEpoch;
+    let finalizeGoalWithoutContinuation:
+      | (() => Promise<AgentRuntimeRecoveryGoalFinalizationResult>)
+      | undefined;
 
     const releaseRuntime = async (expectedRunEpoch: number) => {
       releasePromise ??= (async () => {
-        input.heartbeat.stop();
+        await input.heartbeat.stopAndDrain();
         await this.deps.persistence.releaseLiveRuntime({
           ...claimIdentity(input.claim),
           expectedRunEpoch,
@@ -403,16 +417,20 @@ export class GoalRuntimeRecoveryCoordinator {
       await releasePromise;
     };
 
-    const finalizeFailure = async (error: unknown) => {
+    const finalizeFailure = async (
+      error: unknown,
+      options: { evaluateDurableEvidence?: boolean } = {},
+    ) => {
       failureFinalization ??= (async () => {
-        input.heartbeat.stop();
         let failureRunEpoch = releaseRunEpoch;
+        let expectedGoal = input.snapshot.activeGoal?.goal;
         try {
           const latest = await this.deps.persistence.refreshRecovery(
             claimIdentity(input.claim),
           );
           failureRunEpoch = latest.session.runEpoch;
           releaseRunEpoch = failureRunEpoch;
+          expectedGoal = latest.activeGoal?.goal;
         } catch (refreshError) {
           // A reclaimed/expired lease must not mutate the new owner's state.
           // For other failures, pauseAfterRecoveryFailure still has its own token and
@@ -422,10 +440,36 @@ export class GoalRuntimeRecoveryCoordinator {
             refreshError,
           );
         }
+        if (
+          options.evaluateDurableEvidence &&
+          finalizeGoalWithoutContinuation
+        ) {
+          try {
+            const finalized = await finalizeGoalWithoutContinuation();
+            if (finalized.outcome !== "stale") {
+              await releaseRuntime(failureRunEpoch);
+              return;
+            }
+            throw new RuntimeRecoveryError(
+              "goal_finalization_stale",
+              `Durable Goal evidence could not be finalized for revision ${finalized.goalRevision ?? "unknown"}`,
+            );
+          } catch (evaluationError) {
+            // Evaluation is best-effort at a provider-failure boundary. If its
+            // own infrastructure is unavailable, the fenced recovery pause
+            // below still prevents a stuck running lease.
+            this.logger.warn(
+              `[Agent Goal Recovery] Could not evaluate durable evidence before pausing ${input.claim.runtimeSessionId}`,
+              evaluationError,
+            );
+          }
+        }
+        input.heartbeat.stop();
         await this.pauseAfterRecoveryFailure(
           input.claim,
           failureRunEpoch,
           error,
+          expectedGoal,
         );
       })();
       await failureFinalization;
@@ -448,6 +492,8 @@ export class GoalRuntimeRecoveryCoordinator {
       onProviderSessionInitialized: async (provider) => {
         try {
           assertProviderInitialization(input.claim, input.snapshot, provider);
+          finalizeGoalWithoutContinuation =
+            provider.finalizeGoalWithoutContinuation;
           durableState = await this.persistRuntimeState({
             claim: input.claim,
             expectedState: durableState,
@@ -512,13 +558,22 @@ export class GoalRuntimeRecoveryCoordinator {
     }
 
     const completion = (async () => {
-      let providerError: string | undefined;
+      let providerFailure: RuntimeRecoveryError | undefined;
+      const providerIterator = run.generator[Symbol.asyncIterator]();
       try {
         try {
-          for await (const message of run.generator) {
+          while (true) {
+            const next = await providerIterator.next();
+            if (next.done) break;
+            const message = next.value;
             if (message.type === "error") {
-              providerError =
-                message.message ?? "Recovered provider run failed";
+              providerFailure = new RuntimeRecoveryError(
+                "provider_resume_failed",
+                message.message ?? "Recovered provider run failed",
+              );
+              if (!abortController.signal.aborted) {
+                abortController.abort(providerFailure);
+              }
             }
             try {
               await chatRecorder?.record(message);
@@ -527,6 +582,9 @@ export class GoalRuntimeRecoveryCoordinator {
                 `[Agent Goal Recovery] Could not persist recovered output for ${input.claim.runtimeSessionId}`,
                 error,
               );
+            }
+            if (providerFailure) {
+              break;
             }
           }
         } finally {
@@ -539,11 +597,8 @@ export class GoalRuntimeRecoveryCoordinator {
             );
           }
         }
-        if (providerError && !intentionalStop) {
-          throw new RuntimeRecoveryError(
-            "provider_resume_failed",
-            providerError,
-          );
+        if (providerFailure && !intentionalStop) {
+          throw providerFailure;
         }
         if (!continuationResult) {
           throw new RuntimeRecoveryError(
@@ -570,7 +625,22 @@ export class GoalRuntimeRecoveryCoordinator {
           return;
         }
         initialized.reject(error);
-        await finalizeFailure(error);
+        try {
+          await finalizeFailure(error, {
+            evaluateDurableEvidence: error === providerFailure,
+          });
+        } finally {
+          if (error === providerFailure) {
+            // Keep the Goal observer attached until durable evidence has been
+            // evaluated. Provider cleanup remains best-effort and must never
+            // retain the recovery lease after that boundary.
+            closeIteratorInBackground(
+              providerIterator,
+              input.claim.runtimeSessionId,
+              this.logger,
+            );
+          }
+        }
         throw error;
       } finally {
         input.heartbeat.stop();
@@ -652,12 +722,19 @@ export class GoalRuntimeRecoveryCoordinator {
     claim: RuntimeRecoveryClaim,
     expectedRunEpoch: number,
     error: unknown,
+    expectedGoal?: { readonly id: string; readonly revision: number },
   ): Promise<void> {
     const failure = recoveryFailure(error);
     try {
       await this.deps.persistence.pauseAfterRecoveryFailure({
         ...claimIdentity(claim),
         expectedRunEpoch,
+        ...(expectedGoal === undefined
+          ? {}
+          : {
+              expectedGoalId: expectedGoal.id,
+              expectedGoalRevision: expectedGoal.revision,
+            }),
         errorCode: failure.code,
         errorMessage: failure.message,
       });
@@ -667,6 +744,28 @@ export class GoalRuntimeRecoveryCoordinator {
         markError,
       );
     }
+  }
+}
+
+function closeIteratorInBackground(
+  iterator: AsyncIterator<unknown>,
+  runtimeSessionId: string,
+  logger: Pick<Console, "warn">,
+): void {
+  try {
+    const cleanup = iterator.return?.();
+    if (!cleanup) return;
+    void cleanup.catch((error) => {
+      logger.warn(
+        `[Agent Goal Recovery] Provider cleanup failed for ${runtimeSessionId}`,
+        error,
+      );
+    });
+  } catch (error) {
+    logger.warn(
+      `[Agent Goal Recovery] Provider cleanup failed for ${runtimeSessionId}`,
+      error,
+    );
   }
 }
 
@@ -736,6 +835,12 @@ class RecoveryLeaseHeartbeat {
     if (!this.timer) return;
     clearInterval(this.timer);
     this.timer = undefined;
+  }
+
+  async stopAndDrain(): Promise<void> {
+    this.stop();
+    await this.renewal;
+    this.assertHealthy();
   }
 
   assertHealthy(): void {

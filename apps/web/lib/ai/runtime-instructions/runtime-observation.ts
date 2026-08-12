@@ -50,11 +50,66 @@ export interface RuntimeProviderEventObservation {
 export interface RuntimeGoalEvaluationSnapshot {
   run: AgentGoalRun;
   evidence: GoalEvidence[];
+  /**
+   * Oldest Goal revision whose evidence is still valid for the current Goal
+   * definition. Lifecycle-only revisions (pause/resume/evaluation) preserve
+   * evidence; goal/context mutations move this boundary forward.
+   */
+  evidenceRevisionFloor?: number;
+}
+
+const EVIDENCE_SCOPE_BOUNDARY_KINDS = new Set<RuntimeInstruction["kind"]>([
+  "goal.activate",
+  "goal.update",
+  "context.upsert",
+  "context.remove",
+  "constraint.upsert",
+  "constraint.remove",
+]);
+
+export function isGoalEvidenceRevisionBoundary(
+  kind: RuntimeInstruction["kind"],
+): boolean {
+  return EVIDENCE_SCOPE_BOUNDARY_KINDS.has(kind);
+}
+
+/**
+ * Resolve the semantic evidence boundary for a Goal revision.
+ *
+ * Goal revisions also fence lifecycle transitions, so exact-revision
+ * filtering would discard valid evidence every time a Goal is paused and
+ * resumed. Evidence remains valid until an instruction changes the Goal or
+ * its evaluation context. Missing instruction history fails closed to the
+ * current revision.
+ */
+export function resolveGoalEvidenceRevisionFloor(
+  goalId: string,
+  currentRevision: number,
+  instructions: readonly RuntimeInstruction[],
+): number {
+  let floor: number | undefined;
+  for (const instruction of instructions) {
+    if (
+      instruction.goalId !== goalId ||
+      instruction.goalRevision === undefined ||
+      instruction.goalRevision > currentRevision ||
+      !isGoalEvidenceRevisionBoundary(instruction.kind)
+    ) {
+      continue;
+    }
+    floor = Math.max(floor ?? 0, instruction.goalRevision);
+  }
+  return floor ?? currentRevision;
 }
 
 export type RuntimeGoalEvaluationOutcome = Extract<
   GoalRunStatus,
-  "continuing" | "blocked" | "completed" | "budget_limited" | "failed"
+  | "continuing"
+  | "paused"
+  | "blocked"
+  | "completed"
+  | "budget_limited"
+  | "failed"
 >;
 
 export interface RuntimeGoalEvaluationJournalPort {
