@@ -102,6 +102,61 @@ vi.mock("@melandlabs/loop/paths", async () => {
   };
 });
 
+// Phase 6 — `@melandlabs/loop/preferences` hardcodes its own
+// `LOOP_HOME = join(homedir(), ".opencontext", "loop")` and reads the
+// real user's `~/.opencontext/loop/config.json`. The `@melandlabs/loop/paths`
+// mock above does NOT intercept it (preferences.js does not import paths).
+// So we replace the entire preferences module here with a tmp-dir-backed
+// implementation that honours the same `LOOP_HOME` rebinding the test
+// performs in `beforeEach`.
+vi.mock("@melandlabs/loop/preferences", async () => {
+  const { existsSync, readFileSync, writeFileSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  const { ensureDirs } = await import("@melandlabs/loop/paths");
+
+  const DEFAULT_LOOP_PREFERENCES = {
+    enabled: false,
+    briefTime: null,
+    wrapTime: null,
+    intervalSec: 600,
+    noReplySkip: true,
+    promotionSkip: true,
+    narrative: true,
+    desktopNotifications: false,
+    cronCompletionPetNotify: false,
+    quietWhenEmpty: true,
+    quietDayFiller: "none",
+  };
+
+  function readPreferences() {
+    ensureDirs();
+    const configPath = join(LOOP_HOME, "config.json");
+    if (!existsSync(configPath)) {
+      return { ...DEFAULT_LOOP_PREFERENCES };
+    }
+    try {
+      const raw = readFileSync(configPath, "utf-8");
+      const parsed = JSON.parse(raw);
+      return { ...DEFAULT_LOOP_PREFERENCES, ...parsed };
+    } catch {
+      return { ...DEFAULT_LOOP_PREFERENCES };
+    }
+  }
+
+  function writePreferences(patch: Record<string, unknown> = {}) {
+    ensureDirs();
+    const configPath = join(LOOP_HOME, "config.json");
+    const next = { ...readPreferences(), ...patch };
+    writeFileSync(configPath, JSON.stringify(next, null, 2));
+  }
+
+  return {
+    readPreferences,
+    writePreferences,
+    DEFAULT_LOOP_PREFERENCES,
+  };
+});
+
 const {
   filterActionable,
   notifyForDecisions,

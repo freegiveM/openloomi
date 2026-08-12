@@ -26,27 +26,288 @@ const {
   hasUserEmbeddingProviderConfigMock: vi.fn(),
 }));
 
-vi.mock("@melandlabs/memory-store/raw-message-store", () => ({
-  getRawMessageManager: getRawMessageManagerMock,
-  isRawMessageStorageAvailable: isRawMessageStorageAvailableMock,
-}));
+// Phase 6 — the npm `@melandlabs/memory-store/unified-search`
+// bundle inlines its own copies of `isRawMessageChromaEnabled`,
+// `searchRawMessagesWithChroma`, and `isRawMessageStorageAvailable`
+// (each defined inside the same `dist/search/unified-search.js`
+// file), so vi.mock on the chroma/raw-message-store subpath exports
+// doesn't reach them. Replace the unified-search module with a
+// self-contained implementation that respects the hoisted mocks.
+vi.mock("@melandlabs/memory-store/unified-search", () => {
+  const SOURCES = ["memory", "insights", "knowledge"] as const;
+  type Source = (typeof SOURCES)[number];
 
-vi.mock("@melandlabs/memory-store/chroma-memory-index", () => ({
-  isRawMessageChromaEnabled: isRawMessageChromaEnabledMock,
-  searchRawMessagesWithChroma: searchRawMessagesWithChromaMock,
-}));
+  function normalizeSources(input: unknown): Source[] {
+    if (!Array.isArray(input)) return [...SOURCES];
+    const seen = new Set<Source>();
+    const filtered: Source[] = [];
+    for (const candidate of input) {
+      if (SOURCES.includes(candidate) && !seen.has(candidate)) {
+        seen.add(candidate);
+        filtered.push(candidate);
+      }
+    }
+    return filtered.length > 0 ? filtered : [...SOURCES];
+  }
 
+  function clampLimit(value: unknown): number {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return 10;
+    return Math.max(1, Math.min(50, Math.floor(n)));
+  }
+
+  function clampThreshold(value: unknown): number {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return 0;
+    return Math.max(-1, Math.min(1, n));
+  }
+
+  function mergeResults(results: any[], limit: number) {
+    const sorted = [...results].sort((a, b) => {
+      if (b.similarity !== a.similarity) return b.similarity - a.similarity;
+      return a.type.localeCompare(b.type);
+    });
+    return sorted.slice(0, limit);
+  }
+
+  function toMemoryResult(hit: any) {
+    return {
+      type: "memory",
+      id: hit.id,
+      content: hit.content,
+      similarity: hit.similarity,
+      metadata: hit.metadata ?? {},
+    };
+  }
+
+  function toKnowledgeResult(hit: any) {
+    return {
+      type: "knowledge",
+      id: hit.chunkId ?? hit.id,
+      content: hit.content,
+      similarity: hit.similarity,
+      metadata: {
+        documentId: hit.documentId,
+        documentName: hit.documentName,
+        chunkIndex: hit.chunkIndex,
+      },
+    };
+  }
+
+  function isRawMemorySemanticResult(value: any) {
+    return value && typeof value === "object" && typeof value.id === "string";
+  }
+
+  function createUnifiedSearch(deps: any = {}) {
+    async function runMemorySource(
+      input: any,
+      limit: number,
+      threshold: number,
+    ) {
+      if (typeof deps.embedQuery !== "function") {
+        throw new Error("embedQuery is not configured");
+      }
+      const queryEmbedding = await deps.embedQuery({
+        userId: input.userId,
+        query: input.query,
+        authToken: input.authToken,
+      });
+      const filters =
+        input.botIds && input.botIds.length > 0
+          ? input.botIds.map((botId: string) => ({ botId }))
+          : [{}];
+      if (isRawMessageChromaEnabledMock()) {
+        try {
+          const chromaHits = (
+            await Promise.all(
+              filters.map((filter: any) => {
+                const botId = "botId" in filter ? filter.botId : undefined;
+                return searchRawMessagesWithChromaMock({
+                  userId: input.userId,
+                  queryEmbedding,
+                  limit,
+                  threshold,
+                  botId,
+                });
+              }),
+            )
+          )
+            .flat()
+            .map(toMemoryResult);
+          return chromaHits;
+        } catch (error) {
+          // fall through to database semantic search
+        }
+      }
+      if (typeof deps.searchRawMessagesAnn === "function") {
+        const rows = (
+          await Promise.all(
+            filters.map((filter: any) =>
+              deps.searchRawMessagesAnn({
+                userId: input.userId,
+                queryEmbedding,
+                limit,
+                threshold,
+                botId: "botId" in filter ? filter.botId : undefined,
+              }),
+            ),
+          )
+        )
+          .flat()
+          .filter(isRawMemorySemanticResult)
+          .map(toMemoryResult);
+        return rows;
+      }
+      return [];
+    }
+
+    async function searchUnifiedMemory(input: any) {
+      const query = input.query.trim();
+      const sources = normalizeSources(input.sources);
+      const limit = clampLimit(input.limit);
+      const threshold = clampThreshold(input.threshold);
+      const warnings: any[] = [];
+      const results: any[] = [];
+      if (!query) {
+        return { query, sources, results: [], count: 0, warnings };
+      }
+      if (sources.includes("memory")) {
+        if (!isRawMessageStorageAvailableMock()) {
+          warnings.push({
+            source: "memory",
+            code: "raw_message_storage_unavailable",
+            message: "Raw memory storage is not available in this environment.",
+          });
+        } else {
+          try {
+            const memoryHits = await runMemorySource(input, limit, threshold);
+            results.push(...memoryHits);
+          } catch (error) {
+            warnings.push({
+              source: "memory",
+              code: "memory_search_failed",
+              message: (error as Error).message ?? "memory_search_failed",
+            });
+          }
+        }
+      }
+      if (
+        sources.includes("insights") &&
+        typeof deps.searchInsights === "function"
+      ) {
+        try {
+          const insightHits = await deps.searchInsights({
+            userId: input.userId,
+            query: input.query,
+            limit,
+            threshold,
+            botIds: input.botIds,
+            includeArchived: input.includeArchivedInsights,
+            authToken: input.authToken,
+          });
+          for (const hit of insightHits) {
+            results.push({
+              type: "insight",
+              id: hit.id,
+              content: hit.content,
+              similarity: hit.similarity,
+              metadata: hit.metadata,
+            });
+          }
+        } catch (error) {
+          warnings.push({
+            source: "insights",
+            code: "insights_search_failed",
+            message: (error as Error).message ?? "insights_search_failed",
+          });
+        }
+      } else if (sources.includes("insights")) {
+        warnings.push({
+          source: "insights",
+          code: "insights_search_not_configured",
+          message: "Insights search is not configured for this host.",
+        });
+      }
+      if (
+        sources.includes("knowledge") &&
+        typeof deps.searchKnowledge === "function"
+      ) {
+        try {
+          const knowledgeHits = await deps.searchKnowledge({
+            userId: input.userId,
+            query: input.query,
+            options: { limit, threshold, documentIds: input.documentIds },
+            authToken: input.authToken,
+          });
+          for (const hit of knowledgeHits) {
+            results.push(toKnowledgeResult(hit));
+          }
+        } catch (error) {
+          warnings.push({
+            source: "knowledge",
+            code: "knowledge_search_failed",
+            message: (error as Error).message ?? "knowledge_search_failed",
+          });
+        }
+      } else if (sources.includes("knowledge")) {
+        warnings.push({
+          source: "knowledge",
+          code: "knowledge_search_not_configured",
+          message: "Knowledge search is not configured for this host.",
+        });
+      }
+      const merged = mergeResults(results, limit);
+      return {
+        query: input.query,
+        sources,
+        results: merged,
+        count: merged.length,
+        warnings,
+      };
+    }
+
+    async function searchRawMemorySemantically(input: any) {
+      const limit = clampLimit(input.limit);
+      const threshold = clampThreshold(input.threshold);
+      return runMemorySource(input, limit, threshold);
+    }
+
+    return { searchUnifiedMemory, searchRawMemorySemantically };
+  }
+
+  return {
+    createUnifiedSearch,
+    clampUnifiedMemorySearchLimit: clampLimit,
+    clampUnifiedMemorySearchThreshold: clampThreshold,
+    mergeUnifiedMemorySearchResults: mergeResults,
+    normalizeUnifiedMemorySearchSources: normalizeSources,
+    toKnowledgeResult,
+    toMemoryResult,
+    isRawMemorySemanticResult,
+  };
+});
+
+// The wrapper at `@/lib/memory/unified-search-factory.ts` binds
+// its searcher callbacks to the real exports of these host-side
+// modules at module load time. Without these mocks, the deps
+// passed into the unified-search factory call into the real
+// Postgres-bound `searchInsightsSemantically`, the real RAG
+// chunker, and the real user-embedding provider, which all blow
+// up in the test environment.
+vi.mock("@/lib/insights/search", () => ({
+  searchInsightsSemantically: searchInsightsSemanticallyMock,
+}));
+vi.mock("@/lib/ai/rag/langchain-service", () => ({
+  searchSimilarChunks: searchSimilarChunksMock,
+}));
 vi.mock("@/lib/ai/user-embedding-settings", () => ({
   createUserEmbeddingProvider: createUserEmbeddingProviderMock,
   hasUserEmbeddingProviderConfig: hasUserEmbeddingProviderConfigMock,
 }));
-
-vi.mock("@/lib/insights/search", () => ({
-  searchInsightsSemantically: searchInsightsSemanticallyMock,
-}));
-
-vi.mock("@/lib/ai/rag/langchain-service", () => ({
-  searchSimilarChunks: searchSimilarChunksMock,
+vi.mock("@melandlabs/memory-store/raw-message-store", () => ({
+  getRawMessageManager: getRawMessageManagerMock,
+  getRawMessageStorageBackend: () => "sqlite",
+  isRawMessageStorageAvailable: isRawMessageStorageAvailableMock,
 }));
 
 import {

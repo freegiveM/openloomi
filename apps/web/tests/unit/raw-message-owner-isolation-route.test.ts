@@ -273,7 +273,7 @@ describe("authenticated raw message route owner isolation", () => {
 
   it("rejects the reserved chat evidence namespace on both raw endpoints", async () => {
     for (const request of [messagesRawRequest, memoryRawStoreRequest]) {
-      const existingId = "openloomi-chat:user-a:chat-a:message-a:language";
+      const existingId = "opencontext-chat:user-a:chat-a:message-a:language";
       manager.messages.set(
         existingId,
         storedMessage(existingId, USER_A, BOT_A, "protected evidence"),
@@ -295,7 +295,7 @@ describe("authenticated raw message route owner isolation", () => {
         "protected evidence",
       );
 
-      const newId = "openloomi-chat:user-a:chat-a:new-message:language";
+      const newId = "opencontext-chat:user-a:chat-a:new-message:language";
       const create = await request([inputMessage(newId, BOT_A)]);
       expect(create.status).toBe(409);
       await expect(create.json()).resolves.toMatchObject({

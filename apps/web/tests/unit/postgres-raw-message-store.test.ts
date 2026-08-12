@@ -262,11 +262,11 @@ describe("postgres raw message storage", () => {
   });
 
   it("locks and preserves storage-managed chat evidence state on replay", async () => {
-    const messageId = "openloomi-chat:user-a:chat-1:message-1:language";
+    const messageId = "opencontext-chat:user-a:chat-1:message-1:language";
     const { db, insertChain, selectChain } = createRawReplayDb([
       createRawMessageRow({
         messageId,
-        platform: "openloomi-chat",
+        platform: "opencontext-chat",
         userId: "user-a",
         channel: "chat-1",
         person: "user-a",
@@ -292,7 +292,7 @@ describe("postgres raw message storage", () => {
     await storage.storeMessages([
       {
         messageId,
-        platform: "openloomi-chat",
+        platform: "opencontext-chat",
         botId,
         userId: "user-a",
         channel: "chat-1",
@@ -477,7 +477,7 @@ describe("postgres raw message storage", () => {
 
     await storage.upsertSummaries([
       createSummary("stable-summary", userId, {
-        dimensions: { __openloomiMemoryPublication: "pending" },
+        dimensions: { __opencontextMemoryPublication: "pending" },
       }),
     ]);
 
@@ -492,7 +492,7 @@ describe("postgres raw message storage", () => {
           summaryId: "stable-summary",
           userId,
           dimensions: {
-            __openloomiMemoryPublicationRevision: "revision-b",
+            __opencontextMemoryPublicationRevision: "revision-b",
           },
         },
       ],
@@ -504,7 +504,7 @@ describe("postgres raw message storage", () => {
         createSummary("stable-summary", userId, {
           summaryText: "stale revision a",
           dimensions: {
-            __openloomiMemoryPublicationRevision: "revision-a",
+            __opencontextMemoryPublicationRevision: "revision-a",
           },
         }),
       ]),
@@ -520,7 +520,7 @@ describe("postgres raw message storage", () => {
         summaryId: "stable-summary",
         userId,
         dimensions: {
-          __openloomiMemoryPublicationRevision: "revision-a",
+          __opencontextMemoryPublicationRevision: "revision-a",
         },
       },
     ];
@@ -534,8 +534,8 @@ describe("postgres raw message storage", () => {
       createSummary("stable-summary", userId, {
         summaryText: "published revision b",
         dimensions: {
-          __openloomiMemoryPublicationRevision: "revision-b",
-          __openloomiMemoryPublicationExpectedRevision: "revision-a",
+          __opencontextMemoryPublicationRevision: "revision-b",
+          __opencontextMemoryPublicationExpectedRevision: "revision-a",
         },
       }),
     ]);
@@ -543,7 +543,7 @@ describe("postgres raw message storage", () => {
     expect(insertChain.values).toHaveBeenCalledWith([
       expect.objectContaining({
         dimensions: {
-          __openloomiMemoryPublicationRevision: "revision-b",
+          __opencontextMemoryPublicationRevision: "revision-b",
         },
       }),
     ]);
@@ -553,8 +553,8 @@ describe("postgres raw message storage", () => {
       new PostgresRawMessageManager(stale.db as never).upsertSummaries([
         createSummary("stable-summary", userId, {
           dimensions: {
-            __openloomiMemoryPublicationRevision: "revision-c",
-            __openloomiMemoryPublicationExpectedRevision: "revision-stale",
+            __opencontextMemoryPublicationRevision: "revision-c",
+            __opencontextMemoryPublicationExpectedRevision: "revision-stale",
           },
         }),
       ]),

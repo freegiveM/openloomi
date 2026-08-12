@@ -1,4 +1,4 @@
-import { AppError, type ErrorCode } from "@melandlabs/shared";
+import { AppError, type ErrorCode } from "@melandlabs/shared/errors";
 import type { ChatMessage } from "@melandlabs/shared";
 import { formatISO } from "date-fns";
 import type { Session } from "next-auth";

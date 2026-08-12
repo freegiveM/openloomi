@@ -73,7 +73,7 @@ class GraphLifecycleTestManager {
   }
 
   async storeMessage(message: RawMessage): Promise<number> {
-    if (message.messageId.startsWith("__openloomi_memory_graph__")) {
+    if (message.messageId.startsWith("__opencontext_memory_graph__")) {
       this.ledgerWriteCount += 1;
       if (this.failLedgerWriteNumbers.has(this.ledgerWriteCount)) {
         throw new Error("ledger write failed");
@@ -431,7 +431,7 @@ describe("memory graph lifecycle forgetting runtime", () => {
       (node) => node.id === revisedSummary?.summaryId,
     );
     expect(summaryNode?.metadata?.publicationRevision).toBe(
-      revisedSummary?.dimensions?.__openloomiMemoryPublicationRevision,
+      revisedSummary?.dimensions?.__opencontextMemoryPublicationRevision,
     );
   });
 
@@ -589,7 +589,7 @@ describe("memory graph lifecycle forgetting runtime", () => {
       keywordsText: "pending",
       summaryText: "Pending representative",
       dimensions: {
-        __openloomiMemoryPublication: "pending",
+        __opencontextMemoryPublication: "pending",
       },
       createdAt: NOW,
       updatedAt: NOW,
@@ -941,7 +941,7 @@ describe("memory graph lifecycle forgetting runtime", () => {
     expect(failed.graphLifecycle?.status).toBe("partial-failure");
     const pendingSummary = [...manager.summaries.values()][0];
     expect(pendingSummary?.dimensions).toEqual(
-      expect.objectContaining({ __openloomiMemoryPublication: "pending" }),
+      expect.objectContaining({ __opencontextMemoryPublication: "pending" }),
     );
     expect(
       manager.messages.get("publication-fail-1")?.deprecatedAt,
@@ -966,7 +966,7 @@ describe("memory graph lifecycle forgetting runtime", () => {
     expect(retried.graphLifecycle?.status).toBe("applied");
     expect(manager.summaries.size).toBe(1);
     expect([...manager.summaries.values()][0]?.dimensions).not.toEqual(
-      expect.objectContaining({ __openloomiMemoryPublication: "pending" }),
+      expect.objectContaining({ __opencontextMemoryPublication: "pending" }),
     );
     expect(manager.messages.get("publication-fail-1")?.deprecatedAt).toBe(
       NOW + 4000,
@@ -1049,7 +1049,7 @@ describe("memory graph lifecycle forgetting runtime", () => {
 
     const publishedSummary = [...manager.summaries.values()][0];
     expect(publishedSummary?.dimensions).not.toEqual(
-      expect.objectContaining({ __openloomiMemoryPublication: "pending" }),
+      expect.objectContaining({ __opencontextMemoryPublication: "pending" }),
     );
 
     // A retry must not downgrade the published summary while it is staging.

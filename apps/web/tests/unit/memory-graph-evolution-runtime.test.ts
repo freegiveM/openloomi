@@ -27,7 +27,7 @@ class InMemoryRawMessageStorage implements RawMessageGraphEvolutionStorage {
 
   async storeMessage(message: RawMessage): Promise<number> {
     if (
-      message.messageId.startsWith("__openloomi_memory_graph__") &&
+      message.messageId.startsWith("__opencontext_memory_graph__") &&
       this.failLedgerWrites > 0
     ) {
       this.failLedgerWrites -= 1;

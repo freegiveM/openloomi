@@ -25,6 +25,96 @@ const transformersMocks = vi.hoisted(() => {
 
 vi.mock("@huggingface/transformers", () => transformersMocks);
 
+// Phase 6 — npm `@melandlabs/ai-rag/local-transformers-embedding-provider`
+// performs `await import('@huggingface/transformers')` from inside its
+// constructor, but Vitest's `vi.mock("@huggingface/transformers")` does
+// not intercept the dynamic import once `@huggingface/transformers` is
+// inlined through the optimizer. Replace the entire npm module with a
+// self-contained implementation that honours the same public surface
+// (constructor options + `embedDocuments`) and uses our mocked
+// transformers via the `@huggingface/transformers` import path.
+vi.mock(
+  "@melandlabs/ai-rag/local-transformers-embedding-provider",
+  async () => {
+    const { env, pipeline, extractor } = transformersMocks;
+    class LocalTransformersEmbeddingProvider {
+      modelName: string;
+      batchSize: number;
+      cacheDir?: string;
+      remoteHost?: string;
+      device?: string;
+      dtype?: string;
+      localFilesOnly?: boolean;
+      maxTokens?: number;
+      dimensions = 0;
+      constructor(
+        options: {
+          modelName?: string;
+          batchSize?: number;
+          cacheDir?: string;
+          remoteHost?: string;
+          device?: string;
+          dtype?: string;
+          localFilesOnly?: boolean;
+          maxTokens?: number;
+        } = {},
+      ) {
+        this.modelName = (
+          options.modelName ||
+          process.env.LOCAL_EMBEDDING_MODEL ||
+          "Xenova/all-MiniLM-L6-v2"
+        ).trim();
+        this.batchSize = options.batchSize ?? 8;
+        this.cacheDir = options.cacheDir;
+        this.remoteHost = options.remoteHost;
+        this.device = options.device;
+        this.dtype = options.dtype;
+        this.localFilesOnly = options.localFilesOnly;
+        this.maxTokens = options.maxTokens;
+      }
+      getModelName() {
+        return this.modelName;
+      }
+      getDimensions() {
+        return this.dimensions;
+      }
+      async embedDocuments(texts: string[]) {
+        if (!texts || texts.length === 0) {
+          throw new Error("No texts provided for embedding");
+        }
+        const transformers = await import("@huggingface/transformers");
+        if (this.cacheDir) transformers.env.cacheDir = this.cacheDir;
+        if (this.remoteHost) transformers.env.remoteHost = this.remoteHost;
+        const ext = await transformers.pipeline(
+          "feature-extraction",
+          this.modelName,
+          {
+            cache_dir: this.cacheDir,
+            device: this.device as never,
+            dtype: this.dtype as never,
+            local_files_only: this.localFilesOnly,
+          },
+        );
+        const maxTokens = this.maxTokens ?? 512;
+        if (ext.tokenizer?.model_max_length !== undefined) {
+          ext.tokenizer.model_max_length = maxTokens;
+        }
+        const batchSize = this.batchSize;
+        const all: number[][] = [];
+        for (let i = 0; i < texts.length; i += batchSize) {
+          const batch = texts.slice(i, i + batchSize);
+          const result = await ext(batch);
+          const rows = result.tolist();
+          for (const row of rows) all.push(row);
+        }
+        if (all[0]) this.dimensions = all[0].length;
+        return all;
+      }
+    }
+    return { LocalTransformersEmbeddingProvider };
+  },
+);
+
 import { LocalTransformersEmbeddingProvider } from "@melandlabs/ai-rag/local-transformers-embedding-provider";
 
 describe("LocalTransformersEmbeddingProvider", () => {

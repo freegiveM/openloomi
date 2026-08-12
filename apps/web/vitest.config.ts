@@ -16,6 +16,16 @@ export default defineConfig({
         find: "@openloomi/ui/*",
         replacement: alias("./components/ui/*"),
       },
+      // B方案 — `packages/ai/src/agent/*` stays local. The 7 remaining
+      // `@openloomi/ai/agent/*` imports in tests must resolve here.
+      {
+        find: "@openloomi/ai/agent",
+        replacement: alias("../packages/ai/src/agent/index.ts"),
+      },
+      {
+        find: "@openloomi/ai/agent/*",
+        replacement: alias("../packages/ai/src/agent/*"),
+      },
       { find: "@", replacement: alias(".") },
     ],
   },
@@ -32,6 +42,16 @@ export default defineConfig({
     exclude: ["node_modules", ".next", "out"],
     globals: true,
     setupFiles: ["./tests/setup.ts"],
+    // npm migration — vi.mock must intercept ESM imports inside npm
+    // packages too (e.g. `vi.mock("chromadb")` for chroma-store,
+    // `vi.mock("fs")` for paths). Without this, Vitest's resolver
+    // loads the package's CJS/ESM directly and the mocks silently
+    // miss. Inline the packages we mock transitively.
+    server: {
+      deps: {
+        inline: [/^(?!.*\.mjs).*chromadb.*/, /^@melandlabs\//, /^fernet$/],
+      },
+    },
     coverage: {
       provider: "v8",
       reporter: ["text", "text-summary", "html", "lcov"],

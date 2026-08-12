@@ -262,12 +262,12 @@ afterEach(() => {
 beforeEach(async () => {
   vi.clearAllMocks();
   mocks.capturedPrompts.length = 0;
-  vi.stubEnv("OPENLOOMI_MEMORY_GRAPH_WRITE_ENABLED", "true");
+  vi.stubEnv("OPENCONTEXT_MEMORY_GRAPH_WRITE_ENABLED", "true");
   vi.stubEnv(
-    "OPENLOOMI_MEMORY_GRAPH_WRITE_COHORT_USER_IDS",
+    "OPENCONTEXT_MEMORY_GRAPH_WRITE_COHORT_USER_IDS",
     "authenticated-user",
   );
-  vi.stubEnv("OPENLOOMI_MEMORY_GRAPH_WRITE_KILL_SWITCH", "");
+  vi.stubEnv("OPENCONTEXT_MEMORY_GRAPH_WRITE_KILL_SWITCH", "");
   mocks.getAuthUser.mockResolvedValue({
     id: "authenticated-user",
     email: "user@example.test",

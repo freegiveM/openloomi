@@ -432,12 +432,12 @@ describe("sqlite chat evidence replay", () => {
       enableVectorSearch: false,
     });
     await storage.init();
-    const messageId = "openloomi-chat:user-a:chat-1:message-1:language";
+    const messageId = "opencontext-chat:user-a:chat-1:message-1:language";
     try {
       await storage.storeMessages([
         {
           messageId,
-          platform: "openloomi-chat",
+          platform: "opencontext-chat",
           botId: "bot-1",
           userId: "user-a",
           channel: "chat-1",
@@ -474,7 +474,7 @@ describe("sqlite chat evidence replay", () => {
       await storage.storeMessages([
         {
           messageId,
-          platform: "openloomi-chat",
+          platform: "opencontext-chat",
           botId: "bot-1",
           userId: "user-a",
           channel: "chat-1",
@@ -596,7 +596,7 @@ describe("sqlite summary ownership and publication", () => {
       await storage.upsertSummaries([
         summary("stable-summary", "user-a", {
           summaryText: "stale pending summary",
-          dimensions: { __openloomiMemoryPublication: "pending" },
+          dimensions: { __opencontextMemoryPublication: "pending" },
           updatedAt: 1774500001000,
         }),
       ]);
@@ -622,7 +622,7 @@ describe("sqlite summary ownership and publication", () => {
         summary("stable-summary", "user-a", {
           summaryText: "published revision b",
           dimensions: {
-            __openloomiMemoryPublicationRevision: "revision-b",
+            __opencontextMemoryPublicationRevision: "revision-b",
           },
         }),
       ]);
@@ -632,7 +632,7 @@ describe("sqlite summary ownership and publication", () => {
           summary("stable-summary", "user-a", {
             summaryText: "stale revision a",
             dimensions: {
-              __openloomiMemoryPublicationRevision: "revision-a",
+              __opencontextMemoryPublicationRevision: "revision-a",
             },
           }),
         ]),
@@ -645,7 +645,7 @@ describe("sqlite summary ownership and publication", () => {
           summaryId: "stable-summary",
           summaryText: "published revision b",
           dimensions: {
-            __openloomiMemoryPublicationRevision: "revision-b",
+            __opencontextMemoryPublicationRevision: "revision-b",
           },
         }),
       ]);
@@ -661,7 +661,7 @@ describe("sqlite summary ownership and publication", () => {
       await storage.upsertSummaries([
         summary("stable-summary", "user-a", {
           dimensions: {
-            __openloomiMemoryPublicationRevision: "revision-a",
+            __opencontextMemoryPublicationRevision: "revision-a",
           },
         }),
       ]);
@@ -669,8 +669,8 @@ describe("sqlite summary ownership and publication", () => {
         summary("stable-summary", "user-a", {
           summaryText: "published revision b",
           dimensions: {
-            __openloomiMemoryPublicationRevision: "revision-b",
-            __openloomiMemoryPublicationExpectedRevision: "revision-a",
+            __opencontextMemoryPublicationRevision: "revision-b",
+            __opencontextMemoryPublicationExpectedRevision: "revision-a",
           },
         }),
       ]);
@@ -679,8 +679,8 @@ describe("sqlite summary ownership and publication", () => {
           summary("stable-summary", "user-a", {
             summaryText: "stale revision c",
             dimensions: {
-              __openloomiMemoryPublicationRevision: "revision-c",
-              __openloomiMemoryPublicationExpectedRevision: "revision-a",
+              __opencontextMemoryPublicationRevision: "revision-c",
+              __opencontextMemoryPublicationExpectedRevision: "revision-a",
             },
           }),
         ]),
@@ -692,7 +692,7 @@ describe("sqlite summary ownership and publication", () => {
         expect.objectContaining({
           summaryText: "published revision b",
           dimensions: {
-            __openloomiMemoryPublicationRevision: "revision-b",
+            __opencontextMemoryPublicationRevision: "revision-b",
           },
         }),
       ]);

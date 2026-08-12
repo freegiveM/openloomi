@@ -390,7 +390,7 @@ function persistedEvidenceMatchesState(input: {
   return (
     expectedIds.includes(input.evidence.messageId) &&
     input.evidence.userId === input.userId &&
-    input.evidence.platform === "openloomi-chat" &&
+    input.evidence.platform === "opencontext-chat" &&
     input.evidence.channel === input.chatId &&
     input.evidence.person === input.userId &&
     input.evidence.content === input.state.text &&
@@ -576,7 +576,7 @@ function buildRawEvidence(input: {
 }): RawMessage[] {
   return input.candidates.map((candidate) => ({
     ...candidate,
-    platform: "openloomi-chat",
+    platform: "opencontext-chat",
     botId: input.botId,
     userId: input.userId,
     channel: input.chatId,

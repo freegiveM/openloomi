@@ -20,9 +20,6 @@ vi.mock("@/lib/ai", () => ({
 
 vi.mock("@melandlabs/ai/agent", () => ({
   sanitizeCompactionMessages: vi.fn(),
-}));
-
-vi.mock("@melandlabs/ai/agent", () => ({
   getAgentRegistry: vi.fn(),
 }));
 

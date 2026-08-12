@@ -128,7 +128,7 @@ class GovernanceRuntimeTestManager {
 
   async storeMessage(message: RawMessage): Promise<number> {
     if (
-      message.content === "OpenLoomi internal memory graph ledger" &&
+      message.content === "OpenContext internal memory graph ledger" &&
       this.failLedgerWrites > 0
     ) {
       this.failLedgerWrites -= 1;
