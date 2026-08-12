@@ -6,14 +6,14 @@ import {
   type OwnerScope,
   buildGraphAwareRetrievalDryRun,
   createGraphAwareRetrievalDryRunRetriever,
-} from "@openloomi/memory-consolidation";
+} from "@melandlabs/memory-consolidation";
 import { describe, expect, it, vi } from "vitest";
 import {
   type MemoryRecord,
   type MemoryStorageAdapter,
   type MemorySummary,
   createMemoryQueryApi,
-} from "../../../../packages/ai/src/memory";
+} from "@melandlabs/ai/memory";
 function createRecord(
   input: Partial<MemoryRecord> & { id: string },
 ): MemoryRecord {

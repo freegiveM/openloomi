@@ -3,7 +3,7 @@ import {
   type GoalConstraint,
   type GoalSource,
   type RuntimeInstructionSource,
-} from "@openloomi/ai/agent/runtime-instructions";
+} from "@melandlabs/ai/agent/runtime-instructions";
 
 export function findUnsupportedRuntimeConstraint(
   constraints: readonly GoalConstraint[],

@@ -18,12 +18,12 @@ const {
 }));
 
 vi.mock("@/app/(auth)/auth", () => ({ auth: authMock }));
-vi.mock("@openloomi/memory-store/raw-message-store", () => ({
+vi.mock("@melandlabs/memory-store/raw-message-store", () => ({
   getRawMessageManager: getRawMessageManagerMock,
   getRawMessageStorageBackend: vi.fn(),
   isRawMessageStorageAvailable: isRawMessageStorageAvailableMock,
 }));
-vi.mock("@openloomi/indexeddb", () => ({
+vi.mock("@melandlabs/indexeddb", () => ({
   parseRawMessageGraphEvolutionOptions: vi.fn(),
   parseRawMessageGraphLifecycleOptions: vi.fn(),
   runMemoryGraphCorrection: runMemoryGraphCorrectionMock,
@@ -31,7 +31,7 @@ vi.mock("@openloomi/indexeddb", () => ({
   runMemoryGraphRolloutEvaluation: runMemoryGraphRolloutEvaluationMock,
   storeRawMessagesWithGraphEvolution: vi.fn(),
 }));
-vi.mock("@openloomi/indexeddb/forgetting", () => ({
+vi.mock("@melandlabs/indexeddb", () => ({
   queryMemoryWithFallback: vi.fn(),
   runMemoryForgettingCycle: vi.fn(),
 }));

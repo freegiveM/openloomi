@@ -1,4 +1,4 @@
-import type { MemorySummaryRecord, RawMessage } from "@openloomi/indexeddb";
+import type { MemorySummaryRecord, RawMessage } from "@melandlabs/indexeddb";
 import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -21,10 +21,10 @@ const {
 vi.mock("server-only", () => ({}));
 vi.mock("@/app/(auth)/auth", () => ({ auth: authMock }));
 vi.mock("@/lib/db/queries", () => ({ botExists: botExistsMock }));
-vi.mock("@openloomi/memory-store/chroma-memory-index", () => ({
+vi.mock("@melandlabs/memory-store/chroma-memory-index", () => ({
   upsertRawMessagesToChroma: upsertRawMessagesToChromaMock,
 }));
-vi.mock("@openloomi/memory-store/raw-message-store", () => ({
+vi.mock("@melandlabs/memory-store/raw-message-store", () => ({
   getRawMessageManager: getRawMessageManagerMock,
   getRawMessageStorageBackend: getRawMessageStorageBackendMock,
   isRawMessageStorageAvailable: isRawMessageStorageAvailableMock,

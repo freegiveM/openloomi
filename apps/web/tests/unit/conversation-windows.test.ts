@@ -3,7 +3,7 @@ import {
   estimateConversationTokens,
   getConversationBucket,
   prepareConversationWindows,
-} from "@openloomi/ai/agent/context";
+} from "@melandlabs/ai";
 import { describe, expect, it } from "vitest";
 
 const HOUR_MS = 60 * 60 * 1000;

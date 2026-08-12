@@ -1,4 +1,4 @@
-import { canonicalJson } from "@openloomi/ai/agent/runtime-instructions";
+import { canonicalJson } from "@melandlabs/ai/agent/runtime-instructions";
 import type { z } from "zod";
 
 import { invalidPersistenceRecord } from "./errors";

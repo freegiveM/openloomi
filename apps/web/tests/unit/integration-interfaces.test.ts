@@ -4,11 +4,11 @@ import type {
   ConfigProvider,
   CredentialStore,
   InboundMessageHandler,
-} from "@openloomi/integrations/core";
+} from "@melandlabs/integrations/core";
 /**
  * Integration Interfaces Unit Tests
  *
- * Tests for core interfaces in @openloomi/integrations
+ * Tests for core interfaces in @melandlabs/integrations
  */
 import { describe, expect, test, vi } from "vitest";
 

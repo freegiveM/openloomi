@@ -3,19 +3,19 @@ import {
   type MemorySummaryCandidate,
   buildMemoryDeprecationEntries,
   buildMemoryRelationPipeline,
-} from "../../../../packages/ai/memory-consolidation/src/pipeline";
-import { buildMemoryDeprecationEntry } from "../../../../packages/ai/memory-consolidation/src/plan";
+} from "@melandlabs/memory-consolidation/pipeline";
+import { buildMemoryDeprecationEntry } from "@melandlabs/memory-consolidation";
 import {
   type DeprecatablePlanEntry,
   deprecateMemoryRecords,
   filterDeprecatedRecords,
-} from "../../../../packages/ai/src/memory";
+} from "@melandlabs/ai/memory";
 import type {
   MemoryDeprecateRecordsInput,
   MemoryRecord,
   MemoryStorageAdapter,
   MemorySummary,
-} from "../../../../packages/ai/src/memory/contracts";
+} from "@melandlabs/ai/memory";
 
 function makeRecord(
   id: string,

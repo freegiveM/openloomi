@@ -9,7 +9,7 @@ vi.mock("@/lib/ai/runtime/register-plugins", () => ({
   registerPlugins: vi.fn(),
 }));
 
-vi.mock("@openloomi/ai/store", () => ({
+vi.mock("@melandlabs/ai/store", () => ({
   saveCompactionSummary: vi.fn(),
 }));
 
@@ -18,11 +18,11 @@ vi.mock("@/lib/ai", () => ({
   triggerCompactionAsync: vi.fn(),
 }));
 
-vi.mock("@openloomi/ai/agent", () => ({
+vi.mock("@melandlabs/ai/agent", () => ({
   sanitizeCompactionMessages: vi.fn(),
 }));
 
-vi.mock("@openloomi/ai/agent/registry", () => ({
+vi.mock("@melandlabs/ai/agent", () => ({
   getAgentRegistry: vi.fn(),
 }));
 
@@ -32,8 +32,8 @@ import {
   getUserInsightSettings,
   getUserTypeForService,
 } from "@/lib/db/queries";
-import { sanitizeCompactionMessages } from "@openloomi/ai/agent";
-import { getAgentRegistry } from "@openloomi/ai/agent/registry";
+import { sanitizeCompactionMessages } from "@melandlabs/ai/agent";
+import { getAgentRegistry } from "@melandlabs/ai/agent";
 
 function createDoneOnlyGenerator() {
   return (async function* () {

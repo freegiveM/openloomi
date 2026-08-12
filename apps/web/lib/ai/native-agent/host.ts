@@ -6,8 +6,8 @@ import {
 } from "@/lib/db/queries";
 import { getControlledDefaultMemoryContext } from "@/lib/memory/controlled-default-context";
 import { readFile } from "@/lib/storage";
-import type { NativeAgentHost } from "@openloomi/ai/agent/native-runner";
-import { getAgentRegistry } from "@openloomi/ai/agent/registry";
+import type { NativeAgentHost } from "@melandlabs/ai/agent/native-runner";
+import { getAgentRegistry } from "@melandlabs/ai/agent";
 import { resolveNativeAgentProviderRequest } from "./provider-env";
 import { registerNativeAgentProvider } from "./register-provider";
 import { detectSudoPasswordPrompt } from "./sudo";

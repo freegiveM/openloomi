@@ -5,21 +5,21 @@ import {
   type RawMessageStorageManagerWithSearch,
   getRawMessageManager,
   isRawMessageStorageAvailable,
-} from "@openloomi/memory-store/raw-message-store";
+} from "@melandlabs/memory-store/raw-message-store";
 import {
   type MemoryGraphLifecycleRuntimeResult,
   type RawMessage,
   runMemoryForgettingCycle,
   storeRawMessagesWithGraphEvolution,
-} from "@openloomi/indexeddb";
-import type { MemoryGraphEvolutionRunResult } from "@openloomi/memory-consolidation";
-import { type ChatMessage, getTextFromMessage } from "@openloomi/shared";
+} from "@melandlabs/indexeddb";
+import type { MemoryGraphEvolutionRunResult } from "@melandlabs/memory-consolidation";
+import { type ChatMessage, getTextFromMessage } from "@melandlabs/shared";
 import {
   CHAT_MEMORY_EVIDENCE_ID_PREFIX,
   type MemoryGraphWritePolicyDecision,
   resolveMemoryGraphWritePolicy,
   sanitizeUntrustedMemoryMetadata,
-} from "@openloomi/memory-store/memory-graph-write-policy";
+} from "@melandlabs/memory-store/memory-graph-write-policy";
 
 type SavedChatMessage = ChatMessage & { createdAt: Date };
 

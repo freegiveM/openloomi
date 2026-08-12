@@ -3,7 +3,7 @@ import {
   type AtomicFactProvider,
   chunkAtomicFacts,
   chunkDocument,
-} from "../../../../packages/ai/rag/src";
+} from "@melandlabs/ai-rag";
 
 class StubProvider implements AtomicFactProvider {
   facts: Array<{ fact: string; confidence: number; sourceText?: string }>;

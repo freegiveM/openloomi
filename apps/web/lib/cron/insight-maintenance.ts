@@ -9,8 +9,8 @@ import {
 } from "../db/queries";
 import { runWeeklyInsightMaintenance } from "@/lib/insights/maintenance";
 import { runInsightEmbeddingDream } from "@/lib/insights/dream";
-import { getRawMessageManager } from "@openloomi/memory-store/raw-message-store";
-import { upsertRawMessagesToChroma } from "@openloomi/memory-store/chroma-memory-index";
+import { getRawMessageManager } from "@melandlabs/memory-store/raw-message-store";
+import { upsertRawMessagesToChroma } from "@melandlabs/memory-store/chroma-memory-index";
 import { hasInsightEmbeddingProviderConfig } from "@/lib/insights/embedding-service";
 import {
   createUserEmbeddingProvider,
@@ -19,7 +19,7 @@ import {
 import {
   runRawMessageEmbeddingDream,
   type RawMessage,
-} from "@openloomi/indexeddb";
+} from "@melandlabs/indexeddb";
 
 const INSIGHT_EMBEDDING_DREAM_INTERVAL = 24 * 60 * 60 * 1000;
 const RAW_MESSAGE_EMBEDDING_DREAM_INTERVAL = 24 * 60 * 60 * 1000;

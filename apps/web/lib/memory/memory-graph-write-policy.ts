@@ -1,6 +1,6 @@
 import "server-only";
 
-import { CHAT_MEMORY_EVIDENCE_ID_PREFIX } from "@openloomi/indexeddb";
+import { CHAT_MEMORY_EVIDENCE_ID_PREFIX } from "@melandlabs/indexeddb";
 
 export { CHAT_MEMORY_EVIDENCE_ID_PREFIX };
 

@@ -1,10 +1,10 @@
 import { and, desc, eq, inArray, lt, sql } from "drizzle-orm";
-import type { UserType } from "@openloomi/contracts/user-type";
+import type { UserType } from "@melandlabs/contracts/user-type";
 import type { FileStorageProvider } from "@/lib/files/config";
 
 import { db } from "./queries";
 import { userFileUsage, userFiles } from "./schema";
-import { AppError } from "@openloomi/shared/errors";
+import { AppError } from "@melandlabs/shared/errors";
 
 type StorageQuota = {
   quotaBytes: number;

@@ -10,7 +10,7 @@ import {
   countTokens,
   estimateChunkCount,
   getOptimalChunkSize,
-} from "@openloomi/rag";
+} from "@melandlabs/rag";
 import { describe, expect, it } from "vitest";
 
 describe("rag-chunking", () => {

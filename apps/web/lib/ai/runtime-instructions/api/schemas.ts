@@ -3,7 +3,7 @@ import {
   CreateAgentGoalInputSchema,
   GoalConstraintSchema,
   GoalContextReferenceSchema,
-} from "@openloomi/ai/agent/runtime-instructions";
+} from "@melandlabs/ai/agent/runtime-instructions";
 import { z } from "zod";
 
 const identifierSchema = z

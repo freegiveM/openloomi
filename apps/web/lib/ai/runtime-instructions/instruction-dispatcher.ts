@@ -5,7 +5,7 @@ import {
   type RuntimeInstruction,
   type RuntimeInstructionTransportPort,
   type RuntimeSessionResolverPort,
-} from "@openloomi/ai/agent/runtime-instructions";
+} from "@melandlabs/ai/agent/runtime-instructions";
 
 import { KeyedSerialExecutor } from "./keyed-serial-executor";
 import {

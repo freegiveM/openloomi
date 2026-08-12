@@ -3,7 +3,7 @@ import type {
   SDKMessage,
   SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
-import type { CreateAgentGoalInput } from "@openloomi/ai/agent/runtime-instructions";
+import type { CreateAgentGoalInput } from "@melandlabs/ai/agent/runtime-instructions";
 import { describe, expect, it, vi } from "vitest";
 
 import {

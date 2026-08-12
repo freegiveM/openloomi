@@ -1,6 +1,6 @@
 import { auth } from "@/app/(auth)/auth";
 import { getChatById, deleteChatById } from "@/lib/db/queries";
-import { AppError } from "@openloomi/shared/errors";
+import { AppError } from "@melandlabs/shared/errors";
 
 /**
  * Delete specified chat (only owner can delete)

@@ -15,7 +15,7 @@ import {
   saveChatInsights,
 } from "@/lib/db/queries";
 import type { GeneratedInsightPayload } from "@/lib/insights/types";
-import { AppError } from "@openloomi/shared/errors";
+import { AppError } from "@melandlabs/shared/errors";
 import {
   normalizeTask,
   normalizeImportance,

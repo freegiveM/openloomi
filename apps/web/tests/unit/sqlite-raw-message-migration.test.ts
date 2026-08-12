@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("../../../../packages/indexeddb/src/manager", () => ({
+vi.mock("@melandlabs/indexeddb", () => ({
   getIndexedDBManager: () => mocks.manager,
 }));
 
@@ -17,7 +17,7 @@ import {
   ensureRawMessagesSQLiteMigration,
   getRawMessagesSQLiteMigrationState,
   getRawMessagesSQLiteMigrationStorageKey,
-} from "../../../../packages/indexeddb/src/sqlite-client";
+} from "@melandlabs/indexeddb";
 
 function createStorage() {
   const store = new Map<string, string>();

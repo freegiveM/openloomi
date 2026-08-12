@@ -5,7 +5,7 @@ import {
   type RuntimeInstructionDraft,
   createAgentGoal,
   transitionAgentGoal,
-} from "@openloomi/ai/agent/runtime-instructions";
+} from "@melandlabs/ai/agent/runtime-instructions";
 import { describe, expect, it } from "vitest";
 
 import {

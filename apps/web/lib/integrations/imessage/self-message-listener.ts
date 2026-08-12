@@ -19,9 +19,9 @@ import type { Message as IMessage } from "@photon-ai/imessage-kit";
 import {
   isIMessageAvailable,
   formatIMessageChatId,
-} from "@openloomi/integrations/imessage";
+} from "@melandlabs/integrations-imessage";
 import { handleAgentRuntime } from "./handlers";
-import { IMessageConversationStore } from "@openloomi/integrations/imessage/conversation-store";
+import { IMessageConversationStore } from "./conversation-store";
 import { getAppMemoryDir } from "@/lib/utils/path";
 import { createTaskSession } from "@/lib/files/workspace/sessions";
 import { getUserInsightSettings } from "@/lib/db/queries";

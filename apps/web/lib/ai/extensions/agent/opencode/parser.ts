@@ -1,4 +1,4 @@
-import type { AgentMessage } from "@openloomi/ai/agent/types";
+import type { AgentMessage } from "@melandlabs/ai/agent";
 
 export function parseOpenCodeJsonLine(line: string): AgentMessage[] {
   const trimmed = line.trim();

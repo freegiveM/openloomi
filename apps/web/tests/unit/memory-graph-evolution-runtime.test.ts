@@ -5,7 +5,7 @@ import {
   createRawMessageMemoryGraphStore,
   memoryGraphLedgerMessageId,
   storeRawMessagesWithGraphEvolution,
-} from "@openloomi/indexeddb";
+} from "@melandlabs/indexeddb";
 import {
   type MemoryGraphSnapshot,
   type MemoryGraphStore,
@@ -13,7 +13,7 @@ import {
   buildMemoryGraphEvolutionPlan,
   ownerScopeKey,
   sameOwnerScope,
-} from "@openloomi/memory-consolidation";
+} from "@melandlabs/memory-consolidation";
 import { describe, expect, it } from "vitest";
 
 const NOW = 1_700_000_000_000;

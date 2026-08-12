@@ -9,7 +9,7 @@ import {
   parsePlanFromResponse,
   parsePlanningResponse,
   PLANNING_INSTRUCTION,
-} from "@openloomi/ai/agent";
+} from "@melandlabs/ai/agent";
 import type {
   AgentConfig,
   AgentMessage,
@@ -17,7 +17,7 @@ import type {
   AgentProvider,
   ExecuteOptions,
   PlanOptions,
-} from "@openloomi/ai/agent/types";
+} from "@melandlabs/ai/agent";
 
 import {
   AcpCommandNotFoundError,

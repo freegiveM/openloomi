@@ -4,21 +4,16 @@
  * Common agent runtime logic used by Telegram and WhatsApp
  */
 
-import type { AgentConfig, AgentOptions } from "@openloomi/ai/agent/types";
-import { getAgentRegistry } from "@openloomi/ai/agent/registry";
+import type { AgentConfig, AgentOptions } from "@melandlabs/ai/agent";
+import { getAgentRegistry } from "@melandlabs/ai/agent";
 import {
   getUserTypeForService,
   getUserInsightSettings,
 } from "@/lib/db/queries";
 import { registerPlugins } from "./register-plugins";
-import { triggerCompactionAsync } from "@/lib/ai";
-import type { CompactionPlatform } from "@/lib/ai";
-import {
-  prepareConversationWindows,
-  type ConversationWindowMessage,
-} from "@/lib/ai";
-import { sanitizeCompactionMessages } from "@openloomi/ai/agent";
-import { saveCompactionSummary } from "@openloomi/ai/store";
+import { prepareConversationWindows, triggerCompactionAsync } from "@/lib/ai";
+import { sanitizeCompactionMessages } from "@melandlabs/ai/agent";
+import { saveCompactionSummary } from "@melandlabs/ai/store";
 import { getAppMemoryDir } from "@/lib/utils/path";
 import { getUserLlmProviderConfig } from "@/lib/ai/user-llm-api-settings";
 import { stripMalformedToolCalls } from "@/lib/utils/tool-names";
@@ -281,7 +276,7 @@ export async function handleAgentRuntime(
       // Add conversation history if provided, with sliding-window monitoring
       if (options.conversation && options.conversation.length > 0) {
         const prepared = prepareConversationWindows(
-          options.conversation as ConversationWindowMessage[],
+          options.conversation as unknown as Parameters<typeof prepareConversationWindows>[0],
           {
             maxTokens: MAX_CONVERSATION_HISTORY_TOKENS,
           },
@@ -370,7 +365,7 @@ export async function handleAgentRuntime(
               void triggerCompactionAsync({
                 messages: compactionMessages,
                 level: prepared.level,
-                platform: platform as CompactionPlatform,
+                platform: platform as unknown as Parameters<typeof triggerCompactionAsync>[0]["platform"],
                 authToken,
                 persistSummary: (result) => {
                   const timestamps = prepared.candidatesForCompaction

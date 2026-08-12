@@ -16,7 +16,7 @@ import {
   type RuntimeIdGeneratorPort,
   type RuntimeInstruction,
   type RuntimeInstructionDelivery,
-} from "@openloomi/ai/agent/runtime-instructions";
+} from "@melandlabs/ai/agent/runtime-instructions";
 
 import { KeyedSerialExecutor } from "./keyed-serial-executor";
 import type {

@@ -1,8 +1,8 @@
 import {
   NativeAgentRequestError,
   type NativeAgentRequest,
-} from "@openloomi/ai/agent/native-runner";
-import type { AgentProvider } from "@openloomi/ai/agent/types";
+} from "@melandlabs/ai/agent/native-runner";
+import type { AgentProvider } from "@melandlabs/ai/agent";
 import {
   readAgentRuntimePreference,
   type SelectableAgentRuntime,

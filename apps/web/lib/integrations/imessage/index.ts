@@ -1,1 +1,1 @@
-export * from "@openloomi/integrations/imessage";
+export * from "@melandlabs/integrations-imessage";

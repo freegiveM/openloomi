@@ -1,4 +1,4 @@
-import type { ImageAttachment } from "@openloomi/ai/agent/types";
+import type { ImageAttachment } from "@melandlabs/ai/agent";
 
 export type AgentMode = "chat" | "native";
 

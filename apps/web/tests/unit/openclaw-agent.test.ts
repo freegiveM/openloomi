@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { OpenClawAgent } from "@/lib/ai/extensions/agent/openclaw";
 import { buildOpenClawAcpCommand } from "@/lib/ai/extensions/agent/openclaw/command";
-import type { AgentMessage } from "@openloomi/ai/agent/types";
+import type { AgentMessage } from "@melandlabs/ai/agent";
 
 const tempDirs: string[] = [];
 

@@ -6,12 +6,12 @@ import {
   getIntegrationAccountByPlatform,
   upsertIntegrationAccount,
 } from "@/lib/db/queries";
-import { AppError } from "@openloomi/shared/errors";
+import { AppError } from "@melandlabs/shared/errors";
 import {
   mergeNotionMetadata,
   type NotionStoredCredentials,
 } from "@/lib/files/notion";
-import { decryptToken } from "@openloomi/security/token-encryption";
+import { decryptToken } from "@melandlabs/security/token-encryption";
 import { getApplicationBaseUrl } from "@/lib/env";
 import { isTauriMode } from "@/lib/env/constants";
 import { getCloudUrl } from "@/lib/auth/cloud-proxy";

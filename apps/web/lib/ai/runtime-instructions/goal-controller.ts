@@ -15,7 +15,7 @@ import {
   type RuntimeInstruction,
   type RuntimeInstructionDraft,
   type RuntimeInstructionTransportPort,
-} from "@openloomi/ai/agent/runtime-instructions";
+} from "@melandlabs/ai/agent/runtime-instructions";
 
 import { createGoalCommandFingerprint } from "./command-fingerprint";
 import { GoalEvaluatorError, type GoalEvaluator } from "./goal-evaluator";

@@ -6,23 +6,23 @@
 import type {
   BlobUploadResult,
   BlobListResult,
-} from "@openloomi/storage/adapters";
+} from "@melandlabs/storage/adapters";
 import type {
   LocalUploadResult,
   LocalFileMeta,
-} from "@openloomi/storage/adapters";
+} from "@melandlabs/storage/adapters";
 import {
   uploadToVercelBlob,
   deleteFromVercelBlob,
   listVercelBlobs,
-} from "@openloomi/storage/adapters";
+} from "@melandlabs/storage/adapters";
 import {
   uploadToLocalFs,
   deleteFromLocalFs,
   listLocalFiles,
   readLocalFile,
   localFileExists,
-} from "@openloomi/storage/adapters";
+} from "@melandlabs/storage/adapters";
 import { TAURI_STORAGE_PATH, isTauriMode } from "@/lib/env";
 
 export type StorageUploadResult = BlobUploadResult | LocalUploadResult;

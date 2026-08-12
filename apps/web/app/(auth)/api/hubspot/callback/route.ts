@@ -2,11 +2,11 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 
 import { upsertIntegrationAccount } from "@/lib/db/queries";
-import { AppError } from "@openloomi/shared/errors";
+import { AppError } from "@melandlabs/shared/errors";
 import { isTauriMode } from "@/lib/env/constants";
 import { getCloudUrl } from "@/lib/auth/cloud-proxy";
 import { getApplicationBaseUrl } from "@/lib/env";
-import { decryptToken } from "@openloomi/security/token-encryption";
+import { decryptToken } from "@melandlabs/security/token-encryption";
 
 const HUBSPOT_TOKEN_URL = "https://api.hubapi.com/oauth/v1/token";
 const HUBSPOT_INTROSPECT_URL = "https://api.hubapi.com/oauth/v1/access-tokens";

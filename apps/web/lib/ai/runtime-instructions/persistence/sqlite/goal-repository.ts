@@ -1,4 +1,4 @@
-import type { PersistedAgentGoal } from "@openloomi/ai/agent/runtime-instructions";
+import type { PersistedAgentGoal } from "@melandlabs/ai/agent/runtime-instructions";
 
 import {
   resolveSqliteGoalRuntimeDatabase,

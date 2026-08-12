@@ -15,7 +15,7 @@ import {
   sanitizeCompactionMessage,
   sanitizeCompactionMessages,
   truncateOldestCompactionGroups,
-} from "@openloomi/ai/agent";
+} from "@melandlabs/ai/agent";
 import { describe, expect, it } from "vitest";
 
 describe("agent-compaction-preprocess", () => {

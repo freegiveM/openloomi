@@ -2,7 +2,7 @@
 
 import { useTranslation } from "react-i18next";
 import type { UseChatHelpers } from "@ai-sdk/react";
-import type { ChatMessage } from "@openloomi/shared";
+import type { ChatMessage } from "@melandlabs/shared";
 import { useMemo, memo } from "react";
 import {
   getAllDefaultSuggestions,

@@ -1,4 +1,4 @@
-import type { ChatMessage } from "@openloomi/shared";
+import type { ChatMessage } from "@melandlabs/shared";
 import { describe, expect, it } from "vitest";
 
 import {

@@ -12,11 +12,11 @@ import { getConfiguredDefaultAgentProvider } from "@/lib/ai/native-agent/provide
 import {
   type AgentProviderMetadata,
   CLAUDE_METADATA,
-} from "@openloomi/ai/agent/plugin";
+} from "@melandlabs/ai/agent";
 import {
   getAgentRegistry,
   getAllAgentMetadata,
-} from "@openloomi/ai/agent/registry";
+} from "@melandlabs/ai/agent";
 import { NextResponse } from "next/server";
 
 // Register lightweight built-in Agent plugins used by this metadata route.

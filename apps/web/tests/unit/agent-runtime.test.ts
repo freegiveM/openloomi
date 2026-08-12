@@ -1,9 +1,9 @@
 import { hermesPlugin } from "@/lib/ai/extensions/agent/hermes";
-import { AgentRegistry } from "@openloomi/ai/agent/registry";
+import { AgentRegistry } from "@melandlabs/ai/agent";
 import {
   type AgentRuntimePermissionRequest,
   runAgentRuntimeRequest,
-} from "@openloomi/ai/agent/runtime";
+} from "@melandlabs/ai/agent/runtime";
 import type {
   AgentConfig,
   AgentMessage,
@@ -12,7 +12,7 @@ import type {
   ExecuteOptions,
   IAgent,
   TaskPlan,
-} from "@openloomi/ai/agent/types";
+} from "@melandlabs/ai/agent";
 import { describe, expect, it } from "vitest";
 
 const silentLogger = {

@@ -4,12 +4,12 @@ import {
   resolveRawMessageEmbeddingDreamReason,
   runRawMessageEmbeddingDream,
   searchRawMessagesSemantically,
-} from "../../../../packages/indexeddb/src/embedding";
+} from "@melandlabs/indexeddb";
 import type {
   RawMessage,
   RawMessageEmbeddingUpdate,
   RawMessageQuery,
-} from "../../../../packages/indexeddb/src/manager";
+} from "@melandlabs/indexeddb";
 
 class InMemoryEmbeddingManager {
   messages: RawMessage[] = [];

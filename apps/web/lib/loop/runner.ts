@@ -15,7 +15,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { DEV_PORT, PROD_PORT } from "@openloomi/shared";
+import { DEV_PORT, PROD_PORT } from "@melandlabs/shared";
 
 import {
   decisions,
@@ -37,7 +37,7 @@ import type {
  *
  * The Loop runs *inside* the Next.js process that also serves
  * `/api/native/agent` — so the agent is always on the same host:port as
- * the Next.js dev/release server itself. Port comes from `@openloomi/shared`
+ * the Next.js dev/release server itself. Port comes from `@melandlabs/shared`
  * (`DEV_PORT` / `PROD_PORT`) so we stay in sync with the rest of the app.
  * `LOOP_NATIVE_AGENT_URL` stays as the escape hatch for split-host setups
  * (e.g. agent behind a reverse proxy on another machine).

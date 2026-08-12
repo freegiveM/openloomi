@@ -1,5 +1,5 @@
 // Phase 5 — `apps/web/lib/cron/types.ts` is now a re-export shim over
-// `@openloomi/cron/types`. The original Drizzle `ScheduledJob` import
+// `@melandlabs/cron/types`. The original Drizzle `ScheduledJob` import
 // was replaced in the new package with a structural `ScheduledJobLike`
 // interface so the cron leaf doesn't drag the entire Drizzle schema
 // along. The Drizzle type is still imported directly by
@@ -18,4 +18,4 @@ export type {
   ScheduledJobLike,
   SchedulerConfig,
   SchedulerEvent,
-} from "@openloomi/cron/types";
+} from "@melandlabs/cron/types";

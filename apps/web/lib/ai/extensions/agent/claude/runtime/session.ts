@@ -6,7 +6,7 @@ import type {
   SDKMessage,
   SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
-import { assertRuntimeSessionStateTransition } from "@openloomi/ai/agent/runtime-instructions";
+import { assertRuntimeSessionStateTransition } from "@melandlabs/ai/agent/runtime-instructions";
 import type {
   RuntimeDeliveryReceipt,
   RuntimeInstruction,
@@ -17,18 +17,15 @@ import type {
   RuntimeTurnBoundary,
   RuntimeTurnBoundaryInputHold,
   RuntimeTurnTerminal,
-} from "@openloomi/ai/agent/runtime-instructions";
-import { AgentOutputEventBus } from "@openloomi/ai/agent/runtime";
+} from "@melandlabs/ai/agent/runtime-instructions";
+import { AgentOutputEventBus } from "@melandlabs/ai/agent/runtime";
 import {
   AgentSupplementalInputQueue,
   SupplementalInputRuntimeInstructionTransport,
-  type AgentSupplementalInputHold,
-} from "@openloomi/ai/agent/supplemental-input";
-import type {
-  AgentMessage,
-  AgentSupplementalInput,
-  AgentSupplementalInputSource,
-} from "@openloomi/ai/agent/types";
+} from "@melandlabs/ai/agent/supplemental-input";
+import type { AgentSupplementalInputHold } from "@melandlabs/ai/agent/supplemental-input";
+import type { AgentMessage } from "@melandlabs/ai/agent";
+import type { AgentSupplementalInput, AgentSupplementalInputSource } from "@/lib/ai/agent/types-shim";
 
 import type { ClaudeRuntimeLogger } from "../skills";
 import {
@@ -173,7 +170,7 @@ export class ClaudeRuntimeSession
   }
 
   get liveInputSource(): AgentSupplementalInputSource {
-    return this.inputQueue;
+    return this.inputQueue as unknown as AgentSupplementalInputSource;
   }
 
   get sdkMessageCount(): number {
@@ -452,7 +449,7 @@ export class ClaudeRuntimeSession
     const multiplexer = new ClaudeInputMultiplexer(
       input.initialPrompt,
       this.runtimeSessionId,
-      this.inputQueue,
+      this.inputQueue as unknown as AgentSupplementalInputSource,
     );
     try {
       this.query = this.sdkTransport.startQuery({

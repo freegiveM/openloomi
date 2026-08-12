@@ -5,7 +5,7 @@ import { getApplicationBaseUrl } from "@/lib/env";
 import { getCloudUrl } from "@/lib/auth/cloud-proxy";
 import { isTauriMode } from "@/lib/env/constants";
 import { getAuthUser } from "@/lib/auth/dual-auth";
-import { encryptToken } from "@openloomi/security/token-encryption";
+import { encryptToken } from "@melandlabs/security/token-encryption";
 
 const LINKEDIN_SCOPES = ["openid", "profile", "email", "w_member_social"];
 

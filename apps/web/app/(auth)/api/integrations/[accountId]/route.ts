@@ -18,7 +18,7 @@ import {
   loadIntegrationCredentials,
   updateIntegrationAccount,
 } from "@/lib/db/queries";
-import { AppError } from "@openloomi/shared/errors";
+import { AppError } from "@melandlabs/shared/errors";
 import { WhatsAppAdapter } from "@/lib/integrations/whatsapp";
 import { WhatsAppBaileysAuthState } from "@/lib/integrations/whatsapp/whatsapp-auth-state";
 import { isTauriMode } from "@/lib/env/constants";

@@ -10,8 +10,8 @@ import {
   MEMORY_SUMMARY_WRITE_CONFLICT,
   type MemorySummaryRecord,
   type RawMessage,
-} from "../../../../packages/indexeddb/src/storage";
-import { SQLiteRawMessageManager } from "../../../../packages/sqlite/src/raw-message-manager";
+} from "@melandlabs/indexeddb";
+import { SQLiteRawMessageManager } from "@melandlabs/sqlite/raw-message-manager";
 import { createRawMessageStorageConformanceSuite } from "../helpers/raw-message-storage-conformance";
 
 function summary(

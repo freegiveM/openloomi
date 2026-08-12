@@ -2,8 +2,8 @@ import { PostgresRawMessageManager } from "@/lib/memory/postgres-raw-message-sto
 import {
   MEMORY_SUMMARY_OWNER_SCOPE_CONFLICT,
   MEMORY_SUMMARY_WRITE_CONFLICT,
-} from "@openloomi/indexeddb";
-import type { MemorySummaryRecord } from "@openloomi/indexeddb/storage";
+} from "@melandlabs/indexeddb";
+import type { MemorySummaryRecord } from "@melandlabs/indexeddb";
 import type { SQL } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";

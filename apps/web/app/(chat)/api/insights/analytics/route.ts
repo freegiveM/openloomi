@@ -1,6 +1,6 @@
 import { auth } from "@/app/(auth)/auth";
 import { getInsightUsageAnalytics } from "@/lib/insights/analytics";
-import { AppError } from "@openloomi/shared/errors";
+import { AppError } from "@melandlabs/shared/errors";
 import type { NextRequest } from "next/server";
 
 export const dynamic = "force-dynamic";

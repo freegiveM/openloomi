@@ -9,7 +9,7 @@ import {
   type AgentRuntimeSession,
   type GoalEvidence,
   type RuntimeInstructionDelivery,
-} from "@openloomi/ai/agent/runtime-instructions";
+} from "@melandlabs/ai/agent/runtime-instructions";
 
 import { invalidPersistenceRecord } from "./errors";
 import {

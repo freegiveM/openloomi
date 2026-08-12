@@ -6,7 +6,7 @@ import type {
   GoalEvidenceType,
   RuntimeDeliveryReceipt,
   RuntimeInstruction,
-} from "@openloomi/ai/agent/runtime-instructions";
+} from "@melandlabs/ai/agent/runtime-instructions";
 
 export interface RuntimeEvidenceDraft {
   type: GoalEvidenceType;

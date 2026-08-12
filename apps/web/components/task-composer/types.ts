@@ -1,5 +1,5 @@
 import type React from "react";
-import type { Attachment } from "@openloomi/shared";
+import type { Attachment } from "@melandlabs/shared";
 
 export type TaskComposerPlacement = "centered" | "docked";
 

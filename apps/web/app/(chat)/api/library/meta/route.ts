@@ -9,7 +9,7 @@ import {
   getChatInsightIds,
   getInsightByIdForUser,
 } from "@/lib/db/queries";
-import { AppError } from "@openloomi/shared/errors";
+import { AppError } from "@melandlabs/shared/errors";
 
 export type LibraryMetaChat = {
   title: string;

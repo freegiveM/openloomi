@@ -1,7 +1,7 @@
 import type {
   AgentGoalUpdate,
   CreateAgentGoalInput,
-} from "@openloomi/ai/agent/runtime-instructions";
+} from "@melandlabs/ai/agent/runtime-instructions";
 
 import type { GoalCommandResult, GoalService } from "../goal-service";
 import type {

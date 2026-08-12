@@ -25,7 +25,7 @@ const transformersMocks = vi.hoisted(() => {
 
 vi.mock("@huggingface/transformers", () => transformersMocks);
 
-import { LocalTransformersEmbeddingProvider } from "../../../../packages/ai/rag/src/local-transformers-embedding-provider";
+import { LocalTransformersEmbeddingProvider } from "@melandlabs/ai-rag/local-transformers-embedding-provider";
 
 describe("LocalTransformersEmbeddingProvider", () => {
   beforeEach(() => {

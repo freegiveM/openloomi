@@ -7,7 +7,7 @@
  * Token trimming is handled by handleAgentRuntime (40K budget) — not here.
  */
 
-import { WeixinConversationStore } from "@openloomi/integrations/weixin/conversation-store";
+import { WeixinConversationStore } from "@melandlabs/integrations-weixin/conversation-store";
 import { getUserMemoryPath } from "@/lib/utils/path";
 
 export { WeixinConversationStore };

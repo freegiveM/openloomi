@@ -57,11 +57,11 @@ vi.mock("@/lib/loop/paths", async () => {
 });
 
 // Phase 5 — `apps/web/lib/loop/preferences.ts` is now a re-export shim
-// over `@openloomi/loop/preferences`, which in turn imports from
-// `@openloomi/loop/paths`. The legacy `@/lib/loop/paths` mock above
+// over `@melandlabs/loop/preferences`, which in turn imports from
+// `@melandlabs/loop/paths`. The legacy `@/lib/loop/paths` mock above
 // only intercepts the shim, not the new package, so we mirror it
 // here for the new path alias.
-vi.mock("@openloomi/loop/paths", async () => {
+vi.mock("@melandlabs/loop/paths", async () => {
   const { join } = await import("node:path");
   const buildPaths = () => ({
     home: LOOP_HOME,

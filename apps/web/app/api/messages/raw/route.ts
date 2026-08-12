@@ -4,16 +4,16 @@ import {
   isReservedChatMemoryEvidenceId,
   resolveUntrustedRawMemoryGraphWritePolicy,
   sanitizeUntrustedMemoryMetadata,
-} from "@openloomi/memory-store/memory-graph-write-policy";
+} from "@melandlabs/memory-store/memory-graph-write-policy";
 import {
   getRawMessageManager,
   getRawMessageStorageBackend,
-} from "@openloomi/memory-store/raw-message-store";
+} from "@melandlabs/memory-store/raw-message-store";
 import {
   type RawMessage,
   storeRawMessagesWithGraphEvolution,
-} from "@openloomi/indexeddb";
-import { AppError } from "@openloomi/shared/errors";
+} from "@melandlabs/indexeddb";
+import { AppError } from "@melandlabs/shared/errors";
 import type { NextRequest } from "next/server";
 
 /**
@@ -92,9 +92,9 @@ export async function POST(request: NextRequest) {
     }
 
     const manager = await getRawMessageManager();
-    const existingMessages = await Promise.all(
+    const existingMessages: Array<RawMessage | null> = await Promise.all(
       [...new Set(messages.map((message) => message.messageId))].map(
-        (messageId) => manager.getMessageById(messageId),
+        (messageId) => manager.getMessageById(messageId) as Promise<RawMessage | null>,
       ),
     );
     if (

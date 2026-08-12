@@ -14,7 +14,7 @@ import {
   getPresetPrompt,
   getSelectedSoulPresetId,
   getSoulPresetByPrompt,
-} from "@openloomi/shared/soul";
+} from "@melandlabs/shared";
 import { describe, expect, it } from "vitest";
 
 describe("shared soul", () => {

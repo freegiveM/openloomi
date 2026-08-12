@@ -9,7 +9,7 @@ import {
   normalizeInsight,
   updateInsightById,
 } from "@/lib/db/queries";
-import { AppError } from "@openloomi/shared/errors";
+import { AppError } from "@melandlabs/shared/errors";
 import timeout from "p-timeout";
 import { insight } from "@/lib/db/schema";
 import { db } from "@/lib/db/queries";

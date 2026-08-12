@@ -3,7 +3,7 @@
 import { cn } from "@/lib/utils";
 import { useCallback, useRef, type ReactNode } from "react";
 import { useSidePanel } from "./side-panel-context";
-import { useIsMobile } from "@openloomi/hooks/use-is-mobile";
+import { useIsMobile } from "@melandlabs/hooks/use-is-mobile";
 import { useTranslation } from "react-i18next";
 import "../../i18n";
 

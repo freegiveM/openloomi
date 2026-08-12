@@ -1,4 +1,4 @@
-// Phase 6 — re-export shim over `@openloomi/insights/constants`. The leaf
+// Phase 6 — re-export shim over `@melandlabs/insights/constants`. The leaf
 // module owns the `DEBUG` / `EMAIL_TASK_LABEL` / `MAX_EMAIL_INSIGHTS` /
 // `CALENDAR_*` / `DEFAULT_CATEGORIES` / `INSIGHT_TYPE_TAGS` / `CONTENT_TAGS`
 // constants plus the `InsightTypeTag` / `ContentTag` type aliases. Pure
@@ -16,5 +16,5 @@ export {
   DEFAULT_CATEGORIES,
   INSIGHT_TYPE_TAGS,
   CONTENT_TAGS,
-} from "@openloomi/insights/constants";
-export type { InsightTypeTag, ContentTag } from "@openloomi/insights/constants";
+} from "@melandlabs/insights";
+export type { InsightTypeTag, ContentTag } from "@melandlabs/insights";

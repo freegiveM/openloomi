@@ -20,7 +20,7 @@ import {
   type RuntimeTerminalInputHold,
   type RuntimeTurnBoundary,
   type RuntimeTurnTerminal,
-} from "@openloomi/ai/agent/runtime-instructions";
+} from "@melandlabs/ai/agent/runtime-instructions";
 
 import { createGoalCommandFingerprint } from "./command-fingerprint";
 import {

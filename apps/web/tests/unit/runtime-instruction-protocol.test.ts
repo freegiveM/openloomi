@@ -19,7 +19,7 @@ import {
   formatRuntimeInstruction,
   reviseAgentGoal,
   transitionAgentGoal,
-} from "@openloomi/ai/agent/runtime-instructions";
+} from "@melandlabs/ai/agent/runtime-instructions";
 import { describe, expect, it } from "vitest";
 
 const GOAL_ID = "11111111-1111-4111-8111-111111111111";

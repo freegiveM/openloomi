@@ -101,8 +101,8 @@ import {
 } from "./schema";
 import { generateUUID } from "../utils";
 import { generateHashedPassword } from "./utils";
-import { AppError } from "@openloomi/shared/errors";
-import type { UserType } from "@openloomi/contracts/user-type";
+import { AppError } from "@melandlabs/shared/errors";
+import type { UserType } from "@melandlabs/contracts/user-type";
 import { isTauriMode } from "@/lib/env/constants";
 import { filterDueInsightSettings } from "@/lib/insights/tier";
 import type { IntegrationId } from "@/lib/integrations/client";
@@ -2733,7 +2733,7 @@ export function loadIntegrationCredentials<T = Record<string, unknown>>(
   if (auditContext) {
     try {
       // Dynamic import to avoid circular dependencies
-      const { logCredentialAccess } = require("@openloomi/audit");
+      const { logCredentialAccess } = require("@melandlabs/audit");
       logCredentialAccess({
         accountId: account.id,
         userId: auditContext.userId,

@@ -4,7 +4,7 @@ import type React from "react";
 import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import type { Attachment } from "@openloomi/shared";
+import type { Attachment } from "@melandlabs/shared";
 import {
   SUPPORTED_ATTACHMENT_MIME_TYPES,
   SUPPORTED_FILE_EXTENSIONS,

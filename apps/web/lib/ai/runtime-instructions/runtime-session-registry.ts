@@ -2,7 +2,7 @@ import type {
   RuntimeInstructionTransportPort,
   RuntimeSessionLifecycleControlPort,
   RuntimeSessionResolverPort,
-} from "@openloomi/ai/agent/runtime-instructions";
+} from "@melandlabs/ai/agent/runtime-instructions";
 
 interface RegisteredRuntimeSession {
   ownerId: string;

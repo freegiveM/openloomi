@@ -8,7 +8,7 @@ import {
   type RuntimeInstructionDraft,
   createAgentGoal,
   reviseAgentGoal,
-} from "@openloomi/ai/agent/runtime-instructions";
+} from "@melandlabs/ai/agent/runtime-instructions";
 import { describe, expect, it } from "vitest";
 
 import {

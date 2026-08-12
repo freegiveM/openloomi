@@ -1,4 +1,4 @@
-import { resolveMemoryGraphCorrectionPolicy } from "@openloomi/memory-store/memory-graph-correction-policy";
+import { resolveMemoryGraphCorrectionPolicy } from "@melandlabs/memory-store/memory-graph-correction-policy";
 import { describe, expect, it } from "vitest";
 
 describe("memory graph correction policy", () => {

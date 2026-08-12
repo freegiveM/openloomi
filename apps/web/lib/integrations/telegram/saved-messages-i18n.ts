@@ -5,7 +5,7 @@
 
 import zhHans from "@/i18n/locales/zh-Hans";
 import enUS from "@/i18n/locales/en-US";
-import { UserLocale } from "@openloomi/shared";
+import { UserLocale } from "@melandlabs/shared";
 
 type LocaleDict = {
   telegram?: { savedMessages?: { receivedAndExecuting?: string } };

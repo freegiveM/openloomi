@@ -11,7 +11,7 @@ import {
   RuntimeInstructionSchema,
   assertGoalStatusTransition,
   canonicalJson,
-} from "@openloomi/ai/agent/runtime-instructions";
+} from "@melandlabs/ai/agent/runtime-instructions";
 
 import { AgentGoalStateError as DurableAgentGoalStateError } from "./goal-state-error";
 

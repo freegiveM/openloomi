@@ -2,7 +2,7 @@
  * Utility functions barrel export
  */
 
-// Re-export shared utilities from @openloomi/shared
+// Re-export shared utilities from @melandlabs/shared
 export {
   cn,
   generateUUID,
@@ -23,7 +23,7 @@ export {
   filterToolCallText,
   buildNavigationUrl,
   type BuildNavigationUrlOptions,
-} from "@openloomi/shared";
+} from "@melandlabs/shared";
 
 // Re-export from integration-error-detector
 export {

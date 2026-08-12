@@ -11,7 +11,7 @@ import type { BotWithAccount } from "../db/queries";
 import {
   timeBeforeHours,
   timeBeforeMinutes,
-} from "@openloomi/integrations/channels/sources/types";
+} from "@melandlabs/integrations-channels/sources/types";
 import { userInsightSettingsToPrompt } from "./settings";
 import { deduplicateInsightsByGroup } from "./timeline";
 import { getInsightsByBotId } from "./processor";

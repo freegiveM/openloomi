@@ -2,7 +2,7 @@ import { auth } from "@/app/(auth)/auth";
 import { entities, insightEntities, insight } from "@/lib/db/schema";
 import { db } from "@/lib/db";
 import { eq, and, desc, inArray } from "drizzle-orm";
-import { AppError } from "@openloomi/shared/errors";
+import { AppError } from "@melandlabs/shared/errors";
 import type { NextRequest } from "next/server";
 import type { Insight } from "@/lib/db/schema";
 

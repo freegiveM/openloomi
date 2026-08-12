@@ -10,7 +10,7 @@ import {
   createAgentGoal,
   reviseAgentGoal,
   transitionAgentGoal,
-} from "@openloomi/ai/agent/runtime-instructions";
+} from "@melandlabs/ai/agent/runtime-instructions";
 import Database from "better-sqlite3";
 import { afterEach, describe, expect, it } from "vitest";
 

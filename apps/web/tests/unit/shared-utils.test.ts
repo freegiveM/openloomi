@@ -19,7 +19,7 @@ import {
   timeBeforeHours,
   timeBeforeHoursMs,
   timeBeforeMinutes,
-} from "@openloomi/shared/utils";
+} from "@melandlabs/shared";
 import { describe, expect, it } from "vitest";
 
 describe("shared utils", () => {

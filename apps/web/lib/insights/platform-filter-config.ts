@@ -1,4 +1,4 @@
-// Phase 6 — re-export shim over `@openloomi/insights/platform-filter-config`.
+// Phase 6 — re-export shim over `@melandlabs/insights/platform-filter-config`.
 // The leaf module owns `PLATFORM_FILTER_SUPPORT`,
 // `getSupportedFilterFields`, `isFieldSupportedByAllPlatforms`,
 // `getFilterFieldLabel`, `getFilterFieldDescription`. Type-only deps on
@@ -11,4 +11,4 @@ export {
   isFieldSupportedByAllPlatforms,
   getFilterFieldLabel,
   getFilterFieldDescription,
-} from "@openloomi/insights/platform-filter-config";
+} from "@melandlabs/insights";

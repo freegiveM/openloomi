@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/app/(auth)/auth";
-import { IMessageAdapter } from "@openloomi/integrations/imessage";
+import { IMessageAdapter } from "@melandlabs/integrations-imessage";
 
 /**
  * POST /api/imessage/check

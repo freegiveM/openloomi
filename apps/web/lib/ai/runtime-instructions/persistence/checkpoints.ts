@@ -6,7 +6,7 @@ import {
   type AgentGoalReplacement,
   type GoalInstructionCommit,
   type PersistedAgentGoal,
-} from "@openloomi/ai/agent/runtime-instructions";
+} from "@melandlabs/ai/agent/runtime-instructions";
 
 import type { AgentGoalCommandCheckpoint } from "@/lib/db/agent-goal-runtime-schema-types";
 import { invalidPersistenceRecord } from "./errors";

@@ -35,7 +35,7 @@ import {
   getXAuthorizationUrl,
   getNotionAuthorizationUrl,
 } from "@/lib/integrations";
-import { useIsMobile } from "@openloomi/hooks/use-is-mobile";
+import { useIsMobile } from "@melandlabs/hooks/use-is-mobile";
 import {
   useIntegrations,
   type IntegrationAccountClient,

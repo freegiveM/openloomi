@@ -1,1 +1,1 @@
-export * from "@openloomi/env-config/client-constants";
+export * from "@melandlabs/env-config/client-constants";

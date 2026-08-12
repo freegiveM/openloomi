@@ -7,7 +7,7 @@ import type {
   RawMessageQuery,
   RawMessageStats,
   RawMessageStorage,
-} from "../../../../packages/indexeddb/src/storage";
+} from "@melandlabs/indexeddb";
 import {
   createConformanceRawMessage,
   createRawMessageStorageConformanceSuite,

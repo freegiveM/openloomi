@@ -6,8 +6,8 @@ import { resolveNativeAgentProviderRequest } from "@/lib/ai/native-agent/provide
 import {
   type NativeAgentHost,
   runNativeAgentRequest,
-} from "@openloomi/ai/agent/native-runner";
-import type { AgentRegistry } from "@openloomi/ai/agent/registry";
+} from "@melandlabs/ai/agent/native-runner";
+import type { AgentRegistry } from "@melandlabs/ai/agent";
 import type {
   AgentConfig,
   AgentMessage,
@@ -16,7 +16,7 @@ import type {
   ExecuteOptions,
   IAgent,
   TaskPlan,
-} from "@openloomi/ai/agent/types";
+} from "@melandlabs/ai/agent";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const silentLogger = {

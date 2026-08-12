@@ -40,7 +40,7 @@ vi.mock("chromadb", () => {
   };
 });
 
-import { ChromaVectorStore } from "../../../../packages/ai/rag/src/chroma-store";
+import { ChromaVectorStore } from "@melandlabs/ai-rag/chroma-store";
 
 describe("ChromaVectorStore", () => {
   beforeEach(() => {
@@ -78,7 +78,7 @@ describe("ChromaVectorStore", () => {
       name: "test_collection",
       embeddingFunction: null,
       metadata: {
-        source: "@openloomi/rag",
+        source: "@melandlabs/rag",
         store: "chroma",
       },
     });

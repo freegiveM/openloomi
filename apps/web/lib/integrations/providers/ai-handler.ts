@@ -1,11 +1,11 @@
 /**
  * WebAIHandler - AI Handler implementation for apps/web
  *
- * Implements the AIHandler interface from @openloomi/integrations/core
+ * Implements the AIHandler interface from @melandlabs/integrations/core
  * by delegating to the shared handleAgentRuntime implementation.
  */
 
-import type { AIHandler, AIHandlerOptions } from "@openloomi/integrations/core";
+import type { AIHandler, AIHandlerOptions } from "@melandlabs/integrations/core";
 import { handleAgentRuntime as sharedHandleAgentRuntime } from "@/lib/ai/runtime/shared";
 
 /**

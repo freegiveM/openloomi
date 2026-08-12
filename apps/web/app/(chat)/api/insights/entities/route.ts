@@ -2,7 +2,7 @@ import { auth } from "@/app/(auth)/auth";
 import { entities } from "@/lib/db/schema";
 import { db } from "@/lib/db";
 import { eq, and, desc, sql } from "drizzle-orm";
-import { AppError } from "@openloomi/shared/errors";
+import { AppError } from "@melandlabs/shared/errors";
 import type { NextRequest } from "next/server";
 
 // GET /api/insights/entities?type=person&limit=50

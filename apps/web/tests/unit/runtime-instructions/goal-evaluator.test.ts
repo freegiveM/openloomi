@@ -6,7 +6,7 @@ import {
   type GoalCompletionPolicy,
   type GoalEvidence,
   type GoalSuccessCriterion,
-} from "@openloomi/ai/agent/runtime-instructions";
+} from "@melandlabs/ai/agent/runtime-instructions";
 import { describe, expect, it, vi } from "vitest";
 
 import {

@@ -6,7 +6,7 @@ import {
   getBotsByUserId,
   createBot,
 } from "@/lib/db/queries";
-import { AppError } from "@openloomi/shared/errors";
+import { AppError } from "@melandlabs/shared/errors";
 import {
   computeInsightPayload,
   deriveActivityTier,

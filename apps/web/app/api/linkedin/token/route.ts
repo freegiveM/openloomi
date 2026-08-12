@@ -6,7 +6,7 @@ import {
   loadIntegrationCredentials,
   upsertIntegrationAccount,
 } from "@/lib/db/queries";
-import { AppError } from "@openloomi/shared/errors";
+import { AppError } from "@melandlabs/shared/errors";
 
 export const runtime = "nodejs";
 

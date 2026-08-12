@@ -1,6 +1,6 @@
 /**
  * Bridge: wire the web app's cross-domain searchers (RAG, insights,
- * embedding provider) into the standalone `@openloomi/memory-store`
+ * embedding provider) into the standalone `@melandlabs/memory-store`
  * unified-search facade.
  *
  * This keeps the existing `searchUnifiedMemory()` callers in
@@ -10,7 +10,7 @@
  * which now re-exports the wired-up version from this file.
  */
 
-import { createUnifiedSearch } from "@openloomi/memory-store/unified-search";
+import { createUnifiedSearch } from "@melandlabs/memory-store/unified-search";
 import { searchInsightsSemantically } from "@/lib/insights/search";
 import { searchSimilarChunks } from "@/lib/ai/rag/langchain-service";
 import {
@@ -19,13 +19,9 @@ import {
 } from "@/lib/ai/user-embedding-settings";
 
 import type {
-  UnifiedMemorySearchInput,
-  UnifiedMemorySearchOutput,
-} from "@openloomi/memory-store/unified-search";
-import type {
   RawMessageStorageManagerWithSearch,
-} from "@openloomi/memory-store/raw-message-store";
-import { getRawMessageManager } from "@openloomi/memory-store/raw-message-store";
+} from "@melandlabs/memory-store/raw-message-store";
+import { getRawMessageManager } from "@melandlabs/memory-store/raw-message-store";
 
 export const search = createUnifiedSearch({
   embedQuery: async ({ userId, query, authToken }) => {
@@ -82,4 +78,4 @@ export const searchRawMemorySemantically = search.searchRawMemorySemantically;
 export type {
   UnifiedMemorySearchInput,
   UnifiedMemorySearchOutput,
-} from "@openloomi/memory-store/unified-search";
+} from "@melandlabs/memory-store/unified-search";

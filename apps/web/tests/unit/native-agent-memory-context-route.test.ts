@@ -10,7 +10,7 @@ import {
   type RawMessageStorageManager,
   runMemoryForgettingCycle,
   storeRawMessagesWithGraphEvolution,
-} from "@openloomi/indexeddb";
+} from "@melandlabs/indexeddb";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -31,7 +31,7 @@ vi.mock("@/lib/auth/dual-auth", () => ({
   getAuthUser: mocks.getAuthUser,
 }));
 
-vi.mock("@openloomi/ai/agent/registry", () => ({
+vi.mock("@melandlabs/ai/agent", () => ({
   getAgentRegistry: () => ({
     create: () => ({
       provider: "custom",
@@ -43,7 +43,7 @@ vi.mock("@openloomi/ai/agent/registry", () => ({
   }),
 }));
 
-vi.mock("@openloomi/memory-store/raw-message-store", () => ({
+vi.mock("@melandlabs/memory-store/raw-message-store", () => ({
   isRawMessageStorageAvailable: () => true,
   getRawMessageManager: async () => mocks.manager,
 }));

@@ -2,22 +2,22 @@ import {
   type MemoryGraphSnapshot,
   type OwnerScope,
   createGraphAwareRetrievalDryRunRetriever,
-} from "@openloomi/memory-consolidation";
+} from "@melandlabs/memory-consolidation";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createIndexedDBMemoryStorageAdapter,
   materializeMemoryGraphNodeIds,
   queryMemoryWithFallback,
   runMemoryForgettingCycle,
-} from "../../../../packages/indexeddb/src/forgetting";
+} from "@melandlabs/indexeddb";
 import type {
   IndexedDBManager,
   MemoryStage,
   MemorySummaryRecord,
   RawMessage,
   RawMessageQuery,
-} from "../../../../packages/indexeddb/src/manager";
-import { sqliteRunMemoryForgettingCycleForUser } from "../../../../packages/indexeddb/src/sqlite-client";
+} from "@melandlabs/indexeddb";
+import { sqliteRunMemoryForgettingCycleForUser } from "@melandlabs/indexeddb";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const originalFetch = globalThis.fetch;

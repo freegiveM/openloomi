@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { KokoroPlugin } from "../../../../packages/voice-kokoro/src/index";
+import { KokoroPlugin } from "@melandlabs/voice-kokoro";
 
 function createLongSpeechText(): string {
   return [

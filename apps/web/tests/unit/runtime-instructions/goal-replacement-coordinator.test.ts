@@ -7,7 +7,7 @@ import type {
   RuntimeSessionState,
   RuntimeTurnBoundary,
   RuntimeTurnTerminal,
-} from "@openloomi/ai/agent/runtime-instructions";
+} from "@melandlabs/ai/agent/runtime-instructions";
 import { describe, expect, it } from "vitest";
 
 import type { ReplaceGoalCommand } from "@/lib/ai/runtime-instructions/goal-replacement-coordinator";

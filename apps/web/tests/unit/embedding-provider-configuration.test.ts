@@ -4,8 +4,8 @@ import {
   CloudEmbeddingProvider,
   getConfiguredEmbeddingModelName,
   getConfiguredEmbeddingProvider,
-} from "../../../../packages/ai/rag/src/embedding-provider";
-import { LocalTransformersEmbeddingProvider } from "../../../../packages/ai/rag/src/local-transformers-embedding-provider";
+} from "@melandlabs/ai-rag/embedding-provider";
+import { LocalTransformersEmbeddingProvider } from "@melandlabs/ai-rag/local-transformers-embedding-provider";
 
 describe("embedding provider configuration", () => {
   afterEach(() => {
