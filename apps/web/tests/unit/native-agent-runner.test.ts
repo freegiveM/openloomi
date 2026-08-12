@@ -5,13 +5,17 @@ import { join } from "node:path";
 import { resolveNativeAgentProviderRequest } from "@/lib/ai/native-agent/provider-env";
 import {
   type NativeAgentHost,
+  type NativeAgentRunnerContext,
   runNativeAgentRequest,
 } from "@melandlabs/ai/agent/native-runner";
 import type { AgentRegistry } from "@melandlabs/ai/agent";
 import type {
+  AgentOptions,
+  AgentRuntimeRecovery,
+} from "@openloomi/ai/agent/types";
+import type {
   AgentConfig,
   AgentMessage,
-  AgentOptions,
   AgentProvider,
   ExecuteOptions,
   IAgent,
@@ -347,6 +351,8 @@ describe("native agent runner", () => {
       {
         ...createContext(),
         runtimeRecovery,
+      } as Parameters<typeof runNativeAgentRequest>[1] & {
+        runtimeRecovery: AgentRuntimeRecovery;
       },
       {
         registry: createRegistry(trustedAgent),
@@ -791,7 +797,7 @@ async function collectMessages(
   return messages;
 }
 
-function createContext() {
+function createContext(): NativeAgentRunnerContext {
   return {
     session: { user: { id: "user-1", type: "regular" } },
     userId: "user-1",

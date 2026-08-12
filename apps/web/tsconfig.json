@@ -24,7 +24,9 @@
 			"@/*": ["./*"],
 			"cookie": ["./lib/compat/cookie.ts"],
 			"@openloomi/ui": ["./components/ui/index.ts"],
-			"@openloomi/ui/*": ["./components/ui/*"]
+			"@openloomi/ui/*": ["./components/ui/*"],
+			"@openloomi/ai/agent": ["../../packages/ai/src/agent/index.ts"],
+			"@openloomi/ai/agent/*": ["../../packages/ai/src/agent/*"]
 		},
 		"typeRoots": ["./node_modules/@types"]
 	},

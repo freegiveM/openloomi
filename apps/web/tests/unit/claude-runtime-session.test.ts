@@ -9,10 +9,8 @@ import {
   type RuntimeInstructionTransportPort,
 } from "@melandlabs/ai/agent/runtime-instructions";
 import { AgentSupplementalInputQueue } from "@melandlabs/ai/agent/supplemental-input";
-import type {
-  AgentRuntimeRecovery,
-  AgentSupplementalInputSource,
-} from "@/lib/ai/agent/types-shim";
+import type { AgentRuntimeRecovery } from "@openloomi/ai/agent/types";
+import type { AgentSupplementalInputSource } from "@/lib/ai/agent/types-shim";
 import { describe, expect, it, vi } from "vitest";
 
 import {

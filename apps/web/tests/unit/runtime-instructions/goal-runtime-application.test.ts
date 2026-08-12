@@ -538,7 +538,7 @@ describe("in-memory Goal runtime application", () => {
       },
     });
     expect(formatRuntimeInstruction(upserted.instruction)).toContain(
-      '<openloomi_untrusted_context context_id="jira-176"',
+      '<opencontext_untrusted_context context_id="jira-176"',
     );
 
     await expect(

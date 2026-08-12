@@ -31,13 +31,15 @@ import {
 // Import plugin definition helpers
 import { CLAUDE_METADATA, defineAgentPlugin } from "@melandlabs/ai/agent";
 import type { AgentPlugin } from "@melandlabs/ai/agent";
+import type {
+  AgentOptions,
+  AgentRuntimeRecovery,
+} from "@openloomi/ai/agent/types";
 import type { AgentSupplementalInputSource } from "@/lib/ai/agent/types-shim";
 import type {
   AgentConfig,
   AgentMessage,
-  AgentOptions,
   AgentProvider,
-  AgentRuntimeRecovery,
   ConversationMessage,
   ExecuteOptions,
   ImageAttachment,
@@ -1831,7 +1833,8 @@ ${formattedMessages}${truncationNotice}\n\n---\n## Current Request\n`;
           session.abortController.abort(reason);
         }
       },
-      supplementalInput: options?.supplementalInput,
+      supplementalInput:
+        options?.supplementalInput as AgentSupplementalInputSource | undefined,
     });
     // The SDK does not wire its stderr callback when a custom spawner is
     // supplied, so the spawner captures and line-buffers stderr directly.

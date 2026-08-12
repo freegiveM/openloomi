@@ -59,7 +59,7 @@ describe("SupplementalInputRuntimeInstructionTransport", () => {
       intent: "inform",
       createdAt: "2026-07-20T00:00:00.000Z",
     });
-    expect(pending?.content).toContain("<openloomi_runtime_instruction");
+    expect(pending?.content).toContain("<opencontext_runtime_instruction");
     expect(pending?.content).toContain('delivery_mode="next_boundary"');
   });
 

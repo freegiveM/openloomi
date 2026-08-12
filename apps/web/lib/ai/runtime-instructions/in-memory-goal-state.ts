@@ -1,4 +1,4 @@
-import { GoalEvaluationResultSchema } from "@openloomi/ai/agent/runtime-instructions";
+import { GoalEvaluationResultSchema } from "@melandlabs/ai/agent/runtime-instructions";
 import type {
   AgentGoal,
   AgentGoalEvaluationStatePort,

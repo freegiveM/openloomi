@@ -343,7 +343,7 @@ export function mapStoredRuntimeInstructionRecord(
 }
 
 function normalizeGoalSnapshot(value: unknown): AgentGoal {
-  const snapshot = parsePersistedSchema(
+  const snapshot = parsePersistedSchema<AgentGoal>(
     AgentGoalSchema,
     value,
     "goalSnapshot",
@@ -374,7 +374,7 @@ function normalizeGoalSnapshot(value: unknown): AgentGoal {
 }
 
 function normalizeInstructionSnapshot(value: unknown): RuntimeInstruction {
-  const snapshot = parsePersistedSchema(
+  const snapshot = parsePersistedSchema<RuntimeInstruction>(
     RuntimeInstructionSchema,
     value,
     "instructionSnapshot",

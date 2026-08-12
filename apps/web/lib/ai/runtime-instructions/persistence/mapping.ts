@@ -1,5 +1,4 @@
 import { canonicalJson } from "@melandlabs/ai/agent/runtime-instructions";
-import type { z } from "zod";
 
 import { invalidPersistenceRecord } from "./errors";
 import type { PersistedInstantPrecision } from "./instant-precision";
@@ -151,7 +150,12 @@ export function parsePersistedJson(
 }
 
 export function parsePersistedSchema<T>(
-  schema: z.ZodType<T>,
+  // Schema type is intentionally `any` here: the published
+  // `@melandlabs/ai/agent/runtime-instructions` schemas ship against the npm
+  // package's nested zod v4 build, which differs from the workspace copy. The
+  // structural shape (`safeParse` returning `{ success, data | error }`) is
+  // identical, so callers still get a fully-typed `T` at the call site.
+  schema: any,
   value: unknown,
   field: string,
   entity: string,
@@ -172,7 +176,7 @@ export function parsePersistedSchema<T>(
       parsed.error,
     );
   }
-  return parsed.data;
+  return parsed.data as T;
 }
 
 export function assertPersistedEqual(

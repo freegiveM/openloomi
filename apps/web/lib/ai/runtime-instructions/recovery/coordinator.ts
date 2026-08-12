@@ -1,6 +1,6 @@
 import { isAbsolute } from "node:path";
 
-import type { RuntimeSessionState } from "@openloomi/ai/agent/runtime-instructions";
+import type { RuntimeSessionState } from "@melandlabs/ai/agent/runtime-instructions";
 import type {
   AgentRuntimeRecovery,
   AgentRuntimeRecoveryContinuationResult,
@@ -10,7 +10,7 @@ import type {
   NativeAgentRequest,
   NativeAgentRun,
   NativeAgentSession,
-} from "@openloomi/ai/agent/native-runner";
+} from "@melandlabs/ai/agent/native-runner";
 import type { AgentRuntimePermissionHandler } from "@openloomi/ai/agent/runtime";
 
 import type {
