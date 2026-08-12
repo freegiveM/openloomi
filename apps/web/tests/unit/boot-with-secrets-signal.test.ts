@@ -95,35 +95,33 @@ describe("boot-with-secrets.js — signal forwarding (#516)", () => {
   });
 
   it("forwards SIGTERM to the inner child and exits with 143", async () => {
-    wrapper = spawn("node", [WRAPPER, fakeServer!], {
+    if (!fakeServer) throw new Error("Fake server fixture was not created");
+    const runningWrapper = spawn("node", [WRAPPER, fakeServer], {
       cwd: REPO_ROOT,
       stdio: ["pipe", "pipe", "pipe"],
     });
+    wrapper = runningWrapper;
     // Capture stdout/stderr so a failing test prints useful diagnostics.
     const stderrChunks: Buffer[] = [];
     const stdoutChunks: Buffer[] = [];
-    wrapper.stderr!.on("data", (b: Buffer) => stderrChunks.push(b));
-    wrapper.stdout!.on("data", (b: Buffer) => stdoutChunks.push(b));
+    runningWrapper.stderr?.on("data", (b: Buffer) => stderrChunks.push(b));
+    runningWrapper.stdout?.on("data", (b: Buffer) => stdoutChunks.push(b));
     // No real secrets — pass an empty JSON object so the wrapper
     // proceeds straight to spawning the inner child.
-    wrapper.stdin!.end("{}");
+    runningWrapper.stdin?.end("{}");
 
-    const wrapperPid = wrapper.pid;
+    const wrapperPid = runningWrapper.pid;
     expect(wrapperPid).toBeTypeOf("number");
-    await waitForInner(wrapper);
+    await waitForInner(runningWrapper);
 
     // Send SIGTERM only to the wrapper, mimicking the pre-#516
     // Tauri cleanup path that called `child.kill()`. The wrapper
     // must forward it to the inner so we don't get the orphaned
     // server that the bug report was about.
-    const killResult = wrapper.kill("SIGTERM");
+    const killResult = runningWrapper.kill("SIGTERM");
     expect(
       killResult,
-      `wrapper.kill returned false — wrapper may have exited already. ` +
-        `pid=${wrapperPid} exitCode=${wrapper!.exitCode} ` +
-        `signalCode=${wrapper!.signalCode} ` +
-        `stderr=${Buffer.concat(stderrChunks).toString() || "<empty>"} ` +
-        `stdout=${Buffer.concat(stdoutChunks).toString() || "<empty>"}`,
+      `wrapper.kill returned false — wrapper may have exited already. pid=${wrapperPid} exitCode=${runningWrapper.exitCode} signalCode=${runningWrapper.signalCode} stderr=${Buffer.concat(stderrChunks).toString() || "<empty>"} stdout=${Buffer.concat(stdoutChunks).toString() || "<empty>"}`,
     ).toBe(true);
 
     // Wait up to 2 s for the wrapper to exit. With signal forwarding
@@ -132,9 +130,8 @@ describe("boot-with-secrets.js — signal forwarding (#516)", () => {
       code: number | null;
       signal: NodeJS.Signals | null;
     } | null>((resolveExit) => {
-      if (!wrapper) return resolveExit(null);
       const t = setTimeout(() => resolveExit(null), 2000);
-      wrapper.on("exit", (code, signal) => {
+      runningWrapper.on("exit", (code, signal) => {
         clearTimeout(t);
         resolveExit({ code, signal });
       });
@@ -144,72 +141,84 @@ describe("boot-with-secrets.js — signal forwarding (#516)", () => {
       exit,
       `wrapper should exit within 2 s of SIGTERM. stderr=${Buffer.concat(stderrChunks).toString() || "<empty>"}`,
     ).not.toBeNull();
+    if (!exit) throw new Error("Wrapper did not exit after SIGTERM");
     // The wrapper should exit with code 143 (the conventional code for
     // SIGTERM-induced death) — see boot-with-secrets.js signalExitCodes.
     // We accept either a non-null signal-induced code OR a signal exit
     // — Node APIs differ slightly between platforms.
-    if (exit!.code !== null) {
-      expect(exit!.code).toBe(143);
+    if (exit.code !== null) {
+      expect(exit.code).toBe(143);
     } else {
-      expect(exit!.signal).toBe("SIGTERM");
+      expect(exit.signal).toBe("SIGTERM");
     }
   });
 
   it("forwards SIGINT to the inner child and exits with 130", async () => {
-    wrapper = spawn("node", [WRAPPER, fakeServer!], {
+    if (!fakeServer) throw new Error("Fake server fixture was not created");
+    const runningWrapper = spawn("node", [WRAPPER, fakeServer], {
       cwd: REPO_ROOT,
       stdio: ["pipe", "pipe", "pipe"],
     });
-    wrapper.stdin!.end("{}");
-    await waitForInner(wrapper);
+    wrapper = runningWrapper;
+    runningWrapper.stdin?.end("{}");
+    await waitForInner(runningWrapper);
 
-    wrapper.kill("SIGINT");
+    runningWrapper.kill("SIGINT");
     const exit = await new Promise<{
       code: number | null;
       signal: NodeJS.Signals | null;
     } | null>((r) => {
-      if (!wrapper) return r(null);
       const t = setTimeout(() => r(null), 2000);
-      wrapper.on("exit", (code, signal) => {
+      runningWrapper.on("exit", (code, signal) => {
         clearTimeout(t);
         r({ code, signal });
       });
     });
 
     expect(exit).not.toBeNull();
-    if (exit!.code !== null) {
-      expect(exit!.code).toBe(130);
+    if (!exit) throw new Error("Wrapper did not exit after SIGINT");
+    if (exit.code !== null) {
+      expect(exit.code).toBe(130);
     } else {
-      expect(exit!.signal).toBe("SIGINT");
+      expect(exit.signal).toBe("SIGINT");
     }
   });
 
-  it("forwards SIGHUP to the inner child and exits with 129", async () => {
-    wrapper = spawn("node", [WRAPPER, fakeServer!], {
-      cwd: REPO_ROOT,
-      stdio: ["pipe", "pipe", "pipe"],
-    });
-    wrapper.stdin!.end("{}");
-    await waitForInner(wrapper);
-
-    wrapper.kill("SIGHUP");
-    const exit = await new Promise<{
-      code: number | null;
-      signal: NodeJS.Signals | null;
-    } | null>((r) => {
-      if (!wrapper) return r(null);
-      const t = setTimeout(() => r(null), 2000);
-      wrapper.on("exit", (code, signal) => {
-        clearTimeout(t);
-        r({ code, signal });
+  // Windows does not support POSIX SIGHUP delivery semantics: Node maps only
+  // a limited subset of signals to native process termination, so the child
+  // cannot reliably observe and handle SIGHUP there. Keep the integration
+  // assertion on platforms where the signal can actually be forwarded.
+  it.skipIf(process.platform === "win32")(
+    "forwards SIGHUP to the inner child and exits with 129",
+    async () => {
+      if (!fakeServer) throw new Error("Fake server fixture was not created");
+      const runningWrapper = spawn("node", [WRAPPER, fakeServer], {
+        cwd: REPO_ROOT,
+        stdio: ["pipe", "pipe", "pipe"],
       });
-    });
+      wrapper = runningWrapper;
+      runningWrapper.stdin?.end("{}");
+      await waitForInner(runningWrapper);
 
-    expect(exit).not.toBeNull();
-    if (exit!.code !== null) {
-      expect(exit!.code).toBe(129);
-    } else {
-      expect(exit!.signal).toBe("SIGHUP");
-    }
-  });
+      runningWrapper.kill("SIGHUP");
+      const exit = await new Promise<{
+        code: number | null;
+        signal: NodeJS.Signals | null;
+      } | null>((r) => {
+        const t = setTimeout(() => r(null), 2000);
+        runningWrapper.on("exit", (code, signal) => {
+          clearTimeout(t);
+          r({ code, signal });
+        });
+      });
+
+      expect(exit).not.toBeNull();
+      if (!exit) throw new Error("Wrapper did not exit after SIGHUP");
+      if (exit.code !== null) {
+        expect(exit.code).toBe(129);
+      } else {
+        expect(exit.signal).toBe("SIGHUP");
+      }
+    },
+  );
 });

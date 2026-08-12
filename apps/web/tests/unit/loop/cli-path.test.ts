@@ -64,8 +64,24 @@ vi.mock("node:fs", async (importOriginal) => {
 });
 
 let TMP_ROOT = "";
+let originalCwd = "";
+let originalHome: string | undefined;
+let originalUserProfile: string | undefined;
+let originalLoopCli: string | undefined;
+
+function restoreEnv(name: string, value: string | undefined): void {
+  if (value === undefined) {
+    Reflect.deleteProperty(process.env, name);
+  } else {
+    process.env[name] = value;
+  }
+}
 
 beforeEach(() => {
+  originalCwd = process.cwd();
+  originalHome = process.env.HOME;
+  originalUserProfile = process.env.USERPROFILE;
+  originalLoopCli = process.env.OPENLOOMI_LOOP_CLI;
   // Each test starts in a clean tmp dir; the resolver walks up from
   // `process.cwd()` looking for `apps/web/scripts/loop-cli.mjs`, so we
   // `process.chdir` into the tmp root before importing the module so
@@ -74,13 +90,18 @@ beforeEach(() => {
   TMP_ROOT = mkdtempSync(join(tmpdir(), "loomi-cli-path-"));
 });
 afterEach(() => {
+  // Windows cannot remove the directory that is still the process cwd.
+  // Restore the caller's cwd before cleaning up the per-test fixture.
+  process.chdir(originalCwd);
+  restoreEnv("HOME", originalHome);
+  restoreEnv("USERPROFILE", originalUserProfile);
+  restoreEnv("OPENLOOMI_LOOP_CLI", originalLoopCli);
+  existsSyncAllFalse = false;
+  vi.resetModules();
+
   if (TMP_ROOT && existsSync(TMP_ROOT)) {
     rmSync(TMP_ROOT, { recursive: true, force: true });
   }
-  // Reset the global flag — vitest runs tests in declaration order
-  // but the mock factory closure is shared across them, so an
-  // unset flag is the only safe default.
-  existsSyncAllFalse = false;
 });
 
 describe("resolveLoopCli", () => {
@@ -92,7 +113,7 @@ describe("resolveLoopCli", () => {
       const { resolveLoopCli } = await import("@/lib/loop/cli-path");
       expect(resolveLoopCli()).toBe(envPath);
     } finally {
-      process.env.OPENLOOMI_LOOP_CLI = undefined;
+      Reflect.deleteProperty(process.env, "OPENLOOMI_LOOP_CLI");
     }
   });
 
@@ -108,7 +129,7 @@ describe("resolveLoopCli", () => {
       const { resolveLoopCli } = await import("@/lib/loop/cli-path");
       expect(resolveLoopCli()).toBeNull();
     } finally {
-      process.env.OPENLOOMI_LOOP_CLI = undefined;
+      Reflect.deleteProperty(process.env, "OPENLOOMI_LOOP_CLI");
     }
   });
 
@@ -124,7 +145,7 @@ describe("resolveLoopCli", () => {
     const devFile = join(devRoot, "loop-cli.mjs");
     writeFileSync(devFile, "#!/usr/bin/env node\n");
     process.chdir(TMP_ROOT);
-    process.env.OPENLOOMI_LOOP_CLI = undefined;
+    Reflect.deleteProperty(process.env, "OPENLOOMI_LOOP_CLI");
     // Reach inside the module's cwd-relative probe walk — the
     // selfRelativeCandidates() fallback may still find the real dev
     // workspace if it exists, so disambiguate by writing the file
@@ -138,8 +159,8 @@ describe("resolveLoopCli", () => {
   it("finds `loop-cli.mjs` at the packaged `~/.openloomi/runtime/` location", async () => {
     // Mirror the Tauri optimizer's destination. We can't reach the
     // real `~/.openloomi/runtime/` from this test (it might actually
-    // be populated on a dev machine), so we point `HOME` at TMP_ROOT
-    // and re-execute the resolver under that env.
+    // be populated on a dev machine), so we point both Unix HOME and
+    // Windows USERPROFILE at TMP_ROOT and re-execute the resolver.
     const fakeHome = join(TMP_ROOT, "home");
     mkdirSync(fakeHome, { recursive: true });
     const packagedDir = join(fakeHome, ".openloomi", "runtime");
@@ -147,29 +168,30 @@ describe("resolveLoopCli", () => {
     const packagedFile = join(packagedDir, "loop-cli.mjs");
     writeFileSync(packagedFile, "#!/usr/bin/env node\n");
     process.chdir(TMP_ROOT);
-    process.env.OPENLOOMI_LOOP_CLI = undefined;
+    Reflect.deleteProperty(process.env, "OPENLOOMI_LOOP_CLI");
     // Disable other probes so the packaged-RUNTIME dir wins cleanly.
     existsSyncAllFalse = true;
 
-    const realHome = process.env.HOME;
     process.env.HOME = fakeHome;
+    process.env.USERPROFILE = fakeHome;
     try {
       vi.resetModules();
       const { resolveLoopCli } = await import("@/lib/loop/cli-path");
       expect(resolveLoopCli()).toBe(packagedFile);
     } finally {
-      if (realHome === undefined) process.env.HOME = undefined;
-      else process.env.HOME = realHome;
+      restoreEnv("HOME", originalHome);
+      restoreEnv("USERPROFILE", originalUserProfile);
       vi.resetModules();
     }
   });
 
   it("returns null when no candidate exists on disk", async () => {
     process.chdir(TMP_ROOT);
-    process.env.OPENLOOMI_LOOP_CLI = undefined;
-    // Move HOME aside so the packaged-runtime probe also misses.
-    const realHome = process.env.HOME;
+    Reflect.deleteProperty(process.env, "OPENLOOMI_LOOP_CLI");
+    // Move both home variables aside so the packaged-runtime probe also
+    // misses on Unix and Windows.
     process.env.HOME = join(TMP_ROOT, "no-home");
+    process.env.USERPROFILE = join(TMP_ROOT, "no-home");
     // The `selfRelativeCandidates()` walk uses `import.meta.url` /
     // `__filename` to find the on-disk location of cli-path.ts and
     // derives `<repo>/apps/web/scripts` from it. That derivation
@@ -181,15 +203,15 @@ describe("resolveLoopCli", () => {
       const { resolveLoopCli } = await import("@/lib/loop/cli-path");
       expect(resolveLoopCli()).toBeNull();
     } finally {
-      if (realHome === undefined) process.env.HOME = undefined;
-      else process.env.HOME = realHome;
+      restoreEnv("HOME", originalHome);
+      restoreEnv("USERPROFILE", originalUserProfile);
       vi.resetModules();
     }
   });
 
   it("dryRun returns the probe path even when nothing exists", async () => {
     process.chdir(TMP_ROOT);
-    process.env.OPENLOOMI_LOOP_CLI = undefined;
+    Reflect.deleteProperty(process.env, "OPENLOOMI_LOOP_CLI");
     const { resolveLoopCli } = await import("@/lib/loop/cli-path");
     // dryRun must return the first candidate it would have inspected
     // so callers can render an actionable diagnostic. We don't pin
@@ -216,7 +238,7 @@ describe("listLoopCliCandidates", () => {
       const anyExists = rows.some((r) => r.exists);
       expect(typeof anyExists).toBe("boolean");
     } finally {
-      process.env.OPENLOOMI_LOOP_CLI = undefined;
+      Reflect.deleteProperty(process.env, "OPENLOOMI_LOOP_CLI");
     }
   });
 });
