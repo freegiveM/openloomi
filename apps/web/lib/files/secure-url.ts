@@ -3,8 +3,8 @@
  * All files are accessed via backend proxy to ensure permission checking
  */
 
-import { DEV_PORT, PROD_PORT } from "@openloomi/shared";
-import type { Attachment } from "@openloomi/shared";
+import { DEV_PORT, PROD_PORT } from "@melandlabs/shared";
+import type { Attachment } from "@melandlabs/shared";
 
 /**
  * Get current application base URL

@@ -26,11 +26,11 @@ import {
   buildCategoriesPrompt,
   type InsightData,
 } from "../ai/subagents/insights";
-import { AppError } from "@openloomi/shared/errors";
-import type { ExtractedMessageInfo } from "@openloomi/integrations/channels/sources/types";
-import { TelegramAdapter } from "@openloomi/integrations/telegram";
-import { FacebookMessengerAdapter } from "@openloomi/integrations/facebook-messenger";
-import type { InsertRssItem } from "@openloomi/rss";
+import { AppError } from "@melandlabs/shared/errors";
+import type { ExtractedMessageInfo } from "@melandlabs/integrations-channels/sources/types";
+import { TelegramAdapter } from "@melandlabs/integrations-telegram";
+import { FacebookMessengerAdapter } from "@melandlabs/integrations-facebook-messenger";
+import type { InsertRssItem } from "@melandlabs/rss";
 import { maxChunkSummaryCount } from "@/lib/env/constants";
 import {
   deleteInsightsSession,
@@ -58,37 +58,37 @@ import {
   generateInsightPayload,
   type GeneratedInsightPayload,
 } from "@/lib/insights/transform";
-import { LinkedInAdapter } from "@openloomi/integrations/linkedin";
-import { InstagramAdapter } from "@openloomi/integrations/instagram";
-import { GoogleCalendarAdapter } from "@openloomi/integrations/calendar";
+import { LinkedInAdapter } from "@melandlabs/integrations-linkedin";
+import { InstagramAdapter } from "@melandlabs/integrations-instagram";
+import { GoogleCalendarAdapter } from "@melandlabs/integrations-calendar";
 import {
   HubspotClient,
   type HubspotDeal,
-} from "@openloomi/integrations/hubspot";
+} from "@melandlabs/integrations-hubspot";
 import { setAIUserContext, clearAIUserContext } from "@/lib/ai";
 import {
   OutlookCalendarAdapter,
   type OutlookCalendarEvent,
-} from "@openloomi/integrations/calendar";
+} from "@melandlabs/integrations-calendar";
 import { IMessageAdapter, parseIMessageChatId } from "../integrations/imessage";
-import type { Platform } from "@openloomi/integrations/channels/sources/types";
+import type { Platform } from "@melandlabs/integrations-channels/sources/types";
 import { getBotCredentials } from "@/lib/bots/token";
 import {
   buildInsightRecord,
   fetchFeed,
   getCachedRssBotId,
 } from "@/lib/bots/rss";
-import { buildRssItemInserts } from "@openloomi/rss";
+import { buildRssItemInserts } from "@melandlabs/rss";
 import {
   listRecentDocuments,
   type GoogleDocSummary,
-} from "@openloomi/integrations/google-docs";
+} from "@melandlabs/integrations-google-docs";
 import {
   extractRawMessages,
   type RawMessageData,
-} from "@openloomi/indexeddb/extractor";
+} from "@melandlabs/indexeddb";
 import { shouldSkipGmailEmail } from "../integrations/email/classifier";
-import { FeishuAdapter } from "@openloomi/integrations/feishu";
+import { FeishuAdapter } from "@melandlabs/integrations-feishu";
 import { getUserLlmProviderConfig } from "@/lib/ai/user-llm-api-settings";
 
 import {
@@ -2318,7 +2318,7 @@ export async function getInsightsByBotId({
               await markRssItemsProcessed(processedPayload);
 
               const { extractRawMessages: extractRawMessagesLocal } =
-                await import("@openloomi/indexeddb/extractor");
+                await import("@melandlabs/indexeddb");
               const extractedMessages = extractRawMessagesLocal(
                 feedResult.items,
                 "rss",

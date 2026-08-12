@@ -15,7 +15,7 @@ import {
   upsertContact,
 } from "@/lib/db/queries";
 import { resolveAgentLanguage } from "@/lib/insights/resolve-language";
-import type { UserType } from "@openloomi/contracts/user-type";
+import type { UserType } from "@melandlabs/contracts/user-type";
 import { DEFAULT_AI_MODEL, AI_PROXY_BASE_URL } from "@/lib/env/constants";
 import {
   handleAgentRuntime,
@@ -26,9 +26,9 @@ import {
   weixinSendImageMessage,
   weixinSendFileMessage,
   CDN_BASE_URL,
-} from "@openloomi/integrations/weixin/ilink-client";
-import type { WeixinIlinkCredentials } from "@openloomi/integrations/weixin/ilink-client";
-import { WeixinConversationStore } from "@openloomi/integrations/weixin/conversation-store";
+} from "@melandlabs/integrations-weixin/ilink-client";
+import type { WeixinIlinkCredentials } from "@melandlabs/integrations-weixin/ilink-client";
+import { WeixinConversationStore } from "@melandlabs/integrations-weixin/conversation-store";
 import { getAppMemoryDir } from "@/lib/utils/path";
 import { weixinLogger } from "@/lib/utils/logger";
 import { APP_DIR_NAME } from "@/lib/env/config/constants";

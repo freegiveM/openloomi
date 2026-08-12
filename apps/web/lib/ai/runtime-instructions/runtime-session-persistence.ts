@@ -12,7 +12,7 @@ import {
   type RuntimeClockPort,
   type RuntimeInstruction,
   type RuntimeSessionState,
-} from "@openloomi/ai/agent/runtime-instructions";
+} from "@melandlabs/ai/agent/runtime-instructions";
 
 import type { AgentRuntimePendingOperation } from "@/lib/db/agent-goal-runtime-schema-types";
 

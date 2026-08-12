@@ -8,7 +8,7 @@ import {
   getEmbeddingProviderType,
   type EmbeddingProvider,
   type EmbeddingProviderFactoryOptions,
-} from "@openloomi/rag";
+} from "@melandlabs/ai-rag/embedding-provider";
 
 export type UserEmbeddingRuntimeConfig = Omit<
   EmbeddingProviderFactoryOptions,

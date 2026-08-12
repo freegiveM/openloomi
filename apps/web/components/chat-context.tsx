@@ -11,7 +11,7 @@ import {
   type ReactNode,
 } from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
-import type { ChatMessage } from "@openloomi/shared";
+import type { ChatMessage } from "@melandlabs/shared";
 import {
   generateUUID,
   getTextFromMessage,
@@ -31,7 +31,7 @@ import {
 } from "@/lib/ai/chat/runtime-state";
 import { getAuthToken } from "@/lib/auth/token-manager";
 import { uploadImageTUS } from "@/lib/files/tus-upload";
-import type { ImageAttachment as AgentImageAttachment } from "@openloomi/ai/agent/types";
+import type { ImageAttachment as AgentImageAttachment } from "@melandlabs/ai/agent";
 import { DEFAULT_AI_MODEL, AI_PROXY_BASE_URL } from "@/lib/env/constants";
 import {
   artifactPathBasename,
@@ -1632,7 +1632,7 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
                       queryRawMessages,
                       queryRawMessagesGrouped,
                       formatRawMessagesForAI,
-                    } = await import("@openloomi/indexeddb/client");
+                    } = await import("@melandlabs/indexeddb");
 
                     const params = outputObj.params;
                     let messages: any[];

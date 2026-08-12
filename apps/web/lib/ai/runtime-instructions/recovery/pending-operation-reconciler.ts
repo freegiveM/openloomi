@@ -7,7 +7,7 @@ import {
   type RuntimeClockPort,
   type RuntimeIdGeneratorPort,
   type RuntimeInstructionDraft,
-} from "@openloomi/ai/agent/runtime-instructions";
+} from "@melandlabs/ai/agent/runtime-instructions";
 
 import type { StoredRuntimeInstruction } from "../persistence/goal-instruction-mappers";
 import type { PersistedRuntimeInstructionDelivery } from "../persistence/runtime-observation-mappers";

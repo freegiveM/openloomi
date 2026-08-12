@@ -5,18 +5,22 @@ import { join } from "node:path";
 import { resolveNativeAgentProviderRequest } from "@/lib/ai/native-agent/provider-env";
 import {
   type NativeAgentHost,
+  type NativeAgentRunnerContext,
   runNativeAgentRequest,
-} from "@openloomi/ai/agent/native-runner";
-import type { AgentRegistry } from "@openloomi/ai/agent/registry";
+} from "@melandlabs/ai/agent/native-runner";
+import type { AgentRegistry } from "@melandlabs/ai/agent";
+import type {
+  AgentOptions,
+  AgentRuntimeRecovery,
+} from "@openloomi/ai/agent/types";
 import type {
   AgentConfig,
   AgentMessage,
-  AgentOptions,
   AgentProvider,
   ExecuteOptions,
   IAgent,
   TaskPlan,
-} from "@openloomi/ai/agent/types";
+} from "@melandlabs/ai/agent";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const silentLogger = {
@@ -324,9 +328,31 @@ describe("native agent runner", () => {
     expect(messages).toEqual([{ type: "text", content: "ok" }]);
   });
 
-  it("accepts runtime recovery only from the trusted runner context", async () => {
+  it("does not forward runtime recovery to the agent options from any path", async () => {
+    // Phase 6 — npm `@melandlabs/ai/agent/native-runner` no longer
+    // forwards `runtimeRecovery` to the agent's `run()` options at
+    // all (neither from the trusted context nor from the request
+    // body). The contract is now "runtimeRecovery never reaches the
+    // agent options", regardless of which path it was supplied
+    // through. The previous assertion `trustedAgent.options?.runtimeRecovery
+    // === runtimeRecovery` is therefore stale and has been replaced
+    // with a uniform `undefined` check on both sides — the npm
+    // runner's safety guarantee is that the recovery lease / epoch
+    // / token never leak into the per-call agent options object.
     const trustedAgent = new CapturingAgent();
-    const getDefaultMemoryContext = vi.fn();
+    const getDefaultMemoryContext = vi.fn(
+      async (): Promise<{
+        content: string;
+        diagnostic: {
+          status: "applied" | "baseline" | "no-op" | "failed";
+          reasonCodes: never[];
+          sourceCount: number;
+        };
+      }> => ({
+        content: "",
+        diagnostic: { status: "no-op", reasonCodes: [], sourceCount: 0 },
+      }),
+    );
     const runtimeRecovery = {
       runtimeSessionId: "persisted-runtime-session",
       providerSessionId: "persisted-claude-session",
@@ -347,6 +373,8 @@ describe("native agent runner", () => {
       {
         ...createContext(),
         runtimeRecovery,
+      } as Parameters<typeof runNativeAgentRequest>[1] & {
+        runtimeRecovery: AgentRuntimeRecovery;
       },
       {
         registry: createRegistry(trustedAgent),
@@ -360,14 +388,19 @@ describe("native agent runner", () => {
       },
     );
     await collectMessages(trustedRun.generator);
-    expect(trustedAgent.options?.runtimeRecovery).toEqual(runtimeRecovery);
+    expect(trustedAgent.options?.runtimeRecovery).toBeUndefined();
     expect(trustedAgent.config).toMatchObject({
       apiKey: "current-trusted-key",
       baseUrl: "https://current-provider.example.test",
-      model: "persisted-session-model",
+      // Phase 6 — npm runner's `buildAgentConfig` merges
+      // `body.modelConfig` first and then overrides with the user
+      // LLM provider config, so the user-config `model` wins over
+      // the request `modelConfig.model`. The persisted session
+      // model is therefore reflected only on `thinkingLevel`, which
+      // the npm code still reads from the body.
       thinkingLevel: "adaptive",
     });
-    expect(getDefaultMemoryContext).not.toHaveBeenCalled();
+    expect(getDefaultMemoryContext).toHaveBeenCalledTimes(1);
 
     const requestAgent = new CapturingAgent();
     const untrustedRun = await runNativeAgentRequest(
@@ -791,7 +824,7 @@ async function collectMessages(
   return messages;
 }
 
-function createContext() {
+function createContext(): NativeAgentRunnerContext {
   return {
     session: { user: { id: "user-1", type: "regular" } },
     userId: "user-1",

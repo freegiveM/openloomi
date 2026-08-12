@@ -4,28 +4,28 @@ import type {
   NativeAgentDefaultMemoryContext,
   NativeAgentMemoryContextDiagnostic,
   NativeAgentMemoryRetrievalMode,
-} from "@openloomi/ai/agent/native-runner";
+} from "@melandlabs/ai/agent/native-runner";
 import type {
   MemoryQueryGraphRetrievalOptions,
   MemorySearchHit,
-} from "@openloomi/ai/memory";
+} from "@melandlabs/ai/memory";
 import {
   type RawMessageGraphEvolutionStorage,
   createRawMessageMemoryGraphStore,
   materializeMemoryGraphNodeIds,
   queryMemoryWithFallback,
-} from "@openloomi/indexeddb";
+} from "@melandlabs/indexeddb";
 import {
   type MemoryApplicabilityContext,
   createGraphAwareRetrievalDryRunRetriever,
-} from "@openloomi/memory-consolidation";
+} from "@melandlabs/memory-consolidation";
 
-import { resolveMemoryGraphWritePolicy } from "@openloomi/memory-store/memory-graph-write-policy";
+import { resolveMemoryGraphWritePolicy } from "@melandlabs/memory-store/memory-graph-write-policy";
 import {
   type RawMessageStorageManagerWithSearch,
   getRawMessageManager,
   isRawMessageStorageAvailable,
-} from "@openloomi/memory-store/raw-message-store";
+} from "@melandlabs/memory-store/raw-message-store";
 
 const DEFAULT_MEMORY_CONTEXT_PAGE_SIZE = 6;
 const MAX_MEMORY_CONTEXT_ITEM_CHARS = 600;

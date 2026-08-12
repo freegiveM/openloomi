@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { RemixIcon } from "@/components/remix-icon";
 import { Button } from "@openloomi/ui";
-import type { ChatMessage } from "@openloomi/shared";
+import type { ChatMessage } from "@melandlabs/shared";
 import { getToolDisplayName } from "@/lib/utils/tool-names";
 
 import { FilePreviewPanel } from "@/components/file-preview-panel";

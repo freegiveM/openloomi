@@ -6,7 +6,6 @@ import {
   formatRuntimeInstruction,
   type AgentGoal,
   type AgentGoalEvaluationStatePort,
-  type AgentGoalStatePort,
   type GoalCommandIdentity,
   type GoalEvaluationResult,
   type GoalStatus,
@@ -15,12 +14,13 @@ import {
   type RuntimeInstruction,
   type RuntimeInstructionDraft,
   type RuntimeInstructionTransportPort,
-} from "@openloomi/ai/agent/runtime-instructions";
+} from "@melandlabs/ai/agent/runtime-instructions";
 
 import { createGoalCommandFingerprint } from "./command-fingerprint";
 import { GoalEvaluatorError, type GoalEvaluator } from "./goal-evaluator";
 import type { RuntimeInstructionDispatcher } from "./instruction-dispatcher";
 import { KeyedSerialExecutor } from "./keyed-serial-executor";
+import type { LocalAgentGoalStatePort } from "./persistence/local-ports";
 import type {
   RuntimeGoalEvaluationJournalPort,
   RuntimeGoalEvaluationSnapshot,
@@ -118,7 +118,7 @@ export class GoalController {
   >();
 
   constructor(
-    private readonly state: AgentGoalStatePort & AgentGoalEvaluationStatePort,
+    private readonly state: LocalAgentGoalStatePort & AgentGoalEvaluationStatePort,
     private readonly observations: RuntimeGoalEvaluationJournalPort,
     private readonly dispatcher: RuntimeInstructionDispatcher,
     private readonly evaluator: GoalEvaluator,

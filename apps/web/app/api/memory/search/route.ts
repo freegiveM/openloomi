@@ -6,7 +6,7 @@ import {
   normalizeUnifiedMemorySearchSources,
   searchUnifiedMemory,
 } from "@/lib/memory/unified-search";
-import { AppError } from "@openloomi/shared/errors";
+import { AppError } from "@melandlabs/shared/errors";
 import type { NextRequest } from "next/server";
 
 function parseStringArray(value: unknown): string[] | undefined {

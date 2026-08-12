@@ -7,7 +7,7 @@
  * Token trimming is handled by handleAgentRuntime (40K budget) — not here.
  */
 
-import { WhatsAppConversationStore } from "@openloomi/integrations/whatsapp/conversation-store";
+import { WhatsAppConversationStore } from "@melandlabs/integrations-whatsapp/conversation-store";
 import { getUserMemoryPath } from "@/lib/utils/path";
 
 export { WhatsAppConversationStore };

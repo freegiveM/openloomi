@@ -18,14 +18,14 @@ import { writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { getAgentRegistry } from "@openloomi/ai/agent/registry";
-import type { NativeAgentRequest } from "@openloomi/ai/agent/native-runner";
+import { getAgentRegistry } from "@melandlabs/ai/agent";
+import type { NativeAgentRequest } from "@melandlabs/ai/agent/native-runner";
 import type {
   AgentConfig,
   AgentMessage,
   AgentOptions,
   AgentProvider,
-} from "@openloomi/ai/agent/types";
+} from "@melandlabs/ai/agent";
 
 import { nativeAgentHost } from "./native-agent/host";
 import { resolveNativeAgentProviderRequest } from "./native-agent/provider-env";

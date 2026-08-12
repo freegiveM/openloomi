@@ -5,7 +5,7 @@ import {
   type GoalEvaluationResult,
   type GoalEvidence,
   type GoalSuccessCriterion,
-} from "@openloomi/ai/agent/runtime-instructions";
+} from "@melandlabs/ai/agent/runtime-instructions";
 
 const MAX_EVIDENCE_IDS_PER_CRITERION = 256;
 const MAX_REASON_CHARACTERS = 8_000;

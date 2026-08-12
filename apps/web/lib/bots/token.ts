@@ -1,6 +1,6 @@
 import { type BotWithAccount, decryptPayload } from "../db/queries";
-import { AppError } from "@openloomi/shared/errors";
-import type { HubspotCredentials } from "@openloomi/integrations/hubspot";
+import { AppError } from "@melandlabs/shared/errors";
+import type { HubspotCredentials } from "@melandlabs/integrations-hubspot";
 
 export type BotAdapter =
   | "slack"

@@ -5,7 +5,7 @@
  * circular dependency issues during module initialization.
  */
 
-import { getAgentRegistry } from "@openloomi/ai/agent/registry";
+import { getAgentRegistry } from "@melandlabs/ai/agent";
 import {
   claudePlugin,
   codexPlugin,

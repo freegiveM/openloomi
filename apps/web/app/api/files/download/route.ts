@@ -11,7 +11,7 @@ import { getChatById, getMessageById } from "@/lib/db/queries";
 import { deriveBlobPathFromUrl } from "@/lib/files/blob-path";
 import { isTauriMode, getAppUrl } from "@/lib/env";
 import { readFile, fileExists } from "@/lib/storage";
-import { fetchWithSSRFProtection } from "@openloomi/security/url-validator";
+import { fetchWithSSRFProtection } from "@melandlabs/security/url-validator";
 
 const downloadSchema = z.union([
   z.object({

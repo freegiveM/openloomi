@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { auth } from "@/app/(auth)/auth";
 import { isTauriMode } from "@/lib/env/constants";
-import { AppError } from "@openloomi/shared/errors";
+import { AppError } from "@melandlabs/shared/errors";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

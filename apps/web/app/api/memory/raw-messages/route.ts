@@ -1,18 +1,18 @@
 import { auth } from "@/app/(auth)/auth";
 import { botExists } from "@/lib/db/queries";
-import { resolveMemoryGraphCorrectionPolicy } from "@openloomi/memory-store/memory-graph-correction-policy";
-import { upsertRawMessagesToChroma } from "@openloomi/memory-store/chroma-memory-index";
+import { resolveMemoryGraphCorrectionPolicy } from "@melandlabs/memory-store/memory-graph-correction-policy";
+import { upsertRawMessagesToChroma } from "@melandlabs/memory-store/chroma-memory-index";
 import {
   isReservedChatMemoryEvidenceId,
   isReservedMemoryGraphSummaryId,
   resolveUntrustedRawMemoryGraphWritePolicy,
   sanitizeUntrustedMemoryMetadata,
-} from "@openloomi/memory-store/memory-graph-write-policy";
+} from "@melandlabs/memory-store/memory-graph-write-policy";
 import {
   getRawMessageManager,
   getRawMessageStorageBackend,
   isRawMessageStorageAvailable,
-} from "@openloomi/memory-store/raw-message-store";
+} from "@melandlabs/memory-store/raw-message-store";
 import type {
   MemorySummaryRecord,
   RawMessage,
@@ -20,7 +20,7 @@ import type {
   RawMessageMemoryGraphRollbackCommand,
   RawMessageQuery,
   RunMemoryForgettingCycleSerializableShadowDiagnosticsOptions,
-} from "@openloomi/indexeddb";
+} from "@melandlabs/indexeddb";
 import {
   MEMORY_SUMMARY_OWNER_SCOPE_CONFLICT,
   MEMORY_SUMMARY_WRITE_CONFLICT,
@@ -30,8 +30,8 @@ import {
   runMemoryGraphRollback,
   runMemoryGraphRolloutEvaluation,
   storeRawMessagesWithGraphEvolution,
-} from "@openloomi/indexeddb";
-import { AppError } from "@openloomi/shared/errors";
+} from "@melandlabs/indexeddb";
+import { AppError } from "@melandlabs/shared/errors";
 import type { NextRequest } from "next/server";
 
 export const runtime = "nodejs";
@@ -503,14 +503,17 @@ export async function POST(request: NextRequest) {
           ).toResponse();
         }
 
-        const existingMessages = await Promise.all(
+        const existingMessages: Array<RawMessage | null> = await Promise.all(
           [
             ...new Set(
               (messages as Array<Partial<RawMessage>>).map(
                 (message) => message.messageId as string,
               ),
             ),
-          ].map((messageId) => manager.getMessageById(messageId)),
+          ].map(
+            (messageId) =>
+              manager.getMessageById(messageId) as Promise<RawMessage | null>,
+          ),
         );
         if (
           existingMessages.some(

@@ -10,7 +10,7 @@ import {
   getCurrentInsights,
   getInsightsOverlappingInterval,
 } from "@/lib/insights/temporal";
-import { AppError } from "@openloomi/shared/errors";
+import { AppError } from "@melandlabs/shared/errors";
 import type { NextRequest } from "next/server";
 
 // GET /api/insights/temporal?asOf=2026-01-01&limit=50

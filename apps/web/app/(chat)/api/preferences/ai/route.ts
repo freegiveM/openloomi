@@ -14,7 +14,7 @@ import {
   probeNativeClaudeRuntime,
   type NativeRuntimeProbe,
 } from "@/lib/ai/native-agent/runtime-probe";
-import { AppError } from "@openloomi/shared/errors";
+import { AppError } from "@melandlabs/shared/errors";
 
 const providerTypeSchema = z.enum([
   "openai_compatible",

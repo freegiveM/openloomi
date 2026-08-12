@@ -6,7 +6,7 @@ import type {
   GeneratedInsightPayload,
   OverlayContext,
 } from "@/lib/insights/types";
-import { coerceDate } from "@openloomi/shared";
+import { coerceDate } from "@melandlabs/shared";
 import type { BotWithAccount } from "../db/queries";
 import { normalizeTimestamp } from "@/lib/utils";
 

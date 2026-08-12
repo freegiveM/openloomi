@@ -1,6 +1,6 @@
 import { auth } from "@/app/(auth)/auth";
 import { sendMessage } from "@/lib/bots/message-service";
-import { AppError } from "@openloomi/shared/errors";
+import { AppError } from "@melandlabs/shared/errors";
 import sanitizeHtml from "sanitize-html";
 
 interface SendMessageBody {

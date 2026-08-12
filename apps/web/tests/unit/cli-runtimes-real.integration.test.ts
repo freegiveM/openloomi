@@ -8,9 +8,9 @@ import {
   type NativeAgentHost,
   type NativeAgentRunnerContext,
   runNativeAgentRequest,
-} from "@openloomi/ai/agent/native-runner";
-import { getAgentRegistry } from "@openloomi/ai/agent/registry";
-import type { AgentMessage } from "@openloomi/ai/agent/types";
+} from "@melandlabs/ai/agent/native-runner";
+import { getAgentRegistry } from "@melandlabs/ai/agent";
+import type { AgentMessage } from "@melandlabs/ai/agent";
 import spawn from "cross-spawn";
 import { afterEach, describe, expect, it } from "vitest";
 

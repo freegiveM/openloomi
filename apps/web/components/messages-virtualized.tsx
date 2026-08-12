@@ -4,7 +4,7 @@ import { memo, useEffect, useMemo, useRef, useState } from "react";
 import type { Vote } from "@/lib/db/schema";
 import type { UseChatHelpers } from "@ai-sdk/react";
 import { useMessages } from "@/hooks/use-messages";
-import type { ChatMessage } from "@openloomi/shared";
+import type { ChatMessage } from "@melandlabs/shared";
 import { useVirtualizer } from "@tanstack/react-virtual";
 
 interface MessagesProps {

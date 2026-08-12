@@ -7,7 +7,7 @@ import {
   registerImageGenProvider,
   type ImageGenerationRequest,
   type ImageGenerationResponse,
-} from "@openloomi/ai/agent";
+} from "@melandlabs/ai/agent";
 
 let providersRegistered = false;
 

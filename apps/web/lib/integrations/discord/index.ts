@@ -10,24 +10,24 @@ import {
   type Message as DiscordMessage,
 } from "discord.js";
 import { once } from "node:events";
-import { MessagePlatformAdapter } from "@openloomi/integrations/channels";
+import { MessagePlatformAdapter } from "@melandlabs/integrations-channels";
 import type {
   Messages,
   At,
   Image,
   Message,
-} from "@openloomi/integrations/channels";
-import type { Attachment } from "@openloomi/shared";
-import type { UserType } from "@openloomi/contracts/user-type";
+} from "@melandlabs/integrations-channels";
+import type { Attachment } from "@melandlabs/shared";
+import type { UserType } from "@melandlabs/contracts/user-type";
 import { ingestAttachmentForUser } from "@/lib/integrations/utils/attachments";
 import {
   timeBeforeHoursMs,
   type ExtractedMessageInfo,
-} from "@openloomi/integrations/channels/sources/types";
+} from "@melandlabs/integrations-channels/sources/types";
 import type {
   MessageEvent,
   MessageTarget,
-} from "@openloomi/integrations/channels";
+} from "@melandlabs/integrations-channels";
 import {
   calculateChunkBoundary,
   classifyDiscordError,

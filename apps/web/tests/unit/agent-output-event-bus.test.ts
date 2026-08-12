@@ -1,4 +1,4 @@
-import { AgentOutputEventBus } from "@openloomi/ai/agent/runtime";
+import { AgentOutputEventBus } from "@melandlabs/ai/agent/runtime";
 import { describe, expect, it } from "vitest";
 
 describe("AgentOutputEventBus", () => {

@@ -1,12 +1,12 @@
 import { randomUUID } from "node:crypto";
 
-import { encryptToken } from "@openloomi/security/token-encryption";
+import { encryptToken } from "@melandlabs/security/token-encryption";
 import {
   COMPOSIO_GOOGLE_CALENDAR_TOOLKIT,
   COMPOSIO_GOOGLE_MEET_TOOLKIT,
   ComposioClient,
   type ComposioConnectLink,
-} from "@openloomi/integrations/composio";
+} from "@melandlabs/integrations-composio";
 
 export const COMPOSIO_OAUTH_PROVIDER = "composio";
 export type ComposioConnectorPlatform = "google_calendar" | "google_meet";

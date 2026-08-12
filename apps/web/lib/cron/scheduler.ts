@@ -1,4 +1,4 @@
-// Phase 5 — re-export shim over `@openloomi/cron/scheduler`. The leaf
+// Phase 5 — re-export shim over `@melandlabs/cron/scheduler`. The leaf
 // module owns the croner-backed schedule math (`computeNextRun`,
 // `validateCronExpression`, `isJobDue`) plus tiny `formatDate` /
 // `parseDate` helpers. The runtime/UI split is a true move, not a
@@ -11,4 +11,4 @@ export {
   isJobDue,
   formatDate,
   parseDate,
-} from "@openloomi/cron/scheduler";
+} from "@melandlabs/cron/scheduler";

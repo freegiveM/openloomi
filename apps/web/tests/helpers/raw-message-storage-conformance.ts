@@ -3,7 +3,7 @@ import type {
   MemorySummaryRecord,
   RawMessage,
   RawMessageStorage,
-} from "../../../../packages/indexeddb/src/storage";
+} from "@melandlabs/indexeddb";
 
 export interface RawMessageStorageConformanceContext {
   storage: RawMessageStorage;

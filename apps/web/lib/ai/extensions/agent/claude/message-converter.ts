@@ -1,4 +1,4 @@
-import type { AgentMessage } from "@openloomi/ai/agent/types";
+import type { AgentMessage } from "@melandlabs/ai/agent";
 
 /**
  * Claude's SDK can surface provider stream failures as a synthetic assistant

@@ -1,7 +1,7 @@
 import type {
   RuntimeClockPort,
   RuntimeIdGeneratorPort,
-} from "@openloomi/ai/agent/runtime-instructions";
+} from "@melandlabs/ai/agent/runtime-instructions";
 
 export class FixedRuntimeClock implements RuntimeClockPort {
   constructor(private readonly instant: Date) {}

@@ -27,7 +27,7 @@ export {
   TAURI_SERVER_HOST,
 } from "./server-constants";
 
-import { DEV_PORT, PROD_PORT } from "@openloomi/shared";
+import { DEV_PORT, PROD_PORT } from "@melandlabs/shared";
 import { DEPLOYMENT_MODE, isTauriMode } from "./constants";
 import { TAURI_SERVER_HOST, TAURI_SERVER_PORT } from "./server-constants";
 import {

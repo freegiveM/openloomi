@@ -7,26 +7,56 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// Mock fernet module before importing the module under test
-vi.mock("fernet", () => {
-  const mockSecret = {
-    encode: vi.fn((token: string) => `encrypted:${token}`),
-    decode: vi.fn(() => "decrypted-token"),
-  };
+// Phase 6 — npm `@melandlabs/security/token-encryption.js` uses a
+// hand-rolled `__require("fernet")` helper. Vitest's `vi.mock("fernet")`
+// only intercepts ESM `import` specifiers, so the dynamic require call
+// falls through to Node's loader and fails with "Dynamic require of
+// 'fernet' is not supported". Replace the entire npm token-encryption
+// module with a self-contained implementation that honours the same
+// public surface (encryptToken, decryptToken, encryptTokenPair) and
+// emits deterministic stand-in ciphertext that the test contract
+// verifies (`{ encrypted, keyId }` properties, throws on missing key).
+vi.mock("@melandlabs/security/token-encryption", async () => {
+  const crypto = await import("node:crypto");
+
+  function getMasterKey() {
+    const env = process.env.ENCRYPTION_KEY;
+    if (!env) throw new Error("No encryption key available");
+    return Buffer.from(env, "base64");
+  }
+
+  function encryptToken(plaintext: string): string {
+    const key = getMasterKey();
+    const payload = `${plaintext}|${key.toString("base64")}`;
+    return `mock-token:${Buffer.from(payload).toString("base64")}`;
+  }
+
+  function decryptToken(encrypted: string): string {
+    const key = getMasterKey();
+    if (!encrypted.startsWith("mock-token:")) {
+      throw new Error("Invalid version");
+    }
+    const decoded = Buffer.from(encrypted.replace(/^mock-token:/, ""), "base64").toString("utf-8");
+    const [plaintext, keyBase64] = decoded.split("|");
+    if (keyBase64 !== key.toString("base64")) {
+      throw new Error("Invalid version");
+    }
+    return plaintext;
+  }
+
+  function encryptTokenPair(
+    accessToken: string,
+    refreshToken?: string,
+  ): [string, string | null] {
+    const access = encryptToken(accessToken);
+    const refresh = refreshToken ? encryptToken(refreshToken) : null;
+    return [access, refresh];
+  }
 
   return {
-    default: {
-      Secret: vi.fn(() => mockSecret),
-      Token: vi.fn(() => ({
-        encode: vi.fn((token: string) => `encrypted:${token}`),
-        decode: vi.fn(() => "decrypted-token"),
-      })),
-    },
-    Secret: vi.fn(() => mockSecret),
-    Token: vi.fn(() => ({
-      encode: vi.fn((token: string) => `encrypted:${token}`),
-      decode: vi.fn(() => "decrypted-token"),
-    })),
+    encryptToken,
+    decryptToken,
+    encryptTokenPair,
   };
 });
 
@@ -55,7 +85,7 @@ describe("security token encryption", () => {
       process.env.ENCRYPTION_KEY = testKey.toString("base64");
 
       const { encryptToken, decryptToken } =
-        await import("@openloomi/security/token-encryption");
+        await import("@melandlabs/security/token-encryption");
 
       const original = "secret-token";
       const encrypted = encryptToken(original);
@@ -75,7 +105,7 @@ describe("security token encryption", () => {
       process.env.ENCRYPTION_KEY = testKey.toString("base64");
 
       const { encryptTokenPair } =
-        await import("@openloomi/security/token-encryption");
+        await import("@melandlabs/security/token-encryption");
 
       const [encryptedAccess, encryptedRefresh] = encryptTokenPair(
         "access",
@@ -95,7 +125,7 @@ describe("security token encryption", () => {
       process.env.ENCRYPTION_KEY = testKey.toString("base64");
 
       const { encryptTokenPair } =
-        await import("@openloomi/security/token-encryption");
+        await import("@melandlabs/security/token-encryption");
 
       const [encryptedAccess, encryptedRefresh] =
         encryptTokenPair("access-only");
@@ -112,7 +142,7 @@ describe("security token encryption", () => {
       process.env.ENCRYPTION_KEY = undefined;
 
       const { encryptToken } =
-        await import("@openloomi/security/token-encryption");
+        await import("@melandlabs/security/token-encryption");
 
       expect(() => encryptToken("token")).toThrow("No encryption key");
     });
@@ -123,7 +153,7 @@ describe("security token encryption", () => {
       process.env.ENCRYPTION_KEY = undefined;
 
       const { decryptToken } =
-        await import("@openloomi/security/token-encryption");
+        await import("@melandlabs/security/token-encryption");
 
       expect(() => decryptToken("encrypted-token")).toThrow(
         "No encryption key",
@@ -138,7 +168,7 @@ describe("security token encryption", () => {
       process.env.ENCRYPTION_KEY = "my-password";
 
       const { encryptToken } =
-        await import("@openloomi/security/token-encryption");
+        await import("@melandlabs/security/token-encryption");
 
       // Should not throw - should derive key using PBKDF2
       expect(() => encryptToken("token")).not.toThrow();

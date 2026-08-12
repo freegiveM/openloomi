@@ -10,7 +10,7 @@ import {
   type RawMessageStorageManager,
   runMemoryForgettingCycle,
   storeRawMessagesWithGraphEvolution,
-} from "@openloomi/indexeddb";
+} from "@melandlabs/indexeddb";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -31,7 +31,7 @@ vi.mock("@/lib/auth/dual-auth", () => ({
   getAuthUser: mocks.getAuthUser,
 }));
 
-vi.mock("@openloomi/ai/agent/registry", () => ({
+vi.mock("@melandlabs/ai/agent", () => ({
   getAgentRegistry: () => ({
     create: () => ({
       provider: "custom",
@@ -43,7 +43,7 @@ vi.mock("@openloomi/ai/agent/registry", () => ({
   }),
 }));
 
-vi.mock("@openloomi/memory-store/raw-message-store", () => ({
+vi.mock("@melandlabs/memory-store/raw-message-store", () => ({
   isRawMessageStorageAvailable: () => true,
   getRawMessageManager: async () => mocks.manager,
 }));
@@ -262,12 +262,12 @@ afterEach(() => {
 beforeEach(async () => {
   vi.clearAllMocks();
   mocks.capturedPrompts.length = 0;
-  vi.stubEnv("OPENLOOMI_MEMORY_GRAPH_WRITE_ENABLED", "true");
+  vi.stubEnv("OPENCONTEXT_MEMORY_GRAPH_WRITE_ENABLED", "true");
   vi.stubEnv(
-    "OPENLOOMI_MEMORY_GRAPH_WRITE_COHORT_USER_IDS",
+    "OPENCONTEXT_MEMORY_GRAPH_WRITE_COHORT_USER_IDS",
     "authenticated-user",
   );
-  vi.stubEnv("OPENLOOMI_MEMORY_GRAPH_WRITE_KILL_SWITCH", "");
+  vi.stubEnv("OPENCONTEXT_MEMORY_GRAPH_WRITE_KILL_SWITCH", "");
   mocks.getAuthUser.mockResolvedValue({
     id: "authenticated-user",
     email: "user@example.test",

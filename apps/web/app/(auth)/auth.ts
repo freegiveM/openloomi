@@ -33,7 +33,7 @@ export interface AuthModuleLike {
   signOut: (options?: Record<string, unknown>) => Promise<void>;
 }
 
-import type { UserType } from "@openloomi/contracts/user-type";
+import type { UserType } from "@melandlabs/contracts/user-type";
 
 export type { UserType };
 

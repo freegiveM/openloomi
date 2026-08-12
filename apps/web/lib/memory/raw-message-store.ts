@@ -1,6 +1,6 @@
 import "server-only";
 
-import type { RawMessageStorageManager } from "@openloomi/indexeddb/storage";
+import type { RawMessageStorageManager } from "@melandlabs/indexeddb";
 import {
   getPostgresRawMessageManager,
   isPostgresRawMessageStorageAvailable,

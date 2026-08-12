@@ -1,4 +1,4 @@
-import { AppError } from "@openloomi/shared/errors";
+import { AppError } from "@melandlabs/shared/errors";
 
 import { applyTimezoneToUserJobs } from "@/lib/cron/service";
 import {

@@ -68,12 +68,12 @@ import {
   runMemoryConsolidationShadowDiagnostics,
   serializeSemanticMemoryArtifactStorageRecord,
   summarizeSemanticMemoryDraftCandidate,
-} from "@openloomi/memory-consolidation";
+} from "@melandlabs/memory-consolidation";
 import { describe, expect, it } from "vitest";
 import {
   DefaultMemoryRecordScorer,
   type MemoryRecord,
-} from "../../../../packages/ai/src/memory";
+} from "@melandlabs/ai/memory";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const NOW = 120 * DAY_MS;

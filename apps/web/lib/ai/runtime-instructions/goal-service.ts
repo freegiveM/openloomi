@@ -22,7 +22,7 @@ import {
   type RuntimeIdGeneratorPort,
   type RuntimeInstructionDraft,
   type RuntimeInstructionSource,
-} from "@openloomi/ai/agent/runtime-instructions";
+} from "@melandlabs/ai/agent/runtime-instructions";
 
 import { createGoalCommandFingerprint } from "./command-fingerprint";
 import {
@@ -781,7 +781,7 @@ function assertContextProvenance(
   }
 
   if (
-    (contextRef.origin === "memory" || contextRef.origin === "openloomi") &&
+    (contextRef.origin === "memory" || contextRef.origin === "opencontext") &&
     contextRef.sourceRef !== undefined &&
     contextRef.sourceRef === source.sourceRef
   ) {
@@ -804,7 +804,7 @@ function assertExistingContextAuthority(
     return;
   }
   if (
-    (contextRef.origin === "memory" || contextRef.origin === "openloomi") &&
+    (contextRef.origin === "memory" || contextRef.origin === "opencontext") &&
     contextRef.sourceRef !== undefined &&
     contextRef.sourceRef === source.sourceRef
   ) {

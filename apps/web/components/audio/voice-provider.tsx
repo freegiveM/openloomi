@@ -7,8 +7,8 @@ import React, {
   useState,
   useMemo,
 } from "react";
-import { KokoroPlugin } from "@openloomi/voice-kokoro";
-import { WhisperPlugin } from "@openloomi/voice-whisper";
+import { KokoroPlugin } from "@melandlabs/voice-kokoro";
+import { WhisperPlugin } from "@melandlabs/voice-whisper";
 
 interface VoiceContextValue {
   kokoro: KokoroPlugin;

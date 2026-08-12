@@ -1,9 +1,7 @@
 import type { Options } from "@anthropic-ai/claude-agent-sdk";
-import type {
-  AgentConfig,
-  AgentOptions,
-  AgentSupplementalInputSource,
-} from "@openloomi/ai/agent/types";
+import type { AgentOptions } from "@openloomi/ai/agent/types";
+import type { AgentConfig } from "@melandlabs/ai/agent";
+import type { AgentSupplementalInputSource } from "@/lib/ai/agent/types-shim";
 
 import {
   type McpServerConfig,

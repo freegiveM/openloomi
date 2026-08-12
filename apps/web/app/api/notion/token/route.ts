@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/app/(auth)/auth";
 import { getNotionContext } from "@/lib/integrations/notion";
 import { upsertIntegrationAccount } from "@/lib/db/queries";
-import { AppError } from "@openloomi/shared/errors";
+import { AppError } from "@melandlabs/shared/errors";
 
 export const runtime = "nodejs";
 

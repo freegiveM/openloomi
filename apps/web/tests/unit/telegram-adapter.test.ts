@@ -12,7 +12,7 @@ import { describe, expect, test } from "vitest";
 
 describe("markdownToTelegramHtml", async () => {
   const { markdownToTelegramHtml } =
-    await import("@openloomi/integrations/telegram");
+    await import("./_fixtures/telegram-message-bridge");
 
   test("converts plain text unchanged", async () => {
     expect(markdownToTelegramHtml("Hello world")).toBe("Hello world");
@@ -73,7 +73,7 @@ describe("markdownToTelegramHtml", async () => {
 
 describe("openloomiMessageToTgText", async () => {
   const { openloomiMessageToTgText } =
-    await import("@openloomi/integrations/telegram");
+    await import("./_fixtures/telegram-message-bridge");
 
   test("converts plain string message", async () => {
     expect(openloomiMessageToTgText("Hello")).toBe("Hello");
@@ -107,7 +107,7 @@ describe("openloomiMessageToTgText", async () => {
 
 describe("tgMessageToopenloomiMessage", async () => {
   const { tgMessageToopenloomiMessage } =
-    await import("@openloomi/integrations/telegram");
+    await import("./_fixtures/telegram-message-bridge");
 
   test("converts basic text message", async () => {
     // Use 'message' property which is what the Api.Message class uses

@@ -9,7 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@openloomi/ui";
-import { useIsMobile } from "@openloomi/hooks/use-is-mobile";
+import { useIsMobile } from "@melandlabs/hooks/use-is-mobile";
 import {
   type KnowledgeFileDetail,
   useKnowledgeFiles,

@@ -1,6 +1,6 @@
-import { AppError } from "@openloomi/shared/errors";
+import { AppError } from "@melandlabs/shared/errors";
 import type { BotWithAccount } from "@/lib/db/queries";
-import type { UserType } from "@openloomi/contracts/user-type";
+import type { UserType } from "@melandlabs/contracts/user-type";
 
 /**
  * Linear API credentials stored in the database

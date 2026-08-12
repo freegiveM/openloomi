@@ -1,18 +1,18 @@
-import { MessagePlatformAdapter } from "@openloomi/integrations/channels";
-import type { Messages, Message } from "@openloomi/integrations/channels";
+import { MessagePlatformAdapter } from "@melandlabs/integrations-channels";
+import type { Messages, Message } from "@melandlabs/integrations-channels";
 import type {
   MessageEvent,
   MessageTarget,
-} from "@openloomi/integrations/channels";
-import type { Attachment } from "@openloomi/shared";
+} from "@melandlabs/integrations-channels";
+import type { Attachment } from "@melandlabs/shared";
 import {
   coerceDate,
   delay,
   type DialogInfo,
   type ExtractedMessageInfo,
-} from "@openloomi/integrations/channels/sources/types";
+} from "@melandlabs/integrations-channels/sources/types";
 import { ingestAttachmentForUser } from "@/lib/integrations/utils/attachments";
-import type { UserType } from "@openloomi/contracts/user-type";
+import type { UserType } from "@melandlabs/contracts/user-type";
 import { updateIntegrationAccount } from "@/lib/db/queries";
 
 const GRAPH_BASE = "https://graph.microsoft.com/v1.0";

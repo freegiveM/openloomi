@@ -1,1 +1,1 @@
-export * from "@openloomi/integrations-runtime/authorization-errors";
+export * from "@melandlabs/integrations-runtime/authorization-errors";

@@ -1,4 +1,4 @@
-import type { AgentOptions } from "@openloomi/ai/agent/types";
+import type { AgentOptions } from "@melandlabs/ai/agent";
 
 const MAX_CONVERSATION_MESSAGES = 50;
 const MAX_CONVERSATION_CHARS = 100_000;

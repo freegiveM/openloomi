@@ -10,7 +10,7 @@ import {
 } from "@/lib/files/config";
 import { deriveBlobPathFromUrl } from "@/lib/files/blob-path";
 import { getUserStorageUsage, createUserFile } from "@/lib/db/storageService";
-import { AppError } from "@openloomi/shared/errors";
+import { AppError } from "@melandlabs/shared/errors";
 import { uploadFileToGoogleDrive } from "@/lib/files/google-drive";
 import {
   deriveNotionTextPreview,

@@ -4,7 +4,7 @@ import {
   type GoalEvidence,
   type PersistedAgentGoal,
   type RuntimeDeliveryReceipt,
-} from "@openloomi/ai/agent/runtime-instructions";
+} from "@melandlabs/ai/agent/runtime-instructions";
 import { NextResponse } from "next/server";
 import type { z } from "zod";
 

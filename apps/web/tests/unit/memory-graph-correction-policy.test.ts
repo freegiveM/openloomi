@@ -1,4 +1,4 @@
-import { resolveMemoryGraphCorrectionPolicy } from "@openloomi/memory-store/memory-graph-correction-policy";
+import { resolveMemoryGraphCorrectionPolicy } from "@melandlabs/memory-store/memory-graph-correction-policy";
 import { describe, expect, it } from "vitest";
 
 describe("memory graph correction policy", () => {
@@ -12,8 +12,8 @@ describe("memory graph correction policy", () => {
   it("requires the authenticated user to be in the operator allowlist", () => {
     expect(
       resolveMemoryGraphCorrectionPolicy("operator-1", {
-        OPENLOOMI_MEMORY_GRAPH_CORRECTION_ENABLED: "true",
-        OPENLOOMI_MEMORY_GRAPH_CORRECTION_OPERATOR_USER_IDS: "operator-2",
+        OPENCONTEXT_MEMORY_GRAPH_CORRECTION_ENABLED: "true",
+        OPENCONTEXT_MEMORY_GRAPH_CORRECTION_OPERATOR_USER_IDS: "operator-2",
       }),
     ).toEqual({
       enabled: false,
@@ -24,9 +24,9 @@ describe("memory graph correction policy", () => {
   it("lets the kill switch override an enabled operator", () => {
     expect(
       resolveMemoryGraphCorrectionPolicy("operator-1", {
-        OPENLOOMI_MEMORY_GRAPH_CORRECTION_ENABLED: "true",
-        OPENLOOMI_MEMORY_GRAPH_CORRECTION_OPERATOR_USER_IDS: "operator-1",
-        OPENLOOMI_MEMORY_GRAPH_CORRECTION_KILL_SWITCH: "true",
+        OPENCONTEXT_MEMORY_GRAPH_CORRECTION_ENABLED: "true",
+        OPENCONTEXT_MEMORY_GRAPH_CORRECTION_OPERATOR_USER_IDS: "operator-1",
+        OPENCONTEXT_MEMORY_GRAPH_CORRECTION_KILL_SWITCH: "true",
       }),
     ).toEqual({
       enabled: false,
@@ -37,10 +37,10 @@ describe("memory graph correction policy", () => {
   it("enables only an explicitly allowlisted operator", () => {
     expect(
       resolveMemoryGraphCorrectionPolicy("operator-1", {
-        OPENLOOMI_MEMORY_GRAPH_CORRECTION_ENABLED: "true",
-        OPENLOOMI_MEMORY_GRAPH_CORRECTION_OPERATOR_USER_IDS:
+        OPENCONTEXT_MEMORY_GRAPH_CORRECTION_ENABLED: "true",
+        OPENCONTEXT_MEMORY_GRAPH_CORRECTION_OPERATOR_USER_IDS:
           "operator-2, operator-1",
-        OPENLOOMI_MEMORY_GRAPH_CORRECTION_KILL_SWITCH: "false",
+        OPENCONTEXT_MEMORY_GRAPH_CORRECTION_KILL_SWITCH: "false",
       }),
     ).toEqual({
       enabled: true,

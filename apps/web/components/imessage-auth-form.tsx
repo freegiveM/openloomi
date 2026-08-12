@@ -350,7 +350,7 @@ export function IMessageAuthForm({
                   <p>
                     {t(
                       "auth.imessageDataNote",
-                      "Your message data stays on your local device. openloomi will only read recent messages when you use it to generate insights.",
+                      "Your message data stays on your local device. openloomi will only read recent messages.",
                     )}
                   </p>
                 </div>

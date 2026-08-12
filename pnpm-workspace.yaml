@@ -1,7 +1,4 @@
 packages:
   - 'apps/*'
-  - 'packages/*'
-  - 'packages/ai/*'
-  - 'packages/integrations/*'
   - 'benchmark/*'
   - 'benchmark/GDPval-AA v2/openloomi-runner'

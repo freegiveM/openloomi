@@ -5,8 +5,8 @@ import {
   createRawMessageMemoryGraphStore,
   memoryGraphLedgerMessageId,
   mergeStoredChatMemoryEvidence,
-} from "@openloomi/indexeddb";
-import type { OwnerScope } from "@openloomi/memory-consolidation";
+} from "@melandlabs/indexeddb";
+import type { OwnerScope } from "@melandlabs/memory-consolidation";
 import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -68,10 +68,10 @@ vi.mock("@/lib/db/queries", () => ({
   saveMessages: saveMessagesMock,
 }));
 vi.mock("@/lib/env", () => ({ isTauriMode: isTauriModeMock }));
-vi.mock("@openloomi/memory-store/chroma-memory-index", () => ({
+vi.mock("@melandlabs/memory-store/chroma-memory-index", () => ({
   upsertRawMessagesToChroma: vi.fn().mockResolvedValue(undefined),
 }));
-vi.mock("@openloomi/memory-store/raw-message-store", () => ({
+vi.mock("@melandlabs/memory-store/raw-message-store", () => ({
   getRawMessageManager: getRawMessageManagerMock,
   getRawMessageStorageBackend: getRawMessageStorageBackendMock,
   isRawMessageStorageAvailable: isRawMessageStorageAvailableMock,
@@ -103,7 +103,7 @@ function rawEvidenceId(
   relationGroup: "language" | "response-style",
   input: { userId?: string; chatId?: string } = {},
 ): string {
-  return `openloomi-chat:${encodeURIComponent(input.userId ?? USER_ID)}:${encodeURIComponent(input.chatId ?? CHAT_ID)}:${messageId}:${relationGroup}`;
+  return `opencontext-chat:${encodeURIComponent(input.userId ?? USER_ID)}:${encodeURIComponent(input.chatId ?? CHAT_ID)}:${messageId}:${relationGroup}`;
 }
 
 class ChatMemoryTestManager {
@@ -345,7 +345,7 @@ function deferred() {
 function rawEvidence(current = manager): RawMessage[] {
   if (!(current instanceof ChatMemoryTestManager)) return [];
   return [...current.messages.values()].filter(
-    (message) => message.platform === "openloomi-chat",
+    (message) => message.platform === "opencontext-chat",
   );
 }
 
@@ -382,9 +382,9 @@ describe("chat save memory write runtime", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(NOW);
-    vi.stubEnv("OPENLOOMI_MEMORY_GRAPH_WRITE_ENABLED", "true");
-    vi.stubEnv("OPENLOOMI_MEMORY_GRAPH_WRITE_COHORT_USER_IDS", USER_ID);
-    vi.stubEnv("OPENLOOMI_MEMORY_GRAPH_WRITE_KILL_SWITCH", "false");
+    vi.stubEnv("OPENCONTEXT_MEMORY_GRAPH_WRITE_ENABLED", "true");
+    vi.stubEnv("OPENCONTEXT_MEMORY_GRAPH_WRITE_COHORT_USER_IDS", USER_ID);
+    vi.stubEnv("OPENCONTEXT_MEMORY_GRAPH_WRITE_KILL_SWITCH", "false");
 
     manager = new ChatMemoryTestManager();
     persistedChatMessages = new Map();
@@ -1012,7 +1012,7 @@ describe("chat save memory write runtime", () => {
     ]);
     const ledgerWrites = current.ledgerWriteCount;
     const graphBefore = await snapshot(current);
-    vi.stubEnv("OPENLOOMI_MEMORY_GRAPH_WRITE_KILL_SWITCH", "true");
+    vi.stubEnv("OPENCONTEXT_MEMORY_GRAPH_WRITE_KILL_SWITCH", "true");
 
     const killed = await postChat([
       chatMessage("killed-preference", "I prefer concise responses."),

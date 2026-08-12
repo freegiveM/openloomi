@@ -5,7 +5,7 @@ import {
   updateInsightTaskContext,
   updateInsightTask,
 } from "@/lib/db/queries";
-import { AppError } from "@openloomi/shared/errors";
+import { AppError } from "@melandlabs/shared/errors";
 
 export async function PUT(
   _: Request,

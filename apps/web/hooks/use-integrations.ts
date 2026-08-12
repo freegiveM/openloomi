@@ -3,7 +3,7 @@
 import useSWR from "swr";
 import { useMemo } from "react";
 import { getAuthToken } from "@/lib/auth/token-manager";
-import type { IntegrationId } from "@openloomi/contracts/integration-id";
+import type { IntegrationId } from "@melandlabs/contracts/integration-id";
 
 export type { IntegrationId };
 

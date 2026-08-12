@@ -14,7 +14,7 @@ import {
   formatInsufficientAnswerForUser,
 } from "@/lib/ai/runtime/shared";
 import { resolveAgentLanguage } from "@/lib/insights/resolve-language";
-import { QQBotConversationStore } from "@openloomi/integrations/qqbot";
+import { QQBotConversationStore } from "@melandlabs/integrations-qqbot";
 
 /** Reply target: openid for DM, group_openid for group chat */
 function getReplyRecipient(params: {

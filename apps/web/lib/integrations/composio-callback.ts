@@ -1,4 +1,4 @@
-import { ComposioClient } from "@openloomi/integrations/composio";
+import { ComposioClient } from "@melandlabs/integrations-composio";
 
 import { areComposioUserIdsEquivalent } from "@/lib/integrations/composio-oauth";
 

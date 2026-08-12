@@ -13,7 +13,7 @@ import {
   upsertUserVisionLlmSettings,
 } from "@/lib/db/queries";
 import { formatToLocalTime } from "@/lib/utils";
-import { AppError } from "@openloomi/shared/errors";
+import { AppError } from "@melandlabs/shared/errors";
 import { NextResponse } from "next/server";
 import {
   DEFAULT_VOICE_INPUT_SHORTCUT,

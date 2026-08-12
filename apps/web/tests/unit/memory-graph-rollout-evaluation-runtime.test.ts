@@ -6,8 +6,8 @@ import {
   runMemoryForgettingCycle,
   runMemoryGraphRolloutEvaluation,
   storeRawMessagesWithGraphEvolution,
-} from "@openloomi/indexeddb";
-import type { OwnerScope } from "@openloomi/memory-consolidation";
+} from "@melandlabs/indexeddb";
+import type { OwnerScope } from "@melandlabs/memory-consolidation";
 import { describe, expect, it } from "vitest";
 
 const NOW = 1_700_000_000_000;

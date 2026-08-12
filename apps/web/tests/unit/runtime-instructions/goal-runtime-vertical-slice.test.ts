@@ -3,7 +3,7 @@ import type {
   SDKMessage,
   SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
-import type { CreateAgentGoalInput } from "@openloomi/ai/agent/runtime-instructions";
+import type { CreateAgentGoalInput } from "@melandlabs/ai/agent/runtime-instructions";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -173,7 +173,7 @@ describe("Claude Goal runtime vertical slice", () => {
       hookSpecificOutput: {
         hookEventName: "PostToolBatch",
         additionalContext: expect.stringContaining(
-          '<openloomi_untrusted_context context_id="jira-176"',
+          '<opencontext_untrusted_context context_id="jira-176"',
         ),
       },
     });

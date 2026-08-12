@@ -27,23 +27,26 @@ import {
   parsePlanningResponse,
   PLANNING_INSTRUCTION,
   type SandboxOptions,
-} from "@openloomi/ai/agent";
+} from "@melandlabs/ai/agent";
 // Import plugin definition helpers
-import { CLAUDE_METADATA, defineAgentPlugin } from "@openloomi/ai/agent/plugin";
-import type { AgentPlugin } from "@openloomi/ai/agent/plugin";
+import { CLAUDE_METADATA, defineAgentPlugin } from "@melandlabs/ai/agent";
+import type { AgentPlugin } from "@melandlabs/ai/agent";
+import type {
+  AgentOptions,
+  AgentRuntimeRecovery,
+} from "@openloomi/ai/agent/types";
+import type { AgentSupplementalInputSource } from "@/lib/ai/agent/types-shim";
 import type {
   AgentConfig,
   AgentMessage,
-  AgentOptions,
   AgentProvider,
-  AgentRuntimeRecovery,
   ConversationMessage,
   ExecuteOptions,
   ImageAttachment,
   McpConfig,
   PDFAttachment,
   PlanOptions,
-} from "@openloomi/ai/agent/types";
+} from "@melandlabs/ai/agent";
 import { MAX_CONVERSATION_HISTORY_TOKENS } from "@/lib/ai/runtime/shared";
 import type { RuntimeRecoveryDescriptor } from "@/lib/ai/runtime-instructions/runtime-session-persistence";
 import {
@@ -57,7 +60,7 @@ import {
   PDF_MAX_SIZE_MB,
   PREFER_NATIVE_PDF,
 } from "@/lib/files/config";
-import { filterToolCallText } from "@openloomi/shared";
+import { filterToolCallText } from "@melandlabs/shared";
 import { generateUUID } from "@/lib/utils";
 import { estimateTokens } from "@/lib/ai";
 import { loadMcpServers } from "@/lib/ai/mcp";
@@ -1830,7 +1833,8 @@ ${formattedMessages}${truncationNotice}\n\n---\n## Current Request\n`;
           session.abortController.abort(reason);
         }
       },
-      supplementalInput: options?.supplementalInput,
+      supplementalInput:
+        options?.supplementalInput as AgentSupplementalInputSource | undefined,
     });
     // The SDK does not wire its stderr callback when a custom spawner is
     // supplied, so the spawner captures and line-buffers stderr directly.

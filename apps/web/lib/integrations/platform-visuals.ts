@@ -1,1 +1,1 @@
-export * from "@openloomi/integrations-runtime/platform-visuals";
+export * from "@melandlabs/integrations-runtime/platform-visuals";

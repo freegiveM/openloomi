@@ -18,9 +18,9 @@ import {
   findChatMemoryRevisionConflict,
   writeSavedChatMessagesToMemory,
 } from "@/lib/memory/chat-memory-write";
-import { resolveMemoryGraphWritePolicy } from "@openloomi/memory-store/memory-graph-write-policy";
-import type { ChatMessage } from "@openloomi/shared";
-import type { Attachment } from "@openloomi/shared";
+import { resolveMemoryGraphWritePolicy } from "@melandlabs/memory-store/memory-graph-write-policy";
+import type { ChatMessage } from "@melandlabs/shared";
+import type { Attachment } from "@melandlabs/shared";
 import { NextResponse } from "next/server";
 
 async function getPersistedMessagesByIds(messageIds: string[]) {

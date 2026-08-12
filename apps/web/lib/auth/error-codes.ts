@@ -1,1 +1,1 @@
-export { AuthErrorCode } from "@openloomi/contracts/errors";
+export { AuthErrorCode } from "@melandlabs/contracts/errors";

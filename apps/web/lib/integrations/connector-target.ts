@@ -1,6 +1,6 @@
 import type { IntegrationId } from "@/hooks/use-integrations";
 import { isIntegrationPlatformConnectable } from "@/lib/integrations/platform-connectability";
-import { UserLocale } from "@openloomi/shared";
+import { UserLocale } from "@melandlabs/shared";
 
 type ConnectorActionLike = {
   type?: string;

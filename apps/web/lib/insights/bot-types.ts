@@ -1,4 +1,4 @@
-import type { ExtractedMessageInfo } from "@openloomi/integrations/channels/sources/types";
+import type { ExtractedMessageInfo } from "@melandlabs/integrations-channels/sources/types";
 import type { ExtractEmailInfo } from "../integrations/email";
 import type {
   DetailData,
@@ -6,9 +6,9 @@ import type {
   TimelineData,
 } from "@/lib/ai/subagents/insights";
 import type { BotWithAccount } from "../db/queries";
-import type { UserType } from "@openloomi/contracts/user-type";
-import type { Platform } from "@openloomi/integrations/channels/sources/types";
-import type { RawMessageData } from "@openloomi/indexeddb/extractor";
+import type { UserType } from "@melandlabs/contracts/user-type";
+import type { Platform } from "@melandlabs/integrations-channels/sources/types";
+import type { RawMessageData } from "@melandlabs/indexeddb";
 
 export type ExtractedMessageInfoWithoutAttachments = Omit<
   ExtractedMessageInfo,

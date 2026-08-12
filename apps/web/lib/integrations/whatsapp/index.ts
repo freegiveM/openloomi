@@ -1,7 +1,7 @@
 /**
  * WhatsApp Adapter - Thin wrapper with web-specific dependency injection
  *
- * This module re-exports the WhatsAppAdapter from @openloomi/integrations/whatsapp
+ * This module re-exports the WhatsAppAdapter from @melandlabs/integrations/whatsapp
  * with web-specific dependencies (Redis auth state, file ingester, config provider)
  * injected via the BaileysAuthStateProvider interface.
  */
@@ -12,8 +12,8 @@ import type {
   ClientRegistry,
   FileIngester,
   ConfigProvider,
-} from "@openloomi/integrations/core";
-import { WhatsAppAdapter as BaseWhatsAppAdapter } from "@openloomi/integrations/whatsapp";
+} from "@melandlabs/integrations/core";
+import { WhatsAppAdapter as BaseWhatsAppAdapter } from "@melandlabs/integrations-whatsapp";
 import { WhatsAppBaileysAuthState } from "./whatsapp-auth-state";
 import { whatsappClientRegistry } from "./client-registry";
 
@@ -21,14 +21,14 @@ import { whatsappClientRegistry } from "./client-registry";
 export type {
   WhatsAppDialogInfo,
   WhatsAppUserInfo,
-} from "@openloomi/integrations/whatsapp";
-export { activeAdapters } from "@openloomi/integrations/whatsapp";
+} from "@melandlabs/integrations-whatsapp";
+export { activeAdapters } from "@melandlabs/integrations-whatsapp";
 
 // Re-export conversation store
-export { WhatsAppConversationStore } from "@openloomi/integrations/whatsapp";
+export { WhatsAppConversationStore } from "@melandlabs/integrations-whatsapp";
 
 // Re-export client registry
-export { WhatsAppClientRegistry } from "@openloomi/integrations/whatsapp/client-registry";
+export { WhatsAppClientRegistry } from "@melandlabs/integrations-whatsapp/client-registry";
 export { whatsappClientRegistry } from "./client-registry";
 
 /**

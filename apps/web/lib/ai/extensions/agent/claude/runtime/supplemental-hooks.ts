@@ -1,9 +1,6 @@
 import type { HookCallback, Options } from "@anthropic-ai/claude-agent-sdk";
-import type { RuntimeInstruction } from "@openloomi/ai/agent/runtime-instructions";
-import type {
-  AgentSupplementalInput,
-  AgentSupplementalInputSource,
-} from "@openloomi/ai/agent/types";
+import type { RuntimeInstruction } from "@melandlabs/ai/agent/runtime-instructions";
+import type { AgentSupplementalInput, AgentSupplementalInputSource } from "@/lib/ai/agent/types-shim";
 
 import type { ClaudeRuntimeLogger } from "../skills";
 import type {
@@ -104,11 +101,14 @@ export function createClaudeSupplementalInputHooks({
   const postToolBatch: HookCallback = async () => {
     try {
       const inputs = supplementalInput?.takePendingInform?.() ?? [];
-      if (inputs.length === 0) return {};
+      const inputsArray: AgentSupplementalInput[] = Array.isArray(inputs)
+        ? inputs
+        : [];
+      if (inputsArray.length === 0) return {};
       return {
         hookSpecificOutput: {
           hookEventName: "PostToolBatch",
-          additionalContext: formatSupplementalInputContext(inputs),
+          additionalContext: formatSupplementalInputContext(inputsArray),
         },
       };
     } catch (error) {

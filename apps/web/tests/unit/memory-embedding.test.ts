@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildMemoryRecordEmbeddingDocument,
   buildMemoryRecordEmbeddingText,
-} from "../../../../packages/ai/src/memory";
+} from "@melandlabs/ai/memory";
 
 describe("memory record embedding text", () => {
   it("builds stable text from raw memory fields", () => {

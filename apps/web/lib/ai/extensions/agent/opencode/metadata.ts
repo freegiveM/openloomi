@@ -1,4 +1,4 @@
-import type { AgentProviderMetadata } from "@openloomi/ai/agent/plugin";
+import type { AgentProviderMetadata } from "@melandlabs/ai/agent";
 
 export const OPENCODE_CONFIG_SCHEMA = {
   type: "object",

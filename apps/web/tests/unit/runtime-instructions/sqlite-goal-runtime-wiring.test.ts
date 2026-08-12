@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { transitionAgentGoal } from "@openloomi/ai/agent/runtime-instructions";
+import { transitionAgentGoal } from "@melandlabs/ai/agent/runtime-instructions";
 import Database from "better-sqlite3";
 import { afterEach, describe, expect, it } from "vitest";
 

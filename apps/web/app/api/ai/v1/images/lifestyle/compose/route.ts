@@ -3,7 +3,7 @@ import {
   composeLifestyleImagePrompt,
   type LifestyleReferenceImageInput,
 } from "@/lib/ai/image-generation/lifestyle-composer";
-import type { ImageGenerationRequest } from "@openloomi/ai/agent";
+import type { ImageGenerationRequest } from "@melandlabs/ai/agent";
 
 export const runtime = "nodejs";
 

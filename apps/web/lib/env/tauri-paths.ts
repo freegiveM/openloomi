@@ -1,1 +1,1 @@
-export * from "@openloomi/env-config/tauri-paths";
+export * from "@melandlabs/env-config/tauri-paths";

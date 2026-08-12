@@ -1,5 +1,5 @@
 import { auth } from "@/app/(auth)/auth";
-import { AppError } from "@openloomi/shared/errors";
+import { AppError } from "@melandlabs/shared/errors";
 import { writeFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { existsSync } from "node:fs";

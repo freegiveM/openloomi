@@ -12,13 +12,13 @@ import {
   runMemoryGraphCorrection as runTrustedMemoryGraphCorrection,
   runMemoryGraphRollback as runTrustedMemoryGraphRollback,
   storeRawMessagesWithGraphEvolution,
-} from "@openloomi/indexeddb";
+} from "@melandlabs/indexeddb";
 import {
   type MemoryGraphSnapshot,
   type OwnerScope,
   buildGraphAwareRetrievalDryRun,
   buildMemoryGraphCorrectionPlan,
-} from "@openloomi/memory-consolidation";
+} from "@melandlabs/memory-consolidation";
 import { describe, expect, it } from "vitest";
 
 const NOW = 1_700_000_000_000;
@@ -128,7 +128,7 @@ class GovernanceRuntimeTestManager {
 
   async storeMessage(message: RawMessage): Promise<number> {
     if (
-      message.content === "OpenLoomi internal memory graph ledger" &&
+      message.content === "OpenContext internal memory graph ledger" &&
       this.failLedgerWrites > 0
     ) {
       this.failLedgerWrites -= 1;

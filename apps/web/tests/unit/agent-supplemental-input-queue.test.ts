@@ -2,11 +2,8 @@ import {
   type AgentSupplementalInputEnqueueResult,
   AgentSupplementalInputQueue,
   AgentSupplementalInputQueueError,
-} from "@openloomi/ai/agent/supplemental-input";
-import type {
-  AgentSupplementalInput,
-  AgentSupplementalInputIntent,
-} from "@openloomi/ai/agent/types";
+} from "@melandlabs/ai/agent/supplemental-input";
+import type { AgentSupplementalInput, AgentSupplementalInputIntent } from "@/lib/ai/agent/types-shim";
 import { describe, expect, it, vi } from "vitest";
 
 const CREATED_AT = "2026-07-20T00:00:00.000Z";

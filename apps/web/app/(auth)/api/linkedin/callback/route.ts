@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { decryptToken } from "@openloomi/security/token-encryption";
+import { decryptToken } from "@melandlabs/security/token-encryption";
 import { getApplicationBaseUrl } from "@/lib/env";
 import {
   getIntegrationAccountByPlatform,
@@ -10,7 +10,7 @@ import {
   createBot,
   updateBot,
 } from "@/lib/db/queries";
-import { AppError } from "@openloomi/shared/errors";
+import { AppError } from "@melandlabs/shared/errors";
 
 type LinkedInStatePayload = {
   userId: string;

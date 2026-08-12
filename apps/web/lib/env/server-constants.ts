@@ -4,7 +4,7 @@
  */
 
 import { join } from "node:path";
-import { DEV_PORT, PROD_PORT } from "@openloomi/shared";
+import { DEV_PORT, PROD_PORT } from "@melandlabs/shared";
 
 // Re-export deployment mode and database type from constants
 export { DEPLOYMENT_MODE, DATABASE_TYPE } from "@/lib/env/constants";

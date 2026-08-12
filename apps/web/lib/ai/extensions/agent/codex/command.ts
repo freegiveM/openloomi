@@ -3,7 +3,7 @@ import { StringDecoder } from "node:string_decoder";
 
 import spawn from "cross-spawn";
 
-import type { AgentOptions } from "@openloomi/ai/agent/types";
+import type { AgentOptions } from "@melandlabs/ai/agent";
 import {
   MAX_CLI_PROTOCOL_LINE_CHARS,
   appendCapturedCliOutput,

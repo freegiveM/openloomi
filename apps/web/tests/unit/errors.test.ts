@@ -2,7 +2,7 @@ import {
   AppError,
   getMessageByErrorCode,
   isTelegramAuthIssue,
-} from "@openloomi/shared/errors";
+} from "@melandlabs/shared/errors";
 import { describe, expect, it, vi } from "vitest";
 
 describe("errors", () => {

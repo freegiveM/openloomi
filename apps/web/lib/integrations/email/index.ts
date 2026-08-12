@@ -4,21 +4,21 @@ import { createTransport } from "nodemailer";
 import type { SentMessageInfo } from "nodemailer";
 import type { Attachment as NodemailerAttachment } from "nodemailer/lib/mailer";
 import { Buffer } from "node:buffer";
-import { MessagePlatformAdapter } from "@openloomi/integrations/channels";
+import { MessagePlatformAdapter } from "@melandlabs/integrations-channels";
 import type {
   Messages,
   Message,
   Image,
-} from "@openloomi/integrations/channels";
+} from "@melandlabs/integrations-channels";
 import {
   type MessageEvent,
   type MessageTarget,
   PrivateMessageEvent,
-} from "@openloomi/integrations/channels";
+} from "@melandlabs/integrations-channels";
 import { type AddressObject, type ParsedMail, simpleParser } from "mailparser";
-import type { Attachment } from "@openloomi/shared";
+import type { Attachment } from "@melandlabs/shared";
 import { ingestAttachmentForUser } from "@/lib/integrations/utils/attachments";
-import type { UserType } from "@openloomi/contracts/user-type";
+import type { UserType } from "@melandlabs/contracts/user-type";
 import {
   formatTimingError,
   shouldLogTimingEvent,
@@ -29,13 +29,13 @@ import {
   buildSnippet,
   cleanupMarkdown,
   htmlToPlainText,
-} from "@openloomi/integrations/utils";
+} from "@melandlabs/integrations/utils";
 
 export {
   stripQuotedText,
   isBoilerplate,
   buildSnippet,
-} from "@openloomi/integrations/utils";
+} from "@melandlabs/integrations/utils";
 export { isPromotionalEmail };
 
 const logger = createLogger("EmailAdapterFetch");
@@ -1433,7 +1433,7 @@ export class EmailAdapter extends MessagePlatformAdapter {
 
     if ("nodes" in message) {
       return message.nodes
-        .map((node) => this.messageToPlainText(node as Message))
+        .map((node) => this.messageToPlainText(node as unknown as Message))
         .join("");
     }
 

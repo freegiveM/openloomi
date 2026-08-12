@@ -1,5 +1,5 @@
-// Extended translations - adds missing keys to @openloomi/i18n
-import baseZh from "@openloomi/i18n/locales/zh-Hans";
+// Extended translations - adds missing keys to @melandlabs/i18n
+import baseZh from "@melandlabs/i18n/locales/zh-Hans";
 
 const zh = {
   ...baseZh,

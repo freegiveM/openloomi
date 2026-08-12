@@ -4,7 +4,7 @@ import { getDocument } from "@/lib/ai/rag/langchain-service";
 import { getAuthUser } from "@/lib/auth/dual-auth";
 import { isTauriMode } from "@/lib/env";
 import { fileExists, readFile } from "@/lib/storage";
-import { fetchWithSSRFProtection } from "@openloomi/security/url-validator";
+import { fetchWithSSRFProtection } from "@melandlabs/security/url-validator";
 
 /**
  * Infer content type from filename extension.

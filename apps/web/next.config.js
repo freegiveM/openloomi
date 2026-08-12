@@ -19,24 +19,24 @@ const nextConfig = {
   // in Next.js SWC compilation so we can directly import its CDN utility modules and protocol types
   transpilePackages: [
     "@tencent-weixin/openclaw-weixin",
-    "@openloomi/shared",
-    "@openloomi/indexeddb",
-    "@openloomi/sqlite",
-    "@openloomi/insights",
-    "@openloomi/ai",
-    "@openloomi/integrations",
-    "@openloomi/hooks",
-    "@openloomi/mcp",
-    "@openloomi/rss",
-    "@openloomi/search",
-    "@openloomi/search/brave",
-    "@openloomi/ai/agent/sandbox",
-    "@openloomi/ai/agent/sandbox/types",
-    "@openloomi/ai/agent/sandbox/plugin",
-    "@openloomi/ai/agent/sandbox/registry",
-    "@openloomi/ai/agent/sandbox/providers/native",
-    "@openloomi/ai/agent/sandbox/providers/claude",
-    "@openloomi/ai/agent/sandbox/providers/vercel",
+    "@melandlabs/shared",
+    "@melandlabs/indexeddb",
+    "@melandlabs/sqlite",
+    "@melandlabs/insights",
+    "@melandlabs/ai",
+    "@melandlabs/integrations",
+    "@melandlabs/hooks",
+    "@melandlabs/mcp",
+    "@melandlabs/rss",
+    "@melandlabs/search",
+    "@melandlabs/search/brave",
+    "@melandlabs/ai/agent/sandbox",
+    "@melandlabs/ai/agent/sandbox/types",
+    "@melandlabs/ai/agent/sandbox/plugin",
+    "@melandlabs/ai/agent/sandbox/registry",
+    "@melandlabs/ai/agent/sandbox/providers/native",
+    "@melandlabs/ai/agent/sandbox/providers/claude",
+    "@melandlabs/ai/agent/sandbox/providers/vercel",
   ],
 
   // Output mode: Tauri production builds need standalone mode to support API routes
@@ -254,7 +254,7 @@ const nextConfig = {
       ];
     } else {
       // Suppress client-side warnings for chromadb (still pulled into the
-      // client bundle transitively via @openloomi/rag re-exports) and
+      // client bundle transitively via @melandlabs/rag re-exports) and
       // sqlite-vec (referenced by server-only code paths).
       config.ignoreWarnings = [
         {

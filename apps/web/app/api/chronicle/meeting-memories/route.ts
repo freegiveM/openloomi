@@ -1,5 +1,5 @@
 import { auth } from "@/app/(auth)/auth";
-import { AppError } from "@openloomi/shared/errors";
+import { AppError } from "@melandlabs/shared/errors";
 import { getUserInsightSettings } from "@/lib/db/queries";
 import { NextResponse } from "next/server";
 import { z } from "zod";

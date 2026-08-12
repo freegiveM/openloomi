@@ -3,7 +3,7 @@ import {
   TokenEncryption,
   decryptToken,
   encryptToken,
-} from "@openloomi/security/token-encryption";
+} from "@melandlabs/security/token-encryption";
 import { expect, test } from "vitest";
 
 const generateValidFernetKey = () => {

@@ -4,7 +4,7 @@ import {
   type RuntimeInstruction,
   type RuntimeInstructionTransportPort,
   formatRuntimeInstruction,
-} from "@openloomi/ai/agent/runtime-instructions";
+} from "@melandlabs/ai/agent/runtime-instructions";
 import { describe, expect, it } from "vitest";
 
 import { GoalServiceError } from "@/lib/ai/runtime-instructions/goal-service";
@@ -511,7 +511,7 @@ describe("in-memory Goal runtime application", () => {
           id: "openloomi-context",
           kind: "project",
           refId: "project-176",
-          origin: "openloomi",
+          origin: "opencontext",
           sourceRef: "project:176",
         },
       }),
@@ -538,7 +538,7 @@ describe("in-memory Goal runtime application", () => {
       },
     });
     expect(formatRuntimeInstruction(upserted.instruction)).toContain(
-      '<openloomi_untrusted_context context_id="jira-176"',
+      '<opencontext_untrusted_context context_id="jira-176"',
     );
 
     await expect(
@@ -704,7 +704,7 @@ describe("in-memory Goal runtime application", () => {
       id: "privacy-policy-context",
       kind: "document",
       refId: "privacy-v3",
-      origin: "openloomi",
+      origin: "opencontext",
       sourceRef: policySource.sourceRef,
     } as const;
     const policyUpsert = await runtime.goals.upsertContext({

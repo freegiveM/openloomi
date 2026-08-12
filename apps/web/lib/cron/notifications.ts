@@ -18,7 +18,7 @@
  * job status update or the next scheduler tick on a slow pet POST.
  */
 
-import { DEV_PORT, PROD_PORT } from "@openloomi/shared";
+import { DEV_PORT, PROD_PORT } from "@melandlabs/shared";
 import { readPreferences } from "@/lib/loop/preferences";
 
 export interface CronCompletionNotifyResult {
@@ -41,7 +41,7 @@ function isLoopHandler(handlerName?: string): boolean {
  * Resolve the local pet-state endpoint. The cron executor runs *inside*
  * the Next.js process that also serves `/api/pet/state`, so it's always
  * on the same loopback host:port. Port mirrors `@/lib/loop/runner`:
- * `PORT` env first, else the dev/prod default from `@openloomi/shared`.
+ * `PORT` env first, else the dev/prod default from `@melandlabs/shared`.
  */
 function resolvePetStateUrl(): string {
   const port =

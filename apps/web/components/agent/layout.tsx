@@ -1,6 +1,6 @@
 "use client";
 
-import { useIsMobile } from "@openloomi/hooks/use-is-mobile";
+import { useIsMobile } from "@melandlabs/hooks/use-is-mobile";
 import { cn } from "@/lib/utils";
 import { useSearchParams } from "next/navigation";
 import type { ReactNode } from "react";

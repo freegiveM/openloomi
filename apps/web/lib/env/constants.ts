@@ -5,7 +5,7 @@
  * For server-only constants (SQLITE_DB_PATH, TAURI_SERVER_*, etc.),
  * use @/lib/env/server-constants instead.
  */
-import { DEV_PORT, PROD_PORT } from "@openloomi/shared";
+import { DEV_PORT, PROD_PORT } from "@melandlabs/shared";
 
 export type DeploymentMode = "tauri" | "server";
 export type DatabaseType = "postgres" | "sqlite";

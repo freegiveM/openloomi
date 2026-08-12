@@ -9,8 +9,8 @@ import {
   parsePlanFromResponse,
   parsePlanningResponse,
   PLANNING_INSTRUCTION,
-} from "@openloomi/ai/agent";
-import type { AgentPlugin } from "@openloomi/ai/agent/plugin";
+} from "@melandlabs/ai/agent";
+import type { AgentPlugin } from "@melandlabs/ai/agent";
 import type {
   AgentConfig,
   AgentMessage,
@@ -18,7 +18,7 @@ import type {
   AgentProvider,
   ExecuteOptions,
   PlanOptions,
-} from "@openloomi/ai/agent/types";
+} from "@melandlabs/ai/agent";
 
 import {
   buildOpenCodeRunCommand,

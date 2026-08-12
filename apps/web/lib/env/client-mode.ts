@@ -1,1 +1,1 @@
-export * from "@openloomi/env-config/client-mode";
+export * from "@melandlabs/env-config/client-mode";

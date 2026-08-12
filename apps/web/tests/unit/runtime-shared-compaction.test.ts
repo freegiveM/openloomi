@@ -3,13 +3,19 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@/lib/db/queries", () => ({
   getUserTypeForService: vi.fn(),
   getUserInsightSettings: vi.fn(),
+  // `handleAgentRuntime` resolves the active LLM provider config,
+  // which calls `getUserLlmApiSettingWithApiKey`. Returning a
+  // `vi.fn()` here lets the test fail through the normal catch
+  // path inside `shared.ts` instead of bubbling an unhandled
+  // vitest-mock error that crashes the worker on Node 24.
+  getUserLlmApiSettingWithApiKey: vi.fn(),
 }));
 
 vi.mock("@/lib/ai/runtime/register-plugins", () => ({
   registerPlugins: vi.fn(),
 }));
 
-vi.mock("@openloomi/ai/store", () => ({
+vi.mock("@melandlabs/ai/store", () => ({
   saveCompactionSummary: vi.fn(),
 }));
 
@@ -18,11 +24,8 @@ vi.mock("@/lib/ai", () => ({
   triggerCompactionAsync: vi.fn(),
 }));
 
-vi.mock("@openloomi/ai/agent", () => ({
+vi.mock("@melandlabs/ai/agent", () => ({
   sanitizeCompactionMessages: vi.fn(),
-}));
-
-vi.mock("@openloomi/ai/agent/registry", () => ({
   getAgentRegistry: vi.fn(),
 }));
 
@@ -32,8 +35,8 @@ import {
   getUserInsightSettings,
   getUserTypeForService,
 } from "@/lib/db/queries";
-import { sanitizeCompactionMessages } from "@openloomi/ai/agent";
-import { getAgentRegistry } from "@openloomi/ai/agent/registry";
+import { sanitizeCompactionMessages } from "@melandlabs/ai/agent";
+import { getAgentRegistry } from "@melandlabs/ai/agent";
 
 function createDoneOnlyGenerator() {
   return (async function* () {

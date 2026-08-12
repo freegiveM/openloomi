@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { auth } from "@/app/(auth)/auth";
-import { decryptToken } from "@openloomi/security/token-encryption";
+import { decryptToken } from "@melandlabs/security/token-encryption";
 import { getApplicationBaseUrl } from "@/lib/env";
 import {
   getIntegrationAccountByPlatform,
@@ -11,7 +11,7 @@ import {
   createBot,
   updateBot,
 } from "@/lib/db/queries";
-import { AppError } from "@openloomi/shared/errors";
+import { AppError } from "@melandlabs/shared/errors";
 
 type InstagramStatePayload = {
   userId: string;

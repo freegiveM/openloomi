@@ -1,7 +1,7 @@
 /**
  * Back-compat re-export of the unified semantic search façade.
  *
- * The implementation now lives in `@openloomi/memory-store`. This
+ * The implementation now lives in `@melandlabs/memory-store`. This
  * file is kept as the import path that the rest of the web app uses
  * (`@/lib/memory/unified-search`) so existing route handlers,
  * MCP tools, and tests don't need to change their imports.
@@ -10,7 +10,7 @@
  * wires up the host-specific embedder + RAG + insights searchers.
  */
 
-import { isRawMessageStorageAvailable } from "@openloomi/memory-store/raw-message-store";
+import { isRawMessageStorageAvailable } from "@melandlabs/memory-store/raw-message-store";
 
 export {
   searchUnifiedMemory,
@@ -24,14 +24,14 @@ export {
   toKnowledgeResult,
   toMemoryResult,
   isRawMemorySemanticResult,
-} from "@openloomi/memory-store/unified-search";
+} from "@melandlabs/memory-store/unified-search";
 export type {
   UnifiedMemorySearchInput,
   UnifiedMemorySearchOutput,
   UnifiedMemorySearchResult,
   UnifiedMemorySearchSource,
   UnifiedMemorySearchWarning,
-} from "@openloomi/memory-store/unified-search";
+} from "@melandlabs/memory-store/unified-search";
 
 // Keep `isRawMessageStorageAvailable` available via the old path so
 // callers like the API routes keep working.

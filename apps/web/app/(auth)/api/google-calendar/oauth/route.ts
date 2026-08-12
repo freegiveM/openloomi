@@ -3,9 +3,9 @@ import { google } from "googleapis";
 import { NextResponse } from "next/server";
 
 import { auth } from "@/app/(auth)/auth";
-import { encryptToken } from "@openloomi/security/token-encryption";
+import { encryptToken } from "@melandlabs/security/token-encryption";
 import { getApplicationBaseUrl } from "@/lib/env";
-import { GOOGLE_CALENDAR_SCOPES } from "@openloomi/integrations/calendar";
+import { GOOGLE_CALENDAR_SCOPES } from "@melandlabs/integrations-calendar";
 
 export async function GET() {
   const session = await auth();

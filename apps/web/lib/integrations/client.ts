@@ -1,6 +1,6 @@
 "use client";
 
-import type { IntegrationId } from "@openloomi/contracts/integration-id";
+import type { IntegrationId } from "@melandlabs/contracts/integration-id";
 
 export type { IntegrationId };
 

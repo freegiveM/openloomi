@@ -8,7 +8,7 @@ import { RemixIcon } from "@/components/remix-icon";
 import { Button, ScrollArea } from "@openloomi/ui";
 import { cn } from "@/lib/utils";
 import { useUserProfile } from "@/hooks/use-user-profile";
-import { useIsMobile } from "@openloomi/hooks/use-is-mobile";
+import { useIsMobile } from "@melandlabs/hooks/use-is-mobile";
 import { UserMenuContent } from "@/components/user-menu-content";
 
 /**

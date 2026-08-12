@@ -1,4 +1,4 @@
-import type { AgentMessage } from "@openloomi/ai/agent/types";
+import type { AgentMessage } from "@melandlabs/ai/agent";
 
 /**
  * Parse a single NDJSON line from `codex exec --json` into one or more

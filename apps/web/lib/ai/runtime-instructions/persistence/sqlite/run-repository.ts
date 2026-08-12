@@ -5,7 +5,7 @@ import {
   type AgentGoalRun,
   type GoalEvaluationResult,
   type GoalRunStatus,
-} from "@openloomi/ai/agent/runtime-instructions";
+} from "@melandlabs/ai/agent/runtime-instructions";
 
 import { persistenceConflict } from "../errors";
 import { isTerminalGoalRunStatus } from "../goal-run-state";
