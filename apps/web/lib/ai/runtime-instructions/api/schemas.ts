@@ -116,6 +116,14 @@ export const UpdateGoalRequestSchema = z
   })
   .strict();
 
+export const ResumeGoalRequestSchema = z
+  .object({
+    runtimeSessionId: identifierSchema,
+    expectedRevision: z.int().positive(),
+    reason: z.string().trim().min(1).max(4_000).optional(),
+  })
+  .strict();
+
 export const UpsertGoalContextRequestSchema = z
   .object({
     runtimeSessionId: identifierSchema,
@@ -139,6 +147,7 @@ export const GoalIdSchema = z.uuid();
 
 export type ActivateGoalRequest = z.output<typeof ActivateGoalRequestSchema>;
 export type UpdateGoalRequest = z.output<typeof UpdateGoalRequestSchema>;
+export type ResumeGoalRequest = z.output<typeof ResumeGoalRequestSchema>;
 export type UpsertGoalContextRequest = z.output<
   typeof UpsertGoalContextRequestSchema
 >;

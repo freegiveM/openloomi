@@ -9,7 +9,10 @@ import {
   type RuntimeInstructionTransportPort,
 } from "@openloomi/ai/agent/runtime-instructions";
 import { AgentSupplementalInputQueue } from "@openloomi/ai/agent/supplemental-input";
-import type { AgentSupplementalInputSource } from "@openloomi/ai/agent/types";
+import type {
+  AgentRuntimeRecovery,
+  AgentSupplementalInputSource,
+} from "@openloomi/ai/agent/types";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -18,9 +21,11 @@ import {
   ClaudeGoalRuntimeRegistrationError,
   ClaudeInputMultiplexer,
   ClaudeRuntimeSession,
+  createClaudeRecoveryInitialPrompt,
   createClaudeSupplementalInputHooks,
   startClaudeGoalRuntimeSession,
 } from "@/lib/ai/extensions/agent/claude/runtime";
+import { CLAUDE_API_ERROR_SENTINEL } from "@/lib/ai/extensions/agent/claude/message-converter";
 import { createInMemoryAgentGoalRuntime } from "@/lib/ai/runtime-instructions/runtime";
 import {
   createControlledClaudeQuery,
@@ -48,6 +53,18 @@ function assistantMessage(text: string): SDKMessage {
     type: "assistant",
     message: { content: [{ type: "text", text }] },
   } as SDKMessage;
+}
+
+function apiErrorAssistantMessage(): SDKMessage {
+  return {
+    type: "assistant",
+    isApiErrorMessage: true,
+    error: "unknown",
+    message: {
+      model: "<synthetic>",
+      content: [{ type: "text", text: "API Error: Content block not found" }],
+    },
+  } as unknown as SDKMessage;
 }
 
 function resultMessage(overrides: Record<string, unknown> = {}): SDKMessage {
@@ -105,7 +122,7 @@ describe("Claude Goal runtime registration", () => {
       goalRuntime.sessions.resolve("authenticated-owner", SESSION_ID),
     ).resolves.toBe(runtime);
 
-    registration?.release();
+    await registration?.release();
     await expect(
       goalRuntime.sessions.resolve("authenticated-owner", SESSION_ID),
     ).resolves.toBeNull();
@@ -309,6 +326,250 @@ describe("Claude Goal runtime registration", () => {
     expect(matchingEpochSdk.queryInput).toBeUndefined();
     expect(matchingEpochRuntime.state).toBe("closed");
   });
+
+  it("recovers a persisted epoch only after Claude confirms the expected provider session", async () => {
+    const handle = createControlledClaudeQuery();
+    const sdk = createFakeClaudeSdkTransport(handle);
+    const runtime = new ClaudeRuntimeSession({
+      runtimeSessionId: SESSION_ID,
+      runEpoch: 4,
+      expectedProviderSessionId: "claude-provider-session",
+      sdkTransport: sdk.transport,
+      logger: logger(),
+      createMessageId: () => "message-id",
+    });
+    const goalRuntime = createInMemoryAgentGoalRuntime();
+    vi.spyOn(goalRuntime.goals, "getRuntimeSessionRunEpoch").mockResolvedValue(
+      4,
+    );
+    const replay = vi.spyOn(goalRuntime.goals, "replayPendingInstructions");
+    const initializeRecoveredProgress = vi.spyOn(
+      goalRuntime.dispatcher,
+      "initializeRecoveredProgress",
+    );
+    let continuationResult: unknown;
+    const initialized = vi.fn(
+      async (
+        context: Parameters<
+          NonNullable<AgentRuntimeRecovery["onProviderSessionInitialized"]>
+        >[0],
+      ) => {
+        continuationResult = await context.continueGoal();
+      },
+    );
+    const captureContext = vi.spyOn(goalRuntime.observations, "captureContext");
+
+    const registrationPromise = startClaudeGoalRuntimeSession({
+      session: { user: { id: "authenticated-owner" } },
+      runtime,
+      start: {
+        initialPrompt: createClaudeRecoveryInitialPrompt(),
+        queryOptions: { resume: "claude-provider-session" },
+      },
+      goalRuntime,
+      recovery: {
+        instructionSettlements: [],
+        onProviderSessionInitialized: initialized,
+      },
+    });
+
+    await vi.waitFor(() => expect(sdk.queryInput).toBeDefined());
+    expect(registrationPromise).toBeInstanceOf(Promise);
+    const prompt = sdk.queryInput?.prompt as AsyncIterable<SDKUserMessage>;
+    const input = prompt[Symbol.asyncIterator]();
+    await expect(input.next()).resolves.toMatchObject({
+      value: {
+        type: "user",
+        message: { role: "user", content: "" },
+        isSynthetic: true,
+        shouldQuery: false,
+      },
+      done: false,
+    });
+    await expect(
+      goalRuntime.sessions.resolve("authenticated-owner", SESSION_ID),
+    ).resolves.toBeNull();
+    expect(initializeRecoveredProgress).not.toHaveBeenCalled();
+    expect(replay).not.toHaveBeenCalled();
+    expect(initialized).not.toHaveBeenCalled();
+
+    handle.push(initMessage());
+
+    const registration = await registrationPromise;
+    expect(runtime.runEpoch).toBe(4);
+    await expect(
+      goalRuntime.sessions.resolve("authenticated-owner", SESSION_ID),
+    ).resolves.toBe(runtime);
+    expect(initializeRecoveredProgress).toHaveBeenCalledWith({
+      ownerId: "authenticated-owner",
+      runtimeSessionId: SESSION_ID,
+      transport: runtime,
+      settlements: [],
+    });
+    expect(replay).toHaveBeenCalledWith("authenticated-owner", SESSION_ID);
+    expect(
+      initializeRecoveredProgress.mock.invocationCallOrder[0],
+    ).toBeLessThan(replay.mock.invocationCallOrder[0]);
+    expect(initialized).toHaveBeenCalledWith(
+      expect.objectContaining({
+        runtimeSessionId: SESSION_ID,
+        providerSessionId: "claude-provider-session",
+        runEpoch: 4,
+        continueGoal: expect.any(Function),
+        finalizeGoalWithoutContinuation: expect.any(Function),
+      }),
+    );
+    expect(captureContext).toHaveBeenCalledWith({
+      ownerId: "authenticated-owner",
+      runtimeSessionId: SESSION_ID,
+      runEpoch: 4,
+    });
+    expect(continuationResult).toEqual({
+      decision: "allow",
+      outcome: "no_active_goal",
+    });
+
+    await registration?.release();
+    await runtime.close();
+  });
+
+  it("uses the recovery claim as the synthetic evaluation boundary across restarts", async () => {
+    const goalRuntime = createInMemoryAgentGoalRuntime();
+    vi.spyOn(goalRuntime.goals, "getRuntimeSessionRunEpoch").mockResolvedValue(
+      4,
+    );
+    const assistantTurnIds: string[] = [];
+    const finalizationIds: string[] = [];
+    vi.spyOn(goalRuntime.controller, "forSession").mockImplementation(() => ({
+      evaluateStop: async (input) => {
+        assistantTurnIds.push(input.assistantTurnId);
+        return { decision: "allow", outcome: "no_active_goal" };
+      },
+      finalizeWithoutContinuation: async (input) => {
+        finalizationIds.push(input.evaluationId);
+        return { decision: "allow", outcome: "no_active_goal" };
+      },
+    }));
+
+    for (const recoveryLeaseToken of ["recovery-claim-a", "recovery-claim-b"]) {
+      const handle = createControlledClaudeQuery();
+      const sdk = createFakeClaudeSdkTransport(handle);
+      const runtime = new ClaudeRuntimeSession({
+        runtimeSessionId: SESSION_ID,
+        runEpoch: 4,
+        expectedProviderSessionId: "claude-provider-session",
+        sdkTransport: sdk.transport,
+        logger: logger(),
+        createMessageId: () => "message-id",
+      });
+      const initialized = vi.fn(
+        async (
+          context: Parameters<
+            NonNullable<AgentRuntimeRecovery["onProviderSessionInitialized"]>
+          >[0],
+        ) => {
+          await context.continueGoal();
+          await context.finalizeGoalWithoutContinuation?.();
+        },
+      );
+      const registrationPromise = startClaudeGoalRuntimeSession({
+        session: { user: { id: "authenticated-owner" } },
+        runtime,
+        start: {
+          initialPrompt: createClaudeRecoveryInitialPrompt(),
+          queryOptions: { resume: "claude-provider-session" },
+        },
+        goalRuntime,
+        recovery: {
+          recoveryLeaseToken,
+          instructionSettlements: [],
+          onProviderSessionInitialized: initialized,
+        },
+      });
+
+      await vi.waitFor(() => expect(sdk.queryInput).toBeDefined());
+      handle.push(initMessage());
+      const registration = await registrationPromise;
+      expect(initialized).toHaveBeenCalledOnce();
+      await registration?.release();
+      await runtime.close();
+    }
+
+    expect(assistantTurnIds).toEqual([
+      `recovery:${SESSION_ID}:4:recovery-claim-a`,
+      `recovery:${SESSION_ID}:4:recovery-claim-b`,
+    ]);
+    expect(finalizationIds).toEqual([
+      `recovery-terminal:${SESSION_ID}:4:recovery-claim-a`,
+      `recovery-terminal:${SESSION_ID}:4:recovery-claim-b`,
+    ]);
+  });
+
+  it("fails recovery before registration or replay when Claude resumes a different provider session", async () => {
+    const handle = createControlledClaudeQuery();
+    const sdk = createFakeClaudeSdkTransport(handle);
+    const runtime = new ClaudeRuntimeSession({
+      runtimeSessionId: SESSION_ID,
+      runEpoch: 4,
+      expectedProviderSessionId: "expected-provider-session",
+      sdkTransport: sdk.transport,
+      logger: logger(),
+      createMessageId: () => "message-id",
+    });
+    const goalRuntime = createInMemoryAgentGoalRuntime();
+    vi.spyOn(goalRuntime.goals, "getRuntimeSessionRunEpoch").mockResolvedValue(
+      4,
+    );
+    const replay = vi.spyOn(goalRuntime.goals, "replayPendingInstructions");
+    const initializeRecoveredProgress = vi.spyOn(
+      goalRuntime.dispatcher,
+      "initializeRecoveredProgress",
+    );
+    const initialized = vi.fn();
+
+    const registrationPromise = startClaudeGoalRuntimeSession({
+      session: { user: { id: "authenticated-owner" } },
+      runtime,
+      start: {
+        initialPrompt: createClaudeRecoveryInitialPrompt(),
+        queryOptions: { resume: "expected-provider-session" },
+      },
+      goalRuntime,
+      recovery: {
+        instructionSettlements: [],
+        onProviderSessionInitialized: initialized,
+      },
+    });
+
+    await vi.waitFor(() => expect(sdk.queryInput).toBeDefined());
+    const prompt = sdk.queryInput?.prompt as AsyncIterable<SDKUserMessage>;
+    await expect(prompt[Symbol.asyncIterator]().next()).resolves.toMatchObject({
+      value: {
+        message: { content: "" },
+        isSynthetic: true,
+        shouldQuery: false,
+      },
+      done: false,
+    });
+    await expect(
+      goalRuntime.sessions.resolve("authenticated-owner", SESSION_ID),
+    ).resolves.toBeNull();
+
+    handle.push({
+      ...initMessage(),
+      session_id: "different-provider-session",
+    } as SDKMessage);
+
+    await expect(registrationPromise).rejects.toMatchObject({
+      code: "provider_session_mismatch",
+    });
+    expect(goalRuntime.sessions.size).toBe(0);
+    expect(initializeRecoveredProgress).not.toHaveBeenCalled();
+    expect(replay).not.toHaveBeenCalled();
+    expect(initialized).not.toHaveBeenCalled();
+    expect(runtime.claudeSessionId).toBeUndefined();
+    expect(runtime.state).toBe("closed");
+  });
 });
 
 describe("ClaudeRuntimeSession", () => {
@@ -353,6 +614,211 @@ describe("ClaudeRuntimeSession", () => {
     await session.close();
     expect(handle.close).toHaveBeenCalledOnce();
     expect(session.state).toBe("closed");
+  });
+
+  it("waits for normal output observation to finish before closing", async () => {
+    const handle = createControlledClaudeQuery();
+    const sdk = createFakeClaudeSdkTransport(handle);
+    let finishObservation!: () => void;
+    const observationPending = new Promise<void>((resolve) => {
+      finishObservation = resolve;
+    });
+    const observeSdkMessage = vi.fn(() => observationPending);
+    const session = new ClaudeRuntimeSession({
+      runtimeSessionId: SESSION_ID,
+      runEpoch: 0,
+      sdkTransport: sdk.transport,
+      logger: logger(),
+      createMessageId: () => "message-id",
+    });
+    session.attachEventObserver({
+      instructionWritten: vi.fn(async () => {}),
+      captureTurnContexts: vi.fn(async () => []),
+      observeSdkMessage,
+      observeStopAssistantReport: vi.fn(async () => {}),
+      captureToolStart: vi.fn(async () => {}),
+      observeToolOutcome: vi.fn(async () => {}),
+      flush: vi.fn(async () => {}),
+    });
+    session.start({ initialPrompt: "initial request" });
+    handle.push(initMessage());
+    await vi.waitFor(() => expect(observeSdkMessage).toHaveBeenCalledOnce());
+
+    let closed = false;
+    const closePromise = session.close().then(() => {
+      closed = true;
+    });
+    await Promise.resolve();
+    expect(closed).toBe(false);
+
+    finishObservation();
+    await closePromise;
+    expect(closed).toBe(true);
+    expect(session.state).toBe("closed");
+  });
+
+  it("terminates the Query when Claude emits a synthetic provider API error", async () => {
+    const handle = createControlledClaudeQuery({ hangOnIteratorReturn: true });
+    const sdk = createFakeClaudeSdkTransport(handle);
+    const observeSdkMessage = vi.fn(async () => {});
+    const abortProvider = vi.fn();
+    const session = new ClaudeRuntimeSession({
+      runtimeSessionId: SESSION_ID,
+      runEpoch: 0,
+      sdkTransport: sdk.transport,
+      logger: logger(),
+      createMessageId: () => "message-id",
+      abortProvider,
+    });
+    session.attachEventObserver({
+      instructionWritten: vi.fn(async () => {}),
+      captureTurnContexts: vi.fn(async () => []),
+      observeSdkMessage,
+      observeStopAssistantReport: vi.fn(async () => {}),
+      captureToolStart: vi.fn(async () => {}),
+      observeToolOutcome: vi.fn(async () => {}),
+      flush: vi.fn(async () => {}),
+    });
+    const output = session.subscribe()[Symbol.asyncIterator]();
+    session.start({ initialPrompt: "initial request" });
+
+    handle.push(initMessage());
+    await vi.waitFor(() => expect(observeSdkMessage).toHaveBeenCalledOnce());
+    handle.push(apiErrorAssistantMessage());
+
+    await expect(output.next()).resolves.toMatchObject({
+      value: {
+        type: "error",
+        message: CLAUDE_API_ERROR_SENTINEL,
+        runEpoch: 0,
+      },
+    });
+    await expect(output.next()).resolves.toEqual({
+      value: undefined,
+      done: true,
+    });
+    await vi.waitFor(() => expect(session.state).toBe("failed"));
+    expect(handle.close).toHaveBeenCalledOnce();
+    expect(handle.iteratorReturn).not.toHaveBeenCalled();
+    expect(abortProvider).toHaveBeenCalledOnce();
+    expect(observeSdkMessage).toHaveBeenCalledOnce();
+
+    await session.close();
+    expect(handle.close).toHaveBeenCalledOnce();
+  });
+
+  it("reports an external provider failure once without exposing diagnostics", async () => {
+    const handle = createControlledClaudeQuery({ hangOnIteratorReturn: true });
+    const sdk = createFakeClaudeSdkTransport(handle);
+    const abortProvider = vi.fn();
+    const session = new ClaudeRuntimeSession({
+      runtimeSessionId: SESSION_ID,
+      runEpoch: 4,
+      sdkTransport: sdk.transport,
+      logger: logger(),
+      createMessageId: () => "safe-error-id",
+      abortProvider,
+    });
+    const output = session.subscribe()[Symbol.asyncIterator]();
+    session.start({ initialPrompt: "initial request" });
+
+    expect(session.reportProviderFailure("stderr")).toBe(true);
+    expect(session.reportProviderFailure("session_store")).toBe(false);
+    await expect(output.next()).resolves.toEqual({
+      value: {
+        type: "error",
+        message: CLAUDE_API_ERROR_SENTINEL,
+        messageId: "safe-error-id",
+        runEpoch: 4,
+      },
+      done: false,
+    });
+    await expect(output.next()).resolves.toEqual({
+      value: undefined,
+      done: true,
+    });
+
+    expect(session.state).toBe("failed");
+    expect(abortProvider).toHaveBeenCalledOnce();
+    expect(handle.close).toHaveBeenCalledOnce();
+    expect(handle.iteratorReturn).not.toHaveBeenCalled();
+    await session.close();
+  });
+
+  it("confirms the expected provider session and starts recovery with no original prompt", async () => {
+    const handle = createControlledClaudeQuery();
+    const sdk = createFakeClaudeSdkTransport(handle);
+    const session = new ClaudeRuntimeSession({
+      runtimeSessionId: SESSION_ID,
+      runEpoch: 3,
+      expectedProviderSessionId: "claude-provider-session",
+      sdkTransport: sdk.transport,
+      logger: logger(),
+      createMessageId: () => "message-id",
+    });
+    session.start({ initialPrompt: createClaudeRecoveryInitialPrompt() });
+    const prompt = sdk.queryInput?.prompt as AsyncIterable<SDKUserMessage>;
+    const input = prompt[Symbol.asyncIterator]();
+    await expect(input.next()).resolves.toMatchObject({
+      value: {
+        type: "user",
+        message: { role: "user", content: "" },
+        isSynthetic: true,
+        shouldQuery: false,
+      },
+      done: false,
+    });
+    const firstGoalInput = input.next();
+    const initialized = session.waitUntilProviderSessionInitialized();
+
+    handle.push(initMessage());
+    await expect(initialized).resolves.toBe("claude-provider-session");
+    await session.deliver(runtimeInstruction({ sequence: 1 }));
+    await expect(firstGoalInput).resolves.toMatchObject({
+      value: {
+        message: {
+          content: expect.stringContaining("context.remove"),
+        },
+      },
+    });
+
+    await session.close();
+  });
+
+  it("fails recovery when Claude initializes a different provider session", async () => {
+    const handle = createControlledClaudeQuery();
+    const sdk = createFakeClaudeSdkTransport(handle);
+    const session = new ClaudeRuntimeSession({
+      runtimeSessionId: SESSION_ID,
+      runEpoch: 1,
+      expectedProviderSessionId: "expected-provider-session",
+      sdkTransport: sdk.transport,
+      logger: logger(),
+      createMessageId: () => "message-id",
+    });
+    session.start({ initialPrompt: createClaudeRecoveryInitialPrompt() });
+    const prompt = sdk.queryInput?.prompt as AsyncIterable<SDKUserMessage>;
+    await expect(prompt[Symbol.asyncIterator]().next()).resolves.toMatchObject({
+      value: {
+        message: { content: "" },
+        isSynthetic: true,
+        shouldQuery: false,
+      },
+      done: false,
+    });
+    const initialized = session.waitUntilProviderSessionInitialized();
+
+    handle.push({
+      ...initMessage(),
+      session_id: "different-provider-session",
+    } as SDKMessage);
+
+    await expect(initialized).rejects.toMatchObject({
+      code: "provider_session_mismatch",
+    });
+    await vi.waitFor(() => expect(session.state).toBe("failed"));
+    expect(session.claudeSessionId).toBeUndefined();
+    await session.close();
   });
 
   it("delivers formatted instructions through its live input channel and interrupts the Query", async () => {

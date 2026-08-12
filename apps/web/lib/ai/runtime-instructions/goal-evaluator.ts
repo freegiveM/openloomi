@@ -40,6 +40,12 @@ export class GoalEvaluatorError extends Error {
     public readonly code: GoalEvaluatorErrorCode,
     message: string,
     public readonly cause?: unknown,
+    /**
+     * Progress that was already proven by the fenced durable snapshot before
+     * semantic evaluation failed. Callers may persist this as an incomplete
+     * result without inventing or widening evidence associations.
+     */
+    public readonly partialEvaluation?: GoalEvaluationResult,
   ) {
     super(message);
     this.name = "GoalEvaluatorError";
@@ -49,7 +55,7 @@ export class GoalEvaluatorError extends Error {
 export interface GoalSemanticEvaluationInput {
   goal: AgentGoal;
   run: AgentGoalRun;
-  /** Evidence is already fenced to this Goal, Run, and Goal revision. */
+  /** Evidence is already fenced to this Goal, Run, and semantic revision. */
   evidence: GoalEvidence[];
   /** Only unresolved, required model-evidence criteria are delegated. */
   criteria: GoalSuccessCriterion[];
@@ -65,6 +71,7 @@ export interface GoalEvaluatorInput {
   goal: AgentGoal;
   run: AgentGoalRun;
   evidence: GoalEvidence[];
+  evidenceRevisionFloor?: number;
   lastAssistantMessage?: string;
 }
 
@@ -88,11 +95,24 @@ export class GoalEvaluator {
   async evaluate(input: GoalEvaluatorInput): Promise<GoalEvaluationResult> {
     assertSnapshot(input);
 
+    const evidenceRevisionFloor =
+      input.evidenceRevisionFloor ?? input.goal.revision;
+    if (
+      !Number.isInteger(evidenceRevisionFloor) ||
+      evidenceRevisionFloor < 1 ||
+      evidenceRevisionFloor > input.goal.revision
+    ) {
+      throw new GoalEvaluatorError(
+        "invalid_evaluation_snapshot",
+        `Goal evidence revision floor ${evidenceRevisionFloor} is invalid for Goal ${input.goal.id} revision ${input.goal.revision}`,
+      );
+    }
     const evidence = input.evidence.filter(
       (item) =>
         item.goalId === input.goal.id &&
         item.goalRunId === input.run.id &&
-        item.goalRevision === input.goal.revision,
+        item.goalRevision >= evidenceRevisionFloor &&
+        item.goalRevision <= input.goal.revision,
     );
     const availableEvidenceIds = new Set(evidence.map(({ id }) => id));
     const evaluations = input.goal.successCriteria.map((criterion) =>
@@ -156,10 +176,18 @@ export class GoalEvaluator {
       });
     }
 
+    const partialEvaluation = buildResult({
+      goal: input.goal,
+      evaluations,
+      confidence: 0,
+    });
+
     if (!this.semanticEvaluator) {
       throw new GoalEvaluatorError(
         "semantic_evaluator_unavailable",
         "Required model-evidence criteria cannot be evaluated because no semantic evaluator is configured",
+        undefined,
+        partialEvaluation,
       );
     }
 
@@ -182,14 +210,28 @@ export class GoalEvaluator {
         "semantic_evaluator_failed",
         "The semantic Goal evaluator failed",
         cause,
+        partialEvaluation,
       );
     }
 
-    const semantic = validateSemanticEvaluation(
-      candidate,
-      semanticCriteria,
-      evidence,
-    );
+    let semantic: GoalEvaluationResult;
+    try {
+      semantic = validateSemanticEvaluation(
+        candidate,
+        semanticCriteria,
+        evidence,
+      );
+    } catch (error) {
+      if (error instanceof GoalEvaluatorError) {
+        throw new GoalEvaluatorError(
+          error.code,
+          error.message,
+          error.cause,
+          partialEvaluation,
+        );
+      }
+      throw error;
+    }
     const semanticSatisfied = new Set(
       semantic.confidence >= MIN_SEMANTIC_COMPLETION_CONFIDENCE
         ? semantic.satisfiedCriteria
@@ -400,29 +442,81 @@ function validateSemanticEvaluation(
   const availableEvidence = new Set(evidence.map(({ id }) => id));
   const semanticallySatisfied = new Set(result.satisfiedCriteria);
   const evidenceByCriterion = new Map<string, string[]>();
+  const criteriaWithInvalidEvidence = new Set<string>();
+  let ignoredEvidenceAssociation = false;
   for (const association of result.evidence) {
     if (
       !requested.has(association.criterionId) ||
-      !semanticallySatisfied.has(association.criterionId) ||
-      evidenceByCriterion.has(association.criterionId) ||
+      !semanticallySatisfied.has(association.criterionId)
+    ) {
+      ignoredEvidenceAssociation = true;
+      continue;
+    }
+    if (evidenceByCriterion.has(association.criterionId)) {
+      ignoredEvidenceAssociation = true;
+      criteriaWithInvalidEvidence.add(association.criterionId);
+      continue;
+    }
+
+    // Evidence references come from a model and must never widen the
+    // controller's authoritative snapshot. Treat a bad citation as an
+    // unsatisfied criterion instead of terminating the Goal: the cited data is
+    // ignored and a later turn can provide valid, scoped evidence.
+    if (
       new Set(association.evidenceIds).size !==
         association.evidenceIds.length ||
       association.evidenceIds.some((id) => !availableEvidence.has(id))
     ) {
-      throw invalidSemanticEvaluation(
-        "The semantic evaluator referenced evidence outside its delegated snapshot",
-      );
+      ignoredEvidenceAssociation = true;
+      criteriaWithInvalidEvidence.add(association.criterionId);
+      continue;
     }
     evidenceByCriterion.set(association.criterionId, association.evidenceIds);
   }
   for (const criterionId of result.satisfiedCriteria) {
     if ((evidenceByCriterion.get(criterionId)?.length ?? 0) === 0) {
-      throw invalidSemanticEvaluation(
-        `Satisfied semantic criterion ${criterionId} must cite scoped evidence`,
-      );
+      criteriaWithInvalidEvidence.add(criterionId);
     }
   }
-  return result;
+
+  if (
+    criteriaWithInvalidEvidence.size === 0 &&
+    !ignoredEvidenceAssociation
+  ) {
+    return result;
+  }
+
+  const satisfiedCriteria = result.satisfiedCriteria.filter(
+    (criterionId) => !criteriaWithInvalidEvidence.has(criterionId),
+  );
+  const satisfied = new Set(satisfiedCriteria);
+  const missingCriteria = criteria
+    .map(({ id }) => id)
+    .filter((criterionId) => !satisfied.has(criterionId));
+  const downgraded = criteria
+    .map(({ id }) => id)
+    .filter((criterionId) => criteriaWithInvalidEvidence.has(criterionId));
+  const associationReason =
+    downgraded.length > 0
+      ? `Semantic evidence associations were invalid or outside the delegated snapshot; affected criteria remain unsatisfied: ${downgraded.join(", ")}.`
+      : "Invalid semantic evidence associations outside the delegated criteria were ignored.";
+  const reason = [result.reason, associationReason]
+    .join(" ")
+    .slice(0, MAX_REASON_CHARACTERS)
+    .trim();
+
+  return GoalEvaluationResultSchema.parse({
+    ...result,
+    completed: missingCriteria.length === 0,
+    satisfiedCriteria,
+    missingCriteria,
+    evidence: result.evidence.filter(
+      ({ criterionId }) =>
+        satisfied.has(criterionId) &&
+        evidenceByCriterion.has(criterionId),
+    ),
+    reason,
+  });
 }
 
 function buildResult(input: {

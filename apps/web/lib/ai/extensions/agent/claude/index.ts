@@ -9,7 +9,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { arch, homedir, platform } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import {
   createSdkMcpServer,
   query,
@@ -36,6 +36,7 @@ import type {
   AgentMessage,
   AgentOptions,
   AgentProvider,
+  AgentRuntimeRecovery,
   ConversationMessage,
   ExecuteOptions,
   ImageAttachment,
@@ -44,6 +45,7 @@ import type {
   PlanOptions,
 } from "@openloomi/ai/agent/types";
 import { MAX_CONVERSATION_HISTORY_TOKENS } from "@/lib/ai/runtime/shared";
+import type { RuntimeRecoveryDescriptor } from "@/lib/ai/runtime-instructions/runtime-session-persistence";
 import {
   APP_DIR_NAME,
   DEFAULT_API_HOST,
@@ -74,7 +76,10 @@ import {
   getExtendedPath,
   isUsingCustomApi,
 } from "./env";
-import { convertClaudeSdkMessage } from "./message-converter";
+import {
+  CLAUDE_API_ERROR_SENTINEL,
+  convertClaudeSdkMessage,
+} from "./message-converter";
 import {
   attachClaudeMcpServers,
   createClaudeQueryOptions,
@@ -83,6 +88,9 @@ import {
 import {
   claudeAgentSdkTransport,
   ClaudeRuntimeSession,
+  createClaudeRecoveryInitialPrompt,
+  createClaudeProviderFailureSessionStore,
+  isFatalClaudeProviderDiagnostic,
   resolveAuthenticatedGoalRuntimeOwnerId,
   startClaudeGoalRuntimeSession,
 } from "./runtime";
@@ -794,6 +802,104 @@ function resolveClaudeWorkDir({
   return getSessionWorkDir(workDir, prompt, taskId);
 }
 
+function validateClaudeRuntimeRecovery(
+  recovery: AgentRuntimeRecovery | undefined,
+): AgentRuntimeRecovery | undefined {
+  if (!recovery) return undefined;
+
+  for (const [field, value] of [
+    ["runtimeSessionId", recovery.runtimeSessionId],
+    ["providerSessionId", recovery.providerSessionId],
+  ] as const) {
+    if (
+      typeof value !== "string" ||
+      value.length === 0 ||
+      value.length > 256 ||
+      value !== value.trim()
+    ) {
+      throw new TypeError(`${field} must be a non-empty identifier`);
+    }
+  }
+  if (
+    typeof recovery.workingDirectory !== "string" ||
+    recovery.workingDirectory.length === 0 ||
+    recovery.workingDirectory !== recovery.workingDirectory.trim() ||
+    !isAbsolute(recovery.workingDirectory)
+  ) {
+    throw new TypeError("workingDirectory must be an absolute path");
+  }
+  if (!Number.isInteger(recovery.runEpoch) || recovery.runEpoch < 0) {
+    throw new TypeError("runEpoch must be a non-negative integer");
+  }
+  if (
+    recovery.recoveryLeaseToken !== undefined &&
+    (recovery.recoveryLeaseToken.length === 0 ||
+      recovery.recoveryLeaseToken.length > 512 ||
+      recovery.recoveryLeaseToken !== recovery.recoveryLeaseToken.trim())
+  ) {
+    throw new TypeError("recoveryLeaseToken must be a non-empty token");
+  }
+  return recovery;
+}
+
+function createClaudeRuntimeRecoveryDescriptor(
+  config: AgentConfig,
+  options: AgentOptions | undefined,
+): RuntimeRecoveryDescriptor {
+  const skillsConfig = options?.skillsConfig;
+  const mcpConfig = options?.mcpConfig;
+  return {
+    schemaVersion: 1,
+    ...(config.model === undefined ? {} : { model: config.model }),
+    ...(config.thinkingLevel === undefined
+      ? {}
+      : { thinkingLevel: config.thinkingLevel }),
+    ...(options?.permissionMode === undefined
+      ? {}
+      : { permissionMode: options.permissionMode }),
+    allowedTools: [...(options?.allowedTools || DEFAULT_ALLOWED_TOOLS)],
+    ...(options?.disallowedTools === undefined
+      ? {}
+      : { disallowedTools: [...options.disallowedTools] }),
+    ...(options?.excludeTools === undefined
+      ? {}
+      : { excludedTools: [...options.excludeTools] }),
+    ...(options?.sandbox === undefined
+      ? {}
+      : {
+          sandbox: options.sandbox.enabled
+            ? {
+                enabled: true,
+                ...(options.sandbox.provider === undefined
+                  ? {}
+                  : { provider: options.sandbox.provider }),
+                ...(options.sandbox.image === undefined
+                  ? {}
+                  : { image: options.sandbox.image }),
+              }
+            : { enabled: false },
+        }),
+    ...(skillsConfig === undefined
+      ? {}
+      : {
+          skillsConfig: {
+            enabled: skillsConfig.enabled,
+            userDirEnabled: skillsConfig.userDirEnabled,
+            appDirEnabled: skillsConfig.appDirEnabled,
+          },
+        }),
+    ...(mcpConfig === undefined
+      ? {}
+      : {
+          mcpConfig: {
+            enabled: mcpConfig.enabled,
+            userDirEnabled: mcpConfig.userDirEnabled,
+            appDirEnabled: mcpConfig.appDirEnabled,
+          },
+        }),
+  };
+}
+
 /**
  * Get or create session working directory
  * If workDir already contains a valid session path (from frontend), use it directly
@@ -1471,6 +1577,9 @@ ${formattedMessages}${truncationNotice}\n\n---\n## Current Request\n`;
     prompt: string,
     options?: AgentOptions,
   ): AsyncGenerator<AgentMessage> {
+    const runtimeRecovery = validateClaudeRuntimeRecovery(
+      options?.runtimeRecovery,
+    );
     // Pass external abortController to session so that when connection closes it can properly stop Agent
     const session = this.createSession("executing", {
       abortController: options?.abortController,
@@ -1481,12 +1590,14 @@ ${formattedMessages}${truncationNotice}\n\n---\n## Current Request\n`;
       messageId: this.generateMessageId(),
     };
 
-    const sessionCwd = resolveClaudeWorkDir({
-      workDir: options?.cwd || this.config.workDir,
-      prompt,
-      taskId: options?.taskId,
-      useProvidedWorkDir: options?.useProvidedWorkDir,
-    });
+    const sessionCwd =
+      runtimeRecovery?.workingDirectory ??
+      resolveClaudeWorkDir({
+        workDir: options?.cwd || this.config.workDir,
+        prompt,
+        taskId: options?.taskId,
+        useProvidedWorkDir: options?.useProvidedWorkDir,
+      });
     // Ensure the working directory exists before calling SDK
     await ensureDir(sessionCwd);
 
@@ -1512,7 +1623,7 @@ ${formattedMessages}${truncationNotice}\n\n---\n## Current Request\n`;
     // Handle image attachments - directly send to Claude API
     // When images are present, we use AsyncIterable<SDKUserMessage> format
     // to include images as content blocks instead of saving to disk
-    const images = options?.images || [];
+    const images = runtimeRecovery ? [] : options?.images || [];
     const hasImages = images.length > 0;
     if (hasImages) {
       console.log(
@@ -1533,7 +1644,7 @@ ${formattedMessages}${truncationNotice}\n\n---\n## Current Request\n`;
 
     // Handle PDF attachments - directly send to Claude API as document blocks
     // Only use native PDF API if PREFER_NATIVE_PDF is enabled
-    const pdfs = options?.pdfs || [];
+    const pdfs = runtimeRecovery ? [] : options?.pdfs || [];
     const hasPDFs = pdfs.length > 0 && PREFER_NATIVE_PDF;
     if (hasPDFs) {
       console.log(
@@ -1573,7 +1684,9 @@ ${formattedMessages}${truncationNotice}\n\n---\n## Current Request\n`;
     }
 
     // Handle file attachments (PDF, documents, etc.) - save to disk for agent access
-    const fileAttachments = options?.fileAttachments || [];
+    const fileAttachments = runtimeRecovery
+      ? []
+      : options?.fileAttachments || [];
     if (fileAttachments.length > 0) {
       console.log(
         `[Claude ${session.id}] Processing ${fileAttachments.length} file attachment(s)`,
@@ -1592,9 +1705,9 @@ ${formattedMessages}${truncationNotice}\n\n---\n## Current Request\n`;
     }
 
     // Format conversation history to include context from previous messages
-    const conversationContext = this.formatConversationHistory(
-      options?.conversation,
-    );
+    const conversationContext = runtimeRecovery
+      ? ""
+      : this.formatConversationHistory(options?.conversation);
 
     // List available files in workspace and add to prompt
     // Note: Image files are excluded since they're sent as content blocks
@@ -1663,18 +1776,19 @@ ${formattedMessages}${truncationNotice}\n\n---\n## Current Request\n`;
     // Build the base prompt (without images)
     // IMPORTANT: aiSoulInstruction must come FIRST (after mediaPrefix) to override default identity
     // so user's custom instructions take precedence over system-defined identity
-    const basePrompt =
-      mediaPrefix +
-      languageInstruction +
-      aiSoulInstruction +
-      getWorkspaceInstruction(
-        sessionCwd,
-        sandboxOpts,
-        options?.timezone ?? undefined,
-      ) +
-      fileListInfo +
-      conversationContext +
-      prompt;
+    const basePrompt = runtimeRecovery
+      ? ""
+      : mediaPrefix +
+        languageInstruction +
+        aiSoulInstruction +
+        getWorkspaceInstruction(
+          sessionCwd,
+          sandboxOpts,
+          options?.timezone ?? undefined,
+        ) +
+        fileListInfo +
+        conversationContext +
+        prompt;
 
     // Ensure Claude Code is installed
     const claudeCodePath = await ensureClaudeCode();
@@ -1700,22 +1814,34 @@ ${formattedMessages}${truncationNotice}\n\n---\n## Current Request\n`;
       skipWebFetchPreflight: true,
     });
     const runtimeOptions: AgentOptions = options ?? {};
+    const goalRuntimeSessionId =
+      runtimeRecovery?.runtimeSessionId ||
+      options?.sessionId?.trim() ||
+      session.id;
+    const claudeRuntime = new ClaudeRuntimeSession({
+      runtimeSessionId: goalRuntimeSessionId,
+      runEpoch: runtimeRecovery?.runEpoch ?? 0,
+      expectedProviderSessionId: runtimeRecovery?.providerSessionId,
+      sdkTransport: claudeAgentSdkTransport,
+      logger,
+      createMessageId: () => this.generateMessageId(),
+      abortProvider: (reason) => {
+        if (!session.abortController.signal.aborted) {
+          session.abortController.abort(reason);
+        }
+      },
+      supplementalInput: options?.supplementalInput,
+    });
     // The SDK does not wire its stderr callback when a custom spawner is
     // supplied, so the spawner captures and line-buffers stderr directly.
     const captureStderr = (data: string) => {
       logger.error(
         `[Claude ${session.id}] STDERR: ${this.redactRuntimeDiagnostic(data)}`,
       );
+      if (isFatalClaudeProviderDiagnostic(data)) {
+        claudeRuntime.reportProviderFailure("stderr");
+      }
     };
-    const goalRuntimeSessionId = options?.sessionId?.trim() || session.id;
-    const claudeRuntime = new ClaudeRuntimeSession({
-      runtimeSessionId: goalRuntimeSessionId,
-      runEpoch: 0,
-      sdkTransport: claudeAgentSdkTransport,
-      logger,
-      createMessageId: () => this.generateMessageId(),
-      supplementalInput: options?.supplementalInput,
-    });
     const queryOptions = createClaudeQueryOptions({
       sessionId: session.id,
       cwd: sessionCwd,
@@ -1743,8 +1869,18 @@ ${formattedMessages}${truncationNotice}\n\n---\n## Current Request\n`;
       systemPrompt: getBusinessToolsInstruction(options?.excludeTools),
       maxTurns: 1000,
       includePartialMessages: options?.stream ?? false,
+      resumeProviderSessionId: runtimeRecovery?.providerSessionId,
       permissionLogMode: "run",
     });
+    if (runtimeRecovery?.providerSessionId) {
+      queryOptions.sessionStore = createClaudeProviderFailureSessionStore({
+        expectedSessionId: runtimeRecovery.providerSessionId,
+        onProviderFailure: () => {
+          claudeRuntime.reportProviderFailure("session_store");
+        },
+      });
+      queryOptions.sessionStoreFlush = "eager";
+    }
     // MCP servers can expand the allowed tool set, so attach them after the
     // base query options are created.
     attachClaudeMcpServers({
@@ -1763,14 +1899,16 @@ ${formattedMessages}${truncationNotice}\n\n---\n## Current Request\n`;
     try {
       // Determine whether to send images/PDFs directly or use text-only prompt
       const hasMedia = hasImages || hasPDFs;
-      const queryPrompt = hasMedia
-        ? this.createUserMessageWithMedia(
-            basePrompt,
-            images,
-            hasPDFs ? pdfs : undefined,
-            session.id,
-          )
-        : basePrompt;
+      const queryPrompt = runtimeRecovery
+        ? createClaudeRecoveryInitialPrompt()
+        : hasMedia
+          ? this.createUserMessageWithMedia(
+              basePrompt,
+              images,
+              hasPDFs ? pdfs : undefined,
+              session.id,
+            )
+          : basePrompt;
 
       goalRuntimeRegistration = await startClaudeGoalRuntimeSession({
         session: options?.session,
@@ -1779,16 +1917,30 @@ ${formattedMessages}${truncationNotice}\n\n---\n## Current Request\n`;
           initialPrompt: queryPrompt,
           queryOptions,
         },
+        persistence: runtimeRecovery
+          ? { workingDirectory: sessionCwd }
+          : {
+              workingDirectory: sessionCwd,
+              recoveryDescriptor: createClaudeRuntimeRecoveryDescriptor(
+                this.config,
+                options,
+              ),
+            },
+        ...(runtimeRecovery ? { recovery: runtimeRecovery } : {}),
       });
 
       for await (const agentMessage of claudeRuntime.subscribe()) {
-        if (session.abortController.signal.aborted) {
+        const safeProviderFailure =
+          agentMessage.type === "error" &&
+          agentMessage.message === CLAUDE_API_ERROR_SENTINEL;
+        if (session.abortController.signal.aborted && !safeProviderFailure) {
           console.log(
             `[Claude ${session.id}] query() abort signal detected, breaking loop`,
           );
           break;
         }
         yield agentMessage;
+        if (session.abortController.signal.aborted) break;
       }
       console.log(
         `[Claude ${session.id}] query() for-await loop completed normally. Total SDK messages: ${claudeRuntime.sdkMessageCount}`,
@@ -1934,7 +2086,14 @@ ${formattedMessages}${truncationNotice}\n\n---\n## Current Request\n`;
       } finally {
         // Keep a closing Query registered until it can no longer accept Goal
         // commands or emit old-epoch events.
-        goalRuntimeRegistration?.release();
+        try {
+          await goalRuntimeRegistration?.release();
+        } catch (error) {
+          logger.error(
+            `[Claude ${session.id}] Failed to release Goal Runtime ownership`,
+            error,
+          );
+        }
       }
       this.sessions.delete(session.id);
       // Windows cleanup prevents skill files generated for this session from

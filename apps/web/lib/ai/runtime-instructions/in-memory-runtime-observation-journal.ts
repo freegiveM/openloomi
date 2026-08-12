@@ -28,6 +28,10 @@ import type {
   RuntimeGoalEvaluationSnapshot,
   RuntimeUsageDelta,
 } from "./runtime-observation";
+import {
+  isGoalEvidenceRevisionBoundary,
+  resolveGoalEvidenceRevisionFloor,
+} from "./runtime-observation";
 
 interface PreparedInstruction {
   instruction: RuntimeInstruction;
@@ -441,6 +445,11 @@ export class InMemoryRuntimeObservationJournal implements RuntimeObservationJour
       ) {
         return null;
       }
+      const evidenceRevisionFloor = resolveGoalEvidenceRevisionFloor(
+        goalId,
+        goalRevision,
+        await this.goals.listInstructions(ownerId, runtimeSessionId),
+      );
       if (run.status === "queued") this.transitionRun(run, "running");
       if (run.status === "evaluating") return null;
       this.transitionRun(run, "evaluating");
@@ -455,12 +464,14 @@ export class InMemoryRuntimeObservationJournal implements RuntimeObservationJour
 
       return {
         run: structuredClone(run),
+        evidenceRevisionFloor,
         evidence: [...session.evidence.values()]
           .filter(
             (item) =>
               item.goalRunId === run.id &&
               item.goalId === goalId &&
-              item.goalRevision === goalRevision,
+              item.goalRevision >= evidenceRevisionFloor &&
+              item.goalRevision <= goalRevision,
           )
           .sort((left, right) =>
             left.observedAt.localeCompare(right.observedAt),
@@ -918,6 +929,9 @@ export class InMemoryRuntimeObservationJournal implements RuntimeObservationJour
       run.goalRevision,
       stored.instruction.goalRevision ?? run.goalRevision,
     );
+    if (isGoalEvidenceRevisionBoundary(stored.instruction.kind)) {
+      run.lastEvaluation = undefined;
+    }
     if (
       run.status === "queued" ||
       run.status === "continuing" ||
@@ -1285,6 +1299,7 @@ function parseEvaluationOutcome(
 ): RuntimeGoalEvaluationOutcome {
   if (
     outcome !== "continuing" &&
+    outcome !== "paused" &&
     outcome !== "blocked" &&
     outcome !== "completed" &&
     outcome !== "budget_limited" &&

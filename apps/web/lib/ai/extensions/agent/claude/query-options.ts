@@ -93,6 +93,7 @@ export function createClaudeQueryOptions({
   tools,
   maxTurns,
   includePartialMessages,
+  resumeProviderSessionId,
 }: {
   sessionId: string;
   cwd: string;
@@ -120,6 +121,8 @@ export function createClaudeQueryOptions({
   tools?: Options["tools"];
   maxTurns?: number;
   includePartialMessages?: boolean;
+  /** Exact Claude provider session to resume without continuing/forking another session. */
+  resumeProviderSessionId?: string;
 }): Options {
   const effectivePermissionMode = permissionMode || "bypassPermissions";
   const supplementalHooks = createClaudeSupplementalInputHooks({
@@ -149,6 +152,7 @@ export function createClaudeQueryOptions({
     abortController,
     env,
     model: config.model,
+    ...(resumeProviderSessionId ? { resume: resumeProviderSessionId } : {}),
     pathToClaudeCodeExecutable: claudeCodePath,
     ...(maxTurns !== undefined ? { maxTurns } : {}),
     ...(includePartialMessages !== undefined ? { includePartialMessages } : {}),

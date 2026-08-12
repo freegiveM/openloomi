@@ -14,6 +14,7 @@ import type { RuntimeSessionPersistencePort } from "../runtime-session-persisten
 import type {
   ActivateGoalRequest,
   RemoveGoalContextRequest,
+  ResumeGoalRequest,
   UpdateGoalRequest,
   UpsertGoalContextRequest,
 } from "./schemas";
@@ -21,7 +22,7 @@ import type {
 export interface AgentGoalApiDependencies {
   goals: Pick<
     GoalService,
-    "activate" | "update" | "upsertContext" | "removeContext"
+    "activate" | "update" | "resume" | "upsertContext" | "removeContext"
   >;
   queries: Pick<AgentGoalQueryService, "listBySession" | "getById">;
   liveSessions: Pick<RuntimeSessionRegistry, "resolve">;
@@ -141,6 +142,24 @@ export class AgentGoalApiService {
       idempotencyKey,
       source: userCommandSource(),
       update: userGoalUpdate(request.update),
+    });
+  }
+
+  async resume(
+    ownerId: string,
+    goalId: string,
+    request: ResumeGoalRequest,
+    idempotencyKey: string,
+  ): Promise<GoalCommandResult> {
+    await this.requireSession(ownerId, request.runtimeSessionId);
+    return this.dependencies.goals.resume({
+      ownerId,
+      runtimeSessionId: request.runtimeSessionId,
+      goalId,
+      expectedRevision: request.expectedRevision,
+      idempotencyKey,
+      source: userCommandSource(),
+      ...(request.reason === undefined ? {} : { reason: request.reason }),
     });
   }
 

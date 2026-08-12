@@ -48,6 +48,8 @@ const zh = {
     invalidDeadline: "请输入有效的截止时间。",
     waiting: "等待 Claude",
     edit: "编辑目标",
+    resume: "继续目标",
+    retry: "重试目标",
     criteriaProgress: "已完成 {{done}} / {{total}} 项标准",
     execution: "执行情况",
     runStatus: "运行状态",

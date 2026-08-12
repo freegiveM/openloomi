@@ -306,6 +306,8 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
 
   // Sending lock - prevents chat switching while message is being sent
   const [isSending, setIsSending] = useState(false);
+  const isSendingRef = useRef(isSending);
+  isSendingRef.current = isSending;
 
   // Get messages for a specific chat
   const getMessages = useCallback(
@@ -369,6 +371,9 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     messagesMapRef.current = messagesMap;
   }, [messagesMap]);
+  // A recovery-active chat is refreshed in the background. Fence overlapping
+  // reads so a slower, older response cannot replace a newer/final snapshot.
+  const chatLoadSequenceRef = useRef(new Map<string, number>());
 
   // Stream error retry management
   const [streamRetryCount, setStreamRetryCount] = useState(0);
@@ -2423,7 +2428,7 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
   const switchChatId = useCallback(
     async (newChatId: string | null, forceRefresh?: boolean) => {
       // Prevent chat switching while sending a message
-      if (isSending) {
+      if (isSendingRef.current) {
         return;
       }
 
@@ -2444,6 +2449,10 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
         return;
       }
 
+      const loadSequence =
+        (chatLoadSequenceRef.current.get(newChatId) ?? 0) + 1;
+      chatLoadSequenceRef.current.set(newChatId, loadSequence);
+
       // Load messages asynchronously without blocking UI
       (async () => {
         try {
@@ -2461,6 +2470,11 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
             return;
           }
           const data = await response.json();
+          if (
+            chatLoadSequenceRef.current.get(newChatId) !== loadSequence
+          ) {
+            return;
+          }
           const uiMessages = data.messages || [];
           // Store fetched messages in map
           setMessagesMap((prev) => {

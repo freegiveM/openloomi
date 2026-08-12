@@ -27,6 +27,8 @@ export function goalRunStatusForEvaluation(
   status: AgentGoal["status"],
 ): GoalRunStatus {
   switch (status) {
+    case "paused":
+      return "paused";
     case "blocked":
       return "blocked";
     case "completed":

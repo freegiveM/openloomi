@@ -31,6 +31,10 @@ import type {
 } from "@openloomi/ai/agent/types";
 
 import type { ClaudeRuntimeLogger } from "../skills";
+import {
+  CLAUDE_API_ERROR_SENTINEL,
+  isClaudeSdkApiErrorMessage,
+} from "../message-converter";
 import type {
   ClaudeRuntimeEventObserverPort,
   ClaudeInstructionTurnHandoff,
@@ -41,25 +45,42 @@ import { ClaudeInputMultiplexer } from "./input-multiplexer";
 import { ClaudeOutputMultiplexer } from "./output-multiplexer";
 import type { ClaudeSdkTransport } from "./sdk-transport";
 import type {
+  ClaudeRuntimeGoalFinalizationDecision,
+  ClaudeRuntimeGoalStopController,
   ClaudeRuntimeStopHookDecision,
   ClaudeRuntimeStopHookInput,
   ClaudeRuntimeStopHookObserver,
-  ClaudeRuntimeGoalStopController,
 } from "./supplemental-hooks";
 
 export interface ClaudeRuntimeSessionOptions {
   runtimeSessionId: string;
   runEpoch: number;
+  /** Provider identity loaded from durable state for an exact SDK resume. */
+  expectedProviderSessionId?: string;
   sdkTransport: ClaudeSdkTransport;
   logger: ClaudeRuntimeLogger;
   createMessageId: () => string;
+  /** Immediately terminates the provider process after a trusted fatal signal. */
+  abortProvider?: (reason: Error) => void;
   supplementalInput?: AgentSupplementalInputSource;
 }
+
+export type ClaudeProviderFailureSource =
+  | "sdk_message"
+  | "session_store"
+  | "stderr";
 
 interface TerminalWaiter {
   expectedRunEpoch: number;
   afterTerminalSequence: number;
   resolve: (terminal: RuntimeTurnTerminal) => void;
+  reject: (error: Error) => void;
+  signal?: AbortSignal;
+  onAbort?: () => void;
+}
+
+interface ProviderSessionInitializationWaiter {
+  resolve: (providerSessionId: string) => void;
   reject: (error: Error) => void;
   signal?: AbortSignal;
   onAbort?: () => void;
@@ -76,14 +97,19 @@ export class ClaudeRuntimeSession
 
   private readonly sdkTransport: ClaudeSdkTransport;
   private readonly logger: ClaudeRuntimeLogger;
+  private readonly createMessageId: () => string;
+  private readonly abortProvider?: (reason: Error) => void;
   private readonly output: AgentOutputEventBus<AgentMessage>;
   private readonly outputMultiplexer: ClaudeOutputMultiplexer;
   private readonly inputQueue: AgentSupplementalInputQueue;
   private readonly instructionTransport: SupplementalInputRuntimeInstructionTransport;
   private readonly externalInput?: AgentSupplementalInputSource;
+  private readonly expectedProviderSessionId?: string;
 
   private query: Query | null = null;
   private outputPump: Promise<void> | null = null;
+  private providerFailureSource?: ClaudeProviderFailureSource;
+  private providerFailurePublication: Promise<void> | null = null;
   private currentState: RuntimeSessionState = "starting";
   private processedSdkMessages = 0;
   private closing = false;
@@ -99,15 +125,23 @@ export class ClaudeRuntimeSession
   private expectedProviderInterruptResults = 0;
   private latestAssistantTurnId?: string;
   private assistantTurnSequence = 0;
+  private providerSessionInitializationError?: ClaudeRuntimeSessionError;
+  private readonly providerSessionInitializationWaiters =
+    new Set<ProviderSessionInitializationWaiter>();
 
   claudeSessionId?: string;
 
   constructor(options: ClaudeRuntimeSessionOptions) {
     assertRunEpoch(options.runEpoch);
     this.runtimeSessionId = options.runtimeSessionId;
+    this.expectedProviderSessionId = options.expectedProviderSessionId
+      ? providerSessionIdentifier(options.expectedProviderSessionId)
+      : undefined;
     this.providerOutputEpoch = options.runEpoch;
     this.sdkTransport = options.sdkTransport;
     this.logger = options.logger;
+    this.createMessageId = options.createMessageId;
+    this.abortProvider = options.abortProvider;
     this.output = new AgentOutputEventBus<AgentMessage>();
     this.outputMultiplexer = new ClaudeOutputMultiplexer(
       options.createMessageId,
@@ -146,6 +180,117 @@ export class ClaudeRuntimeSession
     return this.processedSdkMessages;
   }
 
+  /**
+   * Fail the OpenLoomi runtime immediately after an authoritative provider
+   * failure. Provider diagnostics are deliberately not accepted here: callers
+   * classify the signal and this boundary emits only the stable safe sentinel.
+   *
+   * Returns true only for the first accepted failure signal.
+   */
+  reportProviderFailure(source: ClaudeProviderFailureSource): boolean {
+    if (
+      this.providerFailureSource !== undefined ||
+      this.closing ||
+      this.currentState === "closed" ||
+      this.currentState === "failed"
+    ) {
+      return false;
+    }
+
+    this.providerFailureSource = source;
+    const failure = new ClaudeRuntimeSessionError(
+      "provider_failed",
+      "Claude provider failed",
+    );
+    this.logger.error(
+      `[Claude ${this.runtimeSessionId}] Terminal provider failure (${source})`,
+    );
+    this.transition("failed");
+    this.inputQueue.setInterruptHandler(null);
+    this.inputQueue.setHandoffHandler(null);
+    this.inputQueue.close();
+    this.rejectTerminalWaiters(this.terminalUnavailable("failed"));
+    this.rejectProviderSessionInitialization(
+      this.providerSessionInitializationUnavailable("failed"),
+    );
+
+    // Abort first so the custom Windows spawner terminates the whole process
+    // tree. Query.close() remains best-effort and is never awaited.
+    try {
+      this.abortProvider?.(failure);
+    } catch (error) {
+      this.logger.warn(
+        `[Claude ${this.runtimeSessionId}] Failed to abort provider process`,
+        error,
+      );
+    }
+    const query = this.query;
+    this.query = null;
+    try {
+      query?.close();
+    } catch (error) {
+      this.logger.warn(
+        `[Claude ${this.runtimeSessionId}] Failed to close SDK Query after provider failure`,
+        error,
+      );
+    }
+
+    this.providerFailurePublication = this.output
+      .publish({
+        type: "error",
+        message: CLAUDE_API_ERROR_SENTINEL,
+        messageId: this.createMessageId(),
+        runEpoch: this.providerOutputEpoch,
+      })
+      .catch((error) => {
+        this.logger.warn(
+          `[Claude ${this.runtimeSessionId}] Failed to publish provider failure`,
+          error,
+        );
+      })
+      .finally(() => this.output.close());
+    return true;
+  }
+
+  /**
+   * Resolves only after the SDK emits system/init for the expected provider
+   * session. Recovery coordination uses this barrier before replaying any
+   * instruction into the resumed process.
+   */
+  waitUntilProviderSessionInitialized(
+    input: { signal?: AbortSignal } = {},
+  ): Promise<string> {
+    if (this.claudeSessionId) return Promise.resolve(this.claudeSessionId);
+    if (this.providerSessionInitializationError) {
+      return Promise.reject(this.providerSessionInitializationError);
+    }
+    if (input.signal?.aborted) {
+      return Promise.reject(this.providerSessionInitializationAborted());
+    }
+    if (this.currentState === "closed" || this.currentState === "failed") {
+      return Promise.reject(
+        this.providerSessionInitializationUnavailable(this.currentState),
+      );
+    }
+
+    return new Promise<string>((resolve, reject) => {
+      const waiter: ProviderSessionInitializationWaiter = {
+        resolve,
+        reject,
+        ...(input.signal === undefined ? {} : { signal: input.signal }),
+      };
+      if (input.signal) {
+        waiter.onAbort = () => {
+          if (!this.providerSessionInitializationWaiters.delete(waiter)) return;
+          this.removeProviderSessionWaiterAbortListener(waiter);
+          reject(this.providerSessionInitializationAborted());
+        };
+        input.signal.addEventListener("abort", waiter.onAbort, { once: true });
+      }
+      this.providerSessionInitializationWaiters.add(waiter);
+    });
+  }
+
   attachEventObserver(observer: ClaudeRuntimeEventObserverPort): void {
     if (this.query || this.currentState !== "starting") {
       throw new ClaudeRuntimeSessionError(
@@ -178,17 +323,42 @@ export class ClaudeRuntimeSession
     this.stopController = controller;
   }
 
+  async finalizeGoalWithoutContinuation(
+    evaluationId: string,
+    runtimeLeaseToken?: string,
+  ): Promise<ClaudeRuntimeGoalFinalizationDecision> {
+    const controller = this.stopController;
+    if (!controller) {
+      throw new ClaudeRuntimeSessionError(
+        "stop_controller_missing",
+        "Claude runtime session has no Goal Stop controller",
+      );
+    }
+
+    await this.eventObserver?.flush();
+    const turnContexts =
+      (await this.eventObserver?.captureTurnContexts(this.runEpoch)) ?? [];
+    return controller.finalizeWithoutContinuation({
+      runEpoch: this.runEpoch,
+      evaluationId,
+      turnContext: turnContexts.at(-1) ?? null,
+      ...(runtimeLeaseToken === undefined ? {} : { runtimeLeaseToken }),
+    });
+  }
+
   async evaluateStop(
     input: ClaudeRuntimeStopHookInput,
   ): Promise<ClaudeRuntimeStopHookDecision> {
+    const boundProviderSessionId =
+      this.claudeSessionId ?? this.expectedProviderSessionId;
     if (
       input.providerSessionId !== undefined &&
-      this.claudeSessionId !== undefined &&
-      input.providerSessionId !== this.claudeSessionId
+      boundProviderSessionId !== undefined &&
+      input.providerSessionId !== boundProviderSessionId
     ) {
       throw new ClaudeRuntimeSessionError(
         "provider_session_mismatch",
-        `Stop hook belongs to Claude session ${input.providerSessionId}, not ${this.claudeSessionId}`,
+        `Stop hook belongs to Claude session ${input.providerSessionId}, not ${boundProviderSessionId}`,
       );
     }
     const controller = this.stopController;
@@ -315,6 +485,9 @@ export class ClaudeRuntimeSession
       this.inputQueue.close();
       this.output.abort(error);
       this.transition("failed");
+      this.rejectProviderSessionInitialization(
+        this.providerSessionInitializationUnavailable("failed"),
+      );
       throw error;
     }
   }
@@ -323,9 +496,7 @@ export class ClaudeRuntimeSession
     return this.output.subscribe();
   }
 
-  async replayInitialInstructions<T>(
-    replay: () => Promise<T>,
-  ): Promise<T> {
+  async replayInitialInstructions<T>(replay: () => Promise<T>): Promise<T> {
     if (this.replayingInitialInstructions) {
       throw new ClaudeRuntimeSessionError(
         "initial_replay_in_progress",
@@ -573,13 +744,23 @@ export class ClaudeRuntimeSession
         error,
       );
     }
-    this.output.close();
+    if (!this.providerFailurePublication) this.output.close();
     this.rejectTerminalWaiters(this.terminalUnavailable("closed"));
+    this.rejectProviderSessionInitialization(
+      this.providerSessionInitializationUnavailable("closed"),
+    );
     if (this.currentState !== "closed" && this.currentState !== "failed") {
       this.transition("closed");
     }
 
-    if (this.outputPump) await this.outputPump;
+    // SDK iterator cleanup is provider-owned and can remain pending after a
+    // broken response stream. Runtime shutdown must not wait indefinitely for
+    // Query.return()/next() before releasing durable recovery ownership.
+    if (this.providerFailurePublication) {
+      await this.providerFailurePublication;
+    } else if (this.outputPump) {
+      await this.outputPump;
+    }
     if (this.eventObserver) {
       try {
         await this.eventObserver.flush();
@@ -594,14 +775,29 @@ export class ClaudeRuntimeSession
 
   private async pumpQuery(query: Query): Promise<void> {
     let failed = false;
+    const iterator = query[Symbol.asyncIterator]();
     try {
-      for await (const message of query) {
+      while (true) {
+        const result = await iterator.next();
+        if (result.done) break;
+        const message = result.value;
         const observedRunEpoch = this.providerOutputEpoch;
+        const terminalApiError = isClaudeSdkApiErrorMessage(message);
         const expectedInterruptResult =
           this.consumeExpectedProviderInterruptResult(message);
         this.processedSdkMessages++;
-        this.updateSessionFromSdkMessage(message, observedRunEpoch);
-        await this.recordProviderObservation(message, observedRunEpoch);
+        if (!terminalApiError) {
+          this.updateSessionFromSdkMessage(message, observedRunEpoch);
+          await this.recordProviderObservation(message, observedRunEpoch);
+        }
+        if (terminalApiError) {
+          failed = true;
+          this.reportProviderFailure("sdk_message");
+          // Do not break out of a for-await loop here. AsyncIteratorClose would
+          // await Query.return(), which some failed provider streams never
+          // settle. The explicit iterator can be abandoned after process abort.
+          return;
+        }
         if (!expectedInterruptResult) {
           for (const agentMessage of this.outputMultiplexer.convert(message)) {
             await this.output.publish({
@@ -624,14 +820,24 @@ export class ClaudeRuntimeSession
           this.recordTerminal(observedRunEpoch);
         }
       }
-      this.output.close();
+      if (!this.providerFailureSource) this.output.close();
     } catch (error) {
-      if (!this.closing) {
+      // Session-initialization failures reject their registration barrier
+      // before reaching this catch. Give that owner one microtask to close the
+      // runtime, preserving the established closed-vs-failed lifecycle race
+      // without invoking (or awaiting) the provider iterator's return().
+      await Promise.resolve();
+      if (!this.closing && !this.providerFailureSource) {
         failed = true;
         this.output.abort(error);
       }
     } finally {
       this.inputQueue.close();
+      this.rejectProviderSessionInitialization(
+        this.providerSessionInitializationUnavailable(
+          failed ? "failed" : "closed",
+        ),
+      );
       this.rejectTerminalWaiters(
         this.terminalUnavailable(failed ? "failed" : "closed"),
       );
@@ -670,7 +876,22 @@ export class ClaudeRuntimeSession
     observedRunEpoch: number,
   ): void {
     if (message.type === "system" && message.subtype === "init") {
-      this.claudeSessionId = message.session_id;
+      const providerSessionId = providerSessionIdentifier(message.session_id);
+      const expected = this.expectedProviderSessionId;
+      const existing = this.claudeSessionId;
+      if (
+        (expected !== undefined && providerSessionId !== expected) ||
+        (existing !== undefined && providerSessionId !== existing)
+      ) {
+        const mismatch = new ClaudeRuntimeSessionError(
+          "provider_session_mismatch",
+          `Claude initialized provider session ${providerSessionId}, expected ${expected ?? existing}`,
+        );
+        this.rejectProviderSessionInitialization(mismatch);
+        throw mismatch;
+      }
+      this.claudeSessionId = providerSessionId;
+      this.resolveProviderSessionInitialization(providerSessionId);
     }
     if (message.type === "assistant" && observedRunEpoch === this.runEpoch) {
       this.latestAssistantTurnId =
@@ -852,6 +1073,52 @@ export class ClaudeRuntimeSession
     this.terminalWaiters.clear();
   }
 
+  private resolveProviderSessionInitialization(
+    providerSessionId: string,
+  ): void {
+    for (const waiter of this.providerSessionInitializationWaiters) {
+      this.removeProviderSessionWaiterAbortListener(waiter);
+      waiter.resolve(providerSessionId);
+    }
+    this.providerSessionInitializationWaiters.clear();
+  }
+
+  private rejectProviderSessionInitialization(
+    error: ClaudeRuntimeSessionError,
+  ): void {
+    if (this.claudeSessionId) return;
+    this.providerSessionInitializationError ??= error;
+    for (const waiter of this.providerSessionInitializationWaiters) {
+      this.removeProviderSessionWaiterAbortListener(waiter);
+      waiter.reject(this.providerSessionInitializationError);
+    }
+    this.providerSessionInitializationWaiters.clear();
+  }
+
+  private removeProviderSessionWaiterAbortListener(
+    waiter: ProviderSessionInitializationWaiter,
+  ): void {
+    if (waiter.signal && waiter.onAbort) {
+      waiter.signal.removeEventListener("abort", waiter.onAbort);
+    }
+  }
+
+  private providerSessionInitializationAborted(): ClaudeRuntimeSessionError {
+    return new ClaudeRuntimeSessionError(
+      "provider_session_initialization_aborted",
+      "Waiting for the Claude provider session initialization was aborted",
+    );
+  }
+
+  private providerSessionInitializationUnavailable(
+    state: "closed" | "failed",
+  ): ClaudeRuntimeSessionError {
+    return new ClaudeRuntimeSessionError(
+      "provider_session_initialization_unavailable",
+      `Claude Runtime Session became ${state} before provider initialization was confirmed`,
+    );
+  }
+
   private removeWaiterAbortListener(waiter: TerminalWaiter): void {
     if (waiter.signal && waiter.onAbort) {
       waiter.signal.removeEventListener("abort", waiter.onAbort);
@@ -904,6 +1171,9 @@ export type ClaudeRuntimeSessionErrorCode =
   | "not_started"
   | "observer_already_attached"
   | "provider_session_mismatch"
+  | "provider_failed"
+  | "provider_session_initialization_aborted"
+  | "provider_session_initialization_unavailable"
   | "stop_controller_already_attached"
   | "stop_controller_missing"
   | "terminal_unavailable"
@@ -956,4 +1226,19 @@ function assertRunEpoch(runEpoch: number): void {
       "runEpoch must be a non-negative integer",
     );
   }
+}
+
+function providerSessionIdentifier(value: string): string {
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    value.length > 256 ||
+    value !== value.trim()
+  ) {
+    throw new ClaudeRuntimeSessionError(
+      "provider_session_mismatch",
+      "Claude provider session ID must be a non-empty identifier",
+    );
+  }
+  return value;
 }

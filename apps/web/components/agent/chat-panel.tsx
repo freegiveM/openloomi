@@ -21,6 +21,7 @@ import { ErrorBoundary } from "@/components/error-boundary";
 import { useConversationApiConfiguration } from "@/components/conversation-api-onboarding-guard";
 import { ConversationApiSetup } from "@/components/conversation-api-setup";
 import { getTextFromMessage } from "@/lib/utils";
+import { resolveAgentChatRuntimePresentation } from "@/lib/ai/chat/runtime-presentation";
 
 interface AgentChatPanelProps {
   chatId?: string | null; // External chatId; if null, creates a new chat
@@ -30,6 +31,10 @@ interface AgentChatPanelProps {
   prefillToken?: string;
   /** A message to send immediately after mount (e.g., from onboarding "Chat with openloomi" card), sent only once */
   initialMessageToSend?: string;
+  /** A server-owned recovery Query is running without a browser abort handle. */
+  serverRecoveryActive?: boolean;
+  /** Recovery ownership is still loading; do not race it with a new Query. */
+  serverRecoveryPending?: boolean;
 }
 
 /**
@@ -42,6 +47,8 @@ export function AgentChatPanel({
   initialInput,
   prefillToken,
   initialMessageToSend,
+  serverRecoveryActive = false,
+  serverRecoveryPending = false,
 }: AgentChatPanelProps = {}) {
   const { t } = useTranslation();
   const router = useRouter();
@@ -93,6 +100,11 @@ export function AgentChatPanel({
   // Get isAgentRunning for THIS chat panel's chatId (not the activeChatId)
   // This ensures the side panel shows correct status even when activeChatId changes
   const isAgentRunningForChat = getIsAgentRunningByChatId(chatId);
+  const runtimePresentation = resolveAgentChatRuntimePresentation({
+    browserRunActive: isAgentRunningForChat,
+    serverRecoveryActive,
+    serverRecoveryPending,
+  });
 
   useEffect(() => {
     if (lastTtsChatIdRef.current !== chatId) {
@@ -394,14 +406,14 @@ export function AgentChatPanel({
       }
 
       // Check if AI is already responding to prevent duplicate submissions
-      if (isAgentRunningForChat) {
+      if (!runtimePresentation.canStartRun) {
         console.warn("[sendMessage] Agent is already running");
         return Promise.reject(new Error("Agent is already running"));
       }
 
       return sendMessage(message, requestOptions);
     },
-    [apiConfigurationState, sendMessage, isAgentRunningForChat],
+    [apiConfigurationState, runtimePresentation.canStartRun, sendMessage],
   );
 
   /** Auto-send initialMessageToSend after mount (e.g., from onboarding "Chat with openloomi" click): switches to new chat first, then sends, runs only once; if from URL send param, clears after sending */
@@ -410,6 +422,8 @@ export function AgentChatPanel({
     if (
       !initialMessageToSend?.trim() ||
       initialMessageSentRef.current ||
+      serverRecoveryActive ||
+      serverRecoveryPending ||
       apiConfigurationState !== "available" ||
       !sendMessagePresent
     )
@@ -444,6 +458,8 @@ export function AgentChatPanel({
     router,
     searchParams,
     sendMessagePresent,
+    serverRecoveryActive,
+    serverRecoveryPending,
     switchChatId,
   ]);
 
@@ -525,7 +541,7 @@ export function AgentChatPanel({
                       messages={messages}
                       sendMessage={sendMessagePresent}
                       setMessages={setMessages}
-                      isAgentRunning={isAgentRunningForChat}
+                      isAgentRunning={runtimePresentation.effectiveRunning}
                     />
                   </div>
                 )}
@@ -575,8 +591,11 @@ export function AgentChatPanel({
               <TaskComposer
                 value={input}
                 setValue={handleSetInput}
-                onStop={stop}
-                isAgentRunning={isAgentRunningForChat}
+                onStop={
+                  runtimePresentation.canStopFromBrowser ? stop : undefined
+                }
+                isAgentRunning={runtimePresentation.effectiveRunning}
+                isLocked={runtimePresentation.composerLocked}
                 attachments={attachments}
                 setAttachments={setAttachments}
                 onSubmit={async ({ text, attachments: submitAttachments }) => {

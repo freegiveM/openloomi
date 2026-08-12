@@ -12,6 +12,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  CLAUDE_API_ERROR_SENTINEL,
   convertClaudeSdkMessage,
   extractClaudeResultUsage,
 } from "@/lib/ai/extensions/agent/claude/message-converter";
@@ -127,5 +128,38 @@ describe("convertClaudeSdkMessage — result events", () => {
       content: "success",
     });
     expect("usage" in (messages[0] as object)).toBe(false);
+  });
+});
+
+describe("convertClaudeSdkMessage — provider API errors", () => {
+  it("converts Claude's synthetic API-error assistant into a safe terminal error", () => {
+    const messages = Array.from(
+      convertClaudeSdkMessage({
+        message: {
+          type: "assistant",
+          isApiErrorMessage: true,
+          error: "unknown",
+          message: {
+            model: "<synthetic>",
+            content: [
+              { type: "text", text: "API Error: Content block not found" },
+            ],
+          },
+        },
+        sentTextHashes: new Set<string>(),
+        sentToolIds: new Set<string>(),
+        hasStreamedText: false,
+        createMessageId: () => "api-error-message",
+      }),
+    );
+
+    expect(messages).toEqual([
+      {
+        type: "error",
+        message: CLAUDE_API_ERROR_SENTINEL,
+        messageId: "api-error-message",
+      },
+    ]);
+    expect(JSON.stringify(messages)).not.toContain("Content block not found");
   });
 });

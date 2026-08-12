@@ -5,6 +5,7 @@ import {
   type AgentGoalApiError,
   fetchAgentGoalSession,
   removeAgentGoalContext,
+  resumeAgentGoal,
   updateAgentGoal,
   upsertAgentGoalContext,
 } from "@/lib/ai/runtime-instructions/api/client";
@@ -43,6 +44,15 @@ describe("Agent Goal API client", () => {
       },
       "update-once",
     );
+    await resumeAgentGoal(
+      "goal/a",
+      {
+        runtimeSessionId: "chat-a",
+        expectedRevision: 4,
+        reason: "The blocker is resolved",
+      },
+      "resume-once",
+    );
     await upsertAgentGoalContext(
       "goal/a",
       {
@@ -63,10 +73,19 @@ describe("Agent Goal API client", () => {
     );
     expect(fetchMock.mock.calls.map(([url, init]) => [url, init.method])).toEqual([
       ["/api/agent-goals/goal%2Fa", "PATCH"],
+      ["/api/agent-goals/goal%2Fa/resume", "POST"],
       ["/api/agent-goals/goal%2Fa/context", "PUT"],
       ["/api/agent-goals/goal%2Fa/context", "DELETE"],
     ]);
-    const removeInit = fetchMock.mock.calls[2]?.[1] as RequestInit | undefined;
+    const resumeInit = fetchMock.mock.calls[1]?.[1] as RequestInit | undefined;
+    expect(new Headers(resumeInit?.headers).get("idempotency-key")).toBe(
+      "resume-once",
+    );
+    expect(JSON.parse(String(resumeInit?.body))).toMatchObject({
+      expectedRevision: 4,
+      reason: "The blocker is resolved",
+    });
+    const removeInit = fetchMock.mock.calls[3]?.[1] as RequestInit | undefined;
     expect(JSON.parse(String(removeInit?.body))).toMatchObject({
       expectedRevision: 5,
       contextRefId: "doc",

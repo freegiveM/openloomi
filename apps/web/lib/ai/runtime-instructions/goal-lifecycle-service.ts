@@ -49,6 +49,10 @@ export type PauseGoalCommand = GoalLifecycleCommand;
 export type ResumeGoalCommand = GoalLifecycleCommand;
 export type CancelGoalCommand = GoalLifecycleCommand;
 
+export interface RuntimeSessionRecoveryWakePort {
+  wake(input: { ownerId: string; runtimeSessionId: string }): Promise<boolean>;
+}
+
 interface ParsedLifecycleCommand {
   ownerId: string;
   runtimeSessionId: string;
@@ -85,6 +89,7 @@ export class GoalLifecycleService {
     private readonly ids: RuntimeIdGeneratorPort,
     private readonly terminalTimeoutMs = 30_000,
     private readonly observations?: RuntimeLifecycleObservationPort,
+    private readonly recoveryWake?: RuntimeSessionRecoveryWakePort,
   ) {
     if (
       !Number.isInteger(terminalTimeoutMs) ||
@@ -343,13 +348,14 @@ export class GoalLifecycleService {
       command: command.command,
     });
     if (replay) {
+      const dispatch = await this.dispatchResumeInstruction(
+        command.ownerId,
+        command.runtimeSessionId,
+        replay.instruction.id,
+      );
       return {
         ...replay,
-        dispatch: await this.dispatcher.drain({
-          ownerId: command.ownerId,
-          runtimeSessionId: command.runtimeSessionId,
-          targetInstructionId: replay.instruction.id,
-        }),
+        dispatch,
       };
     }
 
@@ -383,14 +389,46 @@ export class GoalLifecycleService {
       instruction,
       command: command.command,
     });
+    const dispatch = await this.dispatchResumeInstruction(
+      command.ownerId,
+      command.runtimeSessionId,
+      commit.instruction.id,
+    );
     return {
       ...commit,
-      dispatch: await this.dispatcher.drain({
-        ownerId: command.ownerId,
-        runtimeSessionId: command.runtimeSessionId,
-        targetInstructionId: commit.instruction.id,
-      }),
+      dispatch,
     };
+  }
+
+  private async dispatchResumeInstruction(
+    ownerId: string,
+    runtimeSessionId: string,
+    instructionId: string,
+  ): Promise<RuntimeInstructionDispatch> {
+    let dispatch = await this.dispatcher.drain({
+      ownerId,
+      runtimeSessionId,
+      targetInstructionId: instructionId,
+    });
+    if (dispatch.status !== "unavailable" || !this.recoveryWake) {
+      return dispatch;
+    }
+
+    const awakened = await this.recoveryWake.wake({
+      ownerId,
+      runtimeSessionId,
+    });
+    if (!awakened) return dispatch;
+
+    // Recovery initialization hydrates durable progress and drains the same
+    // outbox before reporting ready. Re-reading through the dispatcher is
+    // idempotent and gives the caller the actual receipt for this command.
+    dispatch = await this.dispatcher.drain({
+      ownerId,
+      runtimeSessionId,
+      targetInstructionId: instructionId,
+    });
+    return dispatch;
   }
 
   private async requireGoal(

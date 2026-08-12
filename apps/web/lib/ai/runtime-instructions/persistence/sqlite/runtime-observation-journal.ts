@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import {
   GoalEvaluationResultSchema,
@@ -23,8 +23,10 @@ import type {
   RuntimeGoalEvaluationSnapshot,
   RuntimeObservationContext,
   RuntimeObservationJournalPort,
+  RuntimeObservationLeaseRegistration,
   RuntimeProviderEventObservation,
 } from "../../runtime-observation";
+import { resolveGoalEvidenceRevisionFloor } from "../../runtime-observation";
 import type { RuntimeSessionPersistencePort } from "../../runtime-session-persistence";
 import { persistenceConflict } from "../errors";
 import type { PersistedRuntimeInstructionDelivery } from "../runtime-observation-mappers";
@@ -43,11 +45,16 @@ interface EvaluationLease {
   phase: "evaluating" | "finished" | "abandoned";
 }
 
+interface AttachedRuntimeLease {
+  readonly leaseToken: string;
+  readonly registrations: Set<symbol>;
+}
+
 export class SqliteRuntimeObservationJournal implements RuntimeObservationJournalPort {
   private readonly database: SqliteGoalRuntimeDatabase;
   private readonly serial = new KeyedSerialExecutor();
-  private readonly providerEvents = new Set<string>();
   private readonly evaluations = new Map<string, EvaluationLease>();
+  private readonly runtimeLeases = new Map<string, AttachedRuntimeLease>();
 
   constructor(
     source: SqliteGoalRuntimeDatabaseSource,
@@ -58,6 +65,47 @@ export class SqliteRuntimeObservationJournal implements RuntimeObservationJourna
     this.database = resolveSqliteGoalRuntimeDatabase(source);
   }
 
+  attachRuntimeLease(input: {
+    ownerId: string;
+    runtimeSessionId: string;
+    leaseToken: string;
+  }): RuntimeObservationLeaseRegistration {
+    const ownerId = identifier(input.ownerId, "ownerId");
+    const runtimeSessionId = identifier(
+      input.runtimeSessionId,
+      "runtimeSessionId",
+    );
+    const leaseToken = identifier(input.leaseToken, "leaseToken");
+    const key = scope(ownerId, runtimeSessionId);
+    const existing = this.runtimeLeases.get(key);
+    if (existing && existing.leaseToken !== leaseToken) {
+      throw persistenceConflict(
+        `Runtime Session ${runtimeSessionId} already has a different local ownership fence`,
+      );
+    }
+    const registration = Symbol(runtimeSessionId);
+    const attached =
+      existing ??
+      ({
+        leaseToken,
+        registrations: new Set<symbol>(),
+      } satisfies AttachedRuntimeLease);
+    attached.registrations.add(registration);
+    this.runtimeLeases.set(key, attached);
+
+    let released = false;
+    return {
+      release: () => {
+        if (released) return;
+        released = true;
+        const current = this.runtimeLeases.get(key);
+        if (current !== attached) return;
+        current.registrations.delete(registration);
+        if (current.registrations.size === 0) this.runtimeLeases.delete(key);
+      },
+    };
+  }
+
   async prepareDelivery(input: {
     ownerId: string;
     instruction: RuntimeInstruction;
@@ -65,7 +113,7 @@ export class SqliteRuntimeObservationJournal implements RuntimeObservationJourna
     const instruction = RuntimeInstructionSchema.parse(input.instruction);
     const ownerId = identifier(input.ownerId, "ownerId");
     await this.serial.run(scope(ownerId, instruction.targetSessionId), () => {
-      this.database.immediate((store) => {
+      this.withRuntimeLease(ownerId, instruction.targetSessionId, (store) => {
         const stored = requireCanonicalInstruction(store, ownerId, instruction);
         requireCurrentEpoch(
           store,
@@ -134,7 +182,7 @@ export class SqliteRuntimeObservationJournal implements RuntimeObservationJourna
     const ownerId = identifier(input.ownerId, "ownerId");
     const receipt = parseReceipt(input.receipt, instruction);
     await this.serial.run(scope(ownerId, instruction.targetSessionId), () => {
-      this.database.immediate((store) => {
+      this.withRuntimeLease(ownerId, instruction.targetSessionId, (store) => {
         const canonical = requireCanonicalInstruction(
           store,
           ownerId,
@@ -227,7 +275,7 @@ export class SqliteRuntimeObservationJournal implements RuntimeObservationJourna
     );
     const instructionId = identifier(input.instructionId, "instructionId");
     return this.serial.run(scope(ownerId, runtimeSessionId), () =>
-      this.database.immediate((store) => {
+      this.withRuntimeLease(ownerId, runtimeSessionId, (store) => {
         const session = store.getSession(ownerId, runtimeSessionId);
         if (!session || session.runEpoch !== input.runEpoch) return false;
         const stored = store.getInstruction(
@@ -275,62 +323,81 @@ export class SqliteRuntimeObservationJournal implements RuntimeObservationJourna
     ownerId: string;
     runtimeSessionId: string;
     providerSessionId: string;
+    runEpoch?: number;
   }): Promise<void> {
     await this.serial.run(
       scope(input.ownerId, input.runtimeSessionId),
       async () => {
-        const activeRunId = this.database.immediate((store) => {
-          const session = store.getSession(
+        // Persist the resume handle at SDK initialization, even when this is
+        // still an ordinary chat. A Goal can be injected later, and a crash
+        // between its first handoff and the next Claude event must not leave
+        // that durable Goal without the provider session it belongs to.
+        await this.runtimeSessions.bindProviderSession({
+          ownerId: input.ownerId,
+          runtimeSessionId: input.runtimeSessionId,
+          providerSessionId: input.providerSessionId,
+          ...this.runtimeLeaseFence(
             input.ownerId,
             input.runtimeSessionId,
-          );
-          const active = store.getAssignedPrimaryGoal(
-            input.ownerId,
-            input.runtimeSessionId,
-          );
-          if (!session || active?.persistedGoal.goal.status !== "active")
-            return null;
-          return (
-            store.findRun(
+            input.runEpoch,
+          ),
+        });
+        const activeRunId = this.withRuntimeLease(
+          input.ownerId,
+          input.runtimeSessionId,
+          (store) => {
+            const session = store.getSession(
               input.ownerId,
               input.runtimeSessionId,
-              active.persistedGoal.goal.id,
-              session.runEpoch,
-            )?.id ?? null
-          );
-        });
+            );
+            const active = store.getAssignedPrimaryGoal(
+              input.ownerId,
+              input.runtimeSessionId,
+            );
+            if (!session || active?.persistedGoal.goal.status !== "active")
+              return null;
+            return (
+              store.findRun(
+                input.ownerId,
+                input.runtimeSessionId,
+                active.persistedGoal.goal.id,
+                session.runEpoch,
+              )?.id ?? null
+            );
+          },
+        );
         if (!activeRunId) return;
-        await this.runtimeSessions.bindProviderSession(input);
         const at = this.now();
-        const stillActive = this.database.immediate((store) => {
-          const run = store.getRun(
-            input.ownerId,
-            input.runtimeSessionId,
-            activeRunId,
-          );
-          const active = store.getAssignedPrimaryGoal(
-            input.ownerId,
-            input.runtimeSessionId,
-          );
-          if (
-            !run ||
-            isTerminalRun(run.status) ||
-            active?.persistedGoal.goal.id !== run.goalId
-          ) {
-            return false;
-          }
-          return store.updateRun(
-            run,
-            { ...run, providerSessionId: input.providerSessionId },
-            at,
-          );
-        });
-        if (!stillActive) {
-          await this.runtimeSessions.releaseProviderSession(
-            input.ownerId,
-            input.runtimeSessionId,
-          );
-        }
+        this.withRuntimeLease(
+          input.ownerId,
+          input.runtimeSessionId,
+          (store) => {
+            const run = store.getRun(
+              input.ownerId,
+              input.runtimeSessionId,
+              activeRunId,
+            );
+            const active = store.getAssignedPrimaryGoal(
+              input.ownerId,
+              input.runtimeSessionId,
+            );
+            if (
+              !run ||
+              isTerminalRun(run.status) ||
+              active?.persistedGoal.goal.id !== run.goalId
+            ) {
+              return false;
+            }
+            return store.updateRun(
+              run,
+              { ...run, providerSessionId: input.providerSessionId },
+              at,
+            );
+          },
+        );
+        // Session ownership is released by ClaudeGoalRuntimeRegistration when
+        // the Query ends. A concurrent Goal transition here is not proof that
+        // the live provider handle should be cleared.
       },
     );
   }
@@ -359,174 +426,239 @@ export class SqliteRuntimeObservationJournal implements RuntimeObservationJourna
     input: RuntimeProviderEventObservation,
   ): Promise<boolean> {
     const parsed = parseObservation(input);
-    const eventScope = `${scope(parsed.ownerId, parsed.runtimeSessionId)}:${parsed.eventKey}`;
+    const eventFingerprint = providerEventFingerprint(parsed);
     return this.serial.run(
       scope(parsed.ownerId, parsed.runtimeSessionId),
       async () => {
-        if (this.providerEvents.has(eventScope)) return false;
-        const preflightContext = this.database.immediate((store) => {
-          const session = store.getSession(
-            parsed.ownerId,
-            parsed.runtimeSessionId,
-          );
-          if (!session || session.runEpoch !== parsed.runEpoch) return null;
-          return parsed.context
-            ? validateContext(
-                store,
-                parsed.context,
-                parsed.runEpoch,
-                parsed.terminal === true,
-              )
-            : latestContext(
-                store,
-                parsed.ownerId,
-                parsed.runtimeSessionId,
-                parsed.runEpoch,
-              );
-        });
+        const preflightContext = this.withRuntimeLease(
+          parsed.ownerId,
+          parsed.runtimeSessionId,
+          (store) => {
+            const existing = store.getProviderEventReceipt(
+              parsed.ownerId,
+              parsed.runtimeSessionId,
+              parsed.runEpoch,
+              parsed.eventKey,
+            );
+            if (existing) {
+              assertSameProviderEvent(existing, parsed, eventFingerprint);
+              return "duplicate" as const;
+            }
+            const session = store.getSession(
+              parsed.ownerId,
+              parsed.runtimeSessionId,
+            );
+            if (!session || session.runEpoch !== parsed.runEpoch) return null;
+            return parsed.context
+              ? validateContext(
+                  store,
+                  parsed.context,
+                  parsed.runEpoch,
+                  parsed.terminal === true,
+                )
+              : latestContext(
+                  store,
+                  parsed.ownerId,
+                  parsed.runtimeSessionId,
+                  parsed.runEpoch,
+                );
+          },
+        );
+        if (preflightContext === "duplicate") return false;
         if (!preflightContext) return false;
         if (parsed.providerSessionId) {
           await this.runtimeSessions.bindProviderSession({
             ownerId: parsed.ownerId,
             runtimeSessionId: parsed.runtimeSessionId,
             providerSessionId: parsed.providerSessionId,
+            ...this.runtimeLeaseFence(
+              parsed.ownerId,
+              parsed.runtimeSessionId,
+              parsed.runEpoch,
+            ),
           });
         }
-        const accepted = this.database.immediate((store) => {
-          const session = store.getSession(
-            parsed.ownerId,
-            parsed.runtimeSessionId,
-          );
-          if (!session || session.runEpoch !== parsed.runEpoch) return false;
-          const context = parsed.context
-            ? validateContext(
-                store,
-                parsed.context,
-                parsed.runEpoch,
-                parsed.terminal === true,
-              )
-            : latestContext(
-                store,
-                parsed.ownerId,
-                parsed.runtimeSessionId,
-                parsed.runEpoch,
-              );
-          if (!context) return false;
-          const deliveryContexts = acknowledgedContexts(
-            store,
-            context,
-            parsed.acknowledgedContexts,
-            parsed.runEpoch,
-            parsed.terminal === true,
-          );
-          for (const acknowledged of deliveryContexts) {
-            const instruction = store.getInstruction(
+        const accepted = this.withRuntimeLease(
+          parsed.ownerId,
+          parsed.runtimeSessionId,
+          (store) => {
+            const existing = store.getProviderEventReceipt(
               parsed.ownerId,
               parsed.runtimeSessionId,
-              acknowledged.instructionId,
-            )?.instruction;
-            let delivery = store.getActiveDeliveryForInstruction(
+              parsed.runEpoch,
+              parsed.eventKey,
+            );
+            if (existing) {
+              assertSameProviderEvent(existing, parsed, eventFingerprint);
+              return false;
+            }
+            const session = store.getSession(
               parsed.ownerId,
               parsed.runtimeSessionId,
-              acknowledged.instructionId,
             );
-            if (!delivery || !instruction || isControl(instruction)) continue;
-            if (delivery.state === "written_to_sdk") {
-              delivery = transitionDelivery(
-                store,
-                delivery,
-                "observed",
-                parsed.observedAt,
-                {
-                  providerEventId: parsed.providerEventId,
-                },
-              );
-            }
-            if (parsed.terminal && delivery.state === "observed") {
-              transitionDelivery(
-                store,
-                delivery,
-                "applied",
-                parsed.observedAt,
-                {
-                  providerEventId: parsed.providerEventId,
-                },
-              );
-            }
-          }
-          const run = store.getRun(
-            parsed.ownerId,
-            parsed.runtimeSessionId,
-            context.goalRunId,
-          );
-          if (!run || isTerminalRun(run.status)) return true;
-          const nextStatus =
-            run.status === "queued" || run.status === "continuing"
-              ? "running"
-              : run.status;
-          const turnsUsed = run.turnsUsed + (parsed.usage?.turnsUsed ?? 0);
-          const tokensUsed = run.tokensUsed + (parsed.usage?.tokensUsed ?? 0);
-          if (
-            !Number.isSafeInteger(turnsUsed) ||
-            !Number.isSafeInteger(tokensUsed)
-          ) {
-            throw persistenceConflict(
-              "Provider usage exceeds the supported counter range",
-            );
-          }
-          const nextRun: AgentGoalRun = {
-            ...run,
-            status: nextStatus,
-            turnsUsed,
-            tokensUsed,
-            lastActivityAt: latest(run.lastActivityAt, parsed.observedAt),
-            ...(parsed.providerSessionId === undefined
-              ? {}
-              : { providerSessionId: parsed.providerSessionId }),
-          };
-          if (nextStatus !== run.status)
-            assertGoalRunStatusTransition(run.status, nextStatus);
-          if (!store.updateRun(run, nextRun, parsed.observedAt)) {
-            throw persistenceConflict(
-              `Goal Run ${run.id} changed while recording a provider event`,
-            );
-          }
-          for (const draft of parsed.evidence ?? []) {
+            if (!session || session.runEpoch !== parsed.runEpoch) return false;
+            const context = parsed.context
+              ? validateContext(
+                  store,
+                  parsed.context,
+                  parsed.runEpoch,
+                  parsed.terminal === true,
+                )
+              : latestContext(
+                  store,
+                  parsed.ownerId,
+                  parsed.runtimeSessionId,
+                  parsed.runEpoch,
+                );
+            if (!context) return false;
             if (
-              store.findEvidenceBySourceEvent(
+              !store.insertProviderEventReceipt({
+                ownerId: parsed.ownerId,
+                runtimeSessionId: parsed.runtimeSessionId,
+                runEpoch: parsed.runEpoch,
+                eventKey: parsed.eventKey,
+                providerEventId: parsed.providerEventId,
+                ...(parsed.providerSessionId === undefined
+                  ? {}
+                  : { providerSessionId: parsed.providerSessionId }),
+                eventFingerprint,
+                observedAtSeconds: Math.floor(
+                  Date.parse(parsed.observedAt) / 1_000,
+                ),
+                createdAtSeconds: Math.floor(
+                  this.clock.now().getTime() / 1_000,
+                ),
+              })
+            ) {
+              const raced = store.getProviderEventReceipt(
                 parsed.ownerId,
                 parsed.runtimeSessionId,
-                run.id,
-                draft.sourceEventId,
-              )
-            )
-              continue;
-            const evidence = GoalEvidenceSchema.parse({
-              id: this.ids.generate(),
-              goalId: context.goalId,
-              goalRunId: run.id,
-              goalRevision: context.goalRevision,
-              instructionId: context.instructionId,
-              type: draft.type,
-              sourceEventId: draft.sourceEventId,
-              summary: draft.summary,
-              ...(draft.success === undefined
+                parsed.runEpoch,
+                parsed.eventKey,
+              );
+              if (!raced) {
+                throw persistenceConflict(
+                  `Provider event ${parsed.eventKey} could not be recorded`,
+                );
+              }
+              assertSameProviderEvent(raced, parsed, eventFingerprint);
+              return false;
+            }
+            const deliveryContexts = acknowledgedContexts(
+              store,
+              context,
+              parsed.acknowledgedContexts,
+              parsed.runEpoch,
+              parsed.terminal === true,
+            );
+            for (const acknowledged of deliveryContexts) {
+              const instruction = store.getInstruction(
+                parsed.ownerId,
+                parsed.runtimeSessionId,
+                acknowledged.instructionId,
+              )?.instruction;
+              let delivery = store.getActiveDeliveryForInstruction(
+                parsed.ownerId,
+                parsed.runtimeSessionId,
+                acknowledged.instructionId,
+              );
+              if (!delivery || !instruction || isControl(instruction)) continue;
+              if (delivery.state === "written_to_sdk") {
+                delivery = transitionDelivery(
+                  store,
+                  delivery,
+                  "observed",
+                  parsed.observedAt,
+                  {
+                    providerEventId: parsed.providerEventId,
+                  },
+                );
+              }
+              if (parsed.terminal && delivery.state === "observed") {
+                transitionDelivery(
+                  store,
+                  delivery,
+                  "applied",
+                  parsed.observedAt,
+                  {
+                    providerEventId: parsed.providerEventId,
+                  },
+                );
+              }
+            }
+            const run = store.getRun(
+              parsed.ownerId,
+              parsed.runtimeSessionId,
+              context.goalRunId,
+            );
+            if (!run || isTerminalRun(run.status)) return true;
+            const nextStatus =
+              run.status === "queued" || run.status === "continuing"
+                ? "running"
+                : run.status;
+            const turnsUsed = run.turnsUsed + (parsed.usage?.turnsUsed ?? 0);
+            const tokensUsed = run.tokensUsed + (parsed.usage?.tokensUsed ?? 0);
+            if (
+              !Number.isSafeInteger(turnsUsed) ||
+              !Number.isSafeInteger(tokensUsed)
+            ) {
+              throw persistenceConflict(
+                "Provider usage exceeds the supported counter range",
+              );
+            }
+            const nextRun: AgentGoalRun = {
+              ...run,
+              status: nextStatus,
+              turnsUsed,
+              tokensUsed,
+              lastActivityAt: latest(run.lastActivityAt, parsed.observedAt),
+              ...(parsed.providerSessionId === undefined
                 ? {}
-                : { success: draft.success }),
-              payload: draft.payload,
-              observedAt: draft.observedAt,
-            });
-            store.insertEvidence({
-              ownerId: parsed.ownerId,
-              runtimeSessionId: parsed.runtimeSessionId,
-              runEpoch: parsed.runEpoch,
-              evidence,
-              recordedAt: parsed.observedAt,
-            });
-          }
-          return true;
-        });
-        if (accepted) this.providerEvents.add(eventScope);
+                : { providerSessionId: parsed.providerSessionId }),
+            };
+            if (nextStatus !== run.status)
+              assertGoalRunStatusTransition(run.status, nextStatus);
+            if (!store.updateRun(run, nextRun, parsed.observedAt)) {
+              throw persistenceConflict(
+                `Goal Run ${run.id} changed while recording a provider event`,
+              );
+            }
+            for (const draft of parsed.evidence ?? []) {
+              if (
+                store.findEvidenceBySourceEvent(
+                  parsed.ownerId,
+                  parsed.runtimeSessionId,
+                  run.id,
+                  draft.sourceEventId,
+                )
+              )
+                continue;
+              const evidence = GoalEvidenceSchema.parse({
+                id: this.ids.generate(),
+                goalId: context.goalId,
+                goalRunId: run.id,
+                goalRevision: context.goalRevision,
+                instructionId: context.instructionId,
+                type: draft.type,
+                sourceEventId: draft.sourceEventId,
+                summary: draft.summary,
+                ...(draft.success === undefined
+                  ? {}
+                  : { success: draft.success }),
+                payload: draft.payload,
+                observedAt: draft.observedAt,
+              });
+              store.insertEvidence({
+                ownerId: parsed.ownerId,
+                runtimeSessionId: parsed.runtimeSessionId,
+                runEpoch: parsed.runEpoch,
+                evidence,
+                recordedAt: parsed.observedAt,
+              });
+            }
+            return true;
+          },
+        );
         return accepted;
       },
     );
@@ -548,44 +680,61 @@ export class SqliteRuntimeObservationJournal implements RuntimeObservationJourna
     );
     return this.serial.run(scope(input.ownerId, input.runtimeSessionId), () => {
       if (this.evaluations.has(key)) return null;
-      const snapshot = this.database.immediate((store) => {
-        const session = store.getSession(input.ownerId, input.runtimeSessionId);
-        const active = store.getAssignedPrimaryGoal(
-          input.ownerId,
-          input.runtimeSessionId,
-        );
-        const run = store.findRun(
-          input.ownerId,
-          input.runtimeSessionId,
-          input.goalId,
-          input.runEpoch,
-        );
-        if (
-          session?.runEpoch !== input.runEpoch ||
-          active?.persistedGoal.goal.id !== input.goalId ||
-          active.persistedGoal.goal.revision !== input.goalRevision ||
-          !run ||
-          run.goalRevision !== input.goalRevision ||
-          run.status === "evaluating" ||
-          run.status === "paused" ||
-          run.status === "blocked" ||
-          isTerminalRun(run.status)
-        )
-          return null;
-        assertGoalRunStatusTransition(run.status, "evaluating");
-        const next = {
-          ...run,
-          status: "evaluating" as const,
-          lastActivityAt: latest(run.lastActivityAt, input.recordedAt),
-        };
-        if (!store.updateRun(run, next, input.recordedAt)) return null;
-        return {
-          run: next,
-          evidence: store
-            .listEvidenceByRun(input.ownerId, input.runtimeSessionId, run.id)
-            .filter((item) => item.goalRevision === input.goalRevision),
-        };
-      });
+      const snapshot = this.withRuntimeLease(
+        input.ownerId,
+        input.runtimeSessionId,
+        (store) => {
+          const session = store.getSession(
+            input.ownerId,
+            input.runtimeSessionId,
+          );
+          const active = store.getAssignedPrimaryGoal(
+            input.ownerId,
+            input.runtimeSessionId,
+          );
+          const run = store.findRun(
+            input.ownerId,
+            input.runtimeSessionId,
+            input.goalId,
+            input.runEpoch,
+          );
+          if (
+            session?.runEpoch !== input.runEpoch ||
+            active?.persistedGoal.goal.id !== input.goalId ||
+            active.persistedGoal.goal.revision !== input.goalRevision ||
+            !run ||
+            run.goalRevision !== input.goalRevision ||
+            run.status === "evaluating" ||
+            run.status === "paused" ||
+            run.status === "blocked" ||
+            isTerminalRun(run.status)
+          )
+            return null;
+          const evidenceRevisionFloor = resolveGoalEvidenceRevisionFloor(
+            input.goalId,
+            input.goalRevision,
+            store.listInstructions(input.ownerId, input.runtimeSessionId),
+          );
+          assertGoalRunStatusTransition(run.status, "evaluating");
+          const next = {
+            ...run,
+            status: "evaluating" as const,
+            lastActivityAt: latest(run.lastActivityAt, input.recordedAt),
+          };
+          if (!store.updateRun(run, next, input.recordedAt)) return null;
+          return {
+            run: next,
+            evidenceRevisionFloor,
+            evidence: store
+              .listEvidenceByRun(input.ownerId, input.runtimeSessionId, run.id)
+              .filter(
+                (item) =>
+                  item.goalRevision >= evidenceRevisionFloor &&
+                  item.goalRevision <= input.goalRevision,
+              ),
+          };
+        },
+      );
       if (snapshot) {
         this.evaluations.set(key, {
           goalId: input.goalId,
@@ -629,38 +778,42 @@ export class SqliteRuntimeObservationJournal implements RuntimeObservationJourna
       const lease = this.evaluations.get(key);
       if (!matchesEvaluation(lease, input) || lease.phase !== "evaluating")
         return false;
-      const finished = this.database.immediate((store) => {
-        const run = store.getRun(
-          input.ownerId,
-          input.runtimeSessionId,
-          lease.runId,
-        );
-        if (!run || run.runEpoch !== input.runEpoch) return false;
-        let status: GoalRunStatus = run.status;
-        if (input.outcome === "continuing") {
-          if (run.status !== "evaluating") return false;
-          assertGoalRunStatusTransition(run.status, "continuing");
-          status = "continuing";
-        } else if (run.status !== input.outcome) {
-          // AgentGoalState commits the terminal state before evaluation details.
-          return false;
-        }
-        const next = {
-          ...run,
-          status,
-          lastEvaluation: evaluation,
-          lastActivityAt: latest(run.lastActivityAt, input.recordedAt),
-          ...(isTerminalRun(status)
-            ? {
-                completedAt: latest(
-                  run.completedAt ?? run.lastActivityAt,
-                  input.recordedAt,
-                ),
-              }
-            : {}),
-        };
-        return store.updateRun(run, next, input.recordedAt);
-      });
+      const finished = this.withRuntimeLease(
+        input.ownerId,
+        input.runtimeSessionId,
+        (store) => {
+          const run = store.getRun(
+            input.ownerId,
+            input.runtimeSessionId,
+            lease.runId,
+          );
+          if (!run || run.runEpoch !== input.runEpoch) return false;
+          let status: GoalRunStatus = run.status;
+          if (input.outcome === "continuing") {
+            if (run.status !== "evaluating") return false;
+            assertGoalRunStatusTransition(run.status, "continuing");
+            status = "continuing";
+          } else if (run.status !== input.outcome) {
+            // AgentGoalState commits the terminal state before evaluation details.
+            return false;
+          }
+          const next = {
+            ...run,
+            status,
+            lastEvaluation: evaluation,
+            lastActivityAt: latest(run.lastActivityAt, input.recordedAt),
+            ...(isTerminalRun(status)
+              ? {
+                  completedAt: latest(
+                    run.completedAt ?? run.lastActivityAt,
+                    input.recordedAt,
+                  ),
+                }
+              : {}),
+          };
+          return store.updateRun(run, next, input.recordedAt);
+        },
+      );
       if (finished) lease.phase = "finished";
       return finished;
     });
@@ -684,24 +837,28 @@ export class SqliteRuntimeObservationJournal implements RuntimeObservationJourna
       const lease = this.evaluations.get(key);
       if (!matchesEvaluation(lease, input) || lease.phase !== "evaluating")
         return false;
-      const abandoned = this.database.immediate((store) => {
-        const run = store.getRun(
-          input.ownerId,
-          input.runtimeSessionId,
-          lease.runId,
-        );
-        if (!run || run.status !== "evaluating") return false;
-        assertGoalRunStatusTransition(run.status, "running");
-        return store.updateRun(
-          run,
-          {
-            ...run,
-            status: "running",
-            lastActivityAt: latest(run.lastActivityAt, input.recordedAt),
-          },
-          input.recordedAt,
-        );
-      });
+      const abandoned = this.withRuntimeLease(
+        input.ownerId,
+        input.runtimeSessionId,
+        (store) => {
+          const run = store.getRun(
+            input.ownerId,
+            input.runtimeSessionId,
+            lease.runId,
+          );
+          if (!run || run.status !== "evaluating") return false;
+          assertGoalRunStatusTransition(run.status, "running");
+          return store.updateRun(
+            run,
+            {
+              ...run,
+              status: "running",
+              lastActivityAt: latest(run.lastActivityAt, input.recordedAt),
+            },
+            input.recordedAt,
+          );
+        },
+      );
       if (abandoned) lease.phase = "abandoned";
       return abandoned;
     });
@@ -716,7 +873,7 @@ export class SqliteRuntimeObservationJournal implements RuntimeObservationJourna
     recordedAt?: string;
   }): Promise<void> {
     await this.serial.run(scope(input.ownerId, input.runtimeSessionId), () => {
-      this.database.immediate((store) => {
+      this.withRuntimeLease(input.ownerId, input.runtimeSessionId, (store) => {
         const instruction = store.getInstruction(
           input.ownerId,
           input.runtimeSessionId,
@@ -760,7 +917,7 @@ export class SqliteRuntimeObservationJournal implements RuntimeObservationJourna
     reason: string;
   }): Promise<void> {
     await this.serial.run(scope(input.ownerId, input.runtimeSessionId), () => {
-      this.database.immediate((store) => {
+      this.withRuntimeLease(input.ownerId, input.runtimeSessionId, (store) => {
         const deliveries = [...new Set(input.instructionIds)].flatMap(
           (instructionId) => {
             const delivery = store.getActiveDeliveryForInstruction(
@@ -794,6 +951,45 @@ export class SqliteRuntimeObservationJournal implements RuntimeObservationJourna
         }
       });
     });
+  }
+
+  private withRuntimeLease<T>(
+    ownerId: string,
+    runtimeSessionId: string,
+    operation: (store: SqliteGoalRuntimeStore) => T,
+  ): T {
+    const lease = this.runtimeLeases.get(scope(ownerId, runtimeSessionId));
+    return this.database.immediate((store) => {
+      if (lease) {
+        const session = store.getSession(ownerId, runtimeSessionId);
+        if (
+          !session ||
+          session.recoveryLeaseToken !== lease.leaseToken ||
+          session.recoveryLeaseExpiresAtSeconds === undefined ||
+          session.recoveryLeaseExpiresAtSeconds <=
+            Math.floor(this.clock.now().getTime() / 1_000)
+        ) {
+          throw persistenceConflict(
+            `Runtime Session ${runtimeSessionId} no longer owns its durable execution lease`,
+          );
+        }
+      }
+      return operation(store);
+    });
+  }
+
+  private runtimeLeaseFence(
+    ownerId: string,
+    runtimeSessionId: string,
+    expectedRunEpoch?: number,
+  ): { runtimeLeaseToken?: string; expectedRunEpoch?: number } {
+    const leaseToken = this.runtimeLeases.get(
+      scope(ownerId, runtimeSessionId),
+    )?.leaseToken;
+    return {
+      ...(leaseToken === undefined ? {} : { runtimeLeaseToken: leaseToken }),
+      ...(expectedRunEpoch === undefined ? {} : { expectedRunEpoch }),
+    };
   }
 
   private now(): string {
@@ -1058,6 +1254,50 @@ function parseObservation(
     }
   }
   return structuredClone(input);
+}
+
+function assertSameProviderEvent(
+  existing: {
+    providerEventId: string;
+    providerSessionId?: string;
+    eventFingerprint: string;
+  },
+  observed: RuntimeProviderEventObservation,
+  eventFingerprint: string,
+): void {
+  if (
+    existing.providerEventId !== observed.providerEventId ||
+    existing.providerSessionId !== observed.providerSessionId ||
+    existing.eventFingerprint !== eventFingerprint
+  ) {
+    throw persistenceConflict(
+      `Provider event key ${observed.eventKey} was reused with different event data`,
+    );
+  }
+}
+
+function providerEventFingerprint(
+  observed: RuntimeProviderEventObservation,
+): string {
+  // `observedAt` is assigned by the local observer. A provider can replay the
+  // same durable event after restart with a new observation timestamp, so it
+  // must not participate in identity. Evidence timestamps are observer-local
+  // for the same reason; all semantic payload fields remain fenced.
+  const { observedAt: _observedAt, evidence, ...stable } = observed;
+  return createHash("sha256")
+    .update(
+      canonicalJson({
+        ...stable,
+        ...(evidence === undefined
+          ? {}
+          : {
+              evidence: evidence.map(
+                ({ observedAt: _evidenceObservedAt, ...item }) => item,
+              ),
+            }),
+      }),
+    )
+    .digest("hex");
 }
 
 function isSettledForReceipt(

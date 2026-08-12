@@ -5,6 +5,7 @@ import type {
   GoalEvaluationResult,
   GoalEvidence,
   RuntimeInstructionKind,
+  RuntimeSessionState,
 } from "@openloomi/ai/agent/runtime-instructions";
 
 export type PublicAgentGoal = AgentGoal & {
@@ -58,6 +59,21 @@ export interface AgentGoalSessionResponse {
   live: boolean;
   activeGoalId: string | null;
   goals: PublicGoalSummary[];
+}
+
+export interface AgentGoalRecoverySession {
+  runtimeSessionId: string;
+  state: RuntimeSessionState;
+  live: boolean;
+  chat: {
+    id: string;
+    title: string;
+    createdAt: string;
+  };
+}
+
+export interface AgentGoalRecoverySessionsResponse {
+  sessions: AgentGoalRecoverySession[];
 }
 
 export interface AgentGoalDetailResponse extends PublicGoalSummary {

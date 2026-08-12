@@ -2896,6 +2896,17 @@ export const agentRuntimeSessions = sqliteTable(
       .default("claude"),
     providerSessionId: text("provider_session_id"),
     workingDirectory: text("working_directory"),
+    recoveryDescriptor: text("recovery_descriptor", {
+      mode: "json",
+    }).$type<Record<string, unknown> | null>(),
+    recoveryLeaseOwner: text("recovery_lease_owner"),
+    recoveryLeaseToken: text("recovery_lease_token"),
+    recoveryLeaseExpiresAt: integer("recovery_lease_expires_at", {
+      mode: "timestamp",
+    }),
+    recoveryErrorCode: text("recovery_error_code"),
+    recoveryErrorMessage: text("recovery_error_message"),
+    recoveryFailedAt: integer("recovery_failed_at", { mode: "timestamp" }),
     state: text("state")
       .$type<RuntimeSessionState>()
       .notNull()
@@ -2924,8 +2935,8 @@ export const agentRuntimeSessions = sqliteTable(
       .on(table.provider, table.providerSessionId)
       .where(sql`${table.providerSessionId} is not null`),
     recoveryIdx: index("agent_runtime_sessions_recovery_idx")
-      .on(table.ownerId, table.state, table.updatedAt)
-      .where(sql`${table.state} not in ('closed', 'failed')`),
+      .on(table.recoveryFailedAt, table.recoveryLeaseExpiresAt, table.updatedAt)
+      .where(sql`${table.recoveryFailedAt} is null`),
     providerCheck: check(
       "agent_runtime_sessions_provider_check",
       sql`${table.provider} in ('claude')`,
@@ -2946,6 +2957,34 @@ export const agentRuntimeSessions = sqliteTable(
       "agent_runtime_sessions_pending_operation_check",
       sql`${table.pendingOperation} is null or (json_valid(${table.pendingOperation}) and json_type(${table.pendingOperation}) = 'object')`,
     ),
+    recoveryDescriptorCheck: check(
+      "agent_runtime_sessions_recovery_descriptor_check",
+      sql`${table.recoveryDescriptor} is null or (json_valid(${table.recoveryDescriptor}) and json_type(${table.recoveryDescriptor}) = 'object')`,
+    ),
+    recoveryLeaseCheck: check(
+      "agent_runtime_sessions_recovery_lease_check",
+      sql`(
+        ${table.recoveryLeaseOwner} is null
+        and ${table.recoveryLeaseToken} is null
+        and ${table.recoveryLeaseExpiresAt} is null
+      ) or (
+        length(trim(${table.recoveryLeaseOwner})) between 1 and 256
+        and length(trim(${table.recoveryLeaseToken})) between 1 and 256
+        and ${table.recoveryLeaseExpiresAt} is not null
+      )`,
+    ),
+    recoveryFailureCheck: check(
+      "agent_runtime_sessions_recovery_failure_check",
+      sql`(
+        ${table.recoveryErrorCode} is null
+        and ${table.recoveryErrorMessage} is null
+        and ${table.recoveryFailedAt} is null
+      ) or (
+        length(trim(${table.recoveryErrorCode})) between 1 and 128
+        and length(trim(${table.recoveryErrorMessage})) between 1 and 8000
+        and ${table.recoveryFailedAt} is not null
+      )`,
+    ),
     timestampsCheck: check(
       "agent_runtime_sessions_timestamps_check",
       sql`${table.updatedAt} >= ${table.createdAt}`,
@@ -2958,6 +2997,64 @@ export type AgentRuntimeSessionRecord = InferSelectModel<
 >;
 export type InsertAgentRuntimeSessionRecord = InferInsertModel<
   typeof agentRuntimeSessions
+>;
+
+export const agentRuntimeProviderEvents = sqliteTable(
+  "agent_runtime_provider_events",
+  {
+    ownerId: text("owner_id").notNull(),
+    runtimeSessionId: text("runtime_session_id").notNull(),
+    runEpoch: integer("run_epoch").notNull(),
+    eventKey: text("event_key").notNull(),
+    providerEventId: text("provider_event_id").notNull(),
+    providerSessionId: text("provider_session_id"),
+    eventFingerprint: text("event_fingerprint").notNull(),
+    observedAt: integer("observed_at", { mode: "timestamp" }).notNull(),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => ({
+    primaryKey: primaryKey({
+      columns: [
+        table.ownerId,
+        table.runtimeSessionId,
+        table.runEpoch,
+        table.eventKey,
+      ],
+      name: "agent_runtime_provider_events_pkey",
+    }),
+    sessionForeignKey: foreignKey({
+      columns: [table.ownerId, table.runtimeSessionId],
+      foreignColumns: [agentRuntimeSessions.ownerId, agentRuntimeSessions.id],
+      name: "agent_runtime_provider_events_owner_session_fkey",
+    }).onDelete("cascade"),
+    providerEventIdx: index(
+      "agent_runtime_provider_events_provider_event_idx",
+    ).on(table.ownerId, table.runtimeSessionId, table.providerEventId),
+    epochCheck: check(
+      "agent_runtime_provider_events_epoch_check",
+      sql`${table.runEpoch} >= 0`,
+    ),
+    identityCheck: check(
+      "agent_runtime_provider_events_identity_check",
+      sql`length(trim(${table.eventKey})) between 1 and 256
+        and length(trim(${table.providerEventId})) between 1 and 256
+        and length(${table.eventFingerprint}) = 64
+        and (${table.providerSessionId} is null or length(trim(${table.providerSessionId})) between 1 and 256)`,
+    ),
+    timestampsCheck: check(
+      "agent_runtime_provider_events_timestamps_check",
+      sql`${table.createdAt} >= 0 and ${table.observedAt} >= 0`,
+    ),
+  }),
+);
+
+export type AgentRuntimeProviderEventRecord = InferSelectModel<
+  typeof agentRuntimeProviderEvents
+>;
+export type InsertAgentRuntimeProviderEventRecord = InferInsertModel<
+  typeof agentRuntimeProviderEvents
 >;
 
 export const agentGoals = sqliteTable(

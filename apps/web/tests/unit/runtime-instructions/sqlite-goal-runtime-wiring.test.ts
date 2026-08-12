@@ -11,12 +11,18 @@ import { createSqliteAgentGoalRuntime } from "@/lib/ai/runtime-instructions/runt
 const OWNER_ID = "10000000-0000-4000-8000-000000000001";
 const SESSION_ID = "sqlite-runtime-wiring";
 const START = new Date("2026-08-06T08:00:00.000Z");
-const MIGRATION = readFileSync(
-  join(
-    dirname(fileURLToPath(import.meta.url)),
-    "../../../lib/db/migrations-sqlite/0107_agent_goal_runtime.sql",
+const MIGRATIONS = [
+  "0107_agent_goal_runtime.sql",
+  "0108_agent_goal_runtime_recovery.sql",
+].map((migration) =>
+  readFileSync(
+    join(
+      dirname(fileURLToPath(import.meta.url)),
+      "../../../lib/db/migrations-sqlite",
+      migration,
+    ),
+    "utf8",
   ),
-  "utf8",
 );
 
 const databases: Database.Database[] = [];
@@ -30,7 +36,7 @@ function harness() {
   databases.push(database);
   database.pragma("foreign_keys = ON");
   database.exec('CREATE TABLE "User" ("id" text PRIMARY KEY NOT NULL)');
-  database.exec(MIGRATION);
+  for (const migration of MIGRATIONS) database.exec(migration);
   database.prepare('INSERT INTO "User" (id) VALUES (?)').run(OWNER_ID);
   let now = START;
   let nextId = 1;
@@ -74,9 +80,235 @@ function goalInput() {
 }
 
 describe("SQLite Agent Goal runtime composition", () => {
+  it("records a paused evaluation on the atomically paused Goal Run", async () => {
+    const { runtime, advance } = harness();
+    await runtime.runtimeSessions.ensure(OWNER_ID, SESSION_ID);
+    const liveLease = await runtime.runtimeSessions.claimLiveRuntime({
+      ownerId: OWNER_ID,
+      runtimeSessionId: SESSION_ID,
+      leaseOwner: "sqlite-paused-evaluation-test",
+    });
+    if (!liveLease) throw new Error("Expected a live Runtime lease");
+    const observationLease = runtime.observations.attachRuntimeLease({
+      ownerId: OWNER_ID,
+      runtimeSessionId: SESSION_ID,
+      leaseToken: liveLease.leaseToken,
+    });
+    const activation = await runtime.goals.activate({
+      ownerId: OWNER_ID,
+      runtimeSessionId: SESSION_ID,
+      idempotencyKey: "activate-paused-evaluation",
+      source: { type: "user", authority: "user" },
+      goal: goalInput(),
+    });
+    const evaluationKey = "stop:paused";
+    expect(
+      await runtime.observations.beginGoalEvaluation({
+        ownerId: OWNER_ID,
+        runtimeSessionId: SESSION_ID,
+        goalId: activation.goal.goal.id,
+        goalRevision: 1,
+        runEpoch: 0,
+        evaluationKey,
+        recordedAt: advance(1),
+      }),
+    ).not.toBeNull();
+    const evaluation = {
+      completed: false,
+      confidence: 0,
+      satisfiedCriteria: [],
+      missingCriteria: ["tests-pass"],
+      evidence: [],
+      reason: "Goal evaluation failed and requires a retry.",
+    };
+    await runtime.state.commitEvaluationTransition({
+      ownerId: OWNER_ID,
+      runtimeSessionId: SESSION_ID,
+      expectedRevision: 1,
+      expectedRunEpoch: 0,
+      runtimeLeaseToken: liveLease.leaseToken,
+      evaluation,
+      goal: transitionAgentGoal({
+        current: activation.goal.goal,
+        expectedRevision: 1,
+        status: "paused",
+        now: new Date(advance(1)),
+      }),
+    });
+    await expect(
+      runtime.queries.getById({
+        ownerId: OWNER_ID,
+        runtimeSessionId: SESSION_ID,
+        goalId: activation.goal.goal.id,
+      }),
+    ).resolves.toMatchObject({
+      goal: { goal: { status: "paused", revision: 2 } },
+      latestRun: { status: "paused", lastEvaluation: evaluation },
+      progress: { completedCriteria: 0, totalCriteria: 1 },
+    });
+    expect(
+      await runtime.observations.finishGoalEvaluation({
+        ownerId: OWNER_ID,
+        runtimeSessionId: SESSION_ID,
+        goalId: activation.goal.goal.id,
+        goalRevision: 1,
+        runEpoch: 0,
+        evaluationKey,
+        evaluation,
+        outcome: "paused",
+        recordedAt: advance(1),
+      }),
+    ).toBe(true);
+    await expect(
+      runtime.queries.getById({
+        ownerId: OWNER_ID,
+        runtimeSessionId: SESSION_ID,
+        goalId: activation.goal.goal.id,
+      }),
+    ).resolves.toMatchObject({
+      goal: { goal: { status: "paused", revision: 2 } },
+      latestRun: {
+        status: "paused",
+        lastEvaluation: evaluation,
+        completedAt: undefined,
+      },
+    });
+    observationLease.release();
+    await runtime.runtimeSessions.releaseLiveRuntime({
+      ownerId: OWNER_ID,
+      runtimeSessionId: SESSION_ID,
+      leaseOwner: liveLease.leaseOwner,
+      leaseToken: liveLease.leaseToken,
+      expectedRunEpoch: 0,
+    });
+  });
+
+  it("includes pre-pause evidence when evaluating a resumed Goal revision", async () => {
+    const { runtime, advance } = harness();
+    await runtime.runtimeSessions.ensure(OWNER_ID, SESSION_ID);
+    const liveLease = await runtime.runtimeSessions.claimLiveRuntime({
+      ownerId: OWNER_ID,
+      runtimeSessionId: SESSION_ID,
+      leaseOwner: "sqlite-resume-evidence-test",
+    });
+    if (!liveLease) throw new Error("Expected a live Runtime lease");
+    const observationLease = runtime.observations.attachRuntimeLease({
+      ownerId: OWNER_ID,
+      runtimeSessionId: SESSION_ID,
+      leaseToken: liveLease.leaseToken,
+    });
+    const activation = await runtime.goals.activate({
+      ownerId: OWNER_ID,
+      runtimeSessionId: SESSION_ID,
+      idempotencyKey: "activate-resume-evidence",
+      source: { type: "user", authority: "user" },
+      goal: goalInput(),
+    });
+    await runtime.observations.prepareDelivery({
+      ownerId: OWNER_ID,
+      instruction: activation.instruction,
+    });
+    await runtime.observations.recordInstructionHandoff({
+      ownerId: OWNER_ID,
+      runtimeSessionId: SESSION_ID,
+      instructionId: activation.instruction.id,
+      runEpoch: 0,
+      recordedAt: advance(1),
+    });
+    const context = await runtime.observations.captureContext({
+      ownerId: OWNER_ID,
+      runtimeSessionId: SESSION_ID,
+      runEpoch: 0,
+    });
+    if (!context) throw new Error("Expected the activation observation context");
+    const observedAt = advance(1);
+    expect(
+      await runtime.observations.observeProviderEvent({
+        ownerId: OWNER_ID,
+        runtimeSessionId: SESSION_ID,
+        runEpoch: 0,
+        eventKey: "pre-pause-evidence",
+        providerEventId: "pre-pause-evidence",
+        observedAt,
+        context,
+        evidence: [
+          {
+            type: "tool_result",
+            sourceEventId: "pre-pause-tool-result",
+            summary: "The focused test passed before the Goal was paused",
+            success: true,
+            payload: { toolName: "test", outputPreview: "passed" },
+            observedAt,
+          },
+        ],
+      }),
+    ).toBe(true);
+
+    await runtime.state.commitEvaluationTransition({
+      ownerId: OWNER_ID,
+      runtimeSessionId: SESSION_ID,
+      expectedRevision: 1,
+      expectedRunEpoch: 0,
+      goal: transitionAgentGoal({
+        current: activation.goal.goal,
+        expectedRevision: 1,
+        status: "paused",
+        now: new Date(advance(1)),
+      }),
+    });
+    const resumed = await runtime.goals.resume({
+      ownerId: OWNER_ID,
+      runtimeSessionId: SESSION_ID,
+      goalId: activation.goal.goal.id,
+      expectedRevision: 2,
+      idempotencyKey: "resume-with-existing-evidence",
+      source: { type: "user", authority: "user" },
+    });
+    expect(resumed.goal.goal.revision).toBe(3);
+
+    const snapshot = await runtime.observations.beginGoalEvaluation({
+      ownerId: OWNER_ID,
+      runtimeSessionId: SESSION_ID,
+      goalId: activation.goal.goal.id,
+      goalRevision: 3,
+      runEpoch: 0,
+      evaluationKey: "stop:after-resume",
+      recordedAt: advance(1),
+    });
+    expect(snapshot).toMatchObject({
+      evidenceRevisionFloor: 1,
+      evidence: [
+        {
+          goalRevision: 1,
+          sourceEventId: "pre-pause-tool-result",
+        },
+      ],
+    });
+
+    observationLease.release();
+    await runtime.runtimeSessions.releaseLiveRuntime({
+      ownerId: OWNER_ID,
+      runtimeSessionId: SESSION_ID,
+      leaseOwner: liveLease.leaseOwner,
+      leaseToken: liveLease.leaseToken,
+      expectedRunEpoch: 0,
+    });
+  });
+
   it("keeps an old turn result scoped to its immutable instruction context", async () => {
     const { database, runtime, advance } = harness();
     await runtime.runtimeSessions.ensure(OWNER_ID, SESSION_ID);
+    const liveLease = await runtime.runtimeSessions.claimLiveRuntime({
+      ownerId: OWNER_ID,
+      runtimeSessionId: SESSION_ID,
+      leaseOwner: "sqlite-wiring-test",
+    });
+    if (!liveLease) throw new Error("Expected a live Runtime lease");
+    const observationLease = runtime.observations.attachRuntimeLease({
+      ownerId: OWNER_ID,
+      runtimeSessionId: SESSION_ID,
+      leaseToken: liveLease.leaseToken,
+    });
     const activation = await runtime.goals.activate({
       ownerId: OWNER_ID,
       runtimeSessionId: SESSION_ID,
@@ -161,11 +393,30 @@ describe("SQLite Agent Goal runtime composition", () => {
         ({ instructionId }) => instructionId === updated.instruction.id,
       ),
     ).toMatchObject({ state: "written_to_sdk" });
+    observationLease.release();
+    await runtime.runtimeSessions.releaseLiveRuntime({
+      ownerId: OWNER_ID,
+      runtimeSessionId: SESSION_ID,
+      leaseOwner: liveLease.leaseOwner,
+      leaseToken: liveLease.leaseToken,
+      expectedRunEpoch: 0,
+    });
   });
 
   it("uses one durable source for delivery, observation, evaluation, and queries", async () => {
     const { database, runtime, advance } = harness();
     await runtime.runtimeSessions.ensure(OWNER_ID, SESSION_ID);
+    const liveLease = await runtime.runtimeSessions.claimLiveRuntime({
+      ownerId: OWNER_ID,
+      runtimeSessionId: SESSION_ID,
+      leaseOwner: "sqlite-wiring-test",
+    });
+    if (!liveLease) throw new Error("Expected a live Runtime lease");
+    const observationLease = runtime.observations.attachRuntimeLease({
+      ownerId: OWNER_ID,
+      runtimeSessionId: SESSION_ID,
+      leaseToken: liveLease.leaseToken,
+    });
     const activation = await runtime.goals.activate({
       ownerId: OWNER_ID,
       runtimeSessionId: SESSION_ID,
@@ -211,6 +462,7 @@ describe("SQLite Agent Goal runtime composition", () => {
       ownerId: OWNER_ID,
       runtimeSessionId: SESSION_ID,
       providerSessionId: "claude-query-1",
+      runEpoch: 0,
     });
     const context = await runtime.observations.captureContext({
       ownerId: OWNER_ID,
@@ -244,6 +496,7 @@ describe("SQLite Agent Goal runtime composition", () => {
         ],
       }),
     ).toBe(true);
+    const replayedAt = advance(1);
     expect(
       await runtime.observations.observeProviderEvent({
         ownerId: OWNER_ID,
@@ -251,8 +504,20 @@ describe("SQLite Agent Goal runtime composition", () => {
         runEpoch: 0,
         eventKey: "claude:event:1",
         providerEventId: "provider-event-1",
-        observedAt,
+        providerSessionId: "claude-query-1",
+        observedAt: replayedAt,
         context,
+        usage: { turnsUsed: 1, tokensUsed: 25 },
+        evidence: [
+          {
+            type: "tool_result",
+            sourceEventId: "tool-result-1",
+            summary: "The focused test passed",
+            success: true,
+            payload: { toolName: "test" },
+            observedAt: replayedAt,
+          },
+        ],
       }),
     ).toBe(false);
 
@@ -346,6 +611,14 @@ describe("SQLite Agent Goal runtime composition", () => {
         .prepare("SELECT count(*) AS count FROM agent_goal_evidence")
         .get(),
     ).toEqual({ count: 1 });
+    observationLease.release();
+    await runtime.runtimeSessions.releaseLiveRuntime({
+      ownerId: OWNER_ID,
+      runtimeSessionId: SESSION_ID,
+      leaseOwner: liveLease.leaseOwner,
+      leaseToken: liveLease.leaseToken,
+      expectedRunEpoch: 0,
+    });
   });
 
   it("reclaims terminal-free chat rows but fails closed on unfinished Goals", async () => {
@@ -370,10 +643,22 @@ describe("SQLite Agent Goal runtime composition", () => {
         )
         .get(SESSION_ID),
     ).toEqual({ provider_session_id: null });
+    const liveLease = await runtime.runtimeSessions.claimLiveRuntime({
+      ownerId: OWNER_ID,
+      runtimeSessionId: SESSION_ID,
+      leaseOwner: "ordinary-chat-test",
+    });
+    if (!liveLease) throw new Error("Expected a live Runtime lease");
+    const observationLease = runtime.observations.attachRuntimeLease({
+      ownerId: OWNER_ID,
+      runtimeSessionId: SESSION_ID,
+      leaseToken: liveLease.leaseToken,
+    });
     await runtime.observations.setProviderSession({
       ownerId: OWNER_ID,
       runtimeSessionId: SESSION_ID,
       providerSessionId: "ordinary-chat-query",
+      runEpoch: 0,
     });
     expect(
       database
@@ -381,7 +666,7 @@ describe("SQLite Agent Goal runtime composition", () => {
           "SELECT provider_session_id FROM agent_runtime_sessions WHERE id = ?",
         )
         .get(SESSION_ID),
-    ).toEqual({ provider_session_id: null });
+    ).toEqual({ provider_session_id: "ordinary-chat-query" });
 
     await runtime.goals.activate({
       ownerId: OWNER_ID,
@@ -390,6 +675,21 @@ describe("SQLite Agent Goal runtime composition", () => {
       source: { type: "user", authority: "user" },
       goal: goalInput(),
     });
+    observationLease.release();
+    await runtime.runtimeSessions.releaseLiveRuntime({
+      ownerId: OWNER_ID,
+      runtimeSessionId: SESSION_ID,
+      leaseOwner: liveLease.leaseOwner,
+      leaseToken: liveLease.leaseToken,
+      expectedRunEpoch: 0,
+    });
+    expect(
+      database
+        .prepare(
+          "SELECT provider_session_id FROM agent_runtime_sessions WHERE id = ?",
+        )
+        .get(SESSION_ID),
+    ).toEqual({ provider_session_id: "ordinary-chat-query" });
     const restarted = createSqliteAgentGoalRuntime(database);
     await expect(
       restarted.runtimeSessions.ensure(OWNER_ID, SESSION_ID),

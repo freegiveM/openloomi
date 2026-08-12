@@ -10,10 +10,15 @@ export interface ControlledClaudeQuery {
   readonly query: Query;
   readonly interrupt: ReturnType<typeof vi.fn<() => Promise<void>>>;
   readonly close: ReturnType<typeof vi.fn<() => void>>;
+  readonly iteratorReturn: ReturnType<
+    typeof vi.fn<() => Promise<IteratorResult<SDKMessage>>>
+  >;
   push(message: SDKMessage): void;
 }
 
-export function createControlledClaudeQuery(): ControlledClaudeQuery {
+export function createControlledClaudeQuery(
+  options: { hangOnIteratorReturn?: boolean } = {},
+): ControlledClaudeQuery {
   const pending: SDKMessage[] = [];
   const waiters: Array<(result: IteratorResult<SDKMessage>) => void> = [];
   let closed = false;
@@ -27,6 +32,13 @@ export function createControlledClaudeQuery(): ControlledClaudeQuery {
   };
   const interrupt = vi.fn(async () => {});
   const close = vi.fn(finish);
+  const iteratorReturn = vi.fn(() => {
+    if (options.hangOnIteratorReturn) {
+      return new Promise<IteratorResult<SDKMessage>>(() => {});
+    }
+    finish();
+    return Promise.resolve({ value: undefined, done: true } as const);
+  });
   const iterator = {
     next: () => {
       const message = pending.shift();
@@ -38,21 +50,20 @@ export function createControlledClaudeQuery(): ControlledClaudeQuery {
         waiters.push(resolve);
       });
     },
-    return: async () => {
-      finish();
-      return { value: undefined, done: true } as const;
-    },
+    return: iteratorReturn,
     [Symbol.asyncIterator]() {
       return this;
     },
     interrupt,
     close,
+    iteratorReturn,
   } as unknown as Query;
 
   return {
     query: iterator,
     interrupt,
     close,
+    iteratorReturn,
     push(message: SDKMessage) {
       if (closed) throw new Error("Fake Query is closed");
       const waiter = waiters.shift();

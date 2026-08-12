@@ -13,7 +13,14 @@ const tempDirs: string[] = [];
 afterEach(async () => {
   while (tempDirs.length > 0) {
     const dir = tempDirs.pop();
-    if (dir) await rm(dir, { recursive: true, force: true });
+    if (dir) {
+      await rm(dir, {
+        recursive: true,
+        force: true,
+        maxRetries: 5,
+        retryDelay: 100,
+      });
+    }
   }
 });
 
@@ -124,6 +131,12 @@ fs.writeFileSync("args.json", JSON.stringify(process.argv.slice(2)));
 function send(value) {
   process.stdout.write(JSON.stringify({ jsonrpc: "2.0", ...value }) + "\\n");
 }
+function sendAndExit(value) {
+  process.stdout.write(
+    JSON.stringify({ jsonrpc: "2.0", ...value }) + "\\n",
+    () => process.exit(0)
+  );
+}
 const rl = readline.createInterface({ input: process.stdin });
 rl.on("line", (line) => {
   const message = JSON.parse(line);
@@ -143,10 +156,9 @@ rl.on("line", (line) => {
         }
       }
     });
-    send({ id: message.id, result: { stopReason: "end_turn" } });
+    sendAndExit({ id: message.id, result: { stopReason: "end_turn" } });
   }
 });
-rl.on("close", () => process.exit(0));
 `,
     "utf8",
   );

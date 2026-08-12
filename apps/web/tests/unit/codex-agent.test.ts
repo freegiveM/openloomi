@@ -30,7 +30,12 @@ afterEach(async () => {
   while (tempDirs.length > 0) {
     const tempDir = tempDirs.pop();
     if (tempDir) {
-      await rm(tempDir, { recursive: true, force: true });
+      await rm(tempDir, {
+        recursive: true,
+        force: true,
+        maxRetries: 5,
+        retryDelay: 100,
+      });
     }
   }
 });
@@ -1304,6 +1309,12 @@ const fs = require("node:fs");
 const models = ${JSON.stringify(models)};
 const requests = [];
 let buffer = "";
+function send(value) {
+  process.stdout.write(JSON.stringify(value) + "\\n");
+}
+function sendAndExit(value) {
+  process.stdout.write(JSON.stringify(value) + "\\n", () => process.exit(0));
+}
 process.stdin.setEncoding("utf8");
 process.stdin.on("data", (chunk) => {
   buffer += chunk;
@@ -1315,15 +1326,15 @@ process.stdin.on("data", (chunk) => {
     requests.push(message);
     fs.writeFileSync("app-server-requests.json", JSON.stringify(requests));
     if (message.method === "initialize") {
-      console.log(JSON.stringify({ id: message.id, result: { userAgent: "fake-codex" } }));
+      send({ id: message.id, result: { userAgent: "fake-codex" } });
     } else if (message.method === "model/list") {
-      console.log(JSON.stringify({
+      sendAndExit({
         id: message.id,
         result: {
           data: models.map((model) => ({ id: model, model, displayName: model })),
           nextCursor: null
         }
-      }));
+      });
     }
   }
 });

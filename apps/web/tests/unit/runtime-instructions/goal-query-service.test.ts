@@ -63,7 +63,12 @@ const run: AgentGoalRun = {
     confidence: 0.8,
     satisfiedCriteria: ["api-ready"],
     missingCriteria: [],
-    evidence: [],
+    evidence: [
+      {
+        criterionId: "api-ready",
+        evidenceIds: ["10000000-0000-4000-8000-000000000005"],
+      },
+    ],
     reason: "The API is ready for review",
   },
 };
@@ -155,5 +160,74 @@ describe("AgentGoalQueryService", () => {
       runId,
       100,
     );
+  });
+
+  it("hides evaluations before a semantic update but keeps them across resume", async () => {
+    const activationInstruction = {
+      ...instruction,
+      id: "10000000-0000-4000-8000-000000000006",
+      sequence: 1,
+      goalRevision: 1,
+      kind: "goal.activate",
+    } as RuntimeInstruction;
+    const staleRun = { ...run, goalRevision: 1 };
+    const source = {
+      listGoals: vi.fn(async () => [goal]),
+      getGoal: vi.fn(async () => goal),
+      listRuns: vi.fn(async () => [staleRun]),
+      listInstructions: vi.fn(async () => [activationInstruction, instruction]),
+      listDeliveries: vi.fn(async () => [delivery]),
+      listEvidence: vi.fn(async () => [{ ...evidence, goalRevision: 1 }]),
+    } satisfies AgentGoalReadSource;
+    const service = new AgentGoalQueryService(source);
+
+    await expect(
+      service.getById({ ownerId, runtimeSessionId, goalId }),
+    ).resolves.toMatchObject({
+      latestRun: { lastEvaluation: undefined },
+      evidence: [],
+      progress: { completedCriteria: 0, totalCriteria: 1 },
+    });
+
+    // A recovered/legacy row can have the current lifecycle revision while
+    // still citing evidence from before the latest semantic boundary.
+    source.listRuns.mockResolvedValue([run]);
+    await expect(
+      service.getById({ ownerId, runtimeSessionId, goalId }),
+    ).resolves.toMatchObject({
+      latestRun: { goalRevision: 2, lastEvaluation: undefined },
+      evidence: [],
+      progress: { completedCriteria: 0, totalCriteria: 1 },
+    });
+
+    const resumedGoal = {
+      ...goal,
+      goal: { ...goal.goal, revision: 3 },
+    };
+    const resumeInstruction = {
+      ...instruction,
+      id: "10000000-0000-4000-8000-000000000007",
+      sequence: 2,
+      goalRevision: 3,
+      kind: "goal.resume",
+    } as RuntimeInstruction;
+    source.getGoal.mockResolvedValue(resumedGoal);
+    source.listGoals.mockResolvedValue([resumedGoal]);
+    source.listRuns.mockResolvedValue([{ ...run, goalRevision: 3 }]);
+    source.listInstructions.mockResolvedValue([
+      activationInstruction,
+      resumeInstruction,
+    ]);
+
+    await expect(
+      service.getById({ ownerId, runtimeSessionId, goalId }),
+    ).resolves.toMatchObject({
+      latestRun: {
+        goalRevision: 3,
+        lastEvaluation: { satisfiedCriteria: ["api-ready"] },
+      },
+      evidence: [{ goalRevision: 1 }],
+      progress: { completedCriteria: 1, totalCriteria: 1 },
+    });
   });
 });

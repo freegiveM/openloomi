@@ -13,7 +13,12 @@ afterEach(async () => {
   while (tempDirs.length > 0) {
     const tempDir = tempDirs.pop();
     if (tempDir) {
-      await rm(tempDir, { recursive: true, force: true });
+      await rm(tempDir, {
+        recursive: true,
+        force: true,
+        maxRetries: 5,
+        retryDelay: 100,
+      });
     }
   }
 });
@@ -403,8 +408,20 @@ function send(value) {
 function respond(id, result) {
   send({ id, result });
 }
+function respondAndExit(id, result) {
+  process.stdout.write(
+    JSON.stringify({ jsonrpc: "2.0", id, result }) + "\\n",
+    () => process.exit(0)
+  );
+}
 function fail(id, message) {
   send({ id, error: { code: -32000, message } });
+}
+function failAndExit(id, message) {
+  process.stdout.write(
+    JSON.stringify({ jsonrpc: "2.0", id, error: { code: -32000, message } }) + "\\n",
+    () => process.exit(0)
+  );
 }
 function update(sessionId, update) {
   send({ method: "session/update", params: { sessionId, update } });
@@ -435,13 +452,13 @@ rl.on("line", (line) => {
       sessionUpdate: "agent_message_chunk",
       content: textContent("permission:" + optionId)
     });
-    respond(promptId, { stopReason: "end_turn" });
+    respondAndExit(promptId, { stopReason: "end_turn" });
     return;
   }
 
   if (!message.method && message.id === "unsupported-1") {
     append("unsupported.jsonl", message);
-    respond(promptId, { stopReason: "end_turn" });
+    respondAndExit(promptId, { stopReason: "end_turn" });
     return;
   }
 
@@ -462,14 +479,14 @@ rl.on("line", (line) => {
     case "session/cancel":
       append("cancels.jsonl", message);
       if (promptId) {
-        respond(promptId, { stopReason: "cancelled" });
+        respondAndExit(promptId, { stopReason: "cancelled" });
       }
       break;
     case "session/prompt": {
       promptId = message.id;
       const prompt = message.params.prompt.map((block) => block.text || "").join("");
       if (prompt.includes("jsonrpc-error")) {
-        fail(message.id, "fake prompt failure");
+        failAndExit(message.id, "fake prompt failure");
         return;
       }
       if (prompt.includes("hang forever")) {
@@ -536,7 +553,7 @@ rl.on("line", (line) => {
         usage: { inputTokens: 3, outputTokens: 4, totalTokens: 7 }
       });
       update(sessionId, { sessionUpdate: "unknown_event", raw: true });
-      respond(message.id, {
+      respondAndExit(message.id, {
         stopReason: "end_turn",
         usage: { inputTokens: 3, outputTokens: 4, totalTokens: 7 }
       });
@@ -552,7 +569,6 @@ rl.on("line", (line) => {
   }
 });
 
-rl.on("close", () => process.exit(0));
 `;
 }
 
@@ -564,6 +580,12 @@ function send(value) {
 }
 function respond(id, result) {
   send({ id, result });
+}
+function respondAndExit(id, result) {
+  process.stdout.write(
+    JSON.stringify({ jsonrpc: "2.0", id, result }) + "\\n",
+    () => process.exit(0)
+  );
 }
 function update(sessionId, update) {
   send({ method: "session/update", params: { sessionId, update } });
@@ -586,7 +608,7 @@ rl.on("line", (line) => {
       sessionUpdate: "agent_message_chunk",
       content: { type: "text", text: JSON.stringify(response) }
     });
-    respond(message.id, { stopReason: "end_turn" });
+    respondAndExit(message.id, { stopReason: "end_turn" });
   }
 });
 `;
@@ -598,6 +620,12 @@ const readline = require("node:readline");
 function send(value) {
   process.stdout.write(JSON.stringify({ jsonrpc: "2.0", ...value }) + "\\n");
 }
+function sendAndExit(value) {
+  process.stdout.write(
+    JSON.stringify({ jsonrpc: "2.0", ...value }) + "\\n",
+    () => process.exit(0)
+  );
+}
 const rl = readline.createInterface({ input: process.stdin });
 rl.on("line", (line) => {
   const message = JSON.parse(line);
@@ -606,7 +634,7 @@ rl.on("line", (line) => {
   } else if (message.method === "session/new") {
     send({ id: message.id, result: { sessionId: "hermes-session-1" } });
   } else if (message.method === "session/prompt") {
-    send({ id: message.id, error: { code: -32000, message: "execution failed" } });
+    sendAndExit({ id: message.id, error: { code: -32000, message: "execution failed" } });
   }
 });
 `;
@@ -617,6 +645,12 @@ function successFakeAcpScript() {
 const readline = require("node:readline");
 function send(value) {
   process.stdout.write(JSON.stringify({ jsonrpc: "2.0", ...value }) + "\\n");
+}
+function sendAndExit(value) {
+  process.stdout.write(
+    JSON.stringify({ jsonrpc: "2.0", ...value }) + "\\n",
+    () => process.exit(0)
+  );
 }
 const rl = readline.createInterface({ input: process.stdin });
 rl.on("line", (line) => {
@@ -636,7 +670,7 @@ rl.on("line", (line) => {
         }
       }
     });
-    send({ id: message.id, result: { stopReason: "end_turn" } });
+    sendAndExit({ id: message.id, result: { stopReason: "end_turn" } });
   }
 });
 `;

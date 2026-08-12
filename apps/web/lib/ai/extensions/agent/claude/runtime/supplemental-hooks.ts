@@ -36,6 +36,7 @@ export type ClaudeRuntimeStopHookDecision =
         | "no_active_goal"
         | "stale"
         | "completed"
+        | "paused"
         | "blocked"
         | "budget_limited"
         | "expired";
@@ -47,6 +48,20 @@ export type ClaudeRuntimeStopHookDecision =
       instruction: RuntimeInstruction;
     };
 
+export interface ClaudeRuntimeGoalFinalizationInput {
+  runEpoch: number;
+  evaluationId: string;
+  turnContext: RuntimeObservationContext | null;
+  runtimeLeaseToken?: string;
+}
+
+export interface ClaudeRuntimeGoalFinalizationDecision {
+  decision: "allow";
+  outcome: "no_active_goal" | "stale" | "completed" | "paused";
+  goalId?: string;
+  goalRevision?: number;
+}
+
 export interface ClaudeRuntimeGoalStopController {
   evaluateStop(input: {
     runEpoch: number;
@@ -55,6 +70,9 @@ export interface ClaudeRuntimeGoalStopController {
     lastAssistantMessage?: string;
     stopHookActive: boolean;
   }): Promise<ClaudeRuntimeStopHookDecision>;
+  finalizeWithoutContinuation(
+    input: ClaudeRuntimeGoalFinalizationInput,
+  ): Promise<ClaudeRuntimeGoalFinalizationDecision>;
 }
 
 export interface ClaudeRuntimeStopHookObserver {
