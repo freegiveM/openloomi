@@ -33,7 +33,7 @@ import {
 
 const OWNER_ID = "10000000-0000-4000-8000-000000000001";
 const START = new Date("2026-08-10T08:00:00.000Z");
-const MIGRATIONS = [
+const BASE_MIGRATIONS = [
   "0107_agent_goal_runtime.sql",
   "0108_agent_goal_runtime_recovery.sql",
 ].map((migration) =>
@@ -46,6 +46,14 @@ const MIGRATIONS = [
     "utf8",
   ),
 );
+const RECOVERY_PAUSE_MIGRATION = readFileSync(
+  join(
+    dirname(fileURLToPath(import.meta.url)),
+    "../../../lib/db/migrations-sqlite/0109_agent_goal_recovery_pause.sql",
+  ),
+  "utf8",
+);
+const MIGRATIONS = [...BASE_MIGRATIONS, RECOVERY_PAUSE_MIGRATION];
 
 const openDatabases = new Set<Database.Database>();
 const temporaryDirectories = new Set<string>();
@@ -75,12 +83,14 @@ interface FileBackedRuntime {
   reopen(): FileBackedRuntime;
 }
 
-function createFileBackedRuntime(): FileBackedRuntime {
+function createFileBackedRuntime(
+  migrations: readonly string[] = MIGRATIONS,
+): FileBackedRuntime {
   const directory = mkdtempSync(join(tmpdir(), "openloomi-goal-recovery-"));
   temporaryDirectories.add(directory);
   const path = join(directory, "runtime.sqlite");
   let now = START;
-  initializeDatabase(path);
+  initializeDatabase(path, migrations);
 
   const open = (): FileBackedRuntime => {
     const database = new Database(path);
@@ -114,11 +124,11 @@ function createFileBackedRuntime(): FileBackedRuntime {
   return open();
 }
 
-function initializeDatabase(path: string): void {
+function initializeDatabase(path: string, migrations: readonly string[]): void {
   const database = new Database(path);
   database.pragma("foreign_keys = ON");
   database.exec('CREATE TABLE "User" ("id" text PRIMARY KEY NOT NULL)');
-  for (const migration of MIGRATIONS) database.exec(migration);
+  for (const migration of migrations) database.exec(migration);
   database.prepare('INSERT INTO "User" (id) VALUES (?)').run(OWNER_ID);
   database.close();
 }
@@ -1778,7 +1788,7 @@ describe("SQLite Runtime restart recovery", () => {
       )
       .run(OWNER_ID, "recovery-stale-epoch");
     await expect(
-      runtime.recovery.markRecoveryFailed({
+      runtime.recovery.pauseAfterRecoveryFailure({
         ownerId: OWNER_ID,
         runtimeSessionId: "recovery-stale-epoch",
         leaseOwner: "failure-worker",
@@ -1794,7 +1804,7 @@ describe("SQLite Runtime restart recovery", () => {
 
     runtime.advance(31);
     await expect(
-      runtime.recovery.markRecoveryFailed({
+      runtime.recovery.pauseAfterRecoveryFailure({
         ownerId: OWNER_ID,
         runtimeSessionId: "recovery-expired-lease",
         leaseOwner: "failure-worker",
@@ -1834,7 +1844,167 @@ describe("SQLite Runtime restart recovery", () => {
     ]);
   });
 
-  it("atomically blocks active Goal state when provider resume fails", async () => {
+  it("repairs only legacy restart-recovery failures into resumable paused state", async () => {
+    const legacy = createFileBackedRuntime(BASE_MIGRATIONS);
+    const blockedSessionId = "legacy-recovery-blocked";
+    const failedSessionId = "legacy-recovery-failed";
+    const evaluatorBlockedSessionId = "ordinary-evaluator-blocked";
+    for (const runtimeSessionId of [
+      blockedSessionId,
+      failedSessionId,
+      evaluatorBlockedSessionId,
+    ]) {
+      await activate(legacy, runtimeSessionId);
+    }
+
+    const legacyEvaluation = JSON.stringify({
+      completed: false,
+      confidence: 0,
+      satisfiedCriteria: [],
+      missingCriteria: ["result-recorded"],
+      evidence: [],
+      reason: "Goal recovery failed: persisted provider session was missing",
+    });
+    for (const runtimeSessionId of [blockedSessionId, failedSessionId]) {
+      legacy.database
+        .prepare(
+          `UPDATE agent_runtime_sessions
+              SET state = 'failed', provider_session_id = ?,
+                  recovery_error_code = 'provider_session_unavailable',
+                  recovery_error_message = 'persisted provider session was missing',
+                  recovery_failed_at = unixepoch(), updated_at = unixepoch()
+            WHERE owner_id = ? AND id = ?`,
+        )
+        .run(`provider-${runtimeSessionId}`, OWNER_ID, runtimeSessionId);
+      legacy.database
+        .prepare(
+          `UPDATE agent_goals
+              SET revision = 2, status = 'blocked',
+                  goal_snapshot = json_set(
+                    goal_snapshot, '$.revision', 2, '$.status', 'blocked'
+                  )
+            WHERE owner_id = ? AND runtime_session_id = ?`,
+        )
+        .run(OWNER_ID, runtimeSessionId);
+    }
+    legacy.database
+      .prepare(
+        `UPDATE agent_goal_runs
+            SET goal_revision = 2, status = 'blocked',
+                last_evaluation = ?
+          WHERE owner_id = ? AND runtime_session_id = ?`,
+      )
+      .run(legacyEvaluation, OWNER_ID, blockedSessionId);
+    legacy.database
+      .prepare(
+        `UPDATE agent_goal_runs
+            SET goal_revision = 2, status = 'failed',
+                completed_at = unixepoch(), last_evaluation = ?
+          WHERE owner_id = ? AND runtime_session_id = ?`,
+      )
+      .run(legacyEvaluation, OWNER_ID, failedSessionId);
+
+    legacy.database
+      .prepare(
+        `UPDATE agent_runtime_sessions SET state = 'interrupted'
+          WHERE owner_id = ? AND id = ?`,
+      )
+      .run(OWNER_ID, evaluatorBlockedSessionId);
+    legacy.database
+      .prepare(
+        `UPDATE agent_goals
+            SET status = 'blocked',
+                goal_snapshot = json_set(goal_snapshot, '$.status', 'blocked')
+          WHERE owner_id = ? AND runtime_session_id = ?`,
+      )
+      .run(OWNER_ID, evaluatorBlockedSessionId);
+    legacy.database
+      .prepare(
+        `UPDATE agent_goal_runs SET status = 'blocked'
+          WHERE owner_id = ? AND runtime_session_id = ?`,
+      )
+      .run(OWNER_ID, evaluatorBlockedSessionId);
+
+    legacy.database.exec(RECOVERY_PAUSE_MIGRATION);
+    legacy.database.exec(RECOVERY_PAUSE_MIGRATION);
+
+    for (const runtimeSessionId of [blockedSessionId, failedSessionId]) {
+      const repaired = legacy.database
+        .prepare(
+          `SELECT
+             session.state AS sessionState,
+             session.provider_session_id AS providerSessionId,
+             session.recovery_error_code AS errorCode,
+             session.recovery_error_message AS errorMessage,
+             session.recovery_failed_at AS recoveryFailedAt,
+             session.recovery_lease_token AS leaseToken,
+             goal.status AS goalStatus,
+             goal.revision AS goalRevision,
+             json_extract(goal.goal_snapshot, '$.status') AS snapshotStatus,
+             json_extract(goal.goal_snapshot, '$.updatedAt') AS snapshotUpdatedAt,
+             goal.updated_at AS goalUpdatedAt,
+             run.status AS runStatus,
+             run.completed_at AS completedAt,
+             json_extract(run.last_evaluation, '$.reason') AS failureReason
+           FROM agent_runtime_sessions AS session
+           JOIN agent_goals AS goal
+             ON goal.owner_id = session.owner_id
+            AND goal.runtime_session_id = session.id
+            AND goal.slot_state = 'assigned'
+           JOIN agent_goal_runs AS run
+             ON run.owner_id = session.owner_id
+            AND run.runtime_session_id = session.id
+            AND run.goal_id = goal.id
+            AND run.run_epoch = session.run_epoch
+          WHERE session.owner_id = ? AND session.id = ?`,
+        )
+        .get(OWNER_ID, runtimeSessionId) as Record<string, unknown>;
+      expect(repaired).toMatchObject({
+        sessionState: "idle",
+        providerSessionId: `provider-${runtimeSessionId}`,
+        errorCode: null,
+        errorMessage: null,
+        recoveryFailedAt: null,
+        leaseToken: null,
+        goalStatus: "paused",
+        goalRevision: 2,
+        snapshotStatus: "paused",
+        runStatus: "paused",
+        completedAt: null,
+        failureReason:
+          "Goal recovery failed: persisted provider session was missing",
+      });
+      expect(
+        Math.floor(
+          new Date(String(repaired.snapshotUpdatedAt)).getTime() / 1_000,
+        ),
+      ).toBe(repaired.goalUpdatedAt);
+    }
+
+    expect(
+      legacy.database
+        .prepare(
+          `SELECT session.state AS sessionState, goal.status AS goalStatus,
+                  run.status AS runStatus
+             FROM agent_runtime_sessions AS session
+             JOIN agent_goals AS goal
+               ON goal.owner_id = session.owner_id
+              AND goal.runtime_session_id = session.id
+             JOIN agent_goal_runs AS run
+               ON run.owner_id = goal.owner_id
+              AND run.runtime_session_id = goal.runtime_session_id
+              AND run.goal_id = goal.id
+            WHERE session.owner_id = ? AND session.id = ?`,
+        )
+        .get(OWNER_ID, evaluatorBlockedSessionId),
+    ).toEqual({
+      sessionState: "interrupted",
+      goalStatus: "blocked",
+      runStatus: "blocked",
+    });
+  });
+
+  it("atomically pauses active Goal state when provider resume fails", async () => {
     const first = createFileBackedRuntime();
     const runtimeSessionId = "recovery-resume-failed";
     await activate(first, runtimeSessionId);
@@ -1844,6 +2014,12 @@ describe("SQLite Runtime restart recovery", () => {
           WHERE owner_id = ? AND runtime_session_id = ?`,
       )
       .run(OWNER_ID, runtimeSessionId);
+    first.database
+      .prepare(
+        `UPDATE agent_runtime_sessions SET provider_session_id = ?
+          WHERE owner_id = ? AND id = ?`,
+      )
+      .run("provider-resume-failed", OWNER_ID, runtimeSessionId);
     first.close();
 
     const recovered = first.reopen();
@@ -1855,15 +2031,15 @@ describe("SQLite Runtime restart recovery", () => {
     if (!claim) throw new Error("Expected the failed Runtime to be claimed");
 
     recovered.database.exec(`
-      CREATE TRIGGER reject_blocked_run
+      CREATE TRIGGER reject_paused_run
       BEFORE UPDATE OF status ON agent_goal_runs
-      WHEN NEW.status = 'blocked'
+      WHEN NEW.status = 'paused'
       BEGIN
         SELECT RAISE(ABORT, 'forced Goal Run failure');
       END;
     `);
     await expect(
-      recovered.recovery.markRecoveryFailed({
+      recovered.recovery.pauseAfterRecoveryFailure({
         ownerId: OWNER_ID,
         runtimeSessionId,
         leaseOwner: "resume-worker",
@@ -1897,8 +2073,8 @@ describe("SQLite Runtime restart recovery", () => {
       leaseToken: claim.leaseToken,
     });
 
-    recovered.database.exec("DROP TRIGGER reject_blocked_run");
-    await recovered.recovery.markRecoveryFailed({
+    recovered.database.exec("DROP TRIGGER reject_paused_run");
+    await recovered.recovery.pauseAfterRecoveryFailure({
       ownerId: OWNER_ID,
       runtimeSessionId,
       leaseOwner: "resume-worker",
@@ -1913,7 +2089,10 @@ describe("SQLite Runtime restart recovery", () => {
           `SELECT
              (SELECT state FROM agent_runtime_sessions WHERE id = ?) AS sessionState,
              (SELECT recovery_error_code FROM agent_runtime_sessions WHERE id = ?) AS errorCode,
+             (SELECT recovery_error_message FROM agent_runtime_sessions WHERE id = ?) AS errorMessage,
+             (SELECT recovery_failed_at FROM agent_runtime_sessions WHERE id = ?) AS recoveryFailedAt,
              (SELECT recovery_lease_token FROM agent_runtime_sessions WHERE id = ?) AS leaseToken,
+             (SELECT provider_session_id FROM agent_runtime_sessions WHERE id = ?) AS providerSessionId,
              (SELECT status FROM agent_goals WHERE runtime_session_id = ?) AS goalStatus,
              (SELECT revision FROM agent_goals WHERE runtime_session_id = ?) AS goalRevision,
              (SELECT status FROM agent_goal_runs WHERE runtime_session_id = ?) AS runStatus,
@@ -1927,18 +2106,72 @@ describe("SQLite Runtime restart recovery", () => {
           runtimeSessionId,
           runtimeSessionId,
           runtimeSessionId,
+          runtimeSessionId,
+          runtimeSessionId,
+          runtimeSessionId,
         ),
     ).toEqual({
-      sessionState: "failed",
-      errorCode: "provider_session_missing",
+      sessionState: "idle",
+      errorCode: null,
+      errorMessage: null,
+      recoveryFailedAt: null,
       leaseToken: null,
-      goalStatus: "blocked",
+      providerSessionId: "provider-resume-failed",
+      goalStatus: "paused",
       goalRevision: 2,
-      runStatus: "blocked",
+      runStatus: "paused",
       runRevision: 2,
     });
     await expect(recovered.recovery.listRecoverable()).resolves.toEqual([]);
   });
+
+  it.each(["queued", "evaluating", "continuing"] as const)(
+    "pauses a %s Goal Run without finalizing it after recovery failure",
+    async (runStatus) => {
+      const runtime = createFileBackedRuntime();
+      const runtimeSessionId = `recovery-pause-${runStatus}`;
+      await activate(runtime, runtimeSessionId);
+      if (runStatus !== "queued") {
+        runtime.database
+          .prepare(
+            `UPDATE agent_goal_runs SET status = ?
+              WHERE owner_id = ? AND runtime_session_id = ?`,
+          )
+          .run(runStatus, OWNER_ID, runtimeSessionId);
+      }
+      const claim = await runtime.recovery.claimRecovery({
+        ownerId: OWNER_ID,
+        runtimeSessionId,
+        leaseOwner: "resume-worker",
+      });
+      if (!claim) throw new Error("Expected the Runtime to be claimed");
+
+      await runtime.recovery.pauseAfterRecoveryFailure({
+        ownerId: OWNER_ID,
+        runtimeSessionId,
+        leaseOwner: "resume-worker",
+        leaseToken: claim.leaseToken,
+        expectedRunEpoch: claim.snapshot.session.runEpoch,
+        errorCode: "provider_resume_failed",
+        errorMessage: `${runStatus} provider failure`,
+      });
+
+      expect(
+        runtime.database
+          .prepare(
+            `SELECT status, completed_at AS completedAt,
+                    json_extract(last_evaluation, '$.reason') AS reason
+               FROM agent_goal_runs
+              WHERE owner_id = ? AND runtime_session_id = ?`,
+          )
+          .get(OWNER_ID, runtimeSessionId),
+      ).toEqual({
+        status: "paused",
+        completedAt: null,
+        reason: `Goal recovery paused (provider_resume_failed): ${runStatus} provider failure`,
+      });
+    },
+  );
 
   it("deduplicates a provider event durably after the database is reopened", async () => {
     const first = createFileBackedRuntime();

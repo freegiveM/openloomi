@@ -400,29 +400,81 @@ function validateSemanticEvaluation(
   const availableEvidence = new Set(evidence.map(({ id }) => id));
   const semanticallySatisfied = new Set(result.satisfiedCriteria);
   const evidenceByCriterion = new Map<string, string[]>();
+  const criteriaWithInvalidEvidence = new Set<string>();
+  let ignoredEvidenceAssociation = false;
   for (const association of result.evidence) {
     if (
       !requested.has(association.criterionId) ||
-      !semanticallySatisfied.has(association.criterionId) ||
-      evidenceByCriterion.has(association.criterionId) ||
+      !semanticallySatisfied.has(association.criterionId)
+    ) {
+      ignoredEvidenceAssociation = true;
+      continue;
+    }
+    if (evidenceByCriterion.has(association.criterionId)) {
+      ignoredEvidenceAssociation = true;
+      criteriaWithInvalidEvidence.add(association.criterionId);
+      continue;
+    }
+
+    // Evidence references come from a model and must never widen the
+    // controller's authoritative snapshot. Treat a bad citation as an
+    // unsatisfied criterion instead of terminating the Goal: the cited data is
+    // ignored and a later turn can provide valid, scoped evidence.
+    if (
       new Set(association.evidenceIds).size !==
         association.evidenceIds.length ||
       association.evidenceIds.some((id) => !availableEvidence.has(id))
     ) {
-      throw invalidSemanticEvaluation(
-        "The semantic evaluator referenced evidence outside its delegated snapshot",
-      );
+      ignoredEvidenceAssociation = true;
+      criteriaWithInvalidEvidence.add(association.criterionId);
+      continue;
     }
     evidenceByCriterion.set(association.criterionId, association.evidenceIds);
   }
   for (const criterionId of result.satisfiedCriteria) {
     if ((evidenceByCriterion.get(criterionId)?.length ?? 0) === 0) {
-      throw invalidSemanticEvaluation(
-        `Satisfied semantic criterion ${criterionId} must cite scoped evidence`,
-      );
+      criteriaWithInvalidEvidence.add(criterionId);
     }
   }
-  return result;
+
+  if (
+    criteriaWithInvalidEvidence.size === 0 &&
+    !ignoredEvidenceAssociation
+  ) {
+    return result;
+  }
+
+  const satisfiedCriteria = result.satisfiedCriteria.filter(
+    (criterionId) => !criteriaWithInvalidEvidence.has(criterionId),
+  );
+  const satisfied = new Set(satisfiedCriteria);
+  const missingCriteria = criteria
+    .map(({ id }) => id)
+    .filter((criterionId) => !satisfied.has(criterionId));
+  const downgraded = criteria
+    .map(({ id }) => id)
+    .filter((criterionId) => criteriaWithInvalidEvidence.has(criterionId));
+  const associationReason =
+    downgraded.length > 0
+      ? `Semantic evidence associations were invalid or outside the delegated snapshot; affected criteria remain unsatisfied: ${downgraded.join(", ")}.`
+      : "Invalid semantic evidence associations outside the delegated criteria were ignored.";
+  const reason = [result.reason, associationReason]
+    .join(" ")
+    .slice(0, MAX_REASON_CHARACTERS)
+    .trim();
+
+  return GoalEvaluationResultSchema.parse({
+    ...result,
+    completed: missingCriteria.length === 0,
+    satisfiedCriteria,
+    missingCriteria,
+    evidence: result.evidence.filter(
+      ({ criterionId }) =>
+        satisfied.has(criterionId) &&
+        evidenceByCriterion.has(criterionId),
+    ),
+    reason,
+  });
 }
 
 function buildResult(input: {

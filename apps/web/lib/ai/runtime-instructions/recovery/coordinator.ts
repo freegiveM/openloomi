@@ -357,7 +357,7 @@ export class GoalRuntimeRecoveryCoordinator {
     } catch (error) {
       heartbeat?.stop();
       if (claim) {
-        await this.markRecoveryFailed(claim, expectedRunEpoch, error);
+        await this.pauseAfterRecoveryFailure(claim, expectedRunEpoch, error);
       }
       this.logger.error(
         `[Agent Goal Recovery] Failed to resume ${candidate.runtimeSessionId}`,
@@ -415,14 +415,18 @@ export class GoalRuntimeRecoveryCoordinator {
           releaseRunEpoch = failureRunEpoch;
         } catch (refreshError) {
           // A reclaimed/expired lease must not mutate the new owner's state.
-          // For other failures, markRecoveryFailed still has its own token and
+          // For other failures, pauseAfterRecoveryFailure still has its own token and
           // epoch fence and will safely reject a stale snapshot.
           this.logger.warn(
             `[Agent Goal Recovery] Could not refresh failure epoch for ${input.claim.runtimeSessionId}`,
             refreshError,
           );
         }
-        await this.markRecoveryFailed(input.claim, failureRunEpoch, error);
+        await this.pauseAfterRecoveryFailure(
+          input.claim,
+          failureRunEpoch,
+          error,
+        );
       })();
       await failureFinalization;
     };
@@ -574,7 +578,7 @@ export class GoalRuntimeRecoveryCoordinator {
     })();
 
     // Own the rejection in the background. Startup only waits for the init
-    // barrier; later provider failures are durably converted to blocked state.
+    // barrier; later provider failures durably pause the Goal for an explicit retry.
     const observedCompletion = completion
       .catch((error) => {
         this.logger.error(
@@ -644,14 +648,14 @@ export class GoalRuntimeRecoveryCoordinator {
     return persisted.state;
   }
 
-  private async markRecoveryFailed(
+  private async pauseAfterRecoveryFailure(
     claim: RuntimeRecoveryClaim,
     expectedRunEpoch: number,
     error: unknown,
   ): Promise<void> {
     const failure = recoveryFailure(error);
     try {
-      await this.deps.persistence.markRecoveryFailed({
+      await this.deps.persistence.pauseAfterRecoveryFailure({
         ...claimIdentity(claim),
         expectedRunEpoch,
         errorCode: failure.code,

@@ -212,7 +212,7 @@ export interface RuntimeSessionRecoveryPersistencePort extends RuntimeSessionPer
     state: RuntimeSessionState;
     recoveryLeaseToken?: string;
   }): Promise<AgentRuntimeSession>;
-  markRecoveryFailed(input: {
+  pauseAfterRecoveryFailure(input: {
     ownerId: string;
     runtimeSessionId: string;
     leaseOwner: string;
@@ -1065,7 +1065,7 @@ export class SqliteRuntimeSessionPersistence implements RuntimeSessionRecoveryPe
     }
   }
 
-  async markRecoveryFailed(input: {
+  async pauseAfterRecoveryFailure(input: {
     ownerId: string;
     runtimeSessionId: string;
     leaseOwner: string;
@@ -1082,7 +1082,7 @@ export class SqliteRuntimeSessionPersistence implements RuntimeSessionRecoveryPe
     const errorCode = boundedText(input.errorCode, "errorCode", 128);
     const errorMessage = boundedText(input.errorMessage, "errorMessage", 8_000);
     try {
-      const failed = this.database.immediate((store) => {
+      const paused = this.database.immediate((store) => {
         const session = store.getSession(
           parsed.ownerId,
           parsed.runtimeSessionId,
@@ -1097,6 +1097,9 @@ export class SqliteRuntimeSessionPersistence implements RuntimeSessionRecoveryPe
         ) {
           return false;
         }
+        if (session.state !== "idle") {
+          assertRuntimeSessionStateTransition(session.state, "idle");
+        }
         const at = this.clock.now().toISOString();
         const assigned = store.getAssignedPrimaryGoal(
           parsed.ownerId,
@@ -1104,13 +1107,13 @@ export class SqliteRuntimeSessionPersistence implements RuntimeSessionRecoveryPe
         );
         if (assigned?.persistedGoal.goal.status === "active") {
           const currentGoal = assigned.persistedGoal;
-          assertGoalStatusTransition(currentGoal.goal.status, "blocked");
-          const blockedGoal: PersistedAgentGoal = {
+          assertGoalStatusTransition(currentGoal.goal.status, "paused");
+          const pausedGoal: PersistedAgentGoal = {
             ...currentGoal,
             goal: {
               ...currentGoal.goal,
               revision: currentGoal.goal.revision + 1,
-              status: "blocked",
+              status: "paused",
               updatedAt: at,
             },
           };
@@ -1122,18 +1125,21 @@ export class SqliteRuntimeSessionPersistence implements RuntimeSessionRecoveryPe
               .filter((criterion) => criterion.required)
               .map((criterion) => criterion.id),
             evidence: [],
-            reason: `Goal recovery failed: ${errorMessage}`.slice(0, 8_000),
+            reason: `Goal recovery paused (${errorCode}): ${errorMessage}`.slice(
+              0,
+              8_000,
+            ),
           };
           if (
             !store.updateGoal(
-              blockedGoal,
+              pausedGoal,
               currentGoal.goal.revision,
               "assigned",
               "assigned",
             )
           ) {
             throw storageFailure(
-              "Could not block the Goal after recovery failure",
+              "Could not pause the Goal after recovery failure",
             );
           }
           const run = store.findRun(
@@ -1144,61 +1150,42 @@ export class SqliteRuntimeSessionPersistence implements RuntimeSessionRecoveryPe
           );
           if (
             run &&
-            ["running", "evaluating", "continuing"].includes(run.status)
+            ["queued", "running", "evaluating", "continuing"].includes(
+              run.status,
+            )
           ) {
-            assertGoalRunStatusTransition(run.status, "blocked");
+            assertGoalRunStatusTransition(run.status, "paused");
             if (
               !store.updateRun(
                 run,
                 {
                   ...run,
-                  goalRevision: blockedGoal.goal.revision,
-                  status: "blocked",
+                  goalRevision: pausedGoal.goal.revision,
+                  status: "paused",
                   lastActivityAt: at,
+                  completedAt: undefined,
                   lastEvaluation: failureEvaluation,
                 },
                 at,
               )
             ) {
               throw storageFailure(
-                "Could not block the Goal Run after recovery failure",
-              );
-            }
-          } else if (run?.status === "queued") {
-            assertGoalRunStatusTransition(run.status, "failed");
-            if (
-              !store.updateRun(
-                run,
-                {
-                  ...run,
-                  goalRevision: blockedGoal.goal.revision,
-                  status: "failed",
-                  lastActivityAt: at,
-                  completedAt: at,
-                  lastEvaluation: failureEvaluation,
-                },
-                at,
-              )
-            ) {
-              throw storageFailure(
-                "Could not fail the queued Goal Run after recovery failure",
+                "Could not pause the Goal Run after recovery failure",
               );
             }
           }
         }
-        return store.markRecoveryFailed({
+        return store.pauseAfterRecoveryFailure({
           ...parsed,
           expectedRunEpoch,
-          errorCode,
-          errorMessage,
-          failedAtSeconds: nowSeconds(this.clock),
+          updatedAtSeconds: nowSeconds(this.clock),
         });
       });
-      if (!failed) throw recoveryClaimConflict(parsed.runtimeSessionId);
+      if (!paused) throw recoveryClaimConflict(parsed.runtimeSessionId);
       this.claimed.delete(scope(parsed.ownerId, parsed.runtimeSessionId));
     } catch (cause) {
       if (cause instanceof RuntimeSessionPersistenceError) throw cause;
-      throw storageFailure("Could not mark Runtime recovery as failed", cause);
+      throw storageFailure("Could not pause Runtime recovery", cause);
     }
   }
 }

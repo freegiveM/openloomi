@@ -125,6 +125,56 @@ function cancelInput(goal: AgentGoal) {
 }
 
 describe("InMemoryAgentGoalState lifecycle transition barriers", () => {
+  it("resumes a blocked Goal through the ordinary lifecycle commit", async () => {
+    const { state, goal } = await activeState();
+    const blocked = transitionAgentGoal({
+      current: goal,
+      expectedRevision: goal.revision,
+      status: "blocked",
+      now: TRANSITIONED_AT,
+    });
+    await state.commitEvaluationTransition({
+      ownerId: OWNER_ID,
+      runtimeSessionId: SESSION_ID,
+      expectedRevision: goal.revision,
+      expectedRunEpoch: 0,
+      goal: blocked,
+    });
+    const resumed = transitionAgentGoal({
+      current: blocked,
+      expectedRevision: blocked.revision,
+      status: "active",
+      now: new Date("2026-07-29T08:02:00.000Z"),
+    });
+    const idempotencyKey = "resume-blocked-goal";
+
+    await expect(
+      state.commitTransition({
+        ownerId: OWNER_ID,
+        runtimeSessionId: SESSION_ID,
+        expectedRevision: blocked.revision,
+        goal: resumed,
+        instruction: {
+          schemaVersion: RUNTIME_INSTRUCTION_SCHEMA_VERSION,
+          id: uuid(6),
+          goalId: goal.id,
+          goalRevision: resumed.revision,
+          kind: "goal.resume",
+          deliveryMode: "steer",
+          targetSessionId: SESSION_ID,
+          payload: { reason: "The blocker is resolved" },
+          source: { type: "user", authority: "user" },
+          idempotencyKey,
+          issuedAt: resumed.updatedAt,
+        },
+        command: command(idempotencyKey, "d"),
+      }),
+    ).resolves.toMatchObject({
+      goal: { goal: { status: "active", revision: 3 } },
+      instruction: { kind: "goal.resume" },
+    });
+  });
+
   it("advances cancel through a durable boundary before releasing its slot", async () => {
     const { state, goal } = await activeState();
     const input = cancelInput(goal);

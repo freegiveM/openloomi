@@ -34,6 +34,7 @@ import type {
 import { AgentGoalApiError } from "@/lib/ai/runtime-instructions/api/client";
 import {
   blankGoalDraft,
+  canResumeGoal,
   formatDuration,
   goalDraft,
   goalInputFromDraft,
@@ -204,6 +205,11 @@ export function AgentGoalSidePanel({
           setEditingRevision(currentDetail.goal.revision);
           setEditing(true);
         }}
+        onResume={() =>
+          runCommand(() =>
+            commands.resume(currentDetail.goal.id, currentDetail.goal.revision),
+          ).then(() => undefined)
+        }
         onUpsertContext={(contextRef, expectedRevision) =>
           runCommand(() =>
             commands.upsertContext(
@@ -442,12 +448,14 @@ function GoalDetail({
   detail,
   busy,
   onEdit,
+  onResume,
   onUpsertContext,
   onRemoveContext,
 }: {
   detail: AgentGoalDetailResponse;
   busy: boolean;
   onEdit: () => void;
+  onResume: () => Promise<void>;
   onUpsertContext: (
     context: ContextInput,
     expectedRevision: number,
@@ -464,6 +472,7 @@ function GoalDetail({
     return ids;
   }, [evidence, latestRun?.lastEvaluation?.satisfiedCriteria]);
   const editable = goal.status === "active";
+  const resumable = canResumeGoal(goal.status);
 
   return (
     <div className="space-y-5">
@@ -476,12 +485,17 @@ function GoalDetail({
             </div>
             <h3 className="break-words text-base font-semibold">{goal.objective}</h3>
           </div>
-          {editable && (
+          {editable ? (
             <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={onEdit}>
               <RemixIcon name="edit" size="size-4" />
               <span className="sr-only">{t("agentGoals.edit")}</span>
             </Button>
-          )}
+          ) : resumable ? (
+            <Button variant="outline" size="sm" disabled={busy} onClick={() => void onResume().catch(() => undefined)}>
+              {busy && <RemixIcon name="loader_icon" size="size-4" className="animate-spin" />}
+              {goal.status === "blocked" ? t("agentGoals.retry") : t("agentGoals.resume")}
+            </Button>
+          ) : null}
         </div>
         <Progress value={goalProgressPercent(detail)} className="h-2" />
         <div className="flex justify-between text-xs text-muted-foreground">

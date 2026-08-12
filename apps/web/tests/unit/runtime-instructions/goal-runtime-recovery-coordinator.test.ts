@@ -119,7 +119,7 @@ describe("GoalRuntimeRecoveryCoordinator", () => {
         state: "interrupted",
       }),
     );
-    expect(harness.markRecoveryFailed).not.toHaveBeenCalled();
+    expect(harness.pauseAfterRecoveryFailure).not.toHaveBeenCalled();
   });
 
   it("keeps recovery successful when chat presentation persistence fails", async () => {
@@ -155,7 +155,7 @@ describe("GoalRuntimeRecoveryCoordinator", () => {
     await vi.waitFor(() => {
       expect(harness.releaseLiveRuntime).toHaveBeenCalledOnce();
     });
-    expect(harness.markRecoveryFailed).not.toHaveBeenCalled();
+    expect(harness.pauseAfterRecoveryFailure).not.toHaveBeenCalled();
     expect(chatRecorder.record).toHaveBeenCalled();
     expect(chatRecorder.close).toHaveBeenCalledOnce();
   });
@@ -367,7 +367,7 @@ describe("GoalRuntimeRecoveryCoordinator", () => {
       expect(harness.releaseLiveRuntime).toHaveBeenCalledOnce();
     });
     expect(continueGoal).not.toHaveBeenCalled();
-    expect(harness.markRecoveryFailed).not.toHaveBeenCalled();
+    expect(harness.pauseAfterRecoveryFailure).not.toHaveBeenCalled();
   });
 
   it("refreshes the fenced snapshot after reconciling an interrupted operation", async () => {
@@ -419,7 +419,7 @@ describe("GoalRuntimeRecoveryCoordinator", () => {
     expect(refreshOrder).toBeLessThan(runOrder);
   });
 
-  it("blocks recovery when the persisted provider transcript is unavailable", async () => {
+  it("pauses recovery when the persisted provider transcript is unavailable", async () => {
     const snapshot = recoverySnapshot("active");
     const harness = createHarness(snapshot, {
       preflightError: Object.assign(new Error("transcript missing"), {
@@ -434,13 +434,14 @@ describe("GoalRuntimeRecoveryCoordinator", () => {
         reason: "transcript missing",
       }),
     );
-    expect(harness.markRecoveryFailed).toHaveBeenCalledWith(
+    expect(harness.pauseAfterRecoveryFailure).toHaveBeenCalledWith(
       expect.objectContaining({
         expectedRunEpoch: 0,
         errorCode: "provider_session_unavailable",
         errorMessage: "transcript missing",
       }),
     );
+    expect(harness.currentRuntimeState()).toBe("idle");
     expect(harness.nativeRun).not.toHaveBeenCalled();
   });
 
@@ -474,7 +475,7 @@ describe("GoalRuntimeRecoveryCoordinator", () => {
       outcomes: [expect.objectContaining({ status: "resumed" })],
     });
     await vi.waitFor(() => {
-      expect(harness.markRecoveryFailed).toHaveBeenCalledWith(
+      expect(harness.pauseAfterRecoveryFailure).toHaveBeenCalledWith(
         expect.objectContaining({
           expectedRunEpoch: 2,
           errorCode: "provider_resume_failed",
@@ -484,7 +485,7 @@ describe("GoalRuntimeRecoveryCoordinator", () => {
     });
   });
 
-  it("clears the live recovery presentation after a provider error", async () => {
+  it("keeps the paused recovery visible after a provider error", async () => {
     const harness = createHarness(recoverySnapshot("active"), {
       nativeGenerator: async function* (context) {
         await context.runtimeRecovery.onProviderSessionInitialized?.({
@@ -504,7 +505,7 @@ describe("GoalRuntimeRecoveryCoordinator", () => {
       outcomes: [expect.objectContaining({ status: "resumed" })],
     });
     await vi.waitFor(() => {
-      expect(harness.markRecoveryFailed).toHaveBeenCalledWith(
+      expect(harness.pauseAfterRecoveryFailure).toHaveBeenCalledWith(
         expect.objectContaining({
           expectedRunEpoch: 0,
           errorCode: "provider_resume_failed",
@@ -513,11 +514,14 @@ describe("GoalRuntimeRecoveryCoordinator", () => {
       );
     });
 
-    expect(harness.currentRuntimeState()).toBe("failed");
+    expect(harness.currentRuntimeState()).toBe("idle");
     expect(harness.hasRecoveryLease()).toBe(false);
-    await expect(harness.listRecoveryPresentationSessions()).resolves.toEqual(
-      [],
-    );
+    await expect(harness.listRecoveryPresentationSessions()).resolves.toEqual([
+      expect.objectContaining({
+        runtimeSessionId: RUNTIME_SESSION_ID,
+        state: "idle",
+      }),
+    ]);
     expect(harness.releaseLiveRuntime).not.toHaveBeenCalled();
     expect(harness.releaseObservationLease).toHaveBeenCalledOnce();
   });
@@ -541,7 +545,6 @@ function createHarness(
 ) {
   let state = initialSnapshot.session.state;
   let recoveryLeaseHeld = true;
-  let recoveryFailed = false;
   const claim: RuntimeRecoveryClaim = {
     ownerId: OWNER_ID,
     runtimeSessionId: RUNTIME_SESSION_ID,
@@ -565,23 +568,18 @@ function createHarness(
       state: "idle" as const,
     };
   });
-  const markRecoveryFailed = vi.fn(async () => {
-    state = "failed";
-    recoveryFailed = true;
+  const pauseAfterRecoveryFailure = vi.fn(async () => {
+    state = "idle";
     recoveryLeaseHeld = false;
   });
-  const listRecoveryPresentationSessions = vi.fn(async () =>
-    recoveryFailed
-      ? []
-      : [
-          {
-            runtimeSessionId: RUNTIME_SESSION_ID,
-            state,
-            runEpoch: initialSnapshot.session.runEpoch,
-            updatedAt: NOW,
-          },
-        ],
-  );
+  const listRecoveryPresentationSessions = vi.fn(async () => [
+    {
+      runtimeSessionId: RUNTIME_SESSION_ID,
+      state,
+      runEpoch: initialSnapshot.session.runEpoch,
+      updatedAt: NOW,
+    },
+  ]);
   const refreshRecovery = vi.fn(
     async () => options.refreshSnapshot ?? initialSnapshot,
   );
@@ -595,7 +593,7 @@ function createHarness(
     releaseRecoveryLease,
     releaseLiveRuntime,
     persistState,
-    markRecoveryFailed,
+    pauseAfterRecoveryFailure,
     listRecoveryPresentationSessions,
   } as unknown as RuntimeSessionRecoveryPersistencePort;
   const providerPreflight = vi.fn(async () => {
@@ -642,7 +640,7 @@ function createHarness(
     persistState,
     releaseRecoveryLease,
     releaseLiveRuntime,
-    markRecoveryFailed,
+    pauseAfterRecoveryFailure,
     refreshRecovery,
     reconcilePendingOperation,
     attachObservationLease,

@@ -198,7 +198,7 @@ function asRecoveryPersistence(
     "releaseRecoveryLease",
     "releaseLiveRuntime",
     "persistState",
-    "markRecoveryFailed",
+    "pauseAfterRecoveryFailure",
   ] as const) {
     if (typeof candidate[method] !== "function") {
       throw new Error(

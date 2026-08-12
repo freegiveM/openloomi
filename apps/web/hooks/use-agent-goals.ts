@@ -8,6 +8,7 @@ import type {
   AgentGoalCommandResponse,
   AgentGoalDetailResponse,
   AgentGoalSessionResponse,
+  ResumeGoalRequest,
   UpdateGoalRequest,
   UpsertGoalContextRequest,
 } from "@/lib/ai/runtime-instructions/api";
@@ -18,6 +19,7 @@ import {
   fetchAgentGoalDetail,
   fetchAgentGoalSession,
   removeAgentGoalContext,
+  resumeAgentGoal,
   updateAgentGoal,
   upsertAgentGoalContext,
 } from "@/lib/ai/runtime-instructions/api/client";
@@ -120,6 +122,24 @@ export function useAgentGoalCommands(runtimeSessionId: string) {
         "update",
         { goalId, ...request },
         (idempotencyKey) => updateAgentGoal(goalId, request, idempotencyKey),
+      );
+      await refresh(goalId);
+      return response;
+    },
+    resume: async (
+      goalId: string,
+      expectedRevision: number,
+      reason?: ResumeGoalRequest["reason"],
+    ) => {
+      const request = {
+        runtimeSessionId,
+        expectedRevision,
+        ...(reason === undefined ? {} : { reason }),
+      };
+      const response = await execute(
+        "resume",
+        { goalId, ...request },
+        (idempotencyKey) => resumeAgentGoal(goalId, request, idempotencyKey),
       );
       await refresh(goalId);
       return response;

@@ -6,6 +6,7 @@ import type {
 } from "@/lib/ai/runtime-instructions/api";
 import {
   blankGoalDraft,
+  canResumeGoal,
   createGoalCommandIdempotencyKeys,
   goalDraft,
   goalInputFromDraft,
@@ -132,6 +133,13 @@ describe("Goal UI model", () => {
     expect(shouldPollGoal(summary("blocked"))).toBe(false);
     expect(shouldPollGoal(summary("completed"))).toBe(false);
     expect(shouldPollGoal(summary("budget_limited"))).toBe(false);
+  });
+
+  test("offers an explicit continuation only for paused or blocked Goals", () => {
+    expect(canResumeGoal("paused")).toBe(true);
+    expect(canResumeGoal("blocked")).toBe(true);
+    expect(canResumeGoal("active")).toBe(false);
+    expect(canResumeGoal("completed")).toBe(false);
   });
 
   test("reuses a command key until success and rotates it when input changes", () => {

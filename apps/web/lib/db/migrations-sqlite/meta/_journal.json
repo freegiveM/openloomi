@@ -260,6 +260,13 @@
                         "when": 1786360215209,
                         "tag": "0108_agent_goal_runtime_recovery",
                         "breakpoints": true
+                    },
+                    {
+                        "idx": 37,
+                        "version": "7",
+                        "when": 1786435200000,
+                        "tag": "0109_agent_goal_recovery_pause",
+                        "breakpoints": true
                     }
                 ]
 }

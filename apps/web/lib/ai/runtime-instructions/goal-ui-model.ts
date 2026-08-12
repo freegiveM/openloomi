@@ -171,6 +171,10 @@ export function shouldPollGoal(summary?: PublicGoalSummary): boolean {
   return summary?.goal.status === "active";
 }
 
+export function canResumeGoal(status: PublicAgentGoal["status"]): boolean {
+  return status === "paused" || status === "blocked";
+}
+
 export function formatDuration(seconds: number): string {
   if (seconds < 60) return `${seconds}s`;
   const minutes = Math.floor(seconds / 60);

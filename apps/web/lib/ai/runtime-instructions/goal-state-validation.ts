@@ -229,7 +229,7 @@ export function assertGoalResumeCommit(
   expectedRevision: number,
 ): void {
   if (
-    previousGoal.status !== "paused" ||
+    (previousGoal.status !== "paused" && previousGoal.status !== "blocked") ||
     goal.status !== "active" ||
     goal.revision !== expectedRevision + 1 ||
     instruction.kind !== "goal.resume" ||
@@ -240,7 +240,7 @@ export function assertGoalResumeCommit(
   ) {
     throw new DurableAgentGoalStateError(
       "invalid_commit",
-      "An ordinary Goal transition may only resume a paused Goal with its matching steer instruction",
+      "An ordinary Goal transition may only resume a paused or blocked Goal with its matching steer instruction",
     );
   }
 

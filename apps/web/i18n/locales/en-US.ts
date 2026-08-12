@@ -52,6 +52,8 @@ const en = {
     invalidDeadline: "Enter a valid deadline.",
     waiting: "Waiting for Claude",
     edit: "Edit Goal",
+    resume: "Continue Goal",
+    retry: "Retry Goal",
     criteriaProgress: "{{done}} of {{total}} criteria",
     execution: "Execution",
     runStatus: "Run",

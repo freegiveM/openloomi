@@ -884,22 +884,20 @@ export class SqliteGoalRuntimeStore {
     );
   }
 
-  markRecoveryFailed(input: {
+  pauseAfterRecoveryFailure(input: {
     ownerId: string;
     runtimeSessionId: string;
     leaseOwner: string;
     leaseToken: string;
     expectedRunEpoch: number;
-    errorCode: string;
-    errorMessage: string;
-    failedAtSeconds: number;
+    updatedAtSeconds: number;
   }): boolean {
     return (
       this.client
         .prepare(
           `UPDATE agent_runtime_sessions
-              SET state = 'failed', recovery_error_code = ?,
-                  recovery_error_message = ?, recovery_failed_at = ?,
+              SET state = 'idle', recovery_error_code = NULL,
+                  recovery_error_message = NULL, recovery_failed_at = NULL,
                   recovery_lease_owner = NULL, recovery_lease_token = NULL,
                   recovery_lease_expires_at = NULL,
                   updated_at = MAX(updated_at, ?)
@@ -908,16 +906,13 @@ export class SqliteGoalRuntimeStore {
               AND run_epoch = ? AND recovery_lease_expires_at > ?`,
         )
         .run(
-          input.errorCode,
-          input.errorMessage,
-          input.failedAtSeconds,
-          input.failedAtSeconds,
+          input.updatedAtSeconds,
           input.ownerId,
           input.runtimeSessionId,
           input.leaseOwner,
           input.leaseToken,
           input.expectedRunEpoch,
-          input.failedAtSeconds,
+          input.updatedAtSeconds,
         ).changes === 1
     );
   }

@@ -135,6 +135,7 @@ const dependencies = {
   goals: {
     activate: vi.fn(),
     update: vi.fn(),
+    resume: vi.fn(),
     upsertContext: vi.fn(),
     removeContext: vi.fn(),
   },
@@ -160,6 +161,8 @@ const goalInput = {
 
 const collectionRoute = await import("@/app/api/agent-goals/route");
 const goalRoute = await import("@/app/api/agent-goals/[goalId]/route");
+const resumeRoute =
+  await import("@/app/api/agent-goals/[goalId]/resume/route");
 const contextRoute =
   await import("@/app/api/agent-goals/[goalId]/context/route");
 
@@ -180,6 +183,7 @@ beforeEach(() => {
   dependencies.runtimeSessions.ensure.mockResolvedValue({});
   dependencies.goals.activate.mockResolvedValue(acceptedCommand);
   dependencies.goals.update.mockResolvedValue(acceptedCommand);
+  dependencies.goals.resume.mockResolvedValue(acceptedCommand);
   dependencies.goals.upsertContext.mockResolvedValue(acceptedCommand);
   dependencies.goals.removeContext.mockResolvedValue(acceptedCommand);
   dependencies.queries.listBySession.mockResolvedValue([]);
@@ -424,6 +428,30 @@ describe("Agent Goal API", () => {
         },
       }),
     );
+  });
+
+  test("resumes a paused or blocked Goal without requiring a live Runtime", async () => {
+    dependencies.liveSessions.resolve.mockResolvedValueOnce(undefined);
+    const response = await resumeRoute.POST(
+      request("POST", `/api/agent-goals/${goalId}/resume`, {
+        runtimeSessionId,
+        expectedRevision: 2,
+        reason: "  Continue after resolving the blocker  ",
+      }),
+      goalContext(),
+    );
+
+    expect(response.status).toBe(200);
+    expect(dependencies.goals.resume).toHaveBeenCalledWith({
+      ownerId: "user-a",
+      runtimeSessionId,
+      goalId,
+      expectedRevision: 2,
+      idempotencyKey: "request-1",
+      source: { type: "user", authority: "user" },
+      reason: "Continue after resolving the blocker",
+    });
+    expect(dependencies.runtimeSessions.ensure).not.toHaveBeenCalled();
   });
 
   test("routes context changes with user provenance", async () => {

@@ -4,6 +4,7 @@ import type {
   AgentGoalDetailResponse,
   AgentGoalSessionResponse,
   RemoveGoalContextRequest,
+  ResumeGoalRequest,
   UpdateGoalRequest,
   UpsertGoalContextRequest,
 } from ".";
@@ -58,6 +59,17 @@ export async function updateAgentGoal(
   return requestJson(
     `/api/agent-goals/${encodeURIComponent(goalId)}`,
     commandRequest("PATCH", request, idempotencyKey),
+  );
+}
+
+export async function resumeAgentGoal(
+  goalId: string,
+  request: ResumeGoalRequest,
+  idempotencyKey = crypto.randomUUID(),
+): Promise<AgentGoalCommandResponse> {
+  return requestJson(
+    `/api/agent-goals/${encodeURIComponent(goalId)}/resume`,
+    commandRequest("POST", request, idempotencyKey),
   );
 }
 

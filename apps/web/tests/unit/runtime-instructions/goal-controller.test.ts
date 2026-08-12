@@ -501,6 +501,72 @@ describe("GoalController Claude Stop integration", () => {
     }
   });
 
+  it("continues instead of blocking when semantic evidence is outside the evaluation snapshot", async () => {
+    const semanticEvaluator = {
+      evaluate: vi.fn().mockResolvedValue({
+        completed: true,
+        confidence: 1,
+        satisfiedCriteria: ["semantic-review"],
+        missingCriteria: [],
+        evidence: [
+          {
+            criterionId: "semantic-review",
+            evidenceIds: ["40000000-0000-4000-8000-000000000001"],
+          },
+        ],
+        reason: "The implementation appears complete.",
+      }),
+    };
+    const fixture = await createFixture({ semanticEvaluator });
+    try {
+      await activateGoal(fixture, {
+        objective: "Verify the implementation semantically",
+        successCriteria: [
+          {
+            id: "semantic-review",
+            description: "The implementation satisfies the requested behavior",
+            verification: { type: "model_evidence" },
+            required: true,
+          },
+        ],
+        constraints: [],
+        contextRefs: [],
+        priority: 80,
+        maxTurns: 5,
+        completionPolicy: "model_evaluator",
+        source: { type: "user" },
+      });
+      await observeAssistantTurn(
+        fixture,
+        "assistant-foreign-evidence",
+        "The implementation appears complete.",
+      );
+
+      await expect(
+        fixture.claude.evaluateStop({
+          runEpoch: 0,
+          assistantTurnId: "assistant-foreign-evidence",
+          lastAssistantMessage: "The implementation appears complete.",
+          stopHookActive: false,
+        }),
+      ).resolves.toMatchObject({ decision: "block", outcome: "continue" });
+      await expect(
+        fixture.runtime.observations.listGoalRuns(OWNER_ID, SESSION_ID),
+      ).resolves.toEqual([
+        expect.objectContaining({
+          status: "running",
+          lastEvaluation: expect.objectContaining({
+            satisfiedCriteria: [],
+            missingCriteria: ["semantic-review"],
+            evidence: [],
+          }),
+        }),
+      ]);
+    } finally {
+      await closeFixture(fixture);
+    }
+  });
+
   it("allows a stale Stop callback without evaluating or continuing the current run", async () => {
     const fixture = await createFixture();
     try {
