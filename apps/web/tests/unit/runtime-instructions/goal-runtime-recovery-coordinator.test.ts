@@ -1,3 +1,5 @@
+import { resolve } from "node:path";
+
 import { describe, expect, it, vi } from "vitest";
 
 import type { NativeAgentRun } from "@openloomi/ai/agent/native-runner";
@@ -17,7 +19,7 @@ import type {
 const OWNER_ID = "goal-recovery-owner";
 const RUNTIME_SESSION_ID = "goal-recovery-session";
 const PROVIDER_SESSION_ID = "claude-provider-session";
-const WORKING_DIRECTORY = "D:\\openloomi\\sessions\\goal-recovery";
+const WORKING_DIRECTORY = resolve("sessions", "goal-recovery");
 const LEASE_TOKEN = "goal-recovery-lease-token";
 const NOW = "2026-08-10T10:00:00.000Z";
 
