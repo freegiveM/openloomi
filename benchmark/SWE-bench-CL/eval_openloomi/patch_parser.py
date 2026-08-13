@@ -1,15 +1,17 @@
 """
 patch_parser.py
 ================
-从 OpenLoomi agent 的最终回复里抠出 unified diff 代码块。
+Extract the unified diff block from OpenLoomi agent's final reply.
 
-策略（按优先级）：
-1. ```` ```diff ... ``` ```` 代码块（最理想）
-2. 任意 ```` ``` ... ``` ```` 代码块含 ``diff --git``
-3. 文本中第一个 ``diff --git`` 到回复末尾（剥掉尾部 "success" 等字面）
-4. 完全没有 → 返回 None（视为 NO_PATCH_AVAILABLE）
+Strategy (priority order):
+1. ```` ```diff ... ``` ```` code block (preferred)
+2. Any ```` ``` ... ``` ```` code block containing ``diff --git``
+3. From the first ``diff --git`` in plain text up to the end of the reply
+   (stripping trailing "success" and similar literal noise)
+4. Nothing found → return None (treat as NO_PATCH_AVAILABLE)
 
-清洗：尾部常见的字面 "success" / "```success" / "Done." 视情况剥掉。
+Cleaning: strip common trailing literals like "success" / "```success" / "Done."
+when appropriate.
 """
 
 from __future__ import annotations
@@ -27,7 +29,7 @@ _NO_PATCH_MARKERS = (
 )
 
 
-# 清洗阶段：很多 agent 在 patch 代码块尾加 "success" 字样
+# Cleaning phase: many agents append "success" to the end of patch blocks
 _TRAILING_NOISE = re.compile(
     r"(?:[\n\r]+\s*\`\`\`\s*|[\n\r]+\s*)+(?:success|SUCCESS|Done\.?|Complete\.?)?\s*$",
     re.MULTILINE,
@@ -39,20 +41,20 @@ def extract_patch(agent_reply: str) -> Optional[str]:
     if not agent_reply:
         return None
 
-    # 情况 1：```diff ... ```
+    # Case 1: ```diff ... ```
     m = re.search(r"```diff\s*\n([\s\S]*?)\n```", agent_reply)
     if m:
         diff = _clean(m.group(1).strip())
         if diff.startswith("diff --git"):
             return diff
 
-    # 情况 2：任意 ``` ... ``` 块含 diff --git
+    # Case 2: any ``` ... ``` block containing diff --git
     for m in re.finditer(r"```[a-zA-Z]*\s*\n([\s\S]*?)\n```", agent_reply):
         block = _clean(m.group(1).strip())
         if block.startswith("diff --git"):
             return block
 
-    # 情况 3：纯文本里抽首个 diff --git 起直到回复末尾
+    # Case 3: pull the first diff --git from plain text up to the end of the reply
     m = re.search(r"(diff --git[\s\S]+)$", agent_reply, re.MULTILINE)
     if m:
         return _clean(m.group(1).strip())
@@ -61,10 +63,11 @@ def extract_patch(agent_reply: str) -> Optional[str]:
 
 
 def _clean(diff: str) -> str:
-    """剥掉尾部 ```` ```success`` 这种装饰性尾巴，再保 patch 完整。"""
+    """Strip decorative trailing tails like ```` ```success`` while keeping the patch intact."""
     cleaned = _TRAILING_NOISE.sub("", diff)
-    # patch 必须以 "diff --git" 开头、以 "\n" + 任意非 "diff --git" 行结尾。
-    # python-patch 不接受 "EOF: success" 这种尾部。
+    # The patch must start with "diff --git" and end with "\n" followed by any line
+    # that does not start with "diff --git". python-patch does not accept tails like
+    # "EOF: success".
     return cleaned.rstrip() + "\n"
 
 

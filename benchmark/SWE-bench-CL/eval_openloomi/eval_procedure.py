@@ -2,31 +2,31 @@
 eval_procedure.py
 =================
 
-**与官方 eval_v3_swe-agent 的关系**：
+**Relationship to the official eval_v3_swe-agent**:
 
-| 官方 v3 §              | 本目录实现 |
+| Official v3 §          | This directory's implementation |
 |------------------------|---|
-| §1 Setup               | 文件顶部 + config.py |
+| §1 Setup               | top of file + config.py |
 | §2 Load dataset        | `load_swe_bench_cl()` |
-| §2.5 setup_repository  | `setup_repository()`（git clone + reset + clean，与官方一致） |
-| §3 Model               | ★ **替换** —— 由 OpenLoomi 整体承担，**不再有 get_llm()** |
-| §4 Tools (手写 ACI)    | ★ **删除** —— OpenLoomi 自带 Bash/Read/Edit/Grep/Glob |
-| §5 Semantic memory     | `SemanticMemory` 精简版（FAISS + sentence-transformers） |
-| §6 LangGraph 5-node    | ★ **删除** —— 改成单层 for 循环；每 task 单次 /api/native/agent |
+| §2.5 setup_repository  | `setup_repository()` (git clone + reset + clean, identical to official) |
+| §3 Model               | ★ **Replaced** — OpenLoomi handles this end-to-end; `get_llm()` is gone |
+| §4 Tools (hand-rolled ACI) | ★ **Removed** — OpenLoomi ships Bash/Read/Edit/Grep/Glob |
+| §5 Semantic memory     | Slimmed-down `SemanticMemory` (FAISS + sentence-transformers) |
+| §6 LangGraph 5-node    | ★ **Removed** — flattened to a single for-loop; one /api/native/agent call per task |
 | §7 Evaluation          | `apply_patch` + `run_evaluation_tests` + `check_test_outcomes` |
-| §8 Experiments         | `SWEAgentCLEvaluator` + memory × no-memory 双组 |
+| §8 Experiments         | `SWEAgentCLEvaluator` + memory × no-memory two-group |
 | §9 Results Analysis    | `analyze_results()` |
 
-调用粒度（与官方 v3 不同）：
-    - v3：每个 task 调 5 个 LLM（planner/executor/reflector/solver/tool）
-    - 本目录：每个 task 调 1 次 /api/native/agent ——
-      让 OpenLoomi 内部完整地 plan → execute → reflect → 输出 final diff
+Call granularity (differs from official v3):
+    - v3: each task calls 5 LLMs (planner/executor/reflector/solver/tool)
+    - This directory: each task calls /api/native/agent once —
+      letting OpenLoomi internally do plan → execute → reflect → emit the final diff
 
-工作流：
+Workflow:
     for task in sequence:
         repo_dir = setup_repository(repo, base_commit)
         prompt  = build_task_prompt(task, repo_dir, memory=memory_excerpt)
-        reply   = openloomi_call(prompt, workDir=repo_dir)  # OpenLoomi 自己用工具链跑
+        reply   = openloomi_call(prompt, workDir=repo_dir)  # OpenLoomi drives its own toolchain
         diff    = extract_patch(reply)
         apply_patch_test(diff, repo_dir)
         success = run_pytest(repo_dir) and check_FAIL_TO_PASS / PASS_TO_PASS
@@ -54,8 +54,8 @@ import urllib.error
 from tqdm import tqdm
 
 
-# 自动从 .env 加载敏感 env（如果 caller 没设）。
-# 优先级：process env > user-scope registry > .env
+# Auto-load sensitive env vars from .env (when caller did not set them).
+# Precedence: process env > user-scope registry > .env
 def _load_env_file():
     env_path = Path(__file__).resolve().parents[2] / "clbench" / ".env"
     if not env_path.is_file():
@@ -124,7 +124,7 @@ def load_swe_bench_cl(path: str = DATASET_PATH) -> dict:
 
 
 # ============================================================================
-# §2.5 setup_repository（与官方 v3 完全一致）
+# §2.5 setup_repository (identical to official v3)
 # ============================================================================
 
 def setup_repository(repo_identifier: str,
@@ -132,17 +132,19 @@ def setup_repository(repo_identifier: str,
                      base_clones_dir: Path,
                      force_reset: bool = True,
                      dummy_files_setup=None) -> Path:
-    """git clone + reset --hard 到 base_commit。
+    """git clone + reset --hard to base_commit.
     Returns absolute path to the (now on base_commit) repo dir.
 
-    与官方 v3 略不同：
-      我们**不**调 ``git clean -fdx``。OpenLoomi agent 会直接在工作目录里
-      改文件（不是输出 diff 让 harness 改），所以前一条 task 留下的修改必须
-      保留给 evaluate 使用；用 ``git stash`` / patch apply 控制边界。
-      上游 v3 自己写 5 个 LangGraph 节点，自己跑 ripgrep/find_file，
-      不会绕到 working tree 之外；我们让 OpenLoomi 的改动天然落盘。
+    Slightly different from official v3:
+      We do **NOT** run ``git clean -fdx``. OpenLoomi's agent directly edits
+      files in the working directory (rather than emitting a diff for the
+      harness to apply), so modifications left by the previous task must be
+      preserved for evaluation; boundaries are controlled with ``git stash``
+      and patch apply. Upstream v3 hand-writes 5 LangGraph nodes and runs
+      ripgrep/find_file itself, never leaving the working tree; we let
+      OpenLoomi's edits land on disk naturally.
     """
-    # --- local/* (dummy 数据集路径) ---
+    # --- local/* (dummy dataset path) ---
     if repo_identifier.startswith("local/"):
         project_name = repo_identifier.split("/", 1)[1]
         local = base_clones_dir / f"local__{project_name}"
@@ -190,7 +192,8 @@ def setup_repository(repo_identifier: str,
             except subprocess.CalledProcessError as e:
                 last_fetch_err = e
                 stderr_snip = (e.stderr.decode(errors="ignore") if e.stderr else "")[-300:]
-                # 只对"网络层失败"重试；其它错误（commit 不存在、auth 失败等）直接抛
+                # Only retry on network-layer failures; other errors (missing
+                # commit, auth failure, etc.) are re-raised immediately.
                 transient = any(s in stderr_snip for s in (
                     "Recv failure", "Connection was reset",
                     "Could not resolve host", "RPC failed",
@@ -204,14 +207,16 @@ def setup_repository(repo_identifier: str,
                 time.sleep(wait)
         if not fetch_ok:
             raise last_fetch_err  # type: ignore[misc]
-        # 关键差别：用 ``git reset --hard`` 而不是 ``git clean -fdx``。
-        # OpenLoomi agent 修改的工作树会被前一条 task 影响；
-        # 所以每条 task 开始前我们都需要切回 base_commit，然后再让 agent 重新改。
+        # Key difference: use ``git reset --hard`` rather than ``git clean -fdx``.
+        # OpenLoomi agent's working-tree edits are influenced by the previous task,
+        # so before each task we need to roll back to base_commit and let the agent
+        # redo its edits.
         subprocess.run(["git", "reset", "--hard", commit_hash],
                        cwd=local, check=True, timeout=120, capture_output=True)
-        # 仅当 force_reset=True 时额外 clean。但默认开 force_reset 会有副作用：
-        # 如果用户自己 ``force_reset=False``，agent 的工作文件就在 working tree
-        # 残留；此处不开。
+        # Only run an extra clean when force_reset=True. Leaving force_reset on
+        # by default has side effects: when the user passes ``force_reset=False``,
+        # the agent's working files linger in the working tree; we do not enable
+        # it here.
         # if force_reset:
         #     subprocess.run(["git", "clean", "-fdx"],
         #                    cwd=local, check=True, timeout=120, capture_output=True)
@@ -236,12 +241,13 @@ def run_agent_on_task(
     run_id: str,
     task_idx: int,
 ) -> tuple[bool, str, str, str]:
-    """调用 OpenLoomi 一整轮。
+    """Run one full round of OpenLoomi.
 
     Returns:
         (success_bool, agent_reply_text, diff_from_reply, wd_diff)
-        diff_from_reply: agent 输出里抠出的 patch（可能含 ```diff``` 块）
-        wd_diff: 工作目录 ``git diff`` 产物（agent 直接改文件时非空）
+        diff_from_reply: patch extracted from the agent's output (may include ```diff``` blocks)
+        wd_diff: ``git diff`` output from the working directory (non-empty when
+                 the agent edits files directly)
     """
     instance_id = task["metadata"]["instance_id"]
     repo = task["metadata"]["repo"]
@@ -267,11 +273,12 @@ def run_agent_on_task(
     logger.info("%sagent took %.1fs, reply %d chars",
                 log_prefix, time.time() - t0, len(reply))
 
-    # 1) 优先尝试从 agent 回复中抠 unified diff
+    # 1) First try to extract the unified diff from the agent's reply
     diff_from_reply = extract_patch(reply) or ""
 
-    # 2) 兜底：直接用 ``git diff`` 把 agent 在工作目录里真实做出的改动抓出来
-    #    （agent 不输出 patch 而是直接编辑文件，这里能拿到 "真相"）
+    # 2) Fallback: use ``git diff`` to capture what the agent actually changed in
+    #    the working directory (when the agent edits files directly instead of
+    #    emitting a patch, this gets us the "truth").
     try:
         wd_diff = subprocess.run(
             ["git", "diff"],
@@ -280,9 +287,9 @@ def run_agent_on_task(
     except Exception:
         wd_diff = ""
 
-    # 3) 优先用 ``git diff``（工作目录里的真实改动）。
-    #    因为 OpenLoomi 在 workDir 里已经直接改文件了，git diff 比 agent
-    #    在对话里复述的 diff 更可靠。
+    # 3) Prefer ``git diff`` (the real working-tree changes) because OpenLoomi has
+    #    already modified files in workDir; git diff is more reliable than the
+    #    diff the agent paraphrases back in the conversation.
     diff = wd_diff if wd_diff else diff_from_reply
 
     no_patch = classify_no_patch(reply) and not diff
@@ -291,18 +298,19 @@ def run_agent_on_task(
 
 
 # ============================================================================
-# §5 精简版 Semantic memory（FAISS + sentence-transformers）
+# §5 Slimmed-down Semantic memory (FAISS + sentence-transformers)
 # ============================================================================
 
 class SemanticMemory:
-    """轻量语义记忆；只存当前 sequence 的 task 经验，per-task 写、per-prompt 读。
+    """Lightweight semantic memory; stores per-sequence task experience only,
+    written per task, read per prompt.
 
-    **Backend 选项**（由环境变量 ``OPENLOOMI_CL_EMBEDDING_BACKEND`` 选）：
-      - ``jaccard`` (默认): char n-gram + Jaccard，零外部依赖
-      - ``qwen``: OpenRouter 调 qwen/qwen3-embedding-8b (4096 维) + numpy 余弦
-      - ``faiss``:  同 qwen，但用 faiss.IndexFlatIP 索引
+    **Backend options** (selected via ``OPENLOOMI_CL_EMBEDDING_BACKEND``):
+      - ``jaccard`` (default): char n-gram + Jaccard, no external dependencies
+      - ``qwen``: OpenRouter call to qwen/qwen3-embedding-8b (4096-dim) + numpy cosine
+      - ``faiss``: same as qwen but indexed with faiss.IndexFlatIP
 
-    选 qwen/faiss 需要环境变量 ``OPENROUTER_API_KEY``。
+    Selecting qwen/faiss requires the ``OPENROUTER_API_KEY`` environment variable.
     """
 
     def __init__(self, k_results: int = MEMORY_K_RESULTS,
@@ -310,20 +318,20 @@ class SemanticMemory:
         self.k = k_results
         self.max_chars = max_chars
         self.docs: list = []  # [{text, meta, vec}]
-        self.embeddings = None  # np.ndarray shape (N, D), FAISS/numpy 都用
+        self.embeddings = None  # np.ndarray shape (N, D), shared by FAISS / numpy
         self.index = None  # faiss IndexFlatIP if backend=faiss
         self._backend: str | None = None
         self._embed_dim: int | None = None
-        self._embed_cache: dict[str, list[float]] = {}  # text -> vec, 避免重复调用
+        self._embed_cache: dict[str, list[float]] = {}  # text -> vec, avoids repeated calls
 
     def _ensure_deps(self):
-        """按 env 选 backend；失败时降级到 jaccard。"""
+        """Pick the backend from env; fall back to jaccard on failure."""
         if self._backend is not None:
             return
         backend = os.getenv("OPENLOOMI_CL_EMBEDDING_BACKEND", "jaccard").lower().strip()
         if backend in ("qwen", "faiss"):
             if not os.getenv("OPENROUTER_API_KEY"):
-                logger.warning("OPENROUTER_API_KEY 未设，memory 降级到 jaccard backend")
+                logger.warning("OPENROUTER_API_KEY not set; memory falls back to the jaccard backend")
                 self._backend = "jaccard"
             else:
                 try:
@@ -332,17 +340,17 @@ class SemanticMemory:
                     import numpy  # noqa
                     self._backend = backend
                 except ImportError as e:
-                    logger.warning("faiss/numpy import failed (%s)，降级到 jaccard", e)
+                    logger.warning("faiss/numpy import failed (%s); falling back to jaccard", e)
                     self._backend = "jaccard"
         else:
             self._backend = "jaccard"
         logger.info("SemanticMemory backend = %s", self._backend)
 
     def _embed_one(self, text: str) -> list[float]:
-        """调 OpenRouter qwen embedding；带 cache 避免重复。"""
+        """Call the OpenRouter qwen embedding endpoint; cached to avoid repeats."""
         if text in self._embed_cache:
             return self._embed_cache[text]
-        # truncate 防止超 token 限
+        # truncate to stay under the token limit
         snippet = text[:4000]
         key = os.environ["OPENROUTER_API_KEY"]
         body = json.dumps({
@@ -359,8 +367,8 @@ class SemanticMemory:
                 resp = json.loads(r.read())
                 vec = resp["data"][0]["embedding"]
         except Exception as e:
-            logger.warning("OpenRouter embedding failed: %s；fallback to zero vector", e)
-            # fallback：返回零向量，但 dim 必须已确定；用 4096 默认
+            logger.warning("OpenRouter embedding failed: %s; falling back to zero vector", e)
+            # Fallback: return a zero vector, but the dimension must be known; use 4096 by default
             vec = [0.0] * (self._embed_dim or 4096)
         self._embed_cache[text] = vec
         if self._embed_dim is None:
@@ -368,7 +376,7 @@ class SemanticMemory:
         return vec
 
     def _vector(self, text: str):
-        """统一返回：(jaccard_set | dense_list) 取决于 backend。"""
+        """Uniformly returns (jaccard_set | dense_list) depending on the backend."""
         if self._backend == "jaccard":
             words = set(text.lower().split()[:200])
             grams3 = set([text[max(0, i):i+3].lower() for i in range(len(text)-2)])
@@ -405,7 +413,7 @@ class SemanticMemory:
         )
         vec = self._vector(text)
         self.docs.append({"text": text, "meta": meta, "vec": vec})
-        # 重建 FAISS 索引（50 task 量级，O(N) 重建可接受）
+        # Rebuild the FAISS index (at ~50 tasks, an O(N) rebuild is acceptable)
         if self._backend == "faiss":
             self._rebuild_faiss_index()
         elif self._backend == "qwen":
@@ -420,7 +428,7 @@ class SemanticMemory:
             return
         arrs = [np.asarray(d["vec"], dtype=np.float32) for d in self.docs]
         mat = np.vstack(arrs)
-        # 余弦相似 = inner product on L2-normalized vectors
+        # Cosine similarity = inner product on L2-normalized vectors
         faiss.normalize_L2(mat)
         self.index = faiss.IndexFlatIP(mat.shape[1])
         self.index.add(mat)
@@ -487,8 +495,9 @@ def apply_patch(patch_content: str, repo_path: Path) -> bool:
         pass
     tmp = repo_path / ".openloomi_eval.patch"
     try:
-        # 用 write_bytes 保留原始字节（避免 Windows write_text 把 LF → CRLF，
-        # 这会破坏长 patch 的 hunk 行号偏移并触发 git apply "corrupt patch"）
+        # Use write_bytes to preserve raw bytes (Windows write_text would convert
+        # LF → CRLF, which breaks long-patch hunk line offsets and triggers
+        # git apply "corrupt patch").
         tmp.write_bytes(patch_content.encode("utf-8"))
         check = subprocess.run(["git", "apply", "--check", str(tmp)],
                                cwd=repo_path, capture_output=True, text=True, timeout=60)
@@ -505,9 +514,10 @@ def apply_patch(patch_content: str, repo_path: Path) -> bool:
 
 
 def run_pytest(repo_path: Path, command: str = DEFAULT_TEST_COMMAND):
-    # 如果 EVAL_PYTHON 已配置，把命令开头的 "python" 替换成 venv38 python。
-    # 注意：必须用 list args + shell=False，否则 PowerShell 会把 ``python.exe``
-    # 当 cmdlet、``"..."`` args 当 ScriptBlock，导致跑不起来。
+    # If EVAL_PYTHON is configured, replace "python" at the start of the command
+    # with the venv38 interpreter. Note: must use list args + shell=False, otherwise
+    # PowerShell treats ``python.exe`` as a cmdlet and ``"..."`` args as ScriptBlocks,
+    # which causes the command to fail.
     eval_py = EVAL_PYTHON
     args = shlex.split(command) if command else []
     if eval_py and args and args[0] == "python":
@@ -527,21 +537,23 @@ def run_pytest(repo_path: Path, command: str = DEFAULT_TEST_COMMAND):
 # ----------------------------------------------------------------------------
 
 def detect_test_command(repo_path: Path) -> str:
-    """根据仓库类型挑最合适的测试命令。
+    """Pick the most appropriate test command for the repo type.
 
-    - Django: 用 ``tests/runtests.py <module>``（在 eval 中调 ``evaluate_task`` 时
-      会再窄到 FAIL_TO_PASS 模块）。完整 ``runtests.py`` 太快。
-    - 其它: 默认 ``python -m pytest -q``。
-    - 备选: dot env ``OPENLOOMI_CL_TEST_COMMAND`` 覆盖。
+    - Django: use ``tests/runtests.py <module>`` (when called via ``evaluate_task``,
+      this is narrowed further to the FAIL_TO_PASS module). The full
+      ``runtests.py`` is too fast.
+    - Other: default ``python -m pytest -q``.
+    - Override: dot env ``OPENLOOMI_CL_TEST_COMMAND``.
     """
-    # 用户覆盖
+    # User override
     env_cmd = os.getenv("OPENLOOMI_CL_TEST_COMMAND")
     if env_cmd:
         return env_cmd
 
-    # 各种探测
+    # Various probes
     if (repo_path / "tests" / "runtests.py").exists() and "django" in repo_path.name.lower():
-        # Django: 没指定模块就跑全部；evaluate_task 会解析 FAIL_TO_PASS 拿到模块
+        # Django: when no module is specified, run everything; evaluate_task parses
+        # FAIL_TO_PASS to extract the module.
         return "python tests/runtests.py --verbosity=2"
 
     if (repo_path / "pytest.ini").exists() or (repo_path / "pyproject.toml").exists():
@@ -553,36 +565,38 @@ def detect_test_command(repo_path: Path) -> str:
 def check_test_outcomes(stdout: str, stderr: str,
                          fail_to_pass: list[str],
                          pass_to_pass: list[str]) -> bool:
-    """看 FAIL_TO_PASS 是否真的变成 PASS，以及 PASS_TO_PASS 没回归。
+    """Verify that FAIL_TO_PASS has actually turned into PASS and that PASS_TO_PASS
+    has not regressed.
 
-    支持多种 runner 的输出格式：
+    Supports output formats from multiple runners:
         - pytest:  `... PASSED` /  `... FAILED`
         - django:  `test_xxx (...) ... ok` /  `... FAIL` /  `... ERROR`
         - unittest: `ok` / `FAIL`
-    解析策略：先从 ``test_id`` 抽方法名（兼容 ``test_xxx (ClassOrFile)`` /
-    ``test_xxx (file.Class.method)`` / ``file::Class::method`` 三种格式），
-    再用正则在该行里抽 pass/fail 标记。
+    Parsing strategy: first extract the method name from ``test_id`` (compatible
+    with ``test_xxx (ClassOrFile)`` / ``test_xxx (file.Class.method)`` /
+    ``file::Class::method`` formats), then use a regex to pull the pass/fail tag
+    out of that line.
     """
     out_lines = (stdout + "\n" + stderr).splitlines()
 
     def method_name(test_id: str) -> str:
-        """从各式 test_id 抽方法名（test_xxx 之类）。"""
+        """Extract the method name (e.g. test_xxx) from any test_id format."""
         # pytest id: `tests/foo.py::Class::test_xxx`
         if "::" in test_id:
             return test_id.split("::")[-1].split()[0]
-        # django / unittest 风格: `test_xxx (some.Class)`
+        # django / unittest style: `test_xxx (some.Class)`
         if "(" in test_id:
             return test_id.split("(")[0].strip()
-        # 兜底：python dotted
+        # Fallback: python dotted path
         return test_id.split(".")[-1]
 
     def status_of(test_id: str) -> str:
         name = method_name(test_id)
-        # 在行里 grep 这个方法名 + 三种 output pattern
+        # Grep the line for this method name + three output patterns
         for line in out_lines:
             if not line: continue
             if name not in line: continue
-            # 提取 " ... ok" / " ... FAIL" / " ... ERROR" 这种尾部
+            # Extract trailing tags like " ... ok" / " ... FAIL" / " ... ERROR"
             tail_pass = re.search(r"\.\.\.\s*ok\s*(?:\(.+\))?\s*$", line)
             tail_fail = re.search(r"\.\.\.\s*(FAIL|ERROR)\b", line)
             pytest_v = re.search(rf"::\s*{re.escape(name)}\s+(PASSED|FAILED|ERROR|SKIPPED)\b", line)
@@ -608,32 +622,33 @@ def check_test_outcomes(stdout: str, stderr: str,
 def _qmode_fallback_or_false(stdout: str, stderr: str,
                               fail_to_pass: list[str],
                               pass_to_pass: list[str]) -> bool:
-    """兜底：pytest 4.x 用 ``-q`` 时只打 ``. [100%]`` 不带 ``PASSED`` 标签，
-    上面 ``status_of`` 解析不到会一律 ``UNKNOWN``。这种情况下用 pytest 自身的
-    统计行反推：
+    """Fallback: pytest 4.x with ``-q`` only prints ``. [100%]`` without the
+    ``PASSED`` label, so the ``status_of`` above always returns ``UNKNOWN``.
+    In that case, infer from pytest's own summary line:
 
         "1 passed, 2445 deselected in 7.85 seconds"
 
-    只要 ``N passed`` 且 N >= len(set FAIL_TO_PASS ∪ PASS_TO_PASS 选中部分)，
-    且 stderr/stdout 中没有 ``failed``/``error`` 字样，就视为整体通过。
+    As long as ``N passed`` and N >= len(set of selected FAIL_TO_PASS ∪ PASS_TO_PASS)
+    and there is no ``failed``/``error`` word in stderr/stdout, treat the suite
+    as passing.
     """
     text = (stdout + "\n" + stderr).lower()
     if "passed" not in text and "passed" not in stdout.lower():
         return False
-    # 必须没看到任何 fail/error 信号
+    # Must not see any fail/error signal
     bad = re.search(r"\b(\d+)\s+(failed|error)\b", text)
     if bad:
         return False
-    # 抽 "N passed" —— 注意 pytest 4.x 可能是 "1 passed, X deselected"
+    # Extract "N passed" — note pytest 4.x may say "1 passed, X deselected"
     m = re.search(r"(\d+)\s+passed\b", stdout)
     if not m:
-        # 兜底在合并文本里再找一次
+        # Fallback: look once more in the combined text
         m = re.search(r"(\d+)\s+passed\b", text)
     if not m:
         return False
     n_passed = int(m.group(1))
-    # len(unique test names in selected list)：我们用 FAIL_TO_PASS 数量近似
-    # 因为 ``-k`` 替换只针对 FAIL_TO_PASS keys
+    # len(unique test names in selected list): we approximate with FAIL_TO_PASS
+    # count because ``-k`` substitution only targets FAIL_TO_PASS keys
     needed = len(set(fail_to_pass))
     if n_passed >= needed:
         logger.info("q-mode fallback: pytest reports %d passed >= %d FAIL_TO_PASS -> "
@@ -646,32 +661,35 @@ def evaluate_task(task: dict, repo_path: Path,
                   command: str = DEFAULT_TEST_COMMAND) -> bool:
     """Apply the task's test_patch, run the test command, check FAIL_TO_PASS/PASS_TO_PASS.
 
-    对 django 这种大仓库：用 ``tests/runtests.py <module>`` 跑特定模块（从
-    FAIL_TO_PASS 列表抽）。其它：用 pytest 全跑，但 FAIL_TO_PASS 是子集。
+    For large repos like django: use ``tests/runtests.py <module>`` to run a
+    specific module (extracted from the FAIL_TO_PASS list). For others: run
+    pytest over everything, with FAIL_TO_PASS as the subset of interest.
 
-    关键：command 默认是 ``DEFAULT_TEST_COMMAND``，但如果你给空字符串，
-    会让本函数内部用 ``detect_test_command()`` 探测 repo 类型。
+    Key: ``command`` defaults to ``DEFAULT_TEST_COMMAND``, but if you pass an
+    empty string, the function will internally call ``detect_test_command()``
+    to probe the repo type.
     """
     ev = task["evaluation"]
     test_patch = ev.get("test_patch")
     if test_patch and not apply_patch(test_patch, repo_path):
         logger.warning("test_patch failed to apply; using whatever the repo already has.")
 
-    # 如果 caller 给了 default 但 repo 是 django，replace 成 django 测试
+    # If the caller passed the default but the repo is django, switch to django tests
     if not command or command == DEFAULT_TEST_COMMAND:
         command = detect_test_command(repo_path)
         logger.info("auto-selected test command: %s", command)
 
-    # django 用 FAIL_TO_PASS 中的模块名做定向跑（第一个 FAIL_TO_PASS 拿 module）
+    # Django: target a specific module by name from FAIL_TO_PASS
+    # (the first FAIL_TO_PASS gives the module)
     fail_to_pass = ev.get("FAIL_TO_PASS", [])
     if "django" in repo_path.name.lower() and (repo_path / "tests" / "runtests.py").exists():
         mods = _extract_django_modules(fail_to_pass)
         if mods:
             command = f"python tests/runtests.py --verbosity=2 {' '.join(mods)}"
-    # pytest 同理：用 FAIL_TO_PASS 的 test id 直接做 -k 收敛（且去掉 -x，
-    # 否则第一个 fail 停下，FAIL_TO_PASS 全 UNKNOWN）。
-    # 只用 FAIL_TO_PASS 关键词（PASS_TO_PASS 列表可能含 [100%] 等 marker，
-    # 全加进来 -k 会过度收集到无关 test 文件）。
+    # pytest: likewise, use FAIL_TO_PASS test ids directly as -k selectors (and
+    # drop -x, otherwise the first failure stops the run and FAIL_TO_PASS all
+    # become UNKNOWN). Use only FAIL_TO_PASS keywords (PASS_TO_PASS may contain
+    # markers like [100%], and adding them all to -k over-collects unrelated tests).
     elif "pytest" in command:
         keys = []
         for t in fail_to_pass:
@@ -683,7 +701,7 @@ def evaluate_task(task: dict, repo_path: Path,
             command = f"python -m pytest --tb=short -q -k \"{k_arg}\""
 
     ok, stdout, stderr = run_pytest(repo_path, command)
-    # 兜底：某些 runner rc != 0 但 stdout 里有 "OK"，依然认为通过
+    # Fallback: some runners have rc != 0 but print "OK" in stdout; still treat as pass
     if "OK" in (stdout + stderr) and "FAILED" not in (stderr):
         ok = True
     final = check_test_outcomes(stdout, stderr, fail_to_pass,
@@ -694,7 +712,7 @@ def evaluate_task(task: dict, repo_path: Path,
 
 
 def _extract_django_modules(fail_to_pass: list[str]) -> list[str]:
-    """从 FAIL_TO_PASS 列表抽 django app 名。e.g.
+    """Extract the django app name from the FAIL_TO_PASS list. e.g.
         'test_paginator_iteration (pagination.tests.PaginationTests)'
         → 'pagination'
     """
@@ -709,7 +727,7 @@ def _extract_django_modules(fail_to_pass: list[str]) -> list[str]:
 
 
 # ============================================================================
-# §8 Evaluator —— 与官方 v3 主循环同构
+# §8 Evaluator — isomorphic to the official v3 main loop
 # ============================================================================
 
 class SWEAgentCLEvaluator:
@@ -739,8 +757,8 @@ class SWEAgentCLEvaluator:
             if not seq:
                 continue
 
-            # checkpoint dir: 按 sequence + mem/no_mem 分目录
-            # 结构：logs/<sequence_id>/<mem|no_mem>/<run_id>/<tid>.json
+            # checkpoint dir: split by sequence + mem/no_mem
+            # layout: logs/<sequence_id>/<mem|no_mem>/<run_id>/<tid>.json
             ckpt_root = Path("./logs") / seq_id / mem_label / run_id
             ckpt_root.mkdir(parents=True, exist_ok=True)
             logger.info("=" * 70)
@@ -765,7 +783,7 @@ class SWEAgentCLEvaluator:
                 base_commit = task["metadata"]["base_commit"]
                 t0 = time.time()
 
-                # checkpoint: 跳过已完成
+                # checkpoint: skip already-completed tasks
                 ckpt_path = ckpt_root / f"{tid}.json"
                 if ckpt_path.exists():
                     try:
@@ -773,7 +791,8 @@ class SWEAgentCLEvaluator:
                         logger.info("%s cached: success=%s (skip)",
                                     f"[{tid}]", cached.get("success"))
                         d = cached["task_details"] = {**cached.get("task_details", {})}
-                        # 把缓存的 details 整段塞到当前任务的 details，并 short-circuit
+                        # Splice the cached task_details into the current task's
+                        # details and short-circuit the run.
                         if cached.get("success") is not None:
                             sr["tasks_attempted"] += int(cached.get("attempted", 1))
                             sr["tasks_succeeded"] += int(cached.get("success", 0))
@@ -782,7 +801,7 @@ class SWEAgentCLEvaluator:
                     except Exception as e:  # noqa: BLE001
                         logger.warning("bad checkpoint %s: %s — re-run", ckpt_path, e)
 
-                # === ① 干净仓库 + 切到 base_commit ===
+                # === ① Clean repo + check out base_commit ===
                 try:
                     repo_path = setup_repository(repo_id, base_commit, CLONE_BASE_DIR)
                 except Exception as e:  # noqa: BLE001
@@ -790,17 +809,18 @@ class SWEAgentCLEvaluator:
                     sr["task_details"][tid] = {"success": False, "error": f"setup: {e}"}
                     continue
 
-                # === ② memory excerpt（同一 sequence 内复用） ===
+                # === ② memory excerpt (reused within the same sequence) ===
                 excerpt = ""
                 if memory:
                     excerpt = memory.relevant(
-                        query=tid,  # 用 tid 作 query 让 sequence 内同 repo 的命中优先
+                        query=tid,  # Use tid as the query so hits from the same repo within the sequence rank first
                         sequence_id=seq_id,
                     )
 
-                # === ③ 调 OpenLoomi 整条 task（带 retry） ===
-                # OpenLoomi agent 偶发 "AgentOutputEventBusError" 等内部 abort；
-                # 默认重试 2 次，每次间隔 3s
+                # === ③ Call OpenLoomi for the entire task (with retry) ===
+                # OpenLoomi's agent occasionally hits internal aborts like
+                # "AgentOutputEventBusError"; default to 2 retries with 3s between
+                # them.
                 ok_diff = False
                 reply = ""
                 diff_from_reply = ""
@@ -813,7 +833,8 @@ class SWEAgentCLEvaluator:
                             memory_excerpt=excerpt or None,
                             cfg=self.cfg, run_id=run_id, task_idx=task_idx,
                         )
-                        # "OK" 但 reply 几乎为空且没 diff，往往意味着 OpenLoomi 内部 abort
+                        # "OK" but reply is nearly empty and there is no diff often
+                        # means OpenLoomi aborted internally.
                         if len(reply) < 50 and not wd_diff and not diff_from_reply:
                             raise RuntimeError(
                                 f"agent returned empty reply ({len(reply)} chars), "
@@ -832,23 +853,25 @@ class SWEAgentCLEvaluator:
                     }
                     continue
 
-                # 综合最终 diff 用于日志
+                # Combine the final diff for logging purposes
                 diff = wd_diff if wd_diff else diff_from_reply
 
-                # === ④ apply diff（仅在 agent 没直接改文件时才需要） + 跑测试 ===
+                # === ④ Apply diff (only needed when the agent did NOT edit files
+                #     directly) + run tests ===
                 if diff_from_reply and not wd_diff:
-                    # 尝试 apply agent 给的 patch
+                    # Try to apply the patch emitted by the agent
                     patch_applied = bool(diff) and apply_patch(diff, repo_path)
                     logger.info("%s only patch (apply required): patch_applied=%s (diff_len=%d)",
                                 f"[{tid}]", patch_applied, len(diff or ""))
                 else:
-                    # agent 直接改了文件，diff 是 git diff 实时产物
+                    # Agent edited files directly; diff is the live `git diff` output
                     patch_applied = True
                     logger.info("%s working_tree_diff=%d chars; running tests directly",
                                 f"[{tid}]", len(diff or ""))
 
-                # 真实跑测试，拿 FAIL_TO_PASS / PASS_TO_PASS 结果
-                # （OpenLoomi 是否已经修过文件不重要，harness 只看当下 repo 状态）
+                # Actually run the tests to get FAIL_TO_PASS / PASS_TO_PASS results
+                # (whether OpenLoomi already modified the files does not matter; the
+                # harness only inspects the current repo state).
                 try:
                     success = evaluate_task(task, repo_path)
                 except Exception as e:
@@ -861,19 +884,19 @@ class SWEAgentCLEvaluator:
                     logger.info("%s task NOT resolved (diff apply failed and tests fail)",
                                 f"[{tid}]")
 
-                # === ⑤ 记录 + 写 memory ===
+                # === ⑤ Record + write memory ===
                 sr["tasks_attempted"] += 1
                 if success: sr["tasks_succeeded"] += 1
-                # reply 完整保存（之前只存 tail，会让 diff 抽取失败）
+                # Save the full reply (previously only the tail was saved, which broke diff extraction)
                 sr["task_details"][tid] = {
                     "success": success,
                     "patch_len": len(diff or ""),
                     "patch_applied": patch_applied,
                     "reply_chars": len(reply),
                     "elapsed_sec": round(time.time() - t0, 1),
-                    "reply_full": reply[:8000] if reply else "",  # 截前 8k 字符足够解析 diff
+                    "reply_full": reply[:8000] if reply else "",  # First 8k chars is enough to parse the diff
                 }
-                # checkpoint: 立刻持久化
+                # checkpoint: persist immediately
                 try:
                     ckpt_path.write_text(
                         json.dumps({
@@ -890,7 +913,8 @@ class SWEAgentCLEvaluator:
                     memory.add(task, seq_id, diff, success=success,
                               extra={"position": task_idx})
 
-                # === 每 5 个 task dump 一次 partial result（防止进程被杀丢数据） ===
+                # === Dump a partial result every 5 tasks (to avoid losing data
+                #     if the process is killed) ===
                 done = sr["tasks_attempted"]
                 if done > 0 and done % 5 == 0:
                     try:
@@ -943,7 +967,7 @@ class SWEAgentCLEvaluator:
 
 
 # ============================================================================
-# §9 Results Analysis（与官方 v3 简化版一致）
+# §9 Results Analysis (consistent with the official v3 simplified version)
 # ============================================================================
 
 def analyze_results(results: dict) -> dict:
@@ -977,10 +1001,11 @@ def main():
     seq_ids = CFG_SEQUENCE_IDS or [s["id"] for s in dataset["sequences"]]
 
     all_results: dict[str, Any] = {}
-    # 与官方 v3 §8 Experiments 一样跑两个对比组：memory_on 与 memory_off。
-    # 两个互不污染：每次都新建 SemanticMemory（或不建）。
-    # 顺序上先跑 no_mem（baseline）再跑 mem，避免上一轮状态泄漏。
-    # 支持 env ``OPENLOOMI_CL_RUN_KINDS``（逗号分隔，可选 no_mem / mem）。
+    # Like official v3 §8 Experiments, run two comparison groups: memory_on and
+    # memory_off. They do not contaminate each other: a fresh SemanticMemory is
+    # constructed (or omitted) for every run. Order is no_mem (baseline) first,
+    # then mem, to avoid state leakage between rounds. Supports env
+    # ``OPENLOOMI_CL_RUN_KINDS`` (comma-separated, accepts no_mem / mem).
     kinds_env = os.getenv("OPENLOOMI_CL_RUN_KINDS", "no_mem,mem").lower()
     wanted = set(k.strip() for k in kinds_env.split(",") if k.strip())
     runs = []
@@ -998,13 +1023,13 @@ def main():
             run_id=run_id,
         )
 
-        # 每次 run 完了，按 sequence × mem 单独存 results / analysis，
-        # 避免 mem 跑完覆盖 no_mem 的结果。结构跟 ckpt 一致：
+        # After each run, save results / analysis per sequence × mem so the mem
+        # run doesn't overwrite no_mem's output. Layout matches ckpt:
         #   logs/<sequence_id>/<mem|no_mem>/swe_agent_cl_results.json
-        # 多 sequence 同时跑时按 seq_id 拆文件。
+        # When multiple sequences run concurrently, split into per-seq_id files.
         seq_label = "|".join(seq_ids) if seq_ids else "all"
         for seq_id in seq_ids:
-            # 抽本 sequence 在 all_results 里的子集
+            # Pull this sequence's subset out of all_results
             seq_out = {
                 run_id: {
                     "run_id": run_id,
@@ -1029,8 +1054,10 @@ def main():
                 json.dump(analyze_results(seq_out), f, indent=2, default=str)
             logger.info("Saved %s", analysis_path)
 
-    # 兜底：兼容旧脚本，仍然写一份到老路径（results.json 在工作目录根）
-    # 注释掉避免覆盖；如需保留旧位置行为，再加 ``OPENLOOMI_CL_LEGACY_RESULTS=1``
+    # Fallback: for compatibility with older scripts, still write a copy to the
+    # old path (results.json at the working directory root). Commented out to
+    # avoid overwriting; to keep the old behavior, set
+    # ``OPENLOOMI_CL_LEGACY_RESULTS=1``.
     if os.getenv("OPENLOOMI_CL_LEGACY_RESULTS"):
         with open(RESULTS_PATH, "w", encoding="utf-8") as f:
             json.dump(all_results, f, indent=2, default=str)

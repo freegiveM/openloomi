@@ -16,7 +16,7 @@ export default defineConfig({
         find: "@openloomi/ui/*",
         replacement: alias("./components/ui/*"),
       },
-      // B方案 — `packages/ai/src/agent/*` stays local. The 7 remaining
+      // `packages/ai/src/agent/*` stays local. The 7 remaining
       // `@openloomi/ai/agent/*` imports in tests must resolve here.
       {
         find: "@openloomi/ai/agent",

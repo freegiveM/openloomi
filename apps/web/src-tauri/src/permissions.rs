@@ -172,7 +172,7 @@ mod macos_screen_capture {
     }
 
     /// Shows the macOS screen-recording consent dialog and registers this app
-    /// in System Settings → Privacy → Screen Recording (录屏与系统录音).
+    /// in System Settings → Privacy → Screen Recording (screen recording & system audio).
     pub fn request() -> bool {
         crate::panic_guard::catch_unwind_or("CGRequestScreenCaptureAccess", false, || unsafe {
             CGRequestScreenCaptureAccess()

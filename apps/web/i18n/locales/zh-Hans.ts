@@ -278,8 +278,8 @@ const zh = {
       // #363 — replaces the hardcoded RSVP dialogue in server.ts::defaultDialogue
       rsvp: "这封会议邀请需要你拍板。",
     },
-    // #363 — RSVP-specific decision card layers (issue #363). 命名空间保留
-    // 在 loop.rsvp.*，方便后续 email_reply / review_pr 等复用同套结构。
+    // #363 — RSVP-specific decision card layers (issue #363). Keep the namespace
+    // at loop.rsvp.* so future email_reply / review_pr flows can reuse the same structure.
     rsvp: {
       invitationLabel: "会议邀请",
       decidePrompt: "你会参加这次会议吗?",
@@ -299,8 +299,9 @@ const zh = {
     nextStep: {
       tapRun: "点「执行」让代理处理。",
     },
-    // #359 — 决策状态的自然语言表达。置信度仅作诊断显示,这里的状态徽章
-    // 才是一级决策信号,且绝不由分类置信度推导。
+    // #359 — Natural-language expressions for decision status. Confidence is for
+    // diagnostic display only; the status badges here are the primary decision signal
+    // and must never be derived from classification confidence.
     readiness: {
       ready: "可以拍板",
       needsContext: "还差一些信息",
@@ -379,9 +380,9 @@ const zh = {
       sourceSignal: "来源信号",
       metaLabel: "元信息",
     },
-    // #365 — 闲置状态徽章 + 紧凑状态卡文案。徽章文案刻意写得简短,
-    // 才能塞进 168×168 的宠物窗口而不挡住狐狸;详细文案放在
-    // loop.compactCard.* 下,展示在紧凑卡片中。
+    // #365 — Idle status badge + compact status card copy. The badge copy is intentionally
+    // short so it fits inside the 168×168 pet window without covering the fox; the longer
+    // copy lives under loop.compactCard.* and is rendered in the compact card.
     idlePill: {
       short: "Loomi 在守候 · 当前没有需要你处理的事",
       cta: "查看状态",

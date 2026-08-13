@@ -1864,7 +1864,7 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
               // so the chat UI can render an explicit Continue action that
               // reuses the preserved workspace. We deliberately skip the
               // stream-level auto-retry path (handled in onError) by tagging
-              // the part with an interruption payload 閳?see issue #356.
+              // the part with an interruption payload — see issue #356.
               const interruption = parseCodexInterruptedError(errorMessage);
               if (interruption?.canResume) {
                 parts.push({

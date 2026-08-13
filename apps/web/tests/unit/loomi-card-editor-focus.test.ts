@@ -3,7 +3,7 @@ import path from "node:path";
 /**
  * Loomi Pet card — editor input focus / pointer-events (regression).
  *
- * Bug report: "loomi card 中的 im reply 和 draft reply edit 输入框好像不能编辑"
+ * Bug report: "The IM reply and draft reply edit textareas in the Loomi card seem un-editable"
  * (IM reply + email_reply editor textareas look un-editable on macOS).
  *
  * Root causes being defended against:

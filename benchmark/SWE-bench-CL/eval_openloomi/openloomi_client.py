@@ -2,23 +2,23 @@
 openloomi_client.py
 ====================
 
-薄薄一层 Python 客户端：直接 POST 到 OpenLoomi 的 /api/native/agent。
+A thin Python client that POSTs directly to OpenLoomi's /api/native/agent.
 
-**关键点**：
-- 这里不把 OpenLoomi 当 LLM 用；
-- OpenLoomi 本身就是多步 coding agent (plan / execute / reflect / tool calls)
-- 我们只调一次 HTTP，把整条 SWE-Bench-CL task 的完整 prompt 交给它；
-- 让它在自己的会话里：用 bash/read/edit/grep 等内置工具去改仓库；
-- 拿回 agent 最终回复，从里面抠 ```diff```。
+**Key points**:
+- We do not use OpenLoomi as an LLM here;
+- OpenLoomi is itself a multi-step coding agent (plan / execute / reflect / tool calls)
+- We issue a single HTTP call, handing it the full prompt for the SWE-Bench-CL task;
+- In its own session it uses built-in tools (bash/read/edit/grep) to modify the repo;
+- We get the agent's final reply back and extract the ```diff``` from it.
 
-字段对齐（依据 packages/ai/src/agent/native-runner/index.ts）：
+Field mapping (per packages/ai/src/agent/native-runner/index.ts):
     NativeAgentRequest {
       prompt: str;
-      workDir?: str;          # ← 我们传 SWE-Bench-CL 仓库本地路径
+      workDir?: str;          # <-- We pass the SWE-Bench-CL repo's local path
       useProvidedWorkDir?: bool;
       provider?: "claude" | "codex" | "hermes" | ...;
-      permissionMode?: "dontAsk" | ...;     # 避免 agent 卡权限弹窗
-      platform?: str;          # 标识用途
+      permissionMode?: "dontAsk" | ...;     # Prevent agent from stalling on permission prompts
+      platform?: str;          # Identifies the use case
       phase?: "plan" | "execute";
       ...
     }
@@ -62,31 +62,33 @@ def call_agent(
         "provider": cfg.provider,
         "platform": cfg.platform,
         "permissionMode": "dontAsk",
-        # ↓ 关键：把 OpenLoomi 的 cwd 切到 SWE-Bench-CL 仓库根目录
+        # Key: switch OpenLoomi's cwd to the SWE-Bench-CL repo root
         "workDir": str(Path(work_dir).resolve()),
         "useProvidedWorkDir": cfg.use_provided_work_dir,
-        # 注意：不要传 `phase`。
-        #   phase=="plan"   → 只跑规划，不动工具
-        #   phase=="execute"→ 必须先传 planId（用于上轮 plan 后的执行）
-        #   都不传           → 走 createRunGenerator() 完整流程：
+        # Note: do NOT pass `phase`.
+        #   phase=="plan"   → planning only, no tool calls
+        #   phase=="execute"→ must first pass planId (used to execute after a prior plan)
+        #   neither passed   → goes through createRunGenerator() full flow:
         #                       plan → execute → reflect → final reply
-        #   这正是 swe-bench-cl 想要的"agent 一次性跑完"语义
+        #   This is exactly the "agent runs end-to-end in one shot" semantics that
+        #   swe-bench-cl wants.
     }
     print(f"{log_prefix}[OpenLoomi] POST {url}  workDir={work_dir}", flush=True)
     print(f"{log_prefix}[OpenLoomi] prompt[:200] = {prompt[:200]!r}", flush=True)
 
     started = time.time()
-    # 用 stream=True 自己 read chunks，避免 OpenLoomi 服务 abort 后 stream 不关、
-    # harness 在 resp.text 等 EOF 死等。设 connect timeout 60s + read timeout 60s；
-    # 整个请求最长 cfg.timeout 秒。
+    # Use stream=True and read chunks manually to avoid the case where the OpenLoomi
+    # service aborts without closing the stream, leaving the harness stuck waiting
+    # for EOF on resp.text. Set connect timeout 60s + read timeout 60s; the whole
+    # request is bounded by cfg.timeout seconds.
     try:
         resp = requests.post(
             url, json=body,
             stream=True,
             timeout=(60, 60),  # (connect, read)
         )
-        # 自己迭代读，每次 read 最多 60s 内必须读到下一段。
-        # OpenLoomi abort 后 stream EOF 会到达；或者我们用 cfg.timeout 全局卡死。
+        # Iterate reads manually; each read must yield the next chunk within 60s.
+        # When OpenLoomi aborts, stream EOF arrives; otherwise we cap with cfg.timeout.
         body_chunks: list[str] = []
         deadline = started + cfg.timeout
         last_data_at = time.time()
@@ -97,7 +99,7 @@ def call_agent(
             if time.time() > deadline:
                 resp.close()
                 raise TimeoutError(f"OpenLoomi request exceeded {cfg.timeout}s total")
-            if time.time() - last_data_at > 1800:  # 30 分钟没数据 = 死
+            if time.time() - last_data_at > 1800:  # 30 min with no data = dead
                 resp.close()
                 raise TimeoutError(
                     f"OpenLoomi stream silent for 1800s (likely dead); abort"
@@ -116,13 +118,14 @@ def call_agent(
 
 
 def _extract_text(body: str) -> str:
-    """把 OpenLoomi SSE 流 dump 出来的 body 还原成 agent 的最终回复。
+    """Reconstruct the agent's final reply from an OpenLoomi SSE stream dump.
 
-    与 clbench/jobbench 评测器中同款提取策略：解析 ``data: {...}`` 行，
-    累积 ``type==\"text\"`` 的 ``content`` 字段，组成最终输出。
+    Uses the same extraction strategy as the clbench/jobbench evaluators: parse
+    ``data: {...}`` lines and accumulate the ``content`` field of entries where
+    ``type == "text"`` to compose the final output.
     """
     parts: list[str] = []
-    # AI SDK v1 风格
+    # AI SDK v1 style
     for line in body.splitlines():
         line = line.strip()
         if not line:
@@ -145,5 +148,5 @@ def _extract_text(body: str) -> str:
             parts.append(obj["content"])
     if parts:
         return "".join(parts).strip()
-    # 兜底：返回原文
+    # Fallback: return the raw body
     return body.strip()
