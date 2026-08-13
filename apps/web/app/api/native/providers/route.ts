@@ -4,43 +4,35 @@
  * Get available agent and sandbox providers
  */
 
-import { codexPlugin } from "@/lib/ai/extensions/agent/codex";
-import { hermesPlugin } from "@/lib/ai/extensions/agent/hermes";
-import { openclawPlugin } from "@/lib/ai/extensions/agent/openclaw";
-import { opencodePlugin } from "@/lib/ai/extensions/agent/opencode";
+import { CODEX_METADATA } from "@/lib/ai/extensions/agent/codex/metadata";
+import { HERMES_METADATA } from "@/lib/ai/extensions/agent/hermes/metadata";
+import { OPENCLAW_METADATA } from "@/lib/ai/extensions/agent/openclaw/metadata";
+import { OPENCODE_METADATA } from "@/lib/ai/extensions/agent/opencode/metadata";
 import { getConfiguredDefaultAgentProvider } from "@/lib/ai/native-agent/provider-env";
 import {
   type AgentProviderMetadata,
   CLAUDE_METADATA,
 } from "@openloomi/ai/agent/plugin";
-import {
-  getAgentRegistry,
-  getAllAgentMetadata,
-} from "@openloomi/ai/agent/registry";
+import { getAllAgentMetadata } from "@openloomi/ai/agent/registry";
 import { NextResponse } from "next/server";
-
-// Register lightweight built-in Agent plugins used by this metadata route.
-const registry = getAgentRegistry();
-registry.register(codexPlugin);
-registry.register(opencodePlugin);
-registry.register(hermesPlugin);
-registry.register(openclawPlugin);
 
 function getProviderMetadata(): AgentProviderMetadata[] {
   const metadataByType = new Map<string, AgentProviderMetadata>();
 
   for (const metadata of [
     CLAUDE_METADATA,
-    codexPlugin.metadata,
-    opencodePlugin.metadata,
-    hermesPlugin.metadata,
-    openclawPlugin.metadata,
+    CODEX_METADATA,
+    OPENCODE_METADATA,
+    HERMES_METADATA,
+    OPENCLAW_METADATA,
   ]) {
     metadataByType.set(metadata.type, metadata);
   }
 
   for (const metadata of getAllAgentMetadata()) {
-    metadataByType.set(metadata.type, metadata);
+    if (!metadataByType.has(metadata.type)) {
+      metadataByType.set(metadata.type, metadata);
+    }
   }
 
   return Array.from(metadataByType.values());

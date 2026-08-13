@@ -1,6 +1,23 @@
 export const RUNTIME_INSTRUCTION_SCHEMA_VERSION = "2" as const;
 
-export const DEFAULT_GOAL_MAX_TURNS = 12;
+export const GOAL_STEP_COMPLETION_MARKER_OPEN =
+  "<!-- OPENLOOMI_STEP_COMPLETE:" as const;
+
+/** Invisible provider-authored line that advances one simplified Goal step. */
+export function goalStepCompletionMarker(criterionId: string): string {
+  const encodedId = Array.from(new TextEncoder().encode(criterionId), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+  return `${GOAL_STEP_COMPLETION_MARKER_OPEN}${encodedId} -->`;
+}
+
+/** Removes the internal completion line from user-visible provider output. */
+export function stripGoalStepCompletionMarkers(text: string): string {
+  return text.replace(
+    /^<!-- OPENLOOMI_STEP_COMPLETE:[0-9a-f]+ -->[\t ]*(?:\r?\n)?/gm,
+    "",
+  );
+}
 
 export const AGENT_GOAL_LIMITS = {
   objectiveCharacters: 8_000,

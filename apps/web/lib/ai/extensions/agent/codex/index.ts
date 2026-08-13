@@ -16,6 +16,7 @@ import type {
   AgentMessage,
   AgentOptions,
   AgentProvider,
+  AgentRuntimeRecovery,
   ExecuteOptions,
   PlanOptions,
 } from "@openloomi/ai/agent/types";
@@ -24,6 +25,7 @@ import {
   buildCodexRunCommand,
   CodexCommandNotFoundError,
   normalizeCodexProviderConfig,
+  resolveCodexSandboxMode,
   runCodexCli,
   type CodexCliEvent,
 } from "./command";
@@ -37,6 +39,14 @@ import {
   type CodexInterruptedContext,
 } from "./interrupt-marker";
 import { preflightCodexRuntime } from "./runtime-preflight";
+import { CodexAppServerClient } from "./app-server";
+import { CodexRuntimeSession, startCodexGoalRuntimeSession } from "./runtime";
+import { resolveAuthenticatedGoalRuntimeOwnerId } from "@/lib/ai/runtime-instructions/runtime-owner";
+import { validateAgentRuntimeRecovery } from "@/lib/ai/runtime-instructions/recovery/runtime-recovery-input";
+import type { RuntimeRecoveryDescriptor } from "@/lib/ai/runtime-instructions/runtime-session-persistence";
+
+const FORCE_CODEX_EXEC = Symbol("openloomi.codex.forceExec");
+type InternalCodexOptions = AgentOptions & { [FORCE_CODEX_EXEC]?: true };
 
 // Re-exported from `./interrupt-marker` so legacy import paths
 // (`@/lib/ai/extensions/agent/codex`) keep working without pulling
@@ -74,6 +84,9 @@ export class CodexAgent extends BaseAgent {
     prompt: string,
     options?: AgentOptions,
   ): AsyncGenerator<AgentMessage> {
+    const runtimeRecovery = validateAgentRuntimeRecovery(
+      options?.runtimeRecovery,
+    );
     const session = this.createSession("executing", {
       abortController: options?.abortController,
     });
@@ -85,19 +98,128 @@ export class CodexAgent extends BaseAgent {
     };
 
     try {
-      const cwd = await this.resolveAndPrepareWorkDir(options);
-      yield* this.runCodexPrompt(
-        prompt,
-        cwd,
-        options,
-        "run",
-        session.abortController.signal,
-      );
+      const cwd = runtimeRecovery?.workingDirectory
+        ? runtimeRecovery.workingDirectory
+        : await this.resolveAndPrepareWorkDir(options);
+      const runtimeSessionId =
+        runtimeRecovery?.runtimeSessionId ??
+        (options?.goalRuntimeSessionId === null
+          ? undefined
+          : (options?.goalRuntimeSessionId?.trim() ??
+            options?.sessionId?.trim()));
+      const ownerId = resolveAuthenticatedGoalRuntimeOwnerId(options?.session);
+      if (runtimeRecovery && !ownerId) {
+        throw new TypeError("Codex Runtime recovery requires an authenticated owner");
+      }
+      if (
+        runtimeRecovery &&
+        (options?.images?.length ||
+          (options as InternalCodexOptions | undefined)?.[FORCE_CODEX_EXEC])
+      ) {
+        throw new TypeError("Codex Runtime recovery requires the app-server path");
+      }
+      if (
+        runtimeSessionId &&
+        ownerId &&
+        !options?.images?.length &&
+        !(options as InternalCodexOptions | undefined)?.[FORCE_CODEX_EXEC]
+      ) {
+        yield* this.runLiveCodexPrompt(
+          prompt,
+          cwd,
+          runtimeSessionId,
+          ownerId,
+          options,
+          runtimeRecovery,
+          session.abortController,
+        );
+      } else {
+        yield* this.runCodexPrompt(
+          prompt,
+          cwd,
+          options,
+          "run",
+          session.abortController.signal,
+        );
+      }
     } catch (error) {
       yield this.toErrorMessage(error);
     } finally {
       this.sessions.delete(session.id);
       yield { type: "done", messageId: this.generateMessageId() };
+    }
+  }
+
+  private async *runLiveCodexPrompt(
+    prompt: string,
+    cwd: string,
+    runtimeSessionId: string,
+    ownerId: string,
+    options: AgentOptions | undefined,
+    runtimeRecovery: AgentRuntimeRecovery | undefined,
+    abortController: AbortController,
+  ): AsyncGenerator<AgentMessage> {
+    const providerConfig = normalizeCodexProviderConfig(
+      this.config.providerConfig,
+    );
+    const command = providerConfig.codexPath || "codex";
+    if (!runtimeRecovery) {
+      await preflightCodexRuntime({
+        command,
+        cwd,
+        model: this.config.model,
+        providerConfig,
+        signal: abortController.signal,
+      });
+    }
+
+    const client = new CodexAppServerClient({
+      command,
+      cwd,
+      profile: providerConfig.profile,
+      env: providerConfig.env,
+      signal: abortController.signal,
+    });
+    const runtime = new CodexRuntimeSession(runtimeSessionId, client, {
+      runEpoch: runtimeRecovery?.runEpoch,
+    });
+    let registration:
+      | Awaited<ReturnType<typeof startCodexGoalRuntimeSession>>
+      | undefined;
+    try {
+      registration = await startCodexGoalRuntimeSession({
+        ownerId,
+        runtime,
+        start: {
+          initialPrompt: addConversationContext(prompt, options),
+          cwd,
+          model: this.config.model,
+          sandbox: resolveCodexSandboxMode("run", providerConfig.sandbox),
+        },
+        persistence: {
+          workingDirectory: cwd,
+          ...(runtimeRecovery
+            ? {}
+            : {
+                recoveryDescriptor: createCodexRuntimeRecoveryDescriptor(
+                  this.config,
+                ),
+              }),
+        },
+        ...(runtimeRecovery ? { recovery: runtimeRecovery } : {}),
+      });
+      for await (const message of runtime.subscribe()) {
+        yield this.withMessageId(message);
+      }
+    } finally {
+      try {
+        await runtime.close({
+          finalizeBoundGoal:
+            registration !== undefined && runtimeRecovery === undefined,
+        });
+      } finally {
+        await registration?.release();
+      }
     }
   }
 
@@ -226,6 +348,7 @@ export class CodexAgent extends BaseAgent {
       let sawAbort = false;
       for await (const message of this.run(executionPrompt, {
         ...options,
+        [FORCE_CODEX_EXEC]: true,
         cwd,
         sessionId: options.sessionId,
         abortController: options.abortController,
@@ -233,7 +356,7 @@ export class CodexAgent extends BaseAgent {
           options.permissionMode === "plan"
             ? "acceptEdits"
             : options.permissionMode,
-      })) {
+      } as InternalCodexOptions)) {
         if (message.type === "error") {
           sawError = true;
         }
@@ -472,6 +595,15 @@ export class CodexAgent extends BaseAgent {
     await mkdir(resolved, { recursive: true });
     return resolved;
   }
+}
+
+function createCodexRuntimeRecoveryDescriptor(
+  config: AgentConfig,
+): RuntimeRecoveryDescriptor {
+  return {
+    schemaVersion: 1,
+    ...(config.model === undefined ? {} : { model: config.model }),
+  };
 }
 
 function formatCodexExitError(

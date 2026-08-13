@@ -1,6 +1,7 @@
 import type {
   AgentGoalUpdate,
   CreateAgentGoalInput,
+  RuntimeProvider,
 } from "@openloomi/ai/agent/runtime-instructions";
 
 import type { GoalCommandResult, GoalService } from "../goal-service";
@@ -11,8 +12,10 @@ import type {
 } from "../goal-query-service";
 import type { RuntimeSessionRegistry } from "../runtime-session-registry";
 import type { RuntimeSessionPersistencePort } from "../runtime-session-persistence";
+import type { GoalPlannerPort } from "./goal-planner-port";
 import type {
   ActivateGoalRequest,
+  PauseGoalRequest,
   RemoveGoalContextRequest,
   ResumeGoalRequest,
   UpdateGoalRequest,
@@ -22,11 +25,18 @@ import type {
 export interface AgentGoalApiDependencies {
   goals: Pick<
     GoalService,
-    "activate" | "update" | "resume" | "upsertContext" | "removeContext"
+    | "activateResolved"
+    | "pause"
+    | "update"
+    | "resume"
+    | "upsertContext"
+    | "removeContext"
   >;
   queries: Pick<AgentGoalQueryService, "listBySession" | "getById">;
   liveSessions: Pick<RuntimeSessionRegistry, "resolve">;
-  runtimeSessions: Pick<RuntimeSessionPersistencePort, "ensure">;
+  runtimeSessions: Pick<RuntimeSessionPersistencePort, "get" | "ensure">;
+  planner: GoalPlannerPort;
+  resolveNewRuntimeProvider(): RuntimeProvider;
   sessionOwnership: {
     isOwnedChat(ownerId: string, runtimeSessionId: string): Promise<boolean>;
   };
@@ -110,16 +120,46 @@ export class AgentGoalApiService {
     idempotencyKey: string,
   ): Promise<GoalCommandResult> {
     await this.requireSession(ownerId, request.runtimeSessionId);
-    await this.dependencies.runtimeSessions.ensure(
-      ownerId,
-      request.runtimeSessionId,
-    );
-    return this.dependencies.goals.activate({
+    const source = userCommandSource();
+    const idempotencyPayload = { objective: request.objective };
+    return this.dependencies.goals.activateResolved({
       ownerId,
       runtimeSessionId: request.runtimeSessionId,
       idempotencyKey,
-      source: userCommandSource(),
-      goal: userGoalInput(request.goal),
+      source,
+      idempotencyPayload,
+    }, async () => {
+      const existingRuntimeSession = await this.dependencies.runtimeSessions.get(
+        ownerId,
+        request.runtimeSessionId,
+      );
+      const provider =
+        existingRuntimeSession?.provider ??
+        this.dependencies.resolveNewRuntimeProvider();
+      if (existingRuntimeSession) {
+        // Validate an existing durable session (including recovery fences)
+        // before spending another provider turn on planning.
+        await this.dependencies.runtimeSessions.ensure(
+          ownerId,
+          request.runtimeSessionId,
+        );
+      }
+      const plan = await this.dependencies.planner.plan({
+        ownerId,
+        provider,
+        objective: request.objective,
+        ...(existingRuntimeSession?.workingDirectory === undefined
+          ? {}
+          : { workingDirectory: existingRuntimeSession.workingDirectory }),
+      });
+      if (!existingRuntimeSession) {
+        await this.dependencies.runtimeSessions.ensure(
+          ownerId,
+          request.runtimeSessionId,
+          { provider, initialState: "idle" },
+        );
+      }
+      return userGoalInput(request.objective, plan);
     });
   }
 
@@ -153,6 +193,24 @@ export class AgentGoalApiService {
   ): Promise<GoalCommandResult> {
     await this.requireSession(ownerId, request.runtimeSessionId);
     return this.dependencies.goals.resume({
+      ownerId,
+      runtimeSessionId: request.runtimeSessionId,
+      goalId,
+      expectedRevision: request.expectedRevision,
+      idempotencyKey,
+      source: userCommandSource(),
+      ...(request.reason === undefined ? {} : { reason: request.reason }),
+    });
+  }
+
+  async pause(
+    ownerId: string,
+    goalId: string,
+    request: PauseGoalRequest,
+    idempotencyKey: string,
+  ): Promise<GoalCommandResult> {
+    await this.requireSession(ownerId, request.runtimeSessionId);
+    return this.dependencies.goals.pause({
       ownerId,
       runtimeSessionId: request.runtimeSessionId,
       goalId,
@@ -238,15 +296,21 @@ function userCommandSource() {
 }
 
 function userGoalInput(
-  input: ActivateGoalRequest["goal"],
+  objective: string,
+  steps: readonly string[],
 ): CreateAgentGoalInput {
   return {
-    ...input,
-    constraints: input.constraints.map((constraint) => ({
-      ...constraint,
-      authority: "user" as const,
+    objective,
+    successCriteria: steps.map((description, index) => ({
+      id: `step-${index + 1}`,
+      description,
+      verification: { type: "agent_report" as const },
+      required: true,
     })),
+    constraints: [],
     contextRefs: [],
+    priority: 50,
+    completionPolicy: "tool_evidence",
     source: { type: "user" },
   };
 }

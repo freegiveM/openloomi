@@ -121,6 +121,7 @@ describe("AgentGoalQueryService", () => {
       listRuns: vi.fn(async () => [run]),
       listInstructions: vi.fn(async () => [instruction]),
       listDeliveries: vi.fn(async () => [delivery]),
+      getEvidence: vi.fn(async () => evidence),
       listEvidence: vi.fn(async () => [evidence]),
     } satisfies AgentGoalReadSource;
     const service = new AgentGoalQueryService(source, {
@@ -177,6 +178,7 @@ describe("AgentGoalQueryService", () => {
       listRuns: vi.fn(async () => [staleRun]),
       listInstructions: vi.fn(async () => [activationInstruction, instruction]),
       listDeliveries: vi.fn(async () => [delivery]),
+      getEvidence: vi.fn(async () => ({ ...evidence, goalRevision: 1 })),
       listEvidence: vi.fn(async () => [{ ...evidence, goalRevision: 1 }]),
     } satisfies AgentGoalReadSource;
     const service = new AgentGoalQueryService(source);
@@ -229,5 +231,50 @@ describe("AgentGoalQueryService", () => {
       evidence: [{ goalRevision: 1 }],
       progress: { completedCriteria: 1, totalCriteria: 1 },
     });
+  });
+
+  it("keeps durable progress when referenced evidence is older than the visible 100", async () => {
+    const newerEvidence = Array.from({ length: 100 }, (_, index) => ({
+      ...evidence,
+      id: `20000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+      sourceEventId: `assistant-${index + 2}`,
+      observedAt: new Date(Date.parse(startedAt) + index + 1).toISOString(),
+    }));
+    const allEvidence = [evidence, ...newerEvidence];
+    const source = {
+      listGoals: vi.fn(async () => [goal]),
+      getGoal: vi.fn(async () => goal),
+      listRuns: vi.fn(async () => [run]),
+      listInstructions: vi.fn(async () => [instruction]),
+      listDeliveries: vi.fn(async () => [delivery]),
+      getEvidence: vi.fn(async (_ownerId, _runtimeSessionId, evidenceId) =>
+        allEvidence.find((item) => item.id === evidenceId) ?? null,
+      ),
+      listEvidence: vi.fn(
+        async (_ownerId, _runtimeSessionId, _goalRunId, limit) =>
+          allEvidence.slice(-limit),
+      ),
+    } satisfies AgentGoalReadSource;
+    const service = new AgentGoalQueryService(source);
+
+    const detail = await service.getById({
+      ownerId,
+      runtimeSessionId,
+      goalId,
+    });
+
+    expect(detail?.evidence).toHaveLength(100);
+    expect(detail?.evidence.map((item) => item.id)).not.toContain(evidence.id);
+    expect(detail).toMatchObject({
+      latestRun: {
+        lastEvaluation: { satisfiedCriteria: ["api-ready"] },
+      },
+      progress: { completedCriteria: 1, totalCriteria: 1 },
+    });
+    expect(source.getEvidence).toHaveBeenCalledWith(
+      ownerId,
+      runtimeSessionId,
+      evidence.id,
+    );
   });
 });

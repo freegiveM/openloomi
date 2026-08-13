@@ -1,6 +1,7 @@
 import {
   AgentGoalSchema,
   createAgentGoal,
+  goalStepCompletionMarker,
   type AgentGoal,
   type AgentGoalRun,
   type GoalCompletionPolicy,
@@ -94,6 +95,41 @@ function evidence(
 }
 
 describe("GoalEvaluator", () => {
+  it("completes an agent-planned step from the selected Runtime's durable completion marker", async () => {
+    const agentGoal = goal([
+      criterion("step-1", { type: "agent_report" }),
+    ]);
+    const semantic = { evaluate: vi.fn() };
+    const reportEvidence = evidence(
+      "30000000-0000-4000-8000-000000000099",
+      agentGoal,
+      {
+        type: "agent_report",
+        summary: "The selected Runtime completed step 1",
+        payload: {
+          outputPreview:
+            `${goalStepCompletionMarker("step-1")}\nImplemented and verified the requested result.`,
+        },
+      },
+    );
+
+    await expect(
+      new GoalEvaluator(semantic).evaluate({
+        goal: agentGoal,
+        run: run(agentGoal),
+        evidence: [reportEvidence],
+      }),
+    ).resolves.toMatchObject({
+      completed: true,
+      satisfiedCriteria: ["step-1"],
+      missingCriteria: [],
+      evidence: [
+        { criterionId: "step-1", evidenceIds: [reportEvidence.id] },
+      ],
+    });
+    expect(semantic.evaluate).not.toHaveBeenCalled();
+  });
+
   it("completes from matching command and tool evidence while optional criteria do not block", async () => {
     const agentGoal = goal([
       criterion("tests-pass", {
@@ -636,7 +672,7 @@ describe("GoalEvaluator", () => {
     });
   });
 
-  it("keeps criteria with unscoped semantic evidence unsatisfied", async () => {
+  it("does not accept a later step before the current semantic step", async () => {
     const agentGoal = goal(
       [
         criterion("behavior-correct", { type: "model_evidence" }),
@@ -654,25 +690,22 @@ describe("GoalEvaluator", () => {
         payload: {},
       },
     );
-    const foreignEvidence = new GoalEvaluator({
-      evaluate: async () => ({
+    const semantic = {
+      evaluate: vi.fn(async () => ({
         completed: true,
         confidence: 0.8,
-        satisfiedCriteria: ["behavior-correct", "tests-pass"],
+        satisfiedCriteria: ["behavior-correct"],
         missingCriteria: [],
         evidence: [
           {
             criterionId: "behavior-correct",
             evidenceIds: ["40000000-0000-4000-8000-000000000001"],
           },
-          {
-            criterionId: "tests-pass",
-            evidenceIds: [reportEvidence.id],
-          },
         ],
         reason: "Referenced evidence is outside the snapshot.",
-      }),
-    });
+      })),
+    } satisfies GoalSemanticEvaluatorPort;
+    const foreignEvidence = new GoalEvaluator(semantic);
     const result = await foreignEvidence.evaluate({
       goal: agentGoal,
       run: run(agentGoal),
@@ -681,12 +714,15 @@ describe("GoalEvaluator", () => {
 
     expect(result).toMatchObject({
       completed: false,
-      satisfiedCriteria: ["tests-pass"],
-      missingCriteria: ["behavior-correct"],
-      evidence: [
-        { criterionId: "tests-pass", evidenceIds: [reportEvidence.id] },
-      ],
+      satisfiedCriteria: [],
+      missingCriteria: ["behavior-correct", "tests-pass"],
+      evidence: [],
     });
+    expect(semantic.evaluate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        criteria: [expect.objectContaining({ id: "behavior-correct" })],
+      }),
+    );
     expect(result.reason).toContain(
       "affected criteria remain unsatisfied: behavior-correct",
     );

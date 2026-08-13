@@ -1,25 +1,8 @@
 import type {
-  ActivateGoalRequest,
+  AgentGoalDetailResponse,
   PublicAgentGoal,
   PublicGoalSummary,
-  UpdateGoalRequest,
 } from "./api";
-
-export interface GoalDraftItem {
-  id: string;
-  description: string;
-}
-
-export interface GoalDraft {
-  objective: string;
-  criteria: GoalDraftItem[];
-  constraints: GoalDraftItem[];
-  priority: string;
-  maxTurns: string;
-  maxTokens: string;
-  maxDurationSeconds: string;
-  deadline: string;
-}
 
 export interface GoalCommandIdempotencyKeys {
   keyFor(command: string, request: unknown): string;
@@ -47,132 +30,94 @@ export function createGoalCommandIdempotencyKeys(
   };
 }
 
-export function blankGoalDraft(): GoalDraft {
+export interface GoalStepView {
+  id: string;
+  description: string;
+  number: number;
+  state: "completed" | "current" | "pending";
+}
+
+export interface GoalStepsView {
+  steps: GoalStepView[];
+  completed: number;
+  total: number;
+  percent: number;
+}
+
+export function goalStepsView(detail: AgentGoalDetailResponse): GoalStepsView {
+  const satisfied = new Set(
+    detail.latestRun?.lastEvaluation?.satisfiedCriteria ?? [],
+  );
+  for (const item of detail.evidence) {
+    if (item.success && item.criterionId) satisfied.add(item.criterionId);
+  }
+
+  const completedRequiredIds = new Set<string>();
+  let currentRequiredId: string | undefined;
+  let requiredStepMissing = false;
+  for (const step of detail.goal.successCriteria) {
+    if (!step.required) continue;
+    if (
+      !requiredStepMissing &&
+      (detail.goal.status === "completed" || satisfied.has(step.id))
+    ) {
+      completedRequiredIds.add(step.id);
+      continue;
+    }
+    if (!requiredStepMissing) currentRequiredId = step.id;
+    requiredStepMissing = true;
+  }
+  const steps = detail.goal.successCriteria.map((step, index) => {
+    const completed = step.required
+      ? completedRequiredIds.has(step.id)
+      : satisfied.has(step.id);
+    return {
+      id: step.id,
+      description: step.description,
+      number: index + 1,
+      state: completed
+        ? ("completed" as const)
+        : step.required && step.id === currentRequiredId
+          ? ("current" as const)
+          : ("pending" as const),
+    };
+  });
+  const completed = completedRequiredIds.size;
+  const total = detail.goal.successCriteria.filter(
+    (step) => step.required,
+  ).length;
+
   return {
-    objective: "",
-    criteria: [{ id: "criterion-1", description: "" }],
-    constraints: [],
-    priority: "50",
-    maxTurns: "12",
-    maxTokens: "",
-    maxDurationSeconds: "",
-    deadline: "",
+    steps,
+    completed,
+    total,
+    percent:
+      total === 0
+        ? detail.goal.status === "completed"
+          ? 100
+          : 0
+        : Math.round((completed / total) * 100),
   };
-}
-
-export function goalDraft(goal: PublicAgentGoal): GoalDraft {
-  return {
-    objective: goal.objective,
-    criteria: goal.successCriteria.map(({ id, description }) => ({
-      id,
-      description,
-    })),
-    constraints: goal.constraints.map(({ id, description }) => ({
-      id,
-      description,
-    })),
-    priority: String(goal.priority),
-    maxTurns: goal.maxTurns === undefined ? "" : String(goal.maxTurns),
-    maxTokens: goal.maxTokens === undefined ? "" : String(goal.maxTokens),
-    maxDurationSeconds:
-      goal.maxDurationSeconds === undefined
-        ? ""
-        : String(goal.maxDurationSeconds),
-    deadline: goal.deadline ? toLocalDateTime(goal.deadline) : "",
-  };
-}
-
-export function validateGoalDraft(
-  draft: GoalDraft,
-  requireMaxTurns = true,
-): string | null {
-  if (!draft.objective.trim()) return "objective";
-  if (!draft.criteria.length || draft.criteria.some((item) => !item.description.trim())) {
-    return "criteria";
-  }
-  if (draft.constraints.some((item) => !item.description.trim())) {
-    return "constraints";
-  }
-  const priority = parseInteger(draft.priority);
-  if (priority === undefined || priority < 0 || priority > 100) return "priority";
-  const budgets = [draft.maxTurns, draft.maxTokens, draft.maxDurationSeconds];
-  if (requireMaxTurns && parsePositiveInteger(draft.maxTurns) === undefined) {
-    return "budget";
-  }
-  const limits = [10_000, 100_000_000, 30 * 24 * 60 * 60];
-  if (
-    budgets.some((value, index) => {
-      if (!value) return false;
-      const parsed = parsePositiveInteger(value);
-      const limit = limits[index];
-      return limit === undefined || parsed === undefined || parsed > limit;
-    })
-  ) {
-    return "budget";
-  }
-  if (!draft.deadline && budgets.every((value) => !value)) return "budget";
-  if (draft.deadline && Number.isNaN(new Date(draft.deadline).getTime())) {
-    return "deadline";
-  }
-  return null;
-}
-
-export function goalInputFromDraft(
-  draft: GoalDraft,
-): ActivateGoalRequest["goal"] {
-  return {
-    objective: draft.objective.trim(),
-    successCriteria: draft.criteria.map((criterion) => ({
-      id: criterion.id,
-      description: criterion.description.trim(),
-      verification: { type: "model_evidence" as const },
-      required: true,
-    })),
-    constraints: draft.constraints.map((constraint) => ({
-      id: constraint.id,
-      description: constraint.description.trim(),
-      enforcement: "model_guidance" as const,
-    })),
-    priority: Number(draft.priority),
-    maxTurns: Number(draft.maxTurns || 12),
-    ...(draft.deadline ? { deadline: new Date(draft.deadline).toISOString() } : {}),
-    ...(draft.maxTokens ? { maxTokens: Number(draft.maxTokens) } : {}),
-    ...(draft.maxDurationSeconds
-      ? { maxDurationSeconds: Number(draft.maxDurationSeconds) }
-      : {}),
-    completionPolicy: "model_evaluator",
-  };
-}
-
-export function goalUpdateFromDraft(
-  draft: GoalDraft,
-): UpdateGoalRequest["update"] {
-  return {
-    objective: draft.objective.trim(),
-    priority: Number(draft.priority),
-    deadline: draft.deadline
-      ? new Date(draft.deadline).toISOString()
-      : null,
-    maxTurns: draft.maxTurns ? Number(draft.maxTurns) : null,
-    maxTokens: draft.maxTokens ? Number(draft.maxTokens) : null,
-    maxDurationSeconds: draft.maxDurationSeconds
-      ? Number(draft.maxDurationSeconds)
-      : null,
-  };
-}
-
-export function goalProgressPercent(summary: PublicGoalSummary): number {
-  const { completedCriteria, totalCriteria } = summary.progress;
-  if (totalCriteria === 0) return 0;
-  return Math.min(100, Math.round((completedCriteria / totalCriteria) * 100));
 }
 
 export function shouldPollGoal(summary?: PublicGoalSummary): boolean {
   return summary?.goal.status === "active";
 }
 
+export function displayGoalStatus(
+  status: PublicAgentGoal["status"],
+): PublicAgentGoal["status"] {
+  return status === "blocked" ? "paused" : status;
+}
+
 export function canResumeGoal(status: PublicAgentGoal["status"]): boolean {
   return status === "paused" || status === "blocked";
+}
+
+export function canCreateNewGoal(goals: PublicGoalSummary[]): boolean {
+  return !goals.some(({ goal }) =>
+    ["active", "paused", "blocked"].includes(goal.status),
+  );
 }
 
 export function formatDuration(seconds: number): string {
@@ -181,11 +126,6 @@ export function formatDuration(seconds: number): string {
   if (minutes < 60) return `${minutes}m`;
   const hours = Math.floor(minutes / 60);
   return `${hours}h ${minutes % 60}m`;
-}
-
-function parseInteger(value: string): number | undefined {
-  if (!/^\d+$/.test(value)) return undefined;
-  return Number(value);
 }
 
 function commandFingerprint(command: string, request: unknown): string {
@@ -205,15 +145,4 @@ function stableSerialize(value: unknown): string {
       .join(",")}}`;
   }
   return JSON.stringify(value) ?? String(value);
-}
-
-function parsePositiveInteger(value: string): number | undefined {
-  const number = parseInteger(value);
-  return number !== undefined && number > 0 ? number : undefined;
-}
-
-function toLocalDateTime(value: string): string {
-  const date = new Date(value);
-  const offset = date.getTimezoneOffset() * 60_000;
-  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
 }

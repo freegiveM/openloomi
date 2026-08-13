@@ -201,6 +201,7 @@ export interface RuntimeProviderObservationPort {
     ownerId: string;
     runtimeSessionId: string;
     runEpoch: number;
+    instructionId?: string;
   }): Promise<RuntimeObservationContext | null>;
 
   observeProviderEvent(

@@ -33,39 +33,6 @@ const userContextReferenceSchema = z
   })
   .strict();
 
-const autoCompletableCriteriaSchema =
-  CreateAgentGoalInputSchema.shape.successCriteria.refine(
-    (criteria) =>
-      criteria.every((criterion) => criterion.verification.type !== "manual"),
-    {
-      message:
-        "Manual success criteria require an attestation API that is not available yet",
-    },
-  );
-
-const autoCompletionPolicySchema =
-  CreateAgentGoalInputSchema.shape.completionPolicy.refine(
-    (policy) => policy !== "manual",
-    {
-      message:
-        "The manual completion policy requires an attestation API that is not available yet",
-    },
-  );
-
-export const UserGoalInputSchema = z
-  .object({
-    objective: CreateAgentGoalInputSchema.shape.objective,
-    successCriteria: autoCompletableCriteriaSchema,
-    constraints: z.array(userConstraintSchema).default([]),
-    priority: CreateAgentGoalInputSchema.shape.priority,
-    deadline: CreateAgentGoalInputSchema.shape.deadline,
-    maxTurns: CreateAgentGoalInputSchema.shape.maxTurns,
-    maxTokens: CreateAgentGoalInputSchema.shape.maxTokens,
-    maxDurationSeconds: CreateAgentGoalInputSchema.shape.maxDurationSeconds,
-    completionPolicy: autoCompletionPolicySchema,
-  })
-  .strict();
-
 const userGoalUpdateSchema = z
   .object({
     objective: AgentGoalUpdateSchema.shape.objective,
@@ -104,7 +71,7 @@ export const GoalSessionQuerySchema = z
 export const ActivateGoalRequestSchema = z
   .object({
     runtimeSessionId: identifierSchema,
-    goal: UserGoalInputSchema,
+    objective: CreateAgentGoalInputSchema.shape.objective,
   })
   .strict();
 
@@ -123,6 +90,8 @@ export const ResumeGoalRequestSchema = z
     reason: z.string().trim().min(1).max(4_000).optional(),
   })
   .strict();
+
+export const PauseGoalRequestSchema = ResumeGoalRequestSchema;
 
 export const UpsertGoalContextRequestSchema = z
   .object({
@@ -148,6 +117,7 @@ export const GoalIdSchema = z.uuid();
 export type ActivateGoalRequest = z.output<typeof ActivateGoalRequestSchema>;
 export type UpdateGoalRequest = z.output<typeof UpdateGoalRequestSchema>;
 export type ResumeGoalRequest = z.output<typeof ResumeGoalRequestSchema>;
+export type PauseGoalRequest = z.output<typeof PauseGoalRequestSchema>;
 export type UpsertGoalContextRequest = z.output<
   typeof UpsertGoalContextRequestSchema
 >;

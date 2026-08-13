@@ -334,6 +334,7 @@ describe("native agent runner", () => {
       runEpoch: 3,
       recoveryLeaseToken: "trusted-lease",
       instructionSettlements: [],
+      replayableInstructionIds: [],
     };
     const trustedRun = await runNativeAgentRequest(
       {

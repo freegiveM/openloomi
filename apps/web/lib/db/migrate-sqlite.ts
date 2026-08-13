@@ -2,6 +2,7 @@ import { drizzle } from "drizzle-orm/better-sqlite3";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import Database from "better-sqlite3";
 import { getAppDataDir, joinPath } from "@/lib/utils/path";
+import { runSqliteMigrationWithForeignKeysDisabled } from "./sqlite-migration-foreign-keys";
 
 const DB_PATH =
   process.env.TAURI_DB_PATH || joinPath(getAppDataDir(), "data.db");
@@ -13,7 +14,9 @@ const runMigrate = async () => {
   console.log("⏳ Running SQLite migrations...");
 
   const start = Date.now();
-  await migrate(db, { migrationsFolder: "./lib/db/migrations-sqlite" });
+  runSqliteMigrationWithForeignKeysDisabled(sqlite, () =>
+    migrate(db, { migrationsFolder: "./lib/db/migrations-sqlite" }),
+  );
   const end = Date.now();
 
   console.log(`✅ SQLite migrations completed in ${end - start} ms`);

@@ -183,16 +183,43 @@ export class GoalLifecycleService {
     }
 
     const transition = stored.transition;
-    const transport = await this.sessions.resolveLifecycle(
+    let transport = await this.sessions.resolveLifecycle(
       command.ownerId,
       command.runtimeSessionId,
     );
     if (!transport) {
-      return lifecycleResult(
+      const controlDispatch = await this.dispatchControl(
         transition,
-        wasReplay,
-        await this.dispatchControl(transition, command.ownerId),
+        command.ownerId,
       );
+
+      if (controlDispatch.status === "accepted") {
+        transport = await this.sessions.resolveLifecycle(
+          command.ownerId,
+          command.runtimeSessionId,
+        );
+        if (!transport) {
+          return lifecycleResult(transition, wasReplay, controlDispatch);
+        }
+        // A Runtime registered while the control instruction was dispatched.
+        // Finish the live terminal barrier before committing the transition.
+      } else {
+        if (transition.action === "pause" && transition.phase === "prepared") {
+          stored = await this.state.finalizeLifecycleTransition({
+            ownerId: command.ownerId,
+            runtimeSessionId: command.runtimeSessionId,
+            goalId: transition.transitionedGoal.goal.id,
+            expectedRunEpoch: transition.expectedRunEpoch,
+            nextRunEpoch: transition.expectedRunEpoch,
+            command: command.command,
+          });
+        }
+        return lifecycleResult(
+          stored.transition,
+          wasReplay,
+          controlDispatch,
+        );
+      }
     }
 
     if (transition.phase === "finalized") {

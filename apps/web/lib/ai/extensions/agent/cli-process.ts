@@ -1,9 +1,16 @@
-import { type ChildProcess, spawn } from "node:child_process";
+import { type ChildProcess, spawn, spawnSync } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
 import { homedir, platform } from "node:os";
 import { delimiter, join } from "node:path";
 
 const terminatingProcesses = new WeakSet<ChildProcess>();
+const processGlobal = globalThis as typeof globalThis & {
+  __openLoomiCliProcesses?: Set<ChildProcess>;
+  __openLoomiCliExitHookInstalled?: boolean;
+};
+const activeCliProcesses =
+  processGlobal.__openLoomiCliProcesses ?? new Set<ChildProcess>();
+processGlobal.__openLoomiCliProcesses = activeCliProcesses;
 const POSIX_TERMINATION_GRACE_MS = 2_000;
 export const MAX_CLI_PROTOCOL_LINE_CHARS = 16 * 1024 * 1024;
 const MAX_CAPTURED_OUTPUT_CHARS = 1024 * 1024;
@@ -37,6 +44,68 @@ const RUNTIME_ENV_PREFIXES = ["OPENCODE_", "HERMES_", "OPENCLAW_", "CODEX_"];
 
 export function shouldDetachCliProcess(): boolean {
   return platform() !== "win32";
+}
+
+/** Keep provider CLIs owned by the host process, including on Ctrl+C. */
+export function trackCliProcess(proc: ChildProcess): void {
+  activeCliProcesses.add(proc);
+  proc.once("close", () => activeCliProcesses.delete(proc));
+  if (processGlobal.__openLoomiCliExitHookInstalled) return;
+  processGlobal.__openLoomiCliExitHookInstalled = true;
+  process.once("exit", terminateTrackedCliProcesses);
+  for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
+    const cleanupBeforeHostShutdown = () => {
+      // Next dev force-kills its server child shortly after Ctrl+C, before an
+      // ordinary exit hook can run. Reap provider trees synchronously first.
+      process.removeListener(signal, cleanupBeforeHostShutdown);
+      const hostHandlesSignal = process.listenerCount(signal) > 0;
+      terminateTrackedCliProcesses();
+      if (!hostHandlesSignal) {
+        try {
+          process.kill(process.pid, signal);
+        } catch {
+          process.exit(
+            signal === "SIGINT" ? 130 : signal === "SIGTERM" ? 143 : 129,
+          );
+        }
+      }
+    };
+    process.prependListener(signal, cleanupBeforeHostShutdown);
+  }
+}
+
+/** Synchronous because asynchronous cleanup cannot finish in Node's exit event. */
+export function terminateTrackedCliProcesses(): void {
+  const active = [...activeCliProcesses].filter(
+    (proc) =>
+      proc.pid && proc.exitCode === null && proc.signalCode === null,
+  );
+  activeCliProcesses.clear();
+  if (active.length === 0) return;
+
+  for (const proc of active) terminatingProcesses.add(proc);
+  if (platform() === "win32") {
+    const result = spawnSync(
+      "taskkill",
+      [
+        "/F",
+        "/T",
+        ...active.flatMap((proc) => ["/PID", String(proc.pid)]),
+      ],
+      { windowsHide: true, stdio: "ignore", timeout: 5_000 },
+    );
+    if (!result.error && result.status === 0) return;
+  } else {
+    for (const proc of active) signalPosixProcessGroup(proc, "SIGKILL");
+    return;
+  }
+  for (const proc of active) {
+    try {
+      proc.kill();
+    } catch {
+      // The process exited while the host was shutting down.
+    }
+  }
 }
 
 /**

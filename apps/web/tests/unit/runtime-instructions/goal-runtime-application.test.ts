@@ -3,9 +3,10 @@ import {
   type RuntimeDeliveryReceipt,
   type RuntimeInstruction,
   type RuntimeInstructionTransportPort,
+  type RuntimeSessionLifecycleControlPort,
   formatRuntimeInstruction,
 } from "@openloomi/ai/agent/runtime-instructions";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { GoalServiceError } from "@/lib/ai/runtime-instructions/goal-service";
 import { InMemoryGoalStateError } from "@/lib/ai/runtime-instructions/in-memory-goal-state";
@@ -44,6 +45,48 @@ class RecordingTransport implements RuntimeInstructionTransportPort {
   async interrupt(): Promise<void> {}
 }
 
+class IdleLifecycleTransport
+  extends RecordingTransport
+  implements RuntimeSessionLifecycleControlPort
+{
+  runEpoch = 0;
+
+  captureTurnBoundary() {
+    return {
+      runtimeSessionId: this.runtimeSessionId,
+      runEpoch: this.runEpoch,
+      terminalSequence: 0,
+      state: "idle" as const,
+    };
+  }
+
+  captureTurnBoundaryAndHoldPendingInput(
+    expectedRunEpoch: number,
+  ) {
+    return {
+      boundary: this.captureTurnBoundary(),
+      hold: { runEpoch: expectedRunEpoch, release() {} },
+    };
+  }
+
+  async waitForTurnTerminal() {
+    return this.captureTurnBoundary();
+  }
+
+  advanceRunEpoch(input: {
+    expectedRunEpoch: number;
+    nextRunEpoch: number;
+  }) {
+    const previousRunEpoch = this.runEpoch;
+    this.runEpoch = input.nextRunEpoch;
+    return {
+      previousRunEpoch,
+      runEpoch: this.runEpoch,
+      discardedInputIds: [],
+    };
+  }
+}
+
 function goalInput(
   overrides: Partial<CreateAgentGoalInput> = {},
 ): CreateAgentGoalInput {
@@ -75,6 +118,16 @@ function source() {
   return { type: "user", authority: "user" } as const;
 }
 
+function plannedActivation(idempotencyKey: string) {
+  return {
+    ownerId: OWNER_ID,
+    runtimeSessionId: SESSION_ID,
+    idempotencyKey,
+    source: source(),
+    idempotencyPayload: { objective: goalInput().objective },
+  };
+}
+
 function createRuntime(register = true) {
   const runtime = createInMemoryAgentGoalRuntime({
     clock: new FixedRuntimeClock(NOW),
@@ -88,6 +141,44 @@ function createRuntime(register = true) {
 }
 
 describe("in-memory Goal runtime application", () => {
+  it("plans an idempotent activation once across concurrent retries", async () => {
+    const { runtime } = createRuntime();
+    let resolved = 0;
+    const command = plannedActivation("activate-planned");
+    const resolveGoal = async () => {
+      resolved += 1;
+      await Promise.resolve();
+      return goalInput();
+    };
+
+    const [first, retry] = await Promise.all([
+      runtime.goals.activateResolved(command, resolveGoal),
+      runtime.goals.activateResolved(command, resolveGoal),
+    ]);
+
+    expect(resolved).toBe(1);
+    expect(first.goal.goal.id).toBe(retry.goal.goal.id);
+    expect(first.deduplicated).toBe(false);
+    expect(retry.deduplicated).toBe(true);
+    await expect(
+      runtime.state.listInstructions(OWNER_ID, SESSION_ID),
+    ).resolves.toHaveLength(1);
+  });
+
+  it("does not persist a Goal when planning fails", async () => {
+    const { runtime } = createRuntime();
+
+    await expect(
+      runtime.goals.activateResolved(
+        plannedActivation("failed-plan"),
+        async () => Promise.reject(new Error("planning unavailable")),
+      ),
+    ).rejects.toThrow("planning unavailable");
+    await expect(
+      runtime.state.listInstructions(OWNER_ID, SESSION_ID),
+    ).resolves.toEqual([]);
+  });
+
   it("commits one active primary Goal and rejects an implicit replacement", async () => {
     const { runtime } = createRuntime();
     const activated = await runtime.goals.activate({
@@ -472,6 +563,64 @@ describe("in-memory Goal runtime application", () => {
     await expect(
       runtime.state.listInstructions(OWNER_ID, SESSION_ID),
     ).resolves.toHaveLength(2);
+  });
+
+  it("commits the live pause barrier when a Runtime registers during dispatch", async () => {
+    const { runtime } = createRuntime(false);
+    const activated = await runtime.goals.activate({
+      ownerId: OWNER_ID,
+      runtimeSessionId: SESSION_ID,
+      idempotencyKey: "activate-before-racing-registration",
+      source: source(),
+      goal: goalInput(),
+    });
+    const transport = new IdleLifecycleTransport(SESSION_ID);
+    const resolveTransport = runtime.sessions.resolve.bind(runtime.sessions);
+    let registration: { release(): void } | undefined;
+    const lifecycleSpy = vi
+      .spyOn(runtime.sessions, "resolveLifecycle")
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null);
+    const resolveSpy = vi
+      .spyOn(runtime.sessions, "resolve")
+      .mockImplementation(async (ownerId, runtimeSessionId) => {
+        registration ??= runtime.sessions.register({
+          ownerId: OWNER_ID,
+          transport,
+        });
+        return resolveTransport(ownerId, runtimeSessionId);
+      });
+
+    try {
+      const paused = await runtime.goals.pause({
+        ownerId: OWNER_ID,
+        runtimeSessionId: SESSION_ID,
+        goalId: activated.goal.goal.id,
+        expectedRevision: 1,
+        idempotencyKey: "pause-during-runtime-registration",
+        source: source(),
+      });
+      expect(paused.goal.goal.status).toBe("paused");
+
+      const resumed = await runtime.goals.resume({
+        ownerId: OWNER_ID,
+        runtimeSessionId: SESSION_ID,
+        goalId: activated.goal.goal.id,
+        expectedRevision: 2,
+        idempotencyKey: "resume-after-racing-registration",
+        source: source(),
+      });
+      expect(resumed.goal.goal.status).toBe("active");
+      expect(transport.delivered.map(({ kind }) => kind)).toEqual([
+        "goal.pause",
+        "goal.activate",
+        "goal.resume",
+      ]);
+    } finally {
+      registration?.release();
+      resolveSpy.mockRestore();
+      lifecycleSpy.mockRestore();
+    }
   });
 
   it("revises connector context with preserved untrusted provenance", async () => {

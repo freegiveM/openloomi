@@ -35,6 +35,7 @@ import type {
   PublicInstructionDispatch,
   PublicInstructionDispatchFailure,
 } from "./contracts";
+import { GoalPlanningError } from "./goal-planner-port";
 import { AgentGoalApiError, type AgentGoalApiService } from "./service";
 import { IdempotencyKeySchema } from "./schemas";
 
@@ -151,6 +152,9 @@ export function publicGoalDetail(
 }
 
 function goalApiErrorResponse(error: unknown): NextResponse {
+  if (error instanceof GoalPlanningError) {
+    return apiError("goal_planning_failed", 502);
+  }
   if (error instanceof AgentGoalApiError) {
     return apiError(error.code, 404);
   }

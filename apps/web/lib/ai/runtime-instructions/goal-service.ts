@@ -84,6 +84,14 @@ interface GoalCommandBase<TSource> {
 
 export interface ActivateGoalCommand extends GoalCommandBase<GoalActivationCommandSource> {
   goal: CreateAgentGoalInput;
+  /** Original trusted request shape, before server-side planning/enrichment. */
+  idempotencyPayload?: unknown;
+}
+
+export interface ReplayGoalActivationCommand
+  extends GoalCommandBase<GoalActivationCommandSource> {
+  /** Must match the payload supplied to the original activation. */
+  idempotencyPayload: unknown;
 }
 
 export interface UpdateGoalCommand extends GoalCommandBase<TrustedGoalCommandSource> {
@@ -148,6 +156,30 @@ export class GoalService {
     );
   }
 
+  /**
+   * Resolves server-owned Goal fields only after the durable idempotency check.
+   * The resolver runs inside the per-session command queue, so concurrent
+   * retries neither call an external planner twice nor create two Goals.
+   */
+  activateResolved(
+    input: ReplayGoalActivationCommand,
+    resolveGoal: () => Promise<CreateAgentGoalInput>,
+  ): Promise<GoalCommandResult> {
+    return this.commands.run(commandScope(input), async () => {
+      const base = parseCommandBase(input, false);
+      const replay = await this.findReplay(
+        base,
+        activationCommandIdentity(base, input.idempotencyPayload),
+      );
+      if (replay) return this.dispatch(base.ownerId, replay);
+
+      return this.activateCommand({
+        ...input,
+        goal: await resolveGoal(),
+      });
+    });
+  }
+
   update(input: UpdateGoalCommand): Promise<GoalCommandResult> {
     return this.commands.run(commandScope(input), () =>
       this.updateCommand(input),
@@ -192,12 +224,15 @@ export class GoalService {
         "Goal activation cannot embed unresolved context; add context through upsertContext",
       );
     }
-    const command = commandIdentity(base.idempotencyKey, {
-      kind: "goal.activate",
-      runtimeSessionId: base.runtimeSessionId,
-      source: base.source,
-      goal: goalInput,
-    });
+    const command =
+      input.idempotencyPayload === undefined
+        ? commandIdentity(base.idempotencyKey, {
+            kind: "goal.activate",
+            runtimeSessionId: base.runtimeSessionId,
+            source: base.source,
+            goal: goalInput,
+          })
+        : activationCommandIdentity(base, input.idempotencyPayload);
     const replay = await this.findReplay(base, command);
     if (replay) return this.dispatch(base.ownerId, replay);
 
@@ -677,6 +712,18 @@ function commandIdentity(
     idempotencyKey,
     requestFingerprint: createGoalCommandFingerprint(command),
   };
+}
+
+function activationCommandIdentity(
+  base: ParsedCommandBase,
+  idempotencyPayload: unknown,
+): GoalCommandIdentity {
+  return commandIdentity(base.idempotencyKey, {
+    kind: "goal.activate",
+    runtimeSessionId: base.runtimeSessionId,
+    source: base.source,
+    request: idempotencyPayload,
+  });
 }
 
 function instructionDraft(

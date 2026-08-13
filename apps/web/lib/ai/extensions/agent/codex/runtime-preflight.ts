@@ -1,51 +1,16 @@
-import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { createHash } from "node:crypto";
-import { StringDecoder } from "node:string_decoder";
 
-import spawn from "cross-spawn";
-
-import {
-  MAX_CLI_PROTOCOL_LINE_CHARS,
-  appendCapturedCliOutput,
-  buildAgentCliSearchPath,
-  buildCliEnvironment,
-  shouldDetachCliProcess,
-  terminateCliProcessTree,
-} from "../cli-process";
-import {
-  CodexCommandNotFoundError,
-  runCodexCli,
-  type CodexProviderConfig,
-} from "./command";
+import { CodexAppServerClient } from "./app-server";
+import { runCodexCli, type CodexProviderConfig } from "./command";
 
 const PREFLIGHT_TIMEOUT_MS = 5_000;
 const PREFLIGHT_CACHE_TTL_MS = 60_000;
 const MAX_MODEL_PAGES = 20;
 const MAX_MODELS_IN_ERROR = 8;
-const PREFLIGHT_CLIENT_VERSION = "1.0.0";
-
-type JsonRpcId = string | number;
-
-interface JsonRpcResponse {
-  id: JsonRpcId;
-  result?: unknown;
-  error?: {
-    code?: number;
-    message?: string;
-    data?: unknown;
-  };
-}
-
-interface PendingRequest {
-  method: string;
-  resolve: (value: unknown) => void;
-  reject: (error: Error) => void;
-}
 
 interface ModelListEntry {
   id?: string;
   model?: string;
-  displayName?: string;
 }
 
 interface ModelListResult {
@@ -260,40 +225,39 @@ async function probeCodexVersion(
 async function probeCodexModels(
   options: CodexRuntimePreflightOptions,
 ): Promise<string[]> {
-  const args: string[] = [];
-  if (options.providerConfig.profile) {
-    args.push("-p", options.providerConfig.profile);
-  }
-  args.push("app-server", "--stdio");
-
-  const client = new CodexAppServerProbeClient(options.command, args, {
+  const client = new CodexAppServerClient({
+    command: options.command,
     cwd: options.cwd,
+    profile: options.providerConfig.profile,
     env: options.providerConfig.env,
-    timeoutMs: PREFLIGHT_TIMEOUT_MS,
   });
+  const timeoutController = new AbortController();
+  const timeout = setTimeout(() => {
+    timeoutController.abort(
+      new Error(
+        `Codex app-server preflight timed out after ${PREFLIGHT_TIMEOUT_MS}ms`,
+      ),
+    );
+  }, PREFLIGHT_TIMEOUT_MS);
+  timeout.unref?.();
 
   try {
-    client.start();
-    await client.request("initialize", {
-      clientInfo: {
-        name: "openloomi",
-        title: "OpenLoomi",
-        version: PREFLIGHT_CLIENT_VERSION,
-      },
-      capabilities: {},
-    });
-    client.notify("initialized", {});
+    await client.initialize({ signal: timeoutController.signal });
 
     const models = new Set<string>();
     let cursor: string | undefined;
     let catalogComplete = false;
     for (let page = 0; page < MAX_MODEL_PAGES; page += 1) {
       const result = parseModelListResult(
-        await client.request("model/list", {
-          limit: 100,
-          includeHidden: true,
-          ...(cursor ? { cursor } : {}),
-        }),
+        await client.requestRaw(
+          "model/list",
+          {
+            limit: 100,
+            includeHidden: true,
+            ...(cursor ? { cursor } : {}),
+          },
+          { signal: timeoutController.signal },
+        ),
       );
       for (const entry of result.data) {
         if (entry.id?.trim()) {
@@ -320,6 +284,7 @@ async function probeCodexModels(
 
     return [...models].sort();
   } finally {
+    clearTimeout(timeout);
     await client.shutdown();
   }
 }
@@ -347,286 +312,6 @@ function parseModelListResult(value: unknown): ModelListResult {
         ? nextCursor
         : undefined,
   };
-}
-
-class CodexAppServerProbeClient {
-  private proc?: ChildProcessWithoutNullStreams;
-  private requestCounter = 0;
-  private stdout = "";
-  private stderr = "";
-  private stdoutBuffer = "";
-  private timeout?: ReturnType<typeof setTimeout>;
-  private timedOut = false;
-  private closed = false;
-  private pendingRequests = new Map<JsonRpcId, PendingRequest>();
-  private resolveClosed?: () => void;
-  private readonly stdoutDecoder = new StringDecoder("utf8");
-  private readonly stderrDecoder = new StringDecoder("utf8");
-  private readonly closedPromise = new Promise<void>((resolve) => {
-    this.resolveClosed = resolve;
-  });
-
-  constructor(
-    private readonly command: string,
-    private readonly args: string[],
-    private readonly options: {
-      cwd: string;
-      env?: Record<string, string>;
-      timeoutMs: number;
-    },
-  ) {}
-
-  start(): void {
-    if (this.proc) {
-      return;
-    }
-
-    let proc: ChildProcessWithoutNullStreams;
-    try {
-      proc = spawn(this.command, this.args, {
-        cwd: this.options.cwd,
-        env: buildCliEnvironment({
-          ...this.options.env,
-          PATH: buildAgentCliSearchPath(this.options.env?.PATH),
-        }),
-        detached: shouldDetachCliProcess(),
-        windowsHide: true,
-      }) as ChildProcessWithoutNullStreams;
-      this.proc = proc;
-    } catch (error) {
-      throw normalizeProbeSpawnError(error, this.command);
-    }
-
-    this.timeout = setTimeout(() => {
-      this.timedOut = true;
-      this.rejectAll(this.createExitError());
-      this.kill();
-    }, this.options.timeoutMs);
-
-    proc.stdin.on("error", (error: Error) => {
-      this.rejectAll(error);
-      this.kill();
-    });
-
-    proc.stdout.on("data", (chunk: Buffer) => {
-      const text = this.stdoutDecoder.write(chunk);
-      this.stdout = appendCapturedCliOutput(this.stdout, text);
-      this.stdoutBuffer += text;
-      if (this.stdoutBuffer.length > MAX_CLI_PROTOCOL_LINE_CHARS) {
-        this.rejectAll(
-          new Error(
-            `Codex app-server emitted a JSON line larger than ${MAX_CLI_PROTOCOL_LINE_CHARS} characters`,
-          ),
-        );
-        this.kill();
-        return;
-      }
-      this.flushStdoutLines();
-    });
-
-    proc.stderr.on("data", (chunk: Buffer) => {
-      this.stderr = appendCapturedCliOutput(
-        this.stderr,
-        this.stderrDecoder.write(chunk),
-      );
-    });
-
-    proc.on("error", (error: Error & { code?: string }) => {
-      this.rejectAll(normalizeProbeSpawnError(error, this.command));
-      this.finish();
-    });
-
-    proc.on("close", (code: number | null, signal: NodeJS.Signals | null) => {
-      const finalStdout = this.stdoutDecoder.end();
-      if (finalStdout) {
-        this.stdout = appendCapturedCliOutput(this.stdout, finalStdout);
-        this.stdoutBuffer += finalStdout;
-      }
-      this.stderr = appendCapturedCliOutput(
-        this.stderr,
-        this.stderrDecoder.end(),
-      );
-      if (this.stdoutBuffer.trim()) {
-        this.handleLine(this.stdoutBuffer);
-        this.stdoutBuffer = "";
-      }
-
-      if (this.pendingRequests.size > 0) {
-        this.rejectAll(this.createExitError(code ?? (signal ? 130 : 0)));
-      }
-      this.finish();
-    });
-  }
-
-  request(method: string, params?: unknown): Promise<unknown> {
-    const id = ++this.requestCounter;
-    return new Promise((resolve, reject) => {
-      this.pendingRequests.set(id, { method, resolve, reject });
-      try {
-        this.write({ id, method, params });
-      } catch (error) {
-        this.pendingRequests.delete(id);
-        reject(error instanceof Error ? error : new Error(String(error)));
-      }
-    });
-  }
-
-  notify(method: string, params?: unknown): void {
-    this.write({ method, params });
-  }
-
-  async shutdown(): Promise<void> {
-    if (!this.proc) {
-      return;
-    }
-    this.kill();
-    this.cleanup();
-    await Promise.race([
-      this.closedPromise,
-      new Promise<void>((resolve) => {
-        setTimeout(resolve, 1_000);
-      }),
-    ]);
-  }
-
-  private write(message: Record<string, unknown>): void {
-    if (!this.proc || this.closed) {
-      throw new Error("Codex app-server preflight process is not running");
-    }
-    this.proc.stdin.write(`${JSON.stringify(message)}\n`);
-  }
-
-  private flushStdoutLines(): void {
-    const lines = this.stdoutBuffer.split(/\r?\n/);
-    this.stdoutBuffer = lines.pop() ?? "";
-    for (const line of lines) {
-      if (line.trim()) {
-        this.handleLine(line);
-      }
-    }
-  }
-
-  private handleLine(line: string): void {
-    let message: unknown;
-    try {
-      message = JSON.parse(line);
-    } catch {
-      return;
-    }
-
-    if (isIncomingJsonRpcRequest(message)) {
-      this.write({
-        id: message.id,
-        error: {
-          code: -32601,
-          message: `Unsupported OpenLoomi preflight method: ${message.method}`,
-        },
-      });
-      return;
-    }
-
-    if (!isJsonRpcResponse(message)) {
-      return;
-    }
-
-    const pending = this.pendingRequests.get(message.id);
-    if (!pending) {
-      return;
-    }
-    this.pendingRequests.delete(message.id);
-
-    if (message.error) {
-      pending.reject(
-        new Error(
-          `Codex app-server ${pending.method} failed${
-            typeof message.error.code === "number"
-              ? ` (${message.error.code})`
-              : ""
-          }: ${message.error.message || "unknown error"}`,
-        ),
-      );
-      return;
-    }
-    pending.resolve(message.result);
-  }
-
-  private rejectAll(error: Error): void {
-    for (const pending of this.pendingRequests.values()) {
-      pending.reject(error);
-    }
-    this.pendingRequests.clear();
-  }
-
-  private createExitError(exitCode?: number): Error {
-    const output = this.stderr.trim() || this.stdout.trim();
-    if (this.timedOut) {
-      return new Error(
-        output
-          ? `Codex app-server preflight timed out after ${this.options.timeoutMs}ms: ${output}`
-          : `Codex app-server preflight timed out after ${this.options.timeoutMs}ms`,
-      );
-    }
-
-    return new Error(
-      output
-        ? `Codex app-server exited before completing model discovery${
-            exitCode === undefined ? "" : ` (code ${exitCode})`
-          }: ${output}`
-        : `Codex app-server exited before completing model discovery${
-            exitCode === undefined ? "" : ` (code ${exitCode})`
-          }`,
-    );
-  }
-
-  private kill(): void {
-    if (this.proc && !this.proc.killed) {
-      terminateCliProcessTree(this.proc);
-    }
-  }
-
-  private finish(): void {
-    if (this.closed) {
-      return;
-    }
-    this.closed = true;
-    this.cleanup();
-    this.resolveClosed?.();
-  }
-
-  private cleanup(): void {
-    if (this.timeout) {
-      clearTimeout(this.timeout);
-      this.timeout = undefined;
-    }
-  }
-}
-
-function isJsonRpcResponse(value: unknown): value is JsonRpcResponse {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return false;
-  }
-  const id = (value as { id?: unknown }).id;
-  return typeof id === "string" || typeof id === "number";
-}
-
-function isIncomingJsonRpcRequest(
-  value: unknown,
-): value is { id: JsonRpcId; method: string } {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return false;
-  }
-  const candidate = value as { id?: unknown; method?: unknown };
-  return (
-    (typeof candidate.id === "string" || typeof candidate.id === "number") &&
-    typeof candidate.method === "string"
-  );
-}
-
-function normalizeProbeSpawnError(error: unknown, command: string): Error {
-  const normalized = error instanceof Error ? error : new Error(String(error));
-  return (normalized as Error & { code?: string }).code === "ENOENT"
-    ? new CodexCommandNotFoundError(command)
-    : normalized;
 }
 
 function createPreflightCacheKey(

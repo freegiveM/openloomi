@@ -155,7 +155,24 @@ describe("GoalController Claude Stop integration", () => {
   it("deduplicates an inline continuation and attributes its provider output", async () => {
     const fixture = await createFixture();
     try {
-      await activateGoal(fixture, commandGoal());
+      await activateGoal(
+        fixture,
+        commandGoal({
+          successCriteria: [
+            ...commandGoal().successCriteria,
+            {
+              id: "docs-ready",
+              description: "Documentation is ready",
+              verification: {
+                type: "command_result",
+                commandPattern: "pnpm docs",
+                expectedExitCode: 0,
+              },
+              required: true,
+            },
+          ],
+        }),
+      );
       await observeAssistantTurn(fixture, "assistant-turn-1");
       const first = await fixture.claude.evaluateStop({
         runEpoch: 0,
@@ -185,6 +202,11 @@ describe("GoalController Claude Stop integration", () => {
           ],
         },
       });
+      if (first.instruction.kind !== "goal.continue") {
+        throw new Error("Expected a Goal continuation instruction");
+      }
+      expect(first.instruction.payload.missingCriteria).toHaveLength(1);
+      expect(first.instruction.payload).not.toHaveProperty("remainingBudget");
       expect(duplicate.outcome).toBe("continue");
       expect(duplicate.instruction.id).toBe(first.instruction.id);
       expect(duplicate.reason).toBe(first.reason);
@@ -224,7 +246,6 @@ describe("GoalController Claude Stop integration", () => {
           }),
         ]),
       );
-
     } finally {
       await closeFixture(fixture);
     }
@@ -324,20 +345,28 @@ describe("GoalController Claude Stop integration", () => {
             transport: fixture.claude,
           })
           .finalizeWithoutContinuation({
-          runEpoch: 0,
-          evaluationId: "provider-failure-complete",
-          turnContext: context,
-        }),
+            runEpoch: 0,
+            evaluationId: "provider-failure-complete",
+            turnContext: context,
+          }),
       ).resolves.toMatchObject({ decision: "allow", outcome: "completed" });
     } finally {
       await closeFixture(fixture);
     }
   });
 
-  it("allows Stop with budget_limited instead of creating an unusable continuation", async () => {
+  it("continues past legacy execution limits while retaining usage", async () => {
     const fixture = await createFixture();
     try {
-      await activateGoal(fixture, commandGoal({ maxTurns: 1 }));
+      await activateGoal(
+        fixture,
+        commandGoal({
+          maxTurns: 1,
+          maxTokens: 1,
+          maxDurationSeconds: 1,
+          deadline: "2026-08-03T07:59:00.000Z",
+        }),
+      );
       await fixture.runtime.observations.observeProviderEvent({
         ownerId: OWNER_ID,
         runtimeSessionId: SESSION_ID,
@@ -355,27 +384,19 @@ describe("GoalController Claude Stop integration", () => {
           lastAssistantMessage: "The required test is still pending.",
           stopHookActive: false,
         }),
-      ).resolves.toMatchObject({
-        decision: "allow",
-        outcome: "budget_limited",
-      });
+      ).resolves.toMatchObject({ decision: "block", outcome: "continue" });
       await expect(
         fixture.runtime.observations.listGoalRuns(OWNER_ID, SESSION_ID),
       ).resolves.toEqual([
         expect.objectContaining({
-          status: "budget_limited",
+          status: "running",
+          turnsUsed: 1,
+          tokensUsed: 1,
           lastEvaluation: expect.objectContaining({
-            reason: expect.stringContaining(
-              "maximum turn budget of 1 was exhausted",
-            ),
+            reason: expect.stringContaining("remain incomplete"),
           }),
         }),
       ]);
-      const [finishedRun] =
-        await fixture.runtime.observations.listGoalRuns(OWNER_ID, SESSION_ID);
-      expect(finishedRun?.lastEvaluation?.reason).not.toContain(
-        "Continue working",
-      );
     } finally {
       await closeFixture(fixture);
     }
@@ -590,9 +611,7 @@ describe("GoalController Claude Stop integration", () => {
       await expectPausedGoal(fixture, activation.goal.goal.id);
       await expect(
         fixture.runtime.state.listInstructions(OWNER_ID, SESSION_ID),
-      ).resolves.toEqual([
-        expect.objectContaining({ kind: "goal.activate" }),
-      ]);
+      ).resolves.toEqual([expect.objectContaining({ kind: "goal.activate" })]);
     } finally {
       await closeFixture(fixture);
     }
@@ -697,11 +716,11 @@ describe("GoalController Claude Stop integration", () => {
     }
   });
 
-  it("pauses after repeated evaluations make no progress", async () => {
+  it("keeps continuing when repeated evaluations make no progress", async () => {
     const fixture = await createFixture();
     try {
       const activation = await activateGoal(fixture, commandGoal());
-      for (let attempt = 1; attempt <= 3; attempt += 1) {
+      for (let attempt = 1; attempt <= 4; attempt += 1) {
         const assistantTurnId = `assistant-no-progress-${attempt}`;
         await observeAssistantTurn(fixture, assistantTurnId);
         const decision = await fixture.claude.evaluateStop({
@@ -710,21 +729,22 @@ describe("GoalController Claude Stop integration", () => {
           lastAssistantMessage: "The required test has not run yet.",
           stopHookActive: false,
         });
-        expect(decision).toMatchObject(
-          attempt < 3
-            ? { decision: "block", outcome: "continue" }
-            : { decision: "allow", outcome: "paused" },
-        );
+        expect(decision).toMatchObject({
+          decision: "block",
+          outcome: "continue",
+        });
       }
 
-      await expectPausedGoal(fixture, activation.goal.goal.id);
-      const [run] = await fixture.runtime.observations.listGoalRuns(
-        OWNER_ID,
-        SESSION_ID,
-      );
-      expect(run?.lastEvaluation?.reason).toContain(
-        "Automatic continuation stopped after 3 evaluations without new evidence or satisfied criteria.",
-      );
+      await expect(
+        fixture.runtime.queries.getById({
+          ownerId: OWNER_ID,
+          runtimeSessionId: SESSION_ID,
+          goalId: activation.goal.goal.id,
+        }),
+      ).resolves.toMatchObject({
+        goal: { goal: { status: "active" } },
+        latestRun: { status: "running" },
+      });
     } finally {
       await closeFixture(fixture);
     }
@@ -870,7 +890,9 @@ describe("GoalController Claude Stop integration", () => {
           goalId: activated.goal.goal.id,
         }),
       ).resolves.toMatchObject({
-        latestRun: { lastEvaluation: expect.objectContaining({ completed: false }) },
+        latestRun: {
+          lastEvaluation: expect.objectContaining({ completed: false }),
+        },
       });
 
       await fixture.runtime.goals.update({
