@@ -1,6 +1,6 @@
 import { and, eq, type InferSelectModel, type SQL } from "drizzle-orm";
 
-import { AppError } from "@openloomi/shared/errors";
+import { AppError } from "@melandlabs/shared/errors";
 import { db } from "./queries";
 import { userSubscriptions } from "./schema";
 

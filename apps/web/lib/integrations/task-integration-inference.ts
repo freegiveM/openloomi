@@ -1,1 +1,1 @@
-export * from "@openloomi/integrations-runtime/task-integration-inference";
+export * from "@melandlabs/integrations-runtime/task-integration-inference";

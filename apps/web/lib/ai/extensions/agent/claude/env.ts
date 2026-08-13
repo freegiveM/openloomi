@@ -1,4 +1,4 @@
-import type { AgentConfig } from "@openloomi/ai/agent/types";
+import type { AgentConfig } from "@melandlabs/ai/agent";
 
 import { DEFAULT_AI_MODEL } from "@/lib/env/constants";
 import { createLogger } from "@/lib/utils/logger";

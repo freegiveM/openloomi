@@ -1,4 +1,4 @@
-import type { ChatMessage } from "@openloomi/shared";
+import type { ChatMessage } from "@melandlabs/shared";
 
 export type PetRuntimeState = "idle" | "thinking" | "working" | "juggling";
 

@@ -14,7 +14,7 @@ import {
   getPresetPrompt,
   getSelectedSoulPresetId,
   getSoulPresetByPrompt,
-} from "@openloomi/shared/soul";
+} from "@melandlabs/shared";
 import { describe, expect, it } from "vitest";
 
 describe("shared soul", () => {
@@ -23,14 +23,14 @@ describe("shared soul", () => {
     it("SO-01: should return English prompt for en-US locale", () => {
       const result = getDefaultPrompt("en-US");
       expect(result).toBe(DEFAULT_PROMPT_EN);
-      expect(result).toContain("You are openloomi");
+      expect(result).toContain("You are opencontext");
     });
 
     // SO-02: getDefaultPrompt Chinese locale
     it("SO-02: should return Chinese prompt for zh-Hans locale", () => {
       const result = getDefaultPrompt("zh-Hans");
       expect(result).toBe(DEFAULT_PROMPT_ZH);
-      expect(result).toContain("你是 openloomi");
+      expect(result).toContain("你是 opencontext");
     });
 
     // SO-03: getDefaultPrompt other locale

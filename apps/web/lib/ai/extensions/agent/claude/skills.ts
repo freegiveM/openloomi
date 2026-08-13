@@ -1,6 +1,6 @@
 import { dirname } from "node:path";
 
-import type { SkillsConfig } from "@openloomi/ai/agent/types";
+import type { SkillsConfig } from "@melandlabs/ai/agent";
 import {
   clearSkillsFromClaude,
   syncSkillsToClaude,

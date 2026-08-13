@@ -5,7 +5,7 @@ import {
   createRawMessageMemoryGraphStore,
   memoryGraphLedgerMessageId,
   storeRawMessagesWithGraphEvolution,
-} from "@openloomi/indexeddb";
+} from "@melandlabs/indexeddb";
 import {
   type MemoryGraphSnapshot,
   type MemoryGraphStore,
@@ -13,7 +13,7 @@ import {
   buildMemoryGraphEvolutionPlan,
   ownerScopeKey,
   sameOwnerScope,
-} from "@openloomi/memory-consolidation";
+} from "@melandlabs/memory-consolidation";
 import { describe, expect, it } from "vitest";
 
 const NOW = 1_700_000_000_000;
@@ -27,7 +27,7 @@ class InMemoryRawMessageStorage implements RawMessageGraphEvolutionStorage {
 
   async storeMessage(message: RawMessage): Promise<number> {
     if (
-      message.messageId.startsWith("__openloomi_memory_graph__") &&
+      message.messageId.startsWith("__opencontext_memory_graph__") &&
       this.failLedgerWrites > 0
     ) {
       this.failLedgerWrites -= 1;

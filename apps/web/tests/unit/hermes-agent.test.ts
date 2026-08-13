@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { HermesAgent } from "@/lib/ai/extensions/agent/hermes";
 import { buildHermesAcpCommand } from "@/lib/ai/extensions/agent/hermes/command";
-import type { AgentMessage, TaskPlan } from "@openloomi/ai/agent/types";
+import type { AgentMessage, TaskPlan } from "@melandlabs/ai/agent";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const tempDirs: string[] = [];

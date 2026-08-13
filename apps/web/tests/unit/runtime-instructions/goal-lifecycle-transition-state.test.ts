@@ -148,11 +148,7 @@ describe("InMemoryAgentGoalState lifecycle transition barriers", () => {
     await expect(
       state.getActivePrimaryGoal(OWNER_ID, SESSION_ID),
     ).resolves.toBeNull();
-    const conflicting = newGoal(
-      uuid(7),
-      "Conflicting Goal",
-      TRANSITIONED_AT,
-    );
+    const conflicting = newGoal(uuid(7), "Conflicting Goal", TRANSITIONED_AT);
     await expect(
       state.commitActivation({
         ownerId: OWNER_ID,

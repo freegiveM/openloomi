@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import { RemixIcon } from "@/components/remix-icon";
 import { Button } from "@/components/ui/button";
 import { MISSING_API_KEY_REASON } from "@/lib/ai/conversation-api-configuration";
-import type { ChatMessage } from "@openloomi/shared";
+import type { ChatMessage } from "@melandlabs/shared";
 import type { UseChatHelpers } from "@ai-sdk/react";
 
 interface ErrorMessageDisplayProps {

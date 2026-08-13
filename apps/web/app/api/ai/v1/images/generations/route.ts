@@ -5,7 +5,7 @@ import { isTauriMode } from "@/lib/env/constants";
 import type {
   ImageGenerationRequest,
   ImageGenerationResponse,
-} from "@openloomi/ai/agent";
+} from "@melandlabs/ai/agent";
 
 export const runtime = "nodejs";
 

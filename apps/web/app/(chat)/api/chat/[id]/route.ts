@@ -5,8 +5,8 @@ import {
   getMessagesByChatId,
 } from "@/lib/db/queries";
 import { convertToUIMessages } from "@/lib/utils";
-import type { ChatMessage } from "@openloomi/shared";
-import { AppError } from "@openloomi/shared/errors";
+import type { ChatMessage } from "@melandlabs/shared";
+import { AppError } from "@melandlabs/shared/errors";
 
 export const dynamic = "force-dynamic";
 

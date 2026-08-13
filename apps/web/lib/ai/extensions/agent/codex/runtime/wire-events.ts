@@ -1,4 +1,4 @@
-import type { AgentMessage } from "@openloomi/ai/agent/types";
+import type { AgentMessage } from "@melandlabs/ai/agent";
 import { stripGoalStepCompletionMarkers } from "@openloomi/ai/agent/runtime-instructions";
 
 import type { CodexAppServerNotification } from "../app-server";

@@ -310,7 +310,7 @@ export interface LoopSignal {
 import type {
   LoopPreferences,
   QuietDayFillerId,
-} from "@openloomi/loop/preferences";
+} from "@melandlabs/loop/preferences";
 export type { LoopPreferences, QuietDayFillerId };
 
 /** Mute rule scope — discriminated union keyed by signal type. */

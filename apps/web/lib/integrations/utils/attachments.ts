@@ -1,9 +1,9 @@
-import type { UserType } from "@openloomi/contracts/user-type";
+import type { UserType } from "@melandlabs/contracts/user-type";
 import {
   type AttachmentDownloadPayload,
   ingestExternalAttachment,
 } from "@/lib/files/external-ingest";
-import type { Attachment } from "@openloomi/shared";
+import type { Attachment } from "@melandlabs/shared";
 import { recordAttachmentIngestFailure } from "@/lib/files/monitoring";
 
 type Logger = Pick<typeof console, "warn" | "error">;

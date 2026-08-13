@@ -15,8 +15,8 @@ import {
 import {
   startWeixinConnection as startWeixinConnection_,
   stopWeixinConnection as stopWeixinConnection_,
-} from "@openloomi/integrations/weixin";
-import type { InboundMessageHandler } from "@openloomi/integrations/core";
+} from "@melandlabs/integrations-weixin";
+import type { InboundMessageHandler } from "@melandlabs/integrations/core";
 import { handleWeixinInboundMessage } from "./handler";
 
 const DEBUG = process.env.DEBUG_WEIXIN === "true";

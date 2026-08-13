@@ -8,7 +8,7 @@ import type {
   AgentRuntimeRecovery,
   AgentRuntimeRecoveryContinuationResult,
   AgentRuntimeRecoveryGoalFinalizationResult,
-} from "@openloomi/ai/agent/types";
+} from "@/lib/ai/agent/types-shim";
 import type { RuntimeObservationLeaseRegistration } from "@/lib/ai/runtime-instructions/runtime-observation";
 import type { RuntimeSessionEnsureOptions } from "@/lib/ai/runtime-instructions/runtime-session-persistence";
 import {

@@ -26,7 +26,7 @@ vi.mock("@/lib/ai/native-agent/provider-env", () => ({
 
 const createAgentMock = vi.fn();
 
-vi.mock("@openloomi/ai/agent/registry", () => ({
+vi.mock("@melandlabs/ai/agent", () => ({
   getAgentRegistry: () => ({ create: createAgentMock }),
 }));
 

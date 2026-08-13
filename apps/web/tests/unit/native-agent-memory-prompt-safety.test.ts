@@ -3,8 +3,8 @@ import {
   type NativeAgentMemoryContextDiagnostic,
   type NativeAgentMemoryRetrievalMode,
   runNativeAgentRequest,
-} from "@openloomi/ai/agent/native-runner";
-import type { AgentRegistry } from "@openloomi/ai/agent/registry";
+} from "@melandlabs/ai/agent/native-runner";
+import type { AgentRegistry } from "@melandlabs/ai/agent";
 import { describe, expect, it } from "vitest";
 
 const END_MARKER = "[End long-term memory context]";

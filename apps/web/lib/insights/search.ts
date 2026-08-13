@@ -4,11 +4,11 @@ import { isTauriMode } from "@/lib/env/constants";
 import {
   isInsightChromaEnabled,
   searchInsightsWithChroma,
-} from "@openloomi/memory-store/chroma-memory-index";
+} from "@melandlabs/memory-store/chroma-memory-index";
 import {
   isInsightSQLiteVecEnabled,
   searchInsightsWithSQLiteVec,
-} from "@openloomi/memory-store/sqlite-vector-index";
+} from "@melandlabs/memory-store/sqlite-vector-index";
 import {
   createUserEmbeddingProvider,
   hasUserEmbeddingProviderConfig,

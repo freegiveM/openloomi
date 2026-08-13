@@ -1,10 +1,10 @@
-import { buildMemoryRecordEmbeddingDocument } from "@openloomi/ai/memory";
+import { buildMemoryRecordEmbeddingDocument } from "@melandlabs/ai/memory";
 import {
   rawMessageToMemoryRecord,
   type RawMessage,
-} from "@openloomi/indexeddb";
-import { ChromaVectorStore } from "@openloomi/rag";
-import type { DocumentChunk } from "@openloomi/rag/vector-service";
+} from "@melandlabs/indexeddb";
+import { ChromaVectorStore } from "@melandlabs/ai-rag/chroma-store";
+import type { DocumentChunk } from "@melandlabs/rag/vector-service";
 
 const DEFAULT_RAW_MESSAGES_COLLECTION = "openloomi_raw_messages";
 const DEFAULT_INSIGHTS_COLLECTION = "openloomi_insights";

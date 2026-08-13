@@ -60,9 +60,7 @@ class IdleLifecycleTransport
     };
   }
 
-  captureTurnBoundaryAndHoldPendingInput(
-    expectedRunEpoch: number,
-  ) {
+  captureTurnBoundaryAndHoldPendingInput(expectedRunEpoch: number) {
     return {
       boundary: this.captureTurnBoundary(),
       hold: { runEpoch: expectedRunEpoch, release() {} },
@@ -73,10 +71,7 @@ class IdleLifecycleTransport
     return this.captureTurnBoundary();
   }
 
-  advanceRunEpoch(input: {
-    expectedRunEpoch: number;
-    nextRunEpoch: number;
-  }) {
+  advanceRunEpoch(input: { expectedRunEpoch: number; nextRunEpoch: number }) {
     const previousRunEpoch = this.runEpoch;
     this.runEpoch = input.nextRunEpoch;
     return {
@@ -660,7 +655,7 @@ describe("in-memory Goal runtime application", () => {
           id: "openloomi-context",
           kind: "project",
           refId: "project-176",
-          origin: "openloomi",
+          origin: "opencontext",
           sourceRef: "project:176",
         },
       }),
@@ -687,7 +682,7 @@ describe("in-memory Goal runtime application", () => {
       },
     });
     expect(formatRuntimeInstruction(upserted.instruction)).toContain(
-      '<openloomi_untrusted_context context_id="jira-176"',
+      '<opencontext_untrusted_context context_id="jira-176"',
     );
 
     await expect(
@@ -853,7 +848,7 @@ describe("in-memory Goal runtime application", () => {
       id: "privacy-policy-context",
       kind: "document",
       refId: "privacy-v3",
-      origin: "openloomi",
+      origin: "opencontext",
       sourceRef: policySource.sourceRef,
     } as const;
     const policyUpsert = await runtime.goals.upsertContext({

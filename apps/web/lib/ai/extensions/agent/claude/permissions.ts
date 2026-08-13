@@ -3,7 +3,7 @@ import type {
   Options,
   PermissionResult,
 } from "@anthropic-ai/claude-agent-sdk";
-import type { AgentOptions } from "@openloomi/ai/agent/types";
+import type { AgentOptions } from "@melandlabs/ai/agent";
 
 import type { ClaudeRuntimeLogger } from "./skills";
 

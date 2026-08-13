@@ -5,7 +5,7 @@ import { useSession } from "next-auth/react";
 import {
   ensureRawMessagesSQLiteMigration,
   shouldUseSQLiteRawMessageStorage,
-} from "@openloomi/indexeddb/client";
+} from "@melandlabs/indexeddb";
 
 export function RawMessagesMigrationInit() {
   const { data: session, status } = useSession();

@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import type { AgentMessage } from "@openloomi/ai/agent/types";
+import type { AgentMessage } from "@melandlabs/ai/agent";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const release = vi.hoisted(() => vi.fn(async () => undefined));

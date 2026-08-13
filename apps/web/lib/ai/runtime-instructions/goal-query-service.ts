@@ -159,9 +159,7 @@ export class AgentGoalQueryService {
       item.goalRevision <= goal.goal.revision;
     const scopedEvidence = evidence.filter(isCurrentEvidence);
     const evaluationEvidenceIds = new Set(
-      evaluationEvidence
-        .filter(isCurrentEvidence)
-        .map((item) => item.id),
+      evaluationEvidence.filter(isCurrentEvidence).map((item) => item.id),
     );
     return {
       ...summaryFor(
@@ -303,9 +301,7 @@ function summaryFor(
       return (
         evidenceIds !== undefined &&
         evidenceIds.length > 0 &&
-        evidenceIds.every((evidenceId) =>
-          evaluationEvidenceIds.has(evidenceId),
-        )
+        evidenceIds.every((evidenceId) => evaluationEvidenceIds.has(evidenceId))
       );
     });
   if (run && (!evaluationIsCurrent || !evaluationEvidenceIsCurrent)) {

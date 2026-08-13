@@ -17,7 +17,7 @@ import {
   isMemorySummaryPublicationPendingRecord,
   withoutMemorySummaryPublicationExpectedRevision,
   mergeStoredChatMemoryEvidence,
-} from "@openloomi/indexeddb";
+} from "@melandlabs/indexeddb";
 import type {
   MemoryStage,
   MemorySummaryQuery,
@@ -27,7 +27,7 @@ import type {
   RawMessageQuery,
   RawMessageStats,
   RawMessageStorageManager,
-} from "@openloomi/indexeddb/storage";
+} from "@melandlabs/indexeddb";
 import {
   type SQL,
   and,
@@ -1108,13 +1108,13 @@ export async function closePostgresRawMessageManager(): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// Register this Postgres manager with the standalone @openloomi/memory-store
+// Register this Postgres manager with the standalone @melandlabs/memory-store
 // package so the standalone HTTP/MCP server (running outside the web app)
 // can fall back to Postgres when not in Tauri mode. Registration is a no-op
 // for in-app imports — the route handlers continue to use
 // `getPostgresRawMessageManager()` directly.
 // ---------------------------------------------------------------------------
-import { registerPostgresFactory as registerPostgresRawMessageFactory } from "@openloomi/memory-store/postgres-raw-message-factory";
+import { registerPostgresFactory as registerPostgresRawMessageFactory } from "@melandlabs/memory-store/postgres-raw-message-factory";
 
 registerPostgresRawMessageFactory(async () => {
   if (!manager) {

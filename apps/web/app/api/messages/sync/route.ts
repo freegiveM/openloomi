@@ -1,6 +1,6 @@
 import { auth } from "@/app/(auth)/auth";
 import { getBotsByUserId } from "@/lib/db/queries";
-import { AppError } from "@openloomi/shared/errors";
+import { AppError } from "@melandlabs/shared/errors";
 
 /**
  * POST endpoint to fetch and return raw messages for all bots

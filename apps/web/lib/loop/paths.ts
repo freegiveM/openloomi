@@ -1,4 +1,4 @@
-// Phase 5 — re-export shim over `@openloomi/loop/paths`. The leaf module
+// Phase 5 — re-export shim over `@melandlabs/loop/paths`. The leaf module
 // owns the on-disk Loop filesystem layout (`LOOP_HOME`, `LOOP_PATHS`,
 // `ensureDirs`, `migrate`, `ensureParent`). Pure `node:fs` / `node:path`
 // only — no DB / agent / integrations — so the runtime package and the
@@ -11,4 +11,4 @@ export {
   ensureDirs,
   ensureParent,
   migrate,
-} from "@openloomi/loop/paths";
+} from "@melandlabs/loop/paths";

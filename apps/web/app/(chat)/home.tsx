@@ -30,7 +30,7 @@ import {
 } from "@openloomi/ui";
 import { useTranslation } from "react-i18next";
 import "../../i18n";
-import type { ChatMessage } from "@openloomi/shared";
+import type { ChatMessage } from "@melandlabs/shared";
 import dynamic from "next/dynamic";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { buildNavigationUrl, generateUUID, fetcher } from "@/lib/utils";
@@ -51,7 +51,7 @@ import { AddPlatformDialog } from "@/components/add-platform-dialog";
 import { useIntegrations } from "@/hooks/use-integrations";
 import { ChatSkeleton } from "@/components/agent/panel-skeleton";
 import { RemixIcon } from "@/components/remix-icon";
-import { useIsMobile } from "@openloomi/hooks/use-is-mobile";
+import { useIsMobile } from "@melandlabs/hooks/use-is-mobile";
 
 const HISTORY_PAGE_SIZE = 20;
 

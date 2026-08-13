@@ -1,19 +1,20 @@
 """
-dummy_eval.py —— 一分钟级 dry-run：完整打通链路（不含 SWE-Agent 全部能力）
+dummy_eval.py — one-minute dry-run that exercises the full pipeline (without
+the full SWE-Agent capabilities).
 
-不依赖官方 v3 的 dummy JSON，直接手工构造：
-- 一个本地小仓库（含一个 bug + 一个测试）
-- 一条 SWE-Bench-CL 风格的 task（base_commit + issue + FAIL_TO_PASS + PASS_TO_PASS）
-- 跑完 setup → agent → apply_patch → 跑测试
+Does not depend on the official v3 dummy JSON; constructs everything by hand:
+- a small local repo (with one bug + one test)
+- one SWE-Bench-CL-style task (base_commit + issue + FAIL_TO_PASS + PASS_TO_PASS)
+- runs setup → agent → apply_patch → execute tests end-to-end
 
-如果链路打通：
-- agent 收到 prompt 后会去查看本地仓
-- 用它自己的工具修 bug
-- 在回复里产出 ```diff``` 块
-- harness 抓到 diff → git apply → 跑 unittest
-- output 写到 dummy_results.json
+If the pipeline works:
+- the agent inspects the local repo after receiving the prompt
+- fixes the bug with its own tools
+- emits a ```diff``` block in its reply
+- harness extracts the diff → git apply → run unittest
+- output is written to dummy_results.json
 
-用法：
+Usage:
     cd D:\\openloomi3\\openloomi\\benchmark\\SWE-bench-CL\\eval_openloomi
     python dummy_eval.py
 """
@@ -32,10 +33,11 @@ DUMMY_DIR = CLONE_BASE_DIR / "dummy_math_project"
 
 
 def build_dummy_repo():
-    """手工构造一个假仓库：math_utils.add 错把 a+b 写成 a-b，测试期望 a+b。
+    """Hand-build a fake repo: math_utils.add incorrectly returns a - b, but
+    the test expects a + b.
 
-    每次跑都用带时间戳的子目录，避免 Windows 上 .git/objects 被 lock 导致
-    PermissionError。
+    Each run uses a timestamped subdirectory to avoid PermissionError from
+    .git/objects being locked on Windows.
     """
     import time as _t
     ts_dir = CLONE_BASE_DIR / f"dummy_math_project_{int(_t.time())}"
@@ -58,14 +60,14 @@ def build_dummy_repo():
     subprocess.run(["git", "add", "-A"], cwd=ts_dir, capture_output=True)
     subprocess.run(["git", "-c", "user.email=bot@x", "-c", "user.name=bot",
                     "commit", "-qm", "init"], cwd=ts_dir, capture_output=True)
-    # 把 ts_dir 写到 DUMMY_DIR 让后续函数也能用
+    # Write ts_dir to DUMMY_DIR so subsequent functions can use it
     global DUMMY_DIR
     DUMMY_DIR = ts_dir
     return ts_dir
 
 
 def build_dummy_dataset(repo_dir: Path):
-    """手工构造一个 dataset 字典（与 SWE-Bench-CL 同 schema）。"""
+    """Hand-build a dataset dict (same schema as SWE-Bench-CL)."""
     return {
         "metadata": {
             "name": "SWE-Bench-CL-Dummy-Local",
@@ -83,7 +85,7 @@ def build_dummy_dataset(repo_dir: Path):
                         "metadata": {
                             "instance_id": "local__dummy_math_project_task_1",
                             "repo": "local/dummy_math_project",
-                            "base_commit": "init",  # 任何 base_commit 都被 setup 路径跳过
+                            "base_commit": "init",  # Any base_commit is skipped by the setup path
                         },
                         "task": {
                             "problem_statement": (
@@ -94,7 +96,7 @@ def build_dummy_dataset(repo_dir: Path):
                             "hints_text": None,
                         },
                         "evaluation": {
-                            "test_patch": "",  # dummy 不需要外部 test_patch
+                            "test_patch": "",  # The dummy run does not need an external test_patch
                             "FAIL_TO_PASS": ["test_math_utils.TestMath.test_add"],
                             "PASS_TO_PASS": ["test_math_utils.TestMath.test_pass_to_pass"],
                         },
@@ -120,8 +122,8 @@ def run_dummy():
 
     from eval_procedure import SWEAgentCLEvaluator, setup_repository, CLONE_BASE_DIR
 
-    # 关键：把 SWEAgentCLEvaluator 内部 setup_repository 的"先 git clone"绕开
-    # 直接用我们的本地仓（跳过 setup_repository 探测）
+    # Key trick: bypass SWEAgentCLEvaluator's internal setup_repository "git clone first" step.
+    # Use our local repo directly (skip the setup_repository probe).
     seq_id = dataset["sequences"][0]["id"]
     task = dataset["sequences"][0]["tasks"][0]
     tid = task["metadata"]["instance_id"]
@@ -153,9 +155,10 @@ def run_dummy():
     print(f"Diff preview (first 800 chars):\n{diff[:800]}")
     print("=" * 60)
 
-    # 注意：当 OpenLoomi 是真实 coding agent 时，它可能直接在工作目录里把代码
-    # 修好（如本机所示），所以**即使 diff 没 apply 成功，文件本身可能已经正确**。
-    # 因此我们始终跑一遍测试，以测试通过与否作为最终 success。
+    # Note: when OpenLoomi is a real coding agent, it may directly fix the
+    # code in the working directory (as seen on this machine), so even if the
+    # diff apply fails, the files themselves may already be correct. Therefore
+    # we always run the tests once, and use test success as the final verdict.
     test_proc = subprocess.run(
         ["python", "-m", "unittest", "test_math_utils", "-v"],
         cwd=str(repo_dir.resolve()), capture_output=True, text=True, timeout=60,
@@ -167,8 +170,9 @@ def run_dummy():
 
     patch_applied = diff is not None
     if diff and not no_patch:
-        # 试 apply patch，看 diff 是不是真的对得上；但不影响 success 判断
-        if not success:  # 仅在测试还没过时尝试 apply
+        # Try to apply the patch to see if the diff actually fits; this does not
+        # affect the success verdict.
+        if not success:  # Only attempt to apply when tests are still failing
             patch_applied = apply_patch(diff, repo_dir.resolve())
             print(f"git apply result: {patch_applied}")
             if patch_applied:

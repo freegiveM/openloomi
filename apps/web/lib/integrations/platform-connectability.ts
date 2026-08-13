@@ -1,1 +1,1 @@
-export * from "@openloomi/integrations-runtime/platform-connectability";
+export * from "@melandlabs/integrations-runtime/platform-connectability";

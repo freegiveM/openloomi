@@ -1,11 +1,11 @@
 /**
  * AuthProvider implementation for apps/web
  *
- * Implements the AuthProvider interface from @openloomi/integrations/core
+ * Implements the AuthProvider interface from @melandlabs/integrations/core
  * using the auth system from apps/web.
  */
 
-import type { AuthProvider, LocalUserType } from "@openloomi/integrations/core";
+import type { AuthProvider, LocalUserType } from "@melandlabs/integrations/core";
 import { auth } from "@/app/(auth)/auth";
 import { headers } from "next/headers";
 

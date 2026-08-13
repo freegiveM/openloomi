@@ -2,7 +2,7 @@
 
 import cx from "classnames";
 import { motion } from "framer-motion";
-import type { Attachment } from "@openloomi/shared";
+import type { Attachment } from "@melandlabs/shared";
 import type React from "react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";

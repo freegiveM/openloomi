@@ -153,9 +153,7 @@ function createHarness() {
   database.exec('CREATE TABLE "User" ("id" text PRIMARY KEY NOT NULL)');
   for (const migration of BASE_MIGRATIONS) database.exec(migration);
   runSqliteMigrationWithForeignKeysDisabled(database, () =>
-    database.transaction(() =>
-      database.exec(OPTIONAL_GOAL_LIMITS_MIGRATION),
-    )(),
+    database.transaction(() => database.exec(OPTIONAL_GOAL_LIMITS_MIGRATION))(),
   );
   database
     .prepare('INSERT INTO "User" (id) VALUES (?), (?)')

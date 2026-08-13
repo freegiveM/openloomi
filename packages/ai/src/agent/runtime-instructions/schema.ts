@@ -150,7 +150,7 @@ export const GoalContextReferenceSchema = z
       .trim()
       .max(AGENT_GOAL_LIMITS.contextSummaryCharacters)
       .optional(),
-    origin: z.enum(["connector", "memory", "user", "openloomi"]),
+    origin: z.enum(["connector", "memory", "user", "opencontext"]),
     sourceRef: z.string().trim().min(1).max(2_048).optional(),
     digest: sha256Schema.optional(),
     attributes: boundedJsonRecord(

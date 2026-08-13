@@ -1,6 +1,6 @@
 import { auth } from "@/app/(auth)/auth";
 import { getUserContacts } from "@/lib/db/queries";
-import { AppError } from "@openloomi/shared/errors";
+import { AppError } from "@melandlabs/shared/errors";
 
 export async function GET(req: Request) {
   const session = await auth();

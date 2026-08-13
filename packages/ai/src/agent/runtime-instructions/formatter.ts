@@ -35,9 +35,9 @@ function formatInstructionEnvelope(
   ] as const;
 
   return [
-    `<openloomi_runtime_instruction${formatAttributes(attributes)}>`,
+    `<opencontext_runtime_instruction${formatAttributes(attributes)}>`,
     body,
-    "</openloomi_runtime_instruction>",
+    "</opencontext_runtime_instruction>",
   ].join("\n");
 }
 
@@ -255,9 +255,9 @@ function formatUntrustedContextBlock(context: GoalContextReference): string {
   ].filter((line): line is string => line !== undefined);
 
   return [
-    `<openloomi_untrusted_context${formatAttributes(attributes)}>`,
+    `<opencontext_untrusted_context${formatAttributes(attributes)}>`,
     body.length > 0 ? body.join("\n\n") : "No context snapshot was provided.",
-    "</openloomi_untrusted_context>",
+    "</opencontext_untrusted_context>",
   ].join("\n");
 }
 

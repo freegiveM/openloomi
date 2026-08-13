@@ -122,45 +122,49 @@ export class AgentGoalApiService {
     await this.requireSession(ownerId, request.runtimeSessionId);
     const source = userCommandSource();
     const idempotencyPayload = { objective: request.objective };
-    return this.dependencies.goals.activateResolved({
-      ownerId,
-      runtimeSessionId: request.runtimeSessionId,
-      idempotencyKey,
-      source,
-      idempotencyPayload,
-    }, async () => {
-      const existingRuntimeSession = await this.dependencies.runtimeSessions.get(
+    return this.dependencies.goals.activateResolved(
+      {
         ownerId,
-        request.runtimeSessionId,
-      );
-      const provider =
-        existingRuntimeSession?.provider ??
-        this.dependencies.resolveNewRuntimeProvider();
-      if (existingRuntimeSession) {
-        // Validate an existing durable session (including recovery fences)
-        // before spending another provider turn on planning.
-        await this.dependencies.runtimeSessions.ensure(
+        runtimeSessionId: request.runtimeSessionId,
+        idempotencyKey,
+        source,
+        idempotencyPayload,
+      },
+      async () => {
+        const existingRuntimeSession =
+          await this.dependencies.runtimeSessions.get(
+            ownerId,
+            request.runtimeSessionId,
+          );
+        const provider =
+          existingRuntimeSession?.provider ??
+          this.dependencies.resolveNewRuntimeProvider();
+        if (existingRuntimeSession) {
+          // Validate an existing durable session (including recovery fences)
+          // before spending another provider turn on planning.
+          await this.dependencies.runtimeSessions.ensure(
+            ownerId,
+            request.runtimeSessionId,
+          );
+        }
+        const plan = await this.dependencies.planner.plan({
           ownerId,
-          request.runtimeSessionId,
-        );
-      }
-      const plan = await this.dependencies.planner.plan({
-        ownerId,
-        provider,
-        objective: request.objective,
-        ...(existingRuntimeSession?.workingDirectory === undefined
-          ? {}
-          : { workingDirectory: existingRuntimeSession.workingDirectory }),
-      });
-      if (!existingRuntimeSession) {
-        await this.dependencies.runtimeSessions.ensure(
-          ownerId,
-          request.runtimeSessionId,
-          { provider, initialState: "idle" },
-        );
-      }
-      return userGoalInput(request.objective, plan);
-    });
+          provider,
+          objective: request.objective,
+          ...(existingRuntimeSession?.workingDirectory === undefined
+            ? {}
+            : { workingDirectory: existingRuntimeSession.workingDirectory }),
+        });
+        if (!existingRuntimeSession) {
+          await this.dependencies.runtimeSessions.ensure(
+            ownerId,
+            request.runtimeSessionId,
+            { provider, initialState: "idle" },
+          );
+        }
+        return userGoalInput(request.objective, plan);
+      },
+    );
   }
 
   async update(

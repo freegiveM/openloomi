@@ -6,7 +6,6 @@ import {
   formatRuntimeInstruction,
   type AgentGoal,
   type AgentGoalEvaluationStatePort,
-  type AgentGoalStatePort,
   type GoalCommandIdentity,
   type GoalEvaluationResult,
   type GoalStatus,
@@ -21,6 +20,7 @@ import { createGoalCommandFingerprint } from "./command-fingerprint";
 import { GoalEvaluatorError, type GoalEvaluator } from "./goal-evaluator";
 import type { RuntimeInstructionDispatcher } from "./instruction-dispatcher";
 import { KeyedSerialExecutor } from "./keyed-serial-executor";
+import type { LocalAgentGoalStatePort } from "./persistence/local-ports";
 import type {
   RuntimeGoalEvaluationJournalPort,
   RuntimeObservationContext,
@@ -47,11 +47,7 @@ export interface GoalFinalEvaluationInput {
 export type GoalStopDecision =
   | {
       decision: "allow";
-      outcome:
-        | "no_active_goal"
-        | "stale"
-        | "completed"
-        | "paused";
+      outcome: "no_active_goal" | "stale" | "completed" | "paused";
       goalId?: string;
       goalRevision?: number;
     }
@@ -95,7 +91,8 @@ export class GoalController {
   private readonly decisions = new Map<string, GoalStopDecision>();
 
   constructor(
-    private readonly state: AgentGoalStatePort & AgentGoalEvaluationStatePort,
+    private readonly state: LocalAgentGoalStatePort &
+      AgentGoalEvaluationStatePort,
     private readonly observations: RuntimeGoalEvaluationJournalPort,
     private readonly dispatcher: RuntimeInstructionDispatcher,
     private readonly evaluator: GoalEvaluator,
@@ -140,10 +137,7 @@ export class GoalController {
     input: GoalFinalEvaluationInput,
   ): Promise<GoalFinalEvaluationDecision> {
     const runEpoch = nonNegativeInteger(input.runEpoch, "runEpoch");
-    const evaluationId = requiredIdentifier(
-      input.evaluationId,
-      "evaluationId",
-    );
+    const evaluationId = requiredIdentifier(input.evaluationId, "evaluationId");
     const runtimeLeaseToken =
       input.runtimeLeaseToken === undefined
         ? undefined
@@ -651,8 +645,7 @@ function hasMissingManualCriterion(
 ): boolean {
   const missing = new Set(evaluation.missingCriteria);
   const currentCriterion = goal.successCriteria.find(
-    (criterion) =>
-      criterion.required && missing.has(criterion.id),
+    (criterion) => criterion.required && missing.has(criterion.id),
   );
   return currentCriterion?.verification.type === "manual";
 }
@@ -694,9 +687,7 @@ function evaluatorFailureEvaluation(
     confidence: 0,
     satisfiedCriteria,
     missingCriteria: goal.successCriteria
-      .filter(
-        (criterion) => criterion.required && !satisfied.has(criterion.id),
-      )
+      .filter((criterion) => criterion.required && !satisfied.has(criterion.id))
       .map((criterion) => criterion.id),
     evidence: partial.evidence.filter(({ criterionId }) =>
       satisfied.has(criterionId),

@@ -1,1 +1,1 @@
-export * from "@openloomi/integrations-runtime/oauth-callback-script";
+export * from "@melandlabs/integrations-runtime/oauth-callback-script";

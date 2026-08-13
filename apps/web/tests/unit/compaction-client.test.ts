@@ -1,7 +1,7 @@
 import {
   triggerCompaction,
   triggerCompactionAsync,
-} from "@openloomi/ai/agent/compaction";
+} from "@melandlabs/ai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 describe("compaction client", () => {

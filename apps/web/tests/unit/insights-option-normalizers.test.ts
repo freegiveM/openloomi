@@ -12,7 +12,7 @@ import {
   normalizePlatformKey,
   normalizePlatformOption,
   normalizeUrgencyOption,
-} from "@openloomi/insights";
+} from "@melandlabs/insights";
 import { describe, expect, it } from "vitest";
 
 describe("insights-option-normalizers", () => {

@@ -17,7 +17,7 @@ import {
 } from "@/lib/db/queries";
 import { DEFAULT_AI_MODEL, AI_PROXY_BASE_URL } from "@/lib/env/constants";
 import { getCloudAuthToken } from "@/lib/auth/token-manager";
-import { UserLocale } from "@openloomi/shared";
+import { UserLocale } from "@melandlabs/shared";
 import {
   handleAgentRuntime,
   formatAgentStreamErrorForUser,
@@ -29,14 +29,14 @@ import { classifyAgentError } from "@/lib/errors/known-errors";
 // barrel re-exports processor.ts, which statically pulls every platform adapter
 // (googleapis, baileys, telegram, ...) into this boot-resident Feishu listener.
 import { resolveAgentLanguage } from "@/lib/insights/resolve-language";
-import type { RawMessage } from "@openloomi/indexeddb";
+import type { RawMessage } from "@melandlabs/indexeddb";
 import {
   FeishuConversationStore,
   type ChatType,
   type QuotedMessage,
   type RuntimeConversationMessage,
-} from "@openloomi/integrations/feishu/conversation-store";
-import { FeishuAdapter } from "@openloomi/integrations/feishu";
+} from "@melandlabs/integrations-feishu/conversation-store";
+import { FeishuAdapter } from "@melandlabs/integrations-feishu";
 import { createTaskSession } from "@/lib/files/workspace/sessions";
 import { readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -121,7 +121,7 @@ async function storeFeishuRawMessage(input: {
   try {
     const nowSec = Math.floor(Date.now() / 1000);
     const { getRawMessageManager } =
-      await import("@openloomi/memory-store/raw-message-store");
+      await import("@melandlabs/memory-store/raw-message-store");
     const manager = await getRawMessageManager();
     const rawMessage: RawMessage = {
       messageId: input.messageId,
@@ -149,7 +149,7 @@ async function storeFeishuRawMessage(input: {
     );
     await manager.storeMessage(messageWithEmbedding);
     const { upsertRawMessagesToChroma } =
-      await import("@openloomi/memory-store/chroma-memory-index");
+      await import("@melandlabs/memory-store/chroma-memory-index");
     await upsertRawMessagesToChroma([messageWithEmbedding]);
     console.log("[Feishu] Stored raw message", {
       messageId: input.messageId,
@@ -179,8 +179,8 @@ async function embedRawMessageOnWrite(
     }
 
     const { buildMemoryRecordEmbeddingDocument } =
-      await import("@openloomi/ai/memory");
-    const { rawMessageToMemoryRecord } = await import("@openloomi/indexeddb");
+      await import("@melandlabs/ai/memory");
+    const { rawMessageToMemoryRecord } = await import("@melandlabs/indexeddb");
 
     const document = buildMemoryRecordEmbeddingDocument(
       rawMessageToMemoryRecord(message),

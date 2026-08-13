@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { auth } from "@/app/(auth)/auth";
-import { readAuditLogs, clearAuditLogs } from "@openloomi/audit";
+import { readAuditLogs, clearAuditLogs } from "@melandlabs/audit";
 
 /**
  * GET /api/audit/logs

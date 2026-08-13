@@ -1,25 +1,25 @@
 import { App, LogLevel } from "@slack/bolt";
 import { createReadStream } from "node:fs";
 import { basename } from "node:path";
-import { MessagePlatformAdapter } from "@openloomi/integrations/channels";
+import { MessagePlatformAdapter } from "@melandlabs/integrations-channels";
 import type {
   Messages,
   At,
   Image,
   Message,
-} from "@openloomi/integrations/channels";
-import type { Attachment } from "@openloomi/shared";
-import type { UserType } from "@openloomi/contracts/user-type";
+} from "@melandlabs/integrations-channels";
+import type { Attachment } from "@melandlabs/shared";
+import type { UserType } from "@melandlabs/contracts/user-type";
 import { ingestExternalAttachment } from "@/lib/files/external-ingest";
 import {
   delay,
   timeBeforeHours,
   type ExtractedMessageInfo,
-} from "@openloomi/shared";
+} from "@melandlabs/shared";
 import type {
   MessageEvent,
   MessageTarget,
-} from "@openloomi/integrations/channels";
+} from "@melandlabs/integrations-channels";
 
 const DEBUG = process.env.DEBUG_SLACK === "true";
 

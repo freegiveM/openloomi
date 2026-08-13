@@ -214,11 +214,7 @@ export class GoalLifecycleService {
             command: command.command,
           });
         }
-        return lifecycleResult(
-          stored.transition,
-          wasReplay,
-          controlDispatch,
-        );
+        return lifecycleResult(stored.transition, wasReplay, controlDispatch);
       }
     }
 

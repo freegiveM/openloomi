@@ -1,5 +1,5 @@
-import type { GoogleCalendarStoredCredentials } from "@openloomi/integrations/calendar";
-import type { ComposioCredentials } from "@openloomi/integrations/composio";
+import type { GoogleCalendarStoredCredentials } from "@melandlabs/integrations-calendar";
+import type { ComposioCredentials } from "@melandlabs/integrations-composio";
 
 import {
   createBot,

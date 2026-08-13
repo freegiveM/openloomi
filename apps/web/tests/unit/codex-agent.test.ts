@@ -20,7 +20,7 @@ import {
   parseCodexVersion,
 } from "@/lib/ai/extensions/agent/codex/runtime-preflight";
 import { createCodexTransportStatusController } from "@/lib/ai/extensions/agent/codex/transport-status";
-import type { AgentMessage, TaskPlan } from "@openloomi/ai/agent/types";
+import type { AgentMessage, TaskPlan } from "@melandlabs/ai/agent";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const tempDirs: string[] = [];

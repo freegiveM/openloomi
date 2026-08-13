@@ -25,7 +25,7 @@ import useSWR from "swr";
 import { fetcher, fetcherWithCloudAuth } from "@/lib/utils";
 import equal from "fast-deep-equal";
 import type { UseChatHelpers } from "@ai-sdk/react";
-import type { Attachment, ChatMessage } from "@openloomi/shared";
+import type { Attachment, ChatMessage } from "@melandlabs/shared";
 import { useTranslation } from "react-i18next";
 import type { SuggestedPrompt } from "./suggested-actions";
 import { SUPPORTED_FILE_EXTENSIONS } from "@/lib/files/config";
@@ -39,7 +39,7 @@ import {
   extractRefsFromContent,
   getRefMarkerRangeBeforeCursor,
   type InlineRefKind,
-} from "@openloomi/shared/ref";
+} from "@melandlabs/shared";
 import { InlineRefBadge } from "./inline-ref-badge";
 import {
   DropdownMenu,

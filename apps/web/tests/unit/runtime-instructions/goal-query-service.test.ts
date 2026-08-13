@@ -247,8 +247,9 @@ describe("AgentGoalQueryService", () => {
       listRuns: vi.fn(async () => [run]),
       listInstructions: vi.fn(async () => [instruction]),
       listDeliveries: vi.fn(async () => [delivery]),
-      getEvidence: vi.fn(async (_ownerId, _runtimeSessionId, evidenceId) =>
-        allEvidence.find((item) => item.id === evidenceId) ?? null,
+      getEvidence: vi.fn(
+        async (_ownerId, _runtimeSessionId, evidenceId) =>
+          allEvidence.find((item) => item.id === evidenceId) ?? null,
       ),
       listEvidence: vi.fn(
         async (_ownerId, _runtimeSessionId, _goalRunId, limit) =>

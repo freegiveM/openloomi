@@ -1,11 +1,11 @@
 /**
  * PGVector Store — app-side re-export layer.
- * Wires app-specific parseFile and estimateTokens into the @openloomi/rag package.
+ * Wires app-specific parseFile and estimateTokens into the @melandlabs/rag package.
  */
 
 import { parseFile } from "@/lib/files/parsers";
 import { estimateTokens } from "@/lib/ai";
-import { configurePGVector } from "@openloomi/rag/pgvector-store";
+import { configurePGVector } from "@melandlabs/rag/pgvector-store";
 
 // Configure with app-specific dependencies
 configurePGVector({
@@ -27,4 +27,4 @@ export {
   deleteDocumentsFromPGVector,
   getDocumentCount,
   listUserDocuments,
-} from "@openloomi/rag/pgvector-store";
+} from "@melandlabs/rag/pgvector-store";

@@ -2,7 +2,7 @@ export function register() {
   // Install audit interceptors: Only load in Node.js runtime, Edge Runtime does not support fs/child_process
   if (process.env.NEXT_RUNTIME === "nodejs") {
     try {
-      const { installAuditInterceptors } = require("@openloomi/audit");
+      const { installAuditInterceptors } = require("@melandlabs/audit");
       installAuditInterceptors();
     } catch (e) {
       console.warn("[Audit] Failed to load audit interceptors:", e);

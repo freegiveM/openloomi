@@ -1314,9 +1314,7 @@ export class SqliteAgentGoalState
         ? {}
         : {
             lastEvaluation:
-              input.lastEvaluation === null
-                ? undefined
-                : input.lastEvaluation,
+              input.lastEvaluation === null ? undefined : input.lastEvaluation,
           }),
     };
     if (!this.storage.updateRun(run, next, recordedAt)) {

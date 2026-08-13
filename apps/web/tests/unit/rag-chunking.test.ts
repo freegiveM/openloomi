@@ -10,7 +10,7 @@ import {
   countTokens,
   estimateChunkCount,
   getOptimalChunkSize,
-} from "@openloomi/rag";
+} from "@melandlabs/rag";
 import { describe, expect, it } from "vitest";
 
 describe("rag-chunking", () => {
@@ -118,7 +118,7 @@ describe("rag-chunking", () => {
       const text = "Hello 你好 World 世界";
       const result = countTokens(text);
 
-      // "Hello 你好 World 世界"
+      // mixed English + Chinese test string (4 CJK chars)
       // chineseChars = 4
       // otherChars = 11 (Hello World)
       // wordCount = ceil(11/5) = 3

@@ -1,8 +1,5 @@
 import type { SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
-import type {
-  AgentSupplementalInput,
-  AgentSupplementalInputSource,
-} from "@openloomi/ai/agent/types";
+import type { AgentSupplementalInput, AgentSupplementalInputSource } from "@/lib/ai/agent/types-shim";
 
 /**
  * Converts the initial request and the live OpenLoomi input channel into the

@@ -18,17 +18,14 @@ import type {
   RuntimeTurnBoundaryInputHold,
   RuntimeTurnTerminal,
 } from "@openloomi/ai/agent/runtime-instructions";
-import { AgentOutputEventBus } from "@openloomi/ai/agent/runtime";
+import { AgentOutputEventBus } from "@melandlabs/ai/agent/runtime";
 import {
   AgentSupplementalInputQueue,
   SupplementalInputRuntimeInstructionTransport,
   type AgentSupplementalInputHold,
 } from "@openloomi/ai/agent/supplemental-input";
-import type {
-  AgentMessage,
-  AgentSupplementalInput,
-  AgentSupplementalInputSource,
-} from "@openloomi/ai/agent/types";
+import type { AgentMessage } from "@melandlabs/ai/agent";
+import type { AgentSupplementalInput, AgentSupplementalInputSource } from "@/lib/ai/agent/types-shim";
 
 import type { ClaudeRuntimeLogger } from "../skills";
 import {

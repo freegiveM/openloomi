@@ -33,9 +33,9 @@ function plan(descriptions: string[]): TaskPlan {
   };
 }
 
-async function* messages(...items: AgentMessage[]) {
+async function* messages(...items: AgentMessage[]): AsyncGenerator<AgentMessage> {
   yield* items;
-  yield { type: "done" } as AgentMessage;
+  yield { type: "done" };
 }
 
 describe("Goal planner", () => {

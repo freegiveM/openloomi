@@ -8,8 +8,8 @@ import {
   getUserEmbeddingSettingWithApiKey,
   upsertUserEmbeddingSetting,
 } from "@/lib/db/queries";
-import { getConfiguredEmbeddingProvider } from "@openloomi/rag";
-import { AppError } from "@openloomi/shared/errors";
+import { getConfiguredEmbeddingProvider } from "@melandlabs/ai-rag/embedding-provider";
+import { AppError } from "@melandlabs/shared/errors";
 
 const embeddingSettingSchema = z.object({
   providerType: z.enum(["cloud", "local"]),

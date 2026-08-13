@@ -1,4 +1,4 @@
-import { type RssSubscription, buildRssItemInserts } from "@openloomi/rss";
+import { type RssSubscription, buildRssItemInserts } from "@melandlabs/rss";
 import { describe, expect, it, test } from "vitest";
 
 const baseSubscription: RssSubscription = {

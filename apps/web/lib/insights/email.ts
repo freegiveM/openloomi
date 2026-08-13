@@ -2,7 +2,7 @@ import type { ExtractEmailInfo } from "../integrations/email";
 import type { DetailData, TimelineData } from "@/lib/ai/subagents/insights";
 import type { GeneratedInsightPayload } from "@/lib/insights/transform";
 import { EMAIL_TASK_LABEL } from "./constants";
-import type { InsightTaskItem } from "@openloomi/insights";
+import type { InsightTaskItem } from "@melandlabs/insights";
 import {
   classifyEmail,
   extractTopKeywords,

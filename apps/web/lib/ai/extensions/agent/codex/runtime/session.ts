@@ -1,4 +1,5 @@
-import { AgentOutputEventBus } from "@openloomi/ai/agent/runtime";
+import { AgentOutputEventBus } from "@melandlabs/ai/agent/runtime";
+import type { AgentMessage } from "@melandlabs/ai/agent";
 import {
   type RuntimeDeliveryReceipt,
   type RuntimeInstruction,
@@ -11,10 +12,7 @@ import {
   type RuntimeTurnTerminal,
   formatRuntimeInstruction,
 } from "@openloomi/ai/agent/runtime-instructions";
-import type {
-  AgentMessage,
-  AgentRuntimeInstructionSettlement,
-} from "@openloomi/ai/agent/types";
+import type { AgentRuntimeInstructionSettlement } from "@/lib/ai/agent/types-shim";
 
 import type {
   GoalStopDecision,

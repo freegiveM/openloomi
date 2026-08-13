@@ -5,18 +5,20 @@ import { join } from "node:path";
 import { resolveNativeAgentProviderRequest } from "@/lib/ai/native-agent/provider-env";
 import {
   type NativeAgentHost,
+  type NativeAgentRunnerContext,
   runNativeAgentRequest,
 } from "@openloomi/ai/agent/native-runner";
-import type { AgentRegistry } from "@openloomi/ai/agent/registry";
 import type {
   AgentConfig,
   AgentMessage,
   AgentOptions,
   AgentProvider,
+  AgentRuntimeRecovery,
   ExecuteOptions,
   IAgent,
   TaskPlan,
 } from "@openloomi/ai/agent/types";
+import { AgentRegistry } from "@openloomi/ai/agent/registry";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const silentLogger = {
@@ -326,8 +328,20 @@ describe("native agent runner", () => {
 
   it("accepts runtime recovery only from the trusted runner context", async () => {
     const trustedAgent = new CapturingAgent();
-    const getDefaultMemoryContext = vi.fn();
-    const runtimeRecovery = {
+    const getDefaultMemoryContext = vi.fn(
+      async (): Promise<{
+        content: string;
+        diagnostic: {
+          status: "applied" | "baseline" | "no-op" | "failed";
+          reasonCodes: never[];
+          sourceCount: number;
+        };
+      }> => ({
+        content: "",
+        diagnostic: { status: "no-op", reasonCodes: [], sourceCount: 0 },
+      }),
+    );
+    const runtimeRecovery: AgentRuntimeRecovery = {
       runtimeSessionId: "persisted-runtime-session",
       providerSessionId: "persisted-claude-session",
       workingDirectory: join(tmpdir(), "persisted-runtime-session"),
@@ -371,14 +385,13 @@ describe("native agent runner", () => {
     expect(getDefaultMemoryContext).not.toHaveBeenCalled();
 
     const requestAgent = new CapturingAgent();
+    const untrustedRequest = {
+      prompt: "request recovery attempt",
+      provider: "claude",
+      runtimeRecovery,
+    };
     const untrustedRun = await runNativeAgentRequest(
-      {
-        prompt: "request recovery attempt",
-        provider: "claude",
-        runtimeRecovery,
-      } as Parameters<typeof runNativeAgentRequest>[0] & {
-        runtimeRecovery: typeof runtimeRecovery;
-      },
+      untrustedRequest,
       createContext(),
       {
         registry: createRegistry(requestAgent),
@@ -765,12 +778,15 @@ class CapturingAgent implements IAgent {
 }
 
 function createRegistry(agent: CapturingAgent): AgentRegistry {
-  return {
-    create: (config: AgentConfig) => {
-      agent.config = config;
-      return agent;
-    },
-  } as unknown as AgentRegistry;
+  const registry = new AgentRegistry();
+  const factory = (config: AgentConfig) => {
+    agent.config = config;
+    return agent;
+  };
+  for (const provider of ["claude", "codex", "opencode", "hermes"]) {
+    registry.register(provider, factory);
+  }
+  return registry;
 }
 
 function createPlan(): TaskPlan {
@@ -792,7 +808,7 @@ async function collectMessages(
   return messages;
 }
 
-function createContext() {
+function createContext(): NativeAgentRunnerContext {
   return {
     session: { user: { id: "user-1", type: "regular" } },
     userId: "user-1",

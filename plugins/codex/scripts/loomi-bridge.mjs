@@ -5176,8 +5176,8 @@ async function setup(args) {
     //        branch never returns runtime_env_set_pending_restart.
     //
     //    Either way, the previous `runtime_env_set_pending_restart` stop
-    //    condition is removed. Per OpenLoomi Setup spec: "不再把
-    //    runtime_env_set_pending_restart 作为正常流程终点".
+    //    condition is removed. Per OpenLoomi Setup spec: "No longer treat
+    //    runtime_env_set_pending_restart as a normal flow endpoint".
     if (status.installed && !status.codexRuntimeEnvSet) {
       record("status_check", false, {
         reason: status.reason,

@@ -1,12 +1,12 @@
 """
 prompt_template.py
 ==================
-唯一一处 prompt 模板。当 OpenLoomi 收到这条 prompt 时，
-其内置 agent (base agent + MCP tools + skills) 会：
-  1. 规划 (planner 阶段)
-  2. 调用 bash/read/edit/grep/glob 等工具真实改代码
-  3. 跑测试验证
-  4. 最后回复中输出 ```diff ... ``` 块
+The single prompt template. When OpenLoomi receives this prompt, its built-in
+agent (base agent + MCP tools + skills) will:
+  1. Plan (planner phase)
+  2. Invoke bash/read/edit/grep/glob tools to actually modify code
+  3. Run tests to verify
+  4. Emit a ```diff ... ``` block in the final reply
 """
 
 from __future__ import annotations
@@ -26,11 +26,12 @@ def build_task_prompt(
     memory_excerpt: Optional[str] = None,
     work_dir: Optional[str] = None,
 ) -> str:
-    """构造发给 OpenLoomi 的整条 task prompt。
+    """Build the full task prompt sent to OpenLoomi.
 
-    work_dir: SWE-Bench-CL 仓库已被 harness 切到对应的 base_commit
-              并 git clean -fdx（上游 SWE-Bench 流程），但 prompt 里仍复述
-              让 agent 心里有数。
+    work_dir: the SWE-Bench-CL repo has already been checked out at the
+              corresponding base_commit and `git clean -fdx`'d by the harness
+              (per the upstream SWE-Bench flow), but we still restate it in
+              the prompt so the agent knows what to expect.
     """
     memory_block = ""
     if memory_excerpt:

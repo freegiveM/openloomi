@@ -1,4 +1,4 @@
-import type { GoalEvidenceType } from "@openloomi/ai/agent/runtime-instructions";
+import type { GoalEvidenceType } from "@melandlabs/ai/agent/runtime-instructions";
 
 import type { RuntimeEvidenceDraft } from "@/lib/ai/runtime-instructions/runtime-observation";
 import type {

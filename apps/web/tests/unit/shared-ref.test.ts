@@ -10,7 +10,7 @@ import {
   extractRefsFromContent,
   getRefMarkerRangeBeforeCursor,
   parseContentWithRefs,
-} from "@openloomi/shared/ref";
+} from "@melandlabs/shared";
 import { describe, expect, it } from "vitest";
 
 describe("shared-ref", () => {

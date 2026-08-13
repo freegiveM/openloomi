@@ -20,7 +20,7 @@ import { getHomePath } from "@/lib/utils";
 import {
   getTgUserNameString,
   type TgUserInfo,
-} from "@openloomi/integrations/channels/sources/types";
+} from "@melandlabs/integrations-channels/sources/types";
 
 export const PHONE_REGEX = /^\+[1-9]\d{1,14}$/;
 export const CODE_REGEX = /^\d{4,6}$/;

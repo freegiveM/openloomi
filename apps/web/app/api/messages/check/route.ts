@@ -2,8 +2,8 @@ import { auth } from "@/app/(auth)/auth";
 import {
   getRawMessageManager,
   getRawMessageStorageBackend,
-} from "@openloomi/memory-store/raw-message-store";
-import { AppError } from "@openloomi/shared/errors";
+} from "@melandlabs/memory-store/raw-message-store";
+import { AppError } from "@melandlabs/shared/errors";
 
 /**
  * GET endpoint to check if there are any raw messages available

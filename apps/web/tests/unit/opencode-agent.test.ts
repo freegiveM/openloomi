@@ -8,7 +8,7 @@ import {
   normalizeOpenCodeProviderConfig,
 } from "@/lib/ai/extensions/agent/opencode/command";
 import { parseOpenCodeJsonLine } from "@/lib/ai/extensions/agent/opencode/parser";
-import type { AgentMessage, TaskPlan } from "@openloomi/ai/agent/types";
+import type { AgentMessage, TaskPlan } from "@melandlabs/ai/agent";
 import { afterEach, describe, expect, it } from "vitest";
 
 const tempDirs: string[] = [];

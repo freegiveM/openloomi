@@ -5,7 +5,7 @@
 
 import { auth } from "@/app/(auth)/auth";
 import { getUserContacts } from "@/lib/db/queries";
-import { AppError } from "@openloomi/shared/errors";
+import { AppError } from "@melandlabs/shared/errors";
 import type { NextRequest } from "next/server";
 
 const DEFAULT_LIMIT = 100;

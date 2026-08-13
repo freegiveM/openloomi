@@ -6,7 +6,7 @@ config({
 
 // Import database adapters (supports dual mode)
 import { initDb, type getDb } from "../adapters";
-import { generateUUID } from "@openloomi/shared";
+import { generateUUID } from "@melandlabs/shared";
 import { isTauriMode } from "@/lib/env/constants";
 import { createHash } from "node:crypto";
 import { type SQL, like, ilike } from "drizzle-orm";

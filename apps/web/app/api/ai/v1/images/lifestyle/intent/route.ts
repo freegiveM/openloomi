@@ -9,7 +9,7 @@ import {
   type LifestyleImageSkillRouteResult,
 } from "@/lib/ai/image-generation/lifestyle-skill-router";
 import { isTauriMode } from "@/lib/env/constants";
-import { AppError } from "@openloomi/shared/errors";
+import { AppError } from "@melandlabs/shared/errors";
 
 export const runtime = "nodejs";
 

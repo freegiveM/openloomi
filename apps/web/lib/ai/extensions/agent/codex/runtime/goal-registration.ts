@@ -21,7 +21,7 @@ import type {
   AgentRuntimeRecovery,
   AgentRuntimeRecoveryContinuationResult,
   AgentRuntimeRecoveryGoalFinalizationResult,
-} from "@openloomi/ai/agent/types";
+} from "@/lib/ai/agent/types-shim";
 
 import { CodexRuntimeEventObserver } from "./event-observer";
 import type { CodexRuntimeSession } from "./session";

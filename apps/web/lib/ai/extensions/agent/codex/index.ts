@@ -9,17 +9,19 @@ import {
   parsePlanFromResponse,
   parsePlanningResponse,
   PLANNING_INSTRUCTION,
-} from "@openloomi/ai/agent";
-import type { AgentPlugin } from "@openloomi/ai/agent/plugin";
+} from "@melandlabs/ai/agent";
+import type { AgentPlugin } from "@melandlabs/ai/agent";
 import type {
   AgentConfig,
   AgentMessage,
-  AgentOptions,
   AgentProvider,
-  AgentRuntimeRecovery,
   ExecuteOptions,
   PlanOptions,
-} from "@openloomi/ai/agent/types";
+} from "@melandlabs/ai/agent";
+import type {
+  AgentRuntimeRecovery,
+  GoalRuntimeAgentOptions,
+} from "@/lib/ai/agent/types-shim";
 
 import {
   buildCodexRunCommand,
@@ -46,6 +48,7 @@ import { validateAgentRuntimeRecovery } from "@/lib/ai/runtime-instructions/reco
 import type { RuntimeRecoveryDescriptor } from "@/lib/ai/runtime-instructions/runtime-session-persistence";
 
 const FORCE_CODEX_EXEC = Symbol("openloomi.codex.forceExec");
+type AgentOptions = GoalRuntimeAgentOptions;
 type InternalCodexOptions = AgentOptions & { [FORCE_CODEX_EXEC]?: true };
 
 // Re-exported from `./interrupt-marker` so legacy import paths
@@ -82,7 +85,7 @@ export class CodexAgent extends BaseAgent {
 
   async *run(
     prompt: string,
-    options?: AgentOptions,
+    options?: InternalCodexOptions,
   ): AsyncGenerator<AgentMessage> {
     const runtimeRecovery = validateAgentRuntimeRecovery(
       options?.runtimeRecovery,
@@ -113,8 +116,7 @@ export class CodexAgent extends BaseAgent {
       }
       if (
         runtimeRecovery &&
-        (options?.images?.length ||
-          (options as InternalCodexOptions | undefined)?.[FORCE_CODEX_EXEC])
+        (options?.images?.length || options?.[FORCE_CODEX_EXEC])
       ) {
         throw new TypeError("Codex Runtime recovery requires the app-server path");
       }
@@ -122,7 +124,7 @@ export class CodexAgent extends BaseAgent {
         runtimeSessionId &&
         ownerId &&
         !options?.images?.length &&
-        !(options as InternalCodexOptions | undefined)?.[FORCE_CODEX_EXEC]
+        !options?.[FORCE_CODEX_EXEC]
       ) {
         yield* this.runLiveCodexPrompt(
           prompt,
@@ -346,7 +348,7 @@ export class CodexAgent extends BaseAgent {
 
       let sawError = false;
       let sawAbort = false;
-      for await (const message of this.run(executionPrompt, {
+      const executionOptions: InternalCodexOptions = {
         ...options,
         [FORCE_CODEX_EXEC]: true,
         cwd,
@@ -356,7 +358,8 @@ export class CodexAgent extends BaseAgent {
           options.permissionMode === "plan"
             ? "acceptEdits"
             : options.permissionMode,
-      } as InternalCodexOptions)) {
+      };
+      for await (const message of this.run(executionPrompt, executionOptions)) {
         if (message.type === "error") {
           sawError = true;
         }

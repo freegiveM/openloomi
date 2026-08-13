@@ -17,11 +17,11 @@ import {
   formatCatchAllErrorForUser,
   formatInsufficientAnswerForUser,
 } from "@/lib/ai/runtime/shared";
-import { DingTalkConversationStore } from "@openloomi/integrations/dingtalk";
+import { DingTalkConversationStore } from "@melandlabs/integrations-dingtalk";
 import { mkdir, readdir, stat } from "node:fs/promises";
 import { basename, extname, join } from "node:path";
 import { tmpdir } from "node:os";
-import type { Attachment } from "@openloomi/shared";
+import type { Attachment } from "@melandlabs/shared";
 import { dingTalkLogger } from "@/lib/utils/logger";
 
 function guessContentTypeByName(fileName: string): string {

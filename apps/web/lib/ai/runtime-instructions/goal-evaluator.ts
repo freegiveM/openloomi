@@ -519,10 +519,7 @@ function validateSemanticEvaluation(
     }
   }
 
-  if (
-    criteriaWithInvalidEvidence.size === 0 &&
-    !ignoredEvidenceAssociation
-  ) {
+  if (criteriaWithInvalidEvidence.size === 0 && !ignoredEvidenceAssociation) {
     return result;
   }
 
@@ -552,8 +549,7 @@ function validateSemanticEvaluation(
     missingCriteria,
     evidence: result.evidence.filter(
       ({ criterionId }) =>
-        satisfied.has(criterionId) &&
-        evidenceByCriterion.has(criterionId),
+        satisfied.has(criterionId) && evidenceByCriterion.has(criterionId),
     ),
     reason,
   });

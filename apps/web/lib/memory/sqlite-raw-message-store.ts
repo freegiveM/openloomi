@@ -2,7 +2,7 @@ import "server-only";
 
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import { SQLiteRawMessageManager } from "@openloomi/sqlite";
+import { SQLiteRawMessageManager } from "@melandlabs/sqlite";
 import { isTauriMode } from "@/lib/env/constants";
 import { getTauriDbPath } from "@/lib/env/tauri-paths";
 import { isRawMessageChromaEnabled } from "@/lib/memory/chroma-memory-index";

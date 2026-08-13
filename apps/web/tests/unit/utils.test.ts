@@ -18,8 +18,8 @@ import {
   judgeGuest,
   sanitizeText,
 } from "@/lib/utils";
-import type { ChatMessage } from "@openloomi/shared";
-import { AppError } from "@openloomi/shared/errors";
+import type { ChatMessage } from "@melandlabs/shared";
+import { AppError } from "@melandlabs/shared/errors";
 import { formatISO } from "date-fns";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useSession } from "next-auth/react";
 import type { UseChatHelpers } from "@ai-sdk/react";
-import type { ChatMessage } from "@openloomi/shared";
+import type { ChatMessage } from "@melandlabs/shared";
 
 interface RawMessagesResultProps {
   toolCallId: string;
@@ -70,7 +70,7 @@ export function RawMessagesResult({
           queryRawMessages,
           queryRawMessagesGrouped,
           formatRawMessagesForAI,
-        } = await import("@openloomi/indexeddb/client");
+        } = await import("@melandlabs/indexeddb");
 
         let messages: any[];
         let resultText: string;

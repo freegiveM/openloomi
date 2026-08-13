@@ -13,7 +13,7 @@ import type {
   NativeAgentRequest,
   NativeAgentRun,
   NativeAgentSession,
-} from "@openloomi/ai/agent/native-runner";
+} from "@melandlabs/ai/agent/native-runner";
 import type { AgentRuntimePermissionHandler } from "@openloomi/ai/agent/runtime";
 
 import type {
@@ -508,7 +508,7 @@ export class GoalRuntimeRecoveryCoordinator {
           });
           continuationResult =
             (provider.replayedInstructions ??
-              input.snapshot.replayableInstructionIds.length > 0)
+            input.snapshot.replayableInstructionIds.length > 0)
               ? { decision: "block", outcome: "continue" }
               : await provider.continueGoal();
           if (continuationResult.decision === "allow") {

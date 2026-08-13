@@ -132,8 +132,9 @@ function goalPlanningPrompt(objective: string): string {
 }
 
 function planningSession(ownerId: string): AuthenticatedNativeAgentSession {
-  return {
+  const session: AuthenticatedNativeAgentSession = {
     user: { id: ownerId, type: "regular" },
     expires: new Date(Date.now() + 60 * 60 * 1_000).toISOString(),
-  } as AuthenticatedNativeAgentSession;
+  };
+  return session;
 }

@@ -249,7 +249,8 @@ describe("SQLite Agent Goal runtime composition", () => {
       runtimeSessionId: SESSION_ID,
       runEpoch: 0,
     });
-    if (!context) throw new Error("Expected the activation observation context");
+    if (!context)
+      throw new Error("Expected the activation observation context");
     const observedAt = advance(1);
     expect(
       await runtime.observations.observeProviderEvent({

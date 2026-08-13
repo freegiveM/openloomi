@@ -18,22 +18,22 @@ const {
 }));
 
 vi.mock("@/app/(auth)/auth", () => ({ auth: authMock }));
-vi.mock("@openloomi/memory-store/raw-message-store", () => ({
+vi.mock("@melandlabs/memory-store/raw-message-store", () => ({
   getRawMessageManager: getRawMessageManagerMock,
   getRawMessageStorageBackend: vi.fn(),
   isRawMessageStorageAvailable: isRawMessageStorageAvailableMock,
 }));
-vi.mock("@openloomi/indexeddb", () => ({
+vi.mock("@melandlabs/indexeddb", () => ({
   parseRawMessageGraphEvolutionOptions: vi.fn(),
   parseRawMessageGraphLifecycleOptions: vi.fn(),
   runMemoryGraphCorrection: runMemoryGraphCorrectionMock,
   runMemoryGraphRollback: runMemoryGraphRollbackMock,
   runMemoryGraphRolloutEvaluation: runMemoryGraphRolloutEvaluationMock,
   storeRawMessagesWithGraphEvolution: vi.fn(),
-}));
-vi.mock("@openloomi/indexeddb/forgetting", () => ({
   queryMemoryWithFallback: vi.fn(),
   runMemoryForgettingCycle: vi.fn(),
+  MEMORY_SUMMARY_OWNER_SCOPE_CONFLICT: "memory_summary_owner_scope_conflict",
+  MEMORY_SUMMARY_WRITE_CONFLICT: "memory_summary_write_conflict",
 }));
 
 import { POST } from "@/app/api/memory/raw-messages/route";
@@ -67,12 +67,12 @@ describe("memory graph governance route", () => {
     runMemoryGraphRolloutEvaluationMock.mockResolvedValue({
       report: { summary: { decision: "blocked" } },
     });
-    vi.stubEnv("OPENLOOMI_MEMORY_GRAPH_CORRECTION_ENABLED", "true");
+    vi.stubEnv("OPENCONTEXT_MEMORY_GRAPH_CORRECTION_ENABLED", "true");
     vi.stubEnv(
-      "OPENLOOMI_MEMORY_GRAPH_CORRECTION_OPERATOR_USER_IDS",
+      "OPENCONTEXT_MEMORY_GRAPH_CORRECTION_OPERATOR_USER_IDS",
       "authenticated-user",
     );
-    vi.stubEnv("OPENLOOMI_MEMORY_GRAPH_CORRECTION_KILL_SWITCH", "false");
+    vi.stubEnv("OPENCONTEXT_MEMORY_GRAPH_CORRECTION_KILL_SWITCH", "false");
   });
 
   afterEach(() => {
@@ -174,29 +174,29 @@ describe("memory graph governance route", () => {
     {
       name: "disabled",
       environment: {
-        OPENLOOMI_MEMORY_GRAPH_CORRECTION_ENABLED: "false",
-        OPENLOOMI_MEMORY_GRAPH_CORRECTION_OPERATOR_USER_IDS:
+        OPENCONTEXT_MEMORY_GRAPH_CORRECTION_ENABLED: "false",
+        OPENCONTEXT_MEMORY_GRAPH_CORRECTION_OPERATOR_USER_IDS:
           "authenticated-user",
-        OPENLOOMI_MEMORY_GRAPH_CORRECTION_KILL_SWITCH: "false",
+        OPENCONTEXT_MEMORY_GRAPH_CORRECTION_KILL_SWITCH: "false",
       },
       reasonCode: "memory_graph_correction_disabled",
     },
     {
       name: "operator cohort miss",
       environment: {
-        OPENLOOMI_MEMORY_GRAPH_CORRECTION_ENABLED: "true",
-        OPENLOOMI_MEMORY_GRAPH_CORRECTION_OPERATOR_USER_IDS: "another-user",
-        OPENLOOMI_MEMORY_GRAPH_CORRECTION_KILL_SWITCH: "false",
+        OPENCONTEXT_MEMORY_GRAPH_CORRECTION_ENABLED: "true",
+        OPENCONTEXT_MEMORY_GRAPH_CORRECTION_OPERATOR_USER_IDS: "another-user",
+        OPENCONTEXT_MEMORY_GRAPH_CORRECTION_KILL_SWITCH: "false",
       },
       reasonCode: "memory_graph_correction_operator_miss",
     },
     {
       name: "kill switch",
       environment: {
-        OPENLOOMI_MEMORY_GRAPH_CORRECTION_ENABLED: "true",
-        OPENLOOMI_MEMORY_GRAPH_CORRECTION_OPERATOR_USER_IDS:
+        OPENCONTEXT_MEMORY_GRAPH_CORRECTION_ENABLED: "true",
+        OPENCONTEXT_MEMORY_GRAPH_CORRECTION_OPERATOR_USER_IDS:
           "authenticated-user",
-        OPENLOOMI_MEMORY_GRAPH_CORRECTION_KILL_SWITCH: "true",
+        OPENCONTEXT_MEMORY_GRAPH_CORRECTION_KILL_SWITCH: "true",
       },
       reasonCode: "memory_graph_correction_kill_switch",
     },
@@ -236,7 +236,7 @@ describe("memory graph governance route", () => {
   );
 
   it("fails closed before storage access for an unauthorized rollback", async () => {
-    vi.stubEnv("OPENLOOMI_MEMORY_GRAPH_CORRECTION_ENABLED", "false");
+    vi.stubEnv("OPENCONTEXT_MEMORY_GRAPH_CORRECTION_ENABLED", "false");
     isRawMessageStorageAvailableMock.mockReturnValue(false);
 
     const response = await post({

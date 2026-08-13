@@ -173,7 +173,7 @@ describe("Claude Goal runtime vertical slice", () => {
       hookSpecificOutput: {
         hookEventName: "PostToolBatch",
         additionalContext: expect.stringContaining(
-          '<openloomi_untrusted_context context_id="jira-176"',
+          '<opencontext_untrusted_context context_id="jira-176"',
         ),
       },
     });

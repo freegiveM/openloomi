@@ -18,7 +18,7 @@ import {
   createFeishuState,
   pruneDedupCache,
   resolveChatType,
-} from "@openloomi/integrations/feishu/state";
+} from "@melandlabs/integrations-feishu/state";
 
 const DEBUG = process.env.DEBUG_FEISHU === "true";
 

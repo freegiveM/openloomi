@@ -1,15 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
-import type { EmbeddingProvider } from "../../../../packages/ai/rag/src/embedding-provider";
+import type { EmbeddingProvider } from "@melandlabs/ai-rag/embedding-provider";
 import {
   type UnifiedVectorSearchResult,
   UnifiedVectorSearchService,
-} from "../../../../packages/ai/rag/src/unified-vector-search-service";
+} from "@melandlabs/ai-rag/unified-vector-search-service";
 import type {
   DocumentChunk,
   IVectorStore,
   VectorSearchResult,
   VectorStoreSearchOptions,
-} from "../../../../packages/ai/rag/src/vector-service";
+} from "@melandlabs/ai-rag/vector-service";
 
 class TestVectorStore implements IVectorStore {
   chunks: DocumentChunk[] = [];

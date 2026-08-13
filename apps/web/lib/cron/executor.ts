@@ -10,8 +10,8 @@ import type {
   JobExecutionContext,
 } from "./types";
 import { prepareConversationWindows } from "@/lib/ai";
-import { getAgentRegistry } from "@openloomi/ai/agent/registry";
-import type { AgentConfig, AgentProvider } from "@openloomi/ai/agent/types";
+import { getAgentRegistry } from "@melandlabs/ai/agent";
+import type { AgentConfig, AgentProvider } from "@melandlabs/ai/agent";
 import { resolveNativeAgentProviderRequest } from "@/lib/ai/native-agent/provider-env";
 import { getUserLlmProviderConfig } from "@/lib/ai/user-llm-api-settings";
 import { registerPlugins } from "@/lib/ai/runtime/register-plugins";

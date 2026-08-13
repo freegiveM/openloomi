@@ -3,7 +3,7 @@ import {
   GOAL_STEP_COMPLETION_MARKER_OPEN,
   stripGoalStepCompletionMarkers,
 } from "@openloomi/ai/agent/runtime-instructions";
-import type { AgentMessage } from "@openloomi/ai/agent/types";
+import type { AgentMessage } from "@melandlabs/ai/agent";
 
 import { convertClaudeSdkMessage } from "../message-converter";
 

@@ -1,4 +1,4 @@
-import type { AgentMessage, AgentOptions } from "@openloomi/ai/agent/types";
+import type { AgentMessage, AgentOptions } from "@melandlabs/ai/agent";
 
 export function convertAcpNotification(
   params: unknown,

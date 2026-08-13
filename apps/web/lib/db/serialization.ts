@@ -11,7 +11,7 @@ import { isTauriMode } from "@/lib/env/constants";
 import {
   encryptToken,
   decryptToken,
-} from "@openloomi/security/token-encryption";
+} from "@melandlabs/security/token-encryption";
 
 /**
  * Convert JSON data (object or array) to database-compatible format

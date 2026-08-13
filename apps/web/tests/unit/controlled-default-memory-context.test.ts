@@ -14,22 +14,22 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("server-only", () => ({}));
 
-vi.mock("@openloomi/memory-store/memory-graph-write-policy", () => ({
+vi.mock("@melandlabs/memory-store/memory-graph-write-policy", () => ({
   resolveMemoryGraphWritePolicy: mocks.policy,
 }));
 
-vi.mock("@openloomi/memory-store/raw-message-store", () => ({
+vi.mock("@melandlabs/memory-store/raw-message-store", () => ({
   isRawMessageStorageAvailable: mocks.storageAvailable,
   getRawMessageManager: mocks.getManager,
 }));
 
-vi.mock("@openloomi/indexeddb", () => ({
+vi.mock("@melandlabs/indexeddb", () => ({
   queryMemoryWithFallback: mocks.queryMemoryWithFallback,
   createRawMessageMemoryGraphStore: mocks.createGraphStore,
   materializeMemoryGraphNodeIds: mocks.materializeNodeIds,
 }));
 
-vi.mock("@openloomi/memory-consolidation", () => ({
+vi.mock("@melandlabs/memory-consolidation", () => ({
   createGraphAwareRetrievalDryRunRetriever: () => ({
     compare: mocks.compareGraph,
   }),

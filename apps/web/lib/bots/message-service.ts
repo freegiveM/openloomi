@@ -4,8 +4,8 @@
  */
 
 import { sendReplyByBotId } from "./send-reply";
-import { AppError } from "@openloomi/shared/errors";
-import type { Attachment } from "@openloomi/shared";
+import { AppError } from "@melandlabs/shared/errors";
+import type { Attachment } from "@melandlabs/shared";
 
 export interface SendMessageParams {
   botId: string;

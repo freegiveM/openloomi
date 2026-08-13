@@ -1,6 +1,6 @@
-export { JiraAdapter } from "@openloomi/integrations/jira";
+export { JiraAdapter } from "@melandlabs/integrations-jira";
 export type {
   JiraIssue,
   JiraProject,
   JiraStoredCredentials,
-} from "@openloomi/integrations/jira";
+} from "@melandlabs/integrations-jira";

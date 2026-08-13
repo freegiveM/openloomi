@@ -10,7 +10,7 @@ import {
   getInsightConnections,
   getConnectionStats,
 } from "@/lib/insights/hebbian";
-import { AppError } from "@openloomi/shared/errors";
+import { AppError } from "@melandlabs/shared/errors";
 import type { NextRequest } from "next/server";
 
 // GET /api/insights/connections/[insightId] - Get related insights via Living Connections

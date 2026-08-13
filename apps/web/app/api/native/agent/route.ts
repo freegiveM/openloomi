@@ -4,10 +4,10 @@
  * Provides API endpoints for agent execution over HTTP/SSE.
  */
 
-import type { NativeAgentMemoryContextDiagnostic } from "@openloomi/ai/agent/native-runner";
+import type { NativeAgentMemoryContextDiagnostic } from "@melandlabs/ai/agent/native-runner";
+import type { AgentMessage } from "@melandlabs/ai/agent";
+import type { MemoryApplicabilityContext } from "@melandlabs/memory-consolidation/graph-contracts";
 import type { RuntimeProvider } from "@openloomi/ai/agent/runtime-instructions";
-import type { AgentMessage } from "@openloomi/ai/agent/types";
-import type { MemoryApplicabilityContext } from "@openloomi/memory-consolidation/graph-contracts";
 import type { Session } from "next-auth";
 import type { NextRequest } from "next/server";
 

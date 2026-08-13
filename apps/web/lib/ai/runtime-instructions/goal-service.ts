@@ -88,8 +88,7 @@ export interface ActivateGoalCommand extends GoalCommandBase<GoalActivationComma
   idempotencyPayload?: unknown;
 }
 
-export interface ReplayGoalActivationCommand
-  extends GoalCommandBase<GoalActivationCommandSource> {
+export interface ReplayGoalActivationCommand extends GoalCommandBase<GoalActivationCommandSource> {
   /** Must match the payload supplied to the original activation. */
   idempotencyPayload: unknown;
 }
@@ -828,7 +827,7 @@ function assertContextProvenance(
   }
 
   if (
-    (contextRef.origin === "memory" || contextRef.origin === "openloomi") &&
+    (contextRef.origin === "memory" || contextRef.origin === "opencontext") &&
     contextRef.sourceRef !== undefined &&
     contextRef.sourceRef === source.sourceRef
   ) {
@@ -851,7 +850,7 @@ function assertExistingContextAuthority(
     return;
   }
   if (
-    (contextRef.origin === "memory" || contextRef.origin === "openloomi") &&
+    (contextRef.origin === "memory" || contextRef.origin === "opencontext") &&
     contextRef.sourceRef !== undefined &&
     contextRef.sourceRef === source.sourceRef
   ) {

@@ -11,8 +11,11 @@ import {
   type ReactNode,
 } from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
-import type { ChatMessage } from "@openloomi/shared";
-import { generateUUID, getTextFromMessage } from "@/lib/utils";
+import type { ChatMessage } from "@melandlabs/shared";
+import {
+  generateUUID,
+  getTextFromMessage,
+} from "@/lib/utils";
 import { mutate } from "swr";
 import { dismissToast, toast } from "@/components/toast";
 import { streamNativeAgentResponse } from "@/lib/ai/router/index";
@@ -28,7 +31,7 @@ import {
 } from "@/lib/ai/chat/runtime-state";
 import { getAuthToken } from "@/lib/auth/token-manager";
 import { uploadImageTUS } from "@/lib/files/tus-upload";
-import type { ImageAttachment as AgentImageAttachment } from "@openloomi/ai/agent/types";
+import type { ImageAttachment as AgentImageAttachment } from "@melandlabs/ai/agent";
 import { DEFAULT_AI_MODEL, AI_PROXY_BASE_URL } from "@/lib/env/constants";
 import {
   artifactPathBasename,
@@ -1630,7 +1633,7 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
                       queryRawMessages,
                       queryRawMessagesGrouped,
                       formatRawMessagesForAI,
-                    } = await import("@openloomi/indexeddb/client");
+                    } = await import("@melandlabs/indexeddb");
 
                     const params = outputObj.params;
                     let messages: any[];
@@ -1862,7 +1865,7 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
               // so the chat UI can render an explicit Continue action that
               // reuses the preserved workspace. We deliberately skip the
               // stream-level auto-retry path (handled in onError) by tagging
-              // the part with an interruption payload 閳?see issue #356.
+              // the part with an interruption payload — see issue #356.
               const interruption = parseCodexInterruptedError(errorMessage);
               if (interruption?.canResume) {
                 parts.push({

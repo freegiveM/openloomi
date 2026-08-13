@@ -1,10 +1,15 @@
 import { canonicalJson } from "@openloomi/ai/agent/runtime-instructions";
-import type { z } from "zod";
 
 import { invalidPersistenceRecord } from "./errors";
 import type { PersistedInstantPrecision } from "./instant-precision";
 
 export type PersistenceRecord = Readonly<Record<string, unknown>>;
+
+interface PersistedSchema<T> {
+  safeParse(
+    value: unknown,
+  ): { success: true; data: T } | { success: false; error: unknown };
+}
 
 export function asPersistenceRecord(
   value: unknown,
@@ -151,7 +156,7 @@ export function parsePersistedJson(
 }
 
 export function parsePersistedSchema<T>(
-  schema: z.ZodType<T>,
+  schema: PersistedSchema<T>,
   value: unknown,
   field: string,
   entity: string,

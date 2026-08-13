@@ -9,7 +9,7 @@ import {
   startIMessageSelfListener as startIMessageSelfListenerSdk,
   stopIMessageSelfListener as stopIMessageSelfListenerSdk,
 } from "./self-message-listener";
-import { isIMessageAvailable } from "@openloomi/integrations/imessage";
+import { isIMessageAvailable } from "@melandlabs/integrations-imessage";
 import { getIntegrationAccountsByUserId } from "@/lib/db/queries";
 
 /**

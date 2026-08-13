@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import type { GoalEvidenceType } from "@openloomi/ai/agent/runtime-instructions";
+import type { GoalEvidenceType } from "@melandlabs/ai/agent/runtime-instructions";
 import type { RuntimeEvidenceDraft } from "@/lib/ai/runtime-instructions/runtime-observation";
 
 const MAX_SOURCE_EVENT_ID_CHARACTERS = 256;

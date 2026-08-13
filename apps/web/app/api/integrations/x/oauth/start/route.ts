@@ -9,7 +9,7 @@
 
 import { type NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
-import { encryptToken } from "@openloomi/security/token-encryption";
+import { encryptToken } from "@melandlabs/security/token-encryption";
 import { createHash } from "node:crypto";
 import { ensureRedis, setLoginSession } from "@/lib/session/context";
 import { withRateLimit, RateLimitPresets } from "@/lib/rate-limit/middleware";

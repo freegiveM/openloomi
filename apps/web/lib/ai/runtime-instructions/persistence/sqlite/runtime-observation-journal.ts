@@ -1309,8 +1309,12 @@ function providerEventFingerprint(
   // for the same reason; evidence content remains fenced.
   // Usage is a process-local projection of Codex's cumulative counters. A
   // historical turn replay may not include the original usage snapshot.
-  const { observedAt: _observedAt, usage: _usage, evidence, ...stable } =
-    observed;
+  const {
+    observedAt: _observedAt,
+    usage: _usage,
+    evidence,
+    ...stable
+  } = observed;
   return createHash("sha256")
     .update(
       canonicalJson({

@@ -1,5 +1,5 @@
 import { auth } from "@/app/(auth)/auth";
-import { AppError } from "@openloomi/shared/errors";
+import { AppError } from "@melandlabs/shared/errors";
 import { getUserLlmProviderConfig } from "@/lib/ai/user-llm-api-settings";
 import { jsonrepair } from "jsonrepair";
 

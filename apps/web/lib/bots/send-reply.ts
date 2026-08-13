@@ -7,16 +7,16 @@ import {
   updateIntegrationAccount,
 } from "../db/queries";
 import type { UserContact } from "../db/schema";
-import { AppError } from "@openloomi/shared/errors";
-import type { Attachment } from "@openloomi/shared";
+import { AppError } from "@melandlabs/shared/errors";
+import type { Attachment } from "@melandlabs/shared";
 import type {
   File as FileMsg,
   Image,
   Messages,
   Voice,
-} from "@openloomi/integrations/channels";
+} from "@melandlabs/integrations-channels";
 import { handleTelegramAuthFailure } from "@/lib/integrations/telegram/session";
-import { isTelegramContactMeta } from "@openloomi/integrations/contacts";
+import { isTelegramContactMeta } from "@melandlabs/integrations/contacts";
 import { getBotCredentials } from "./token";
 import { fileIngester } from "../integrations/providers/file-ingester";
 import { telegramClientRegistry } from "../integrations/telegram/client-registry";
@@ -239,7 +239,7 @@ export async function sendReplyByBotId({
         `[Bot ${bot.id}] uses Telegram platform manager to send reply`,
       );
       const { TelegramAdapter } =
-        await import("@openloomi/integrations/telegram/adapter");
+        await import("@melandlabs/integrations-telegram/adapter");
       const credentials = await getBotCredentials("telegram", bot);
       const configuredSession = credentials;
       const configuredBotToken = "";
@@ -468,7 +468,7 @@ export async function sendReplyByBotId({
         `[Bot ${bot.id}] uses Facebook Messenger platform manager to send reply`,
       );
       const { FacebookMessengerAdapter } =
-        await import("@openloomi/integrations/facebook-messenger");
+        await import("@melandlabs/integrations-facebook-messenger");
       const credentials = await getBotCredentials("facebook_messenger", bot);
       if (!credentials?.pageAccessToken || !credentials.pageId) {
         throw new AppError(
@@ -1045,7 +1045,7 @@ export async function sendReplyByBotId({
         `[Bot ${bot.id}] uses Instagram platform manager to send reply`,
       );
       const { InstagramAdapter } =
-        await import("@openloomi/integrations/instagram");
+        await import("@melandlabs/integrations-instagram");
       const credentials = (await getBotCredentials("instagram", bot)) as {
         accessToken: string;
         pageId: string;
@@ -1109,7 +1109,7 @@ export async function sendReplyByBotId({
       }
     } else if (bot.adapter === "twitter") {
       console.log(`[Bot ${bot.id}] uses X manager to send reply`);
-      const { XAdapter } = await import("@openloomi/integrations/x");
+      const { XAdapter } = await import("@melandlabs/integrations-x");
       const credentials = (await getBotCredentials("twitter", bot)) as {
         accessToken?: string | null;
         refreshToken?: string | null;
@@ -1312,7 +1312,7 @@ export async function sendReplyByBotId({
       }
     } else if (bot.adapter === "feishu") {
       console.log(`[Bot ${bot.id}] uses Feishu platform to send reply`);
-      const { FeishuAdapter } = await import("@openloomi/integrations/feishu");
+      const { FeishuAdapter } = await import("@melandlabs/integrations-feishu");
       const credentials = await getBotCredentials("feishu", bot);
       const adapter = new FeishuAdapter({
         botId: bot.id,
@@ -1362,7 +1362,7 @@ export async function sendReplyByBotId({
     } else if (bot.adapter === "dingtalk") {
       console.log(`[Bot ${bot.id}] uses DingTalk platform to send reply`);
       const { DingTalkAdapter } =
-        await import("@openloomi/integrations/dingtalk");
+        await import("@melandlabs/integrations-dingtalk");
       const credentials = await getBotCredentials("dingtalk", bot);
       const adapter = new DingTalkAdapter({
         botId: bot.id,
@@ -1491,7 +1491,7 @@ export async function sendReplyByBotId({
       }
     } else if (bot.adapter === "qqbot") {
       console.log(`[Bot ${bot.id}] uses QQ Bot platform to send reply`);
-      const { QQBotAdapter } = await import("@openloomi/integrations/qqbot");
+      const { QQBotAdapter } = await import("@melandlabs/integrations-qqbot");
       if (typeof ownerId !== "string" || !ownerId) {
         throw new AppError(
           "bad_request:bot",
@@ -1556,7 +1556,7 @@ export async function sendReplyByBotId({
       }
     } else if (bot.adapter === "weixin") {
       console.log(`[Bot ${bot.id}] uses Weixin (iLink) platform to send reply`);
-      const { WeixinAdapter } = await import("@openloomi/integrations/weixin");
+      const { WeixinAdapter } = await import("@melandlabs/integrations-weixin");
       if (typeof ownerId !== "string" || !ownerId) {
         throw new AppError(
           "bad_request:bot",

@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
-import { WhisperPlugin } from "@openloomi/voice-whisper";
+import { WhisperPlugin } from "@melandlabs/voice-whisper";
 
 import { auth } from "@/app/(auth)/auth";
 import { isTauriMode } from "@/lib/env/constants";
 import { MAX_VOICE_UPLOAD_BYTES } from "@/lib/audio/voice-input";
-import { AppError } from "@openloomi/shared/errors";
+import { AppError } from "@melandlabs/shared/errors";
 
 export const runtime = "nodejs";
 

@@ -470,7 +470,7 @@ export class SqliteGoalRuntimeStore {
   }): void {
     this.client
       .prepare(
-         `INSERT INTO agent_runtime_sessions
+        `INSERT INTO agent_runtime_sessions
            (id, owner_id, provider, state, working_directory,
             recovery_descriptor, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,

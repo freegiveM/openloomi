@@ -1,8 +1,8 @@
 import { ensureRssBot, type InsightInsertInput } from "../db/queries";
 import type { RssSubscription } from "../db/schema";
-import type { InsertRssItem } from "@openloomi/rss";
+import type { InsertRssItem } from "@melandlabs/rss";
 import RSSParser from "rss-parser";
-import { extractRssTags } from "@openloomi/rss";
+import { extractRssTags } from "@melandlabs/rss";
 
 const REQUEST_TIMEOUT_MS = 15_000;
 const USER_AGENT = "openloomiRSSFetcher/1.0 (+https://openloomi.ai)";

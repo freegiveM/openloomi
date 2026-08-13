@@ -13,7 +13,7 @@ import type { DBMessage, Insight } from "@/lib/db/schema";
 import type {
   ImageGenerationRequest,
   ImageReference,
-} from "@openloomi/ai/agent";
+} from "@melandlabs/ai/agent";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 

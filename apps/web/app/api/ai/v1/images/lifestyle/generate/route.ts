@@ -8,7 +8,7 @@ import { getAuthUser } from "@/lib/auth/dual-auth";
 import type {
   ImageGenerationRequest,
   ImageGenerationResponse,
-} from "@openloomi/ai/agent";
+} from "@melandlabs/ai/agent";
 
 export const runtime = "nodejs";
 

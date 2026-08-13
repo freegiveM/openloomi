@@ -5,7 +5,7 @@ import {
   fetchWithSSRFProtection,
   isTrustedStorageUrl,
   validateUrlForSSRF,
-} from "@openloomi/security/url-validator";
+} from "@melandlabs/security/url-validator";
 
 vi.mock("server-only", () => ({}));
 

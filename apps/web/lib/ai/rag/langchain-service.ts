@@ -15,8 +15,8 @@ import { parseFile } from "@/lib/files/parsers";
 import { randomUUID } from "node:crypto";
 import { isTauriMode, TAURI_DB_PATH } from "@/lib/env";
 import { estimateTokens } from "@/lib/ai";
-import { UniversalEmbeddings } from "@openloomi/rag/universal-embeddings";
-import type { DocumentChunk } from "@openloomi/rag/vector-service";
+import { UniversalEmbeddings } from "@melandlabs/rag/universal-embeddings";
+import type { DocumentChunk } from "@melandlabs/rag/vector-service";
 import {
   createUserEmbeddingProvider,
   getUserEmbeddingModelName,
@@ -124,7 +124,7 @@ async function getConfiguredVectorStore() {
 
   try {
     if (backend === "chroma") {
-      const { getChromaVectorStore } = await import("@openloomi/rag");
+      const { getChromaVectorStore } = await import("@melandlabs/ai-rag/chroma-store");
       return getChromaVectorStore({
         url: process.env.CHROMA_URL,
         collectionName:
@@ -133,7 +133,7 @@ async function getConfiguredVectorStore() {
     }
 
     const { getSQLiteVecStore } =
-      await import("@openloomi/rag/sqlite-vec-store");
+      await import("@melandlabs/ai-rag/sqlite-vec-store");
     return await getSQLiteVecStore(TAURI_DB_PATH, undefined, {
       collectionName:
         process.env.SQLITE_VEC_RAG_COLLECTION || "openloomi_rag_chunks",

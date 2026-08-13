@@ -2,11 +2,11 @@ import {
   RUNTIME_INSTRUCTION_SCHEMA_VERSION,
   type RuntimeInstruction,
   RuntimeInstructionSchema,
-} from "@openloomi/ai/agent/runtime-instructions";
+} from "@melandlabs/ai/agent/runtime-instructions";
 import {
   AgentSupplementalInputQueue,
   SupplementalInputRuntimeInstructionTransport,
-} from "@openloomi/ai/agent/supplemental-input";
+} from "@melandlabs/ai/agent/supplemental-input";
 import { describe, expect, it, vi } from "vitest";
 
 const SESSION_ID = "33333333-3333-4333-8333-333333333333";
@@ -59,7 +59,7 @@ describe("SupplementalInputRuntimeInstructionTransport", () => {
       intent: "inform",
       createdAt: "2026-07-20T00:00:00.000Z",
     });
-    expect(pending?.content).toContain("<openloomi_runtime_instruction");
+    expect(pending?.content).toContain("<opencontext_runtime_instruction");
     expect(pending?.content).toContain('delivery_mode="next_boundary"');
   });
 

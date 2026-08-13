@@ -12,7 +12,7 @@ import { AgentSupplementalInputQueue } from "@openloomi/ai/agent/supplemental-in
 import type {
   AgentRuntimeRecovery,
   AgentSupplementalInputSource,
-} from "@openloomi/ai/agent/types";
+} from "@/lib/ai/agent/types-shim";
 import { describe, expect, it, vi } from "vitest";
 
 import {

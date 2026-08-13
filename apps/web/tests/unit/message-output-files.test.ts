@@ -20,7 +20,7 @@ import {
   type ToolOutputFileRole,
   collectToolOutputFilesFromParts,
 } from "@/components/message/message-output-files";
-import type { ChatMessage } from "@openloomi/shared";
+import type { ChatMessage } from "@melandlabs/shared";
 
 // Permissive fixture type: the production code already treats parts loosely
 // (`(part as { type?: string })`), so `any[]` casts keep the fixtures readable

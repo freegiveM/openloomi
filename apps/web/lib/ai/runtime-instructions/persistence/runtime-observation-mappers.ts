@@ -7,8 +7,13 @@ import {
   RuntimeSessionStateSchema,
   type AgentGoalRun,
   type AgentRuntimeSession,
+  type DeliveryState,
+  type GoalEvaluationResult,
   type GoalEvidence,
+  type GoalRunStatus,
   type RuntimeInstructionDelivery,
+  type RuntimeProvider,
+  type RuntimeSessionState,
 } from "@openloomi/ai/agent/runtime-instructions";
 
 import { invalidPersistenceRecord } from "./errors";
@@ -69,7 +74,7 @@ export function mapRuntimeSessionRecord(value: unknown): AgentRuntimeSession {
   return {
     id: readRequiredString(row, "id", SESSION_ENTITY),
     ownerId: readRequiredString(row, "ownerId", SESSION_ENTITY),
-    provider: parsePersistedSchema(
+    provider: parsePersistedSchema<RuntimeProvider>(
       RuntimeProviderSchema,
       row.provider,
       "provider",
@@ -81,7 +86,7 @@ export function mapRuntimeSessionRecord(value: unknown): AgentRuntimeSession {
       SESSION_ENTITY,
     ),
     workingDirectory: readOptionalText(row, "workingDirectory", SESSION_ENTITY),
-    state: parsePersistedSchema(
+    state: parsePersistedSchema<RuntimeSessionState>(
       RuntimeSessionStateSchema,
       row.state,
       "state",
@@ -95,7 +100,7 @@ export function mapRuntimeSessionRecord(value: unknown): AgentRuntimeSession {
 
 export function mapAgentGoalRunRecord(value: unknown): AgentGoalRun {
   const row = asPersistenceRecord(value, RUN_ENTITY);
-  const status = parsePersistedSchema(
+  const status = parsePersistedSchema<GoalRunStatus>(
     GoalRunStatusSchema,
     row.status,
     "status",
@@ -173,7 +178,7 @@ export function mapAgentGoalRunRecord(value: unknown): AgentGoalRun {
     lastEvaluation:
       row.lastEvaluation === null || row.lastEvaluation === undefined
         ? undefined
-        : parsePersistedSchema(
+        : parsePersistedSchema<GoalEvaluationResult>(
             GoalEvaluationResultSchema,
             row.lastEvaluation,
             "lastEvaluation",
@@ -186,7 +191,7 @@ export function mapRuntimeInstructionDeliveryRecord(
   value: unknown,
 ): PersistedRuntimeInstructionDelivery {
   const row = asPersistenceRecord(value, DELIVERY_ENTITY);
-  const state = parsePersistedSchema(
+  const state = parsePersistedSchema<DeliveryState>(
     DeliveryStateSchema,
     row.state,
     "state",
@@ -266,7 +271,7 @@ export function mapRuntimeInstructionDeliveryRecord(
 
 export function mapGoalEvidenceRecord(value: unknown): GoalEvidence {
   const row = asPersistenceRecord(value, EVIDENCE_ENTITY);
-  const evidence = parsePersistedSchema(
+  const evidence = parsePersistedSchema<GoalEvidence>(
     GoalEvidenceSchema,
     {
       id: readRequiredUuid(row, "id", EVIDENCE_ENTITY),

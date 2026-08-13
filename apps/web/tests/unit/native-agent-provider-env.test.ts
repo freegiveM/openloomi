@@ -6,7 +6,7 @@ import {
   getConfiguredDefaultAgentProvider,
   resolveNativeAgentProviderRequest,
 } from "@/lib/ai/native-agent/provider-env";
-import type { NativeAgentRequest } from "@openloomi/ai/agent/native-runner";
+import type { NativeAgentRequest } from "@melandlabs/ai/agent/native-runner";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 const AGENT_ENV_KEYS = [

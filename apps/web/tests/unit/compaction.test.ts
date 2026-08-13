@@ -3,7 +3,7 @@ import {
   COMPACTION_HARD_RATIO,
   COMPACTION_SOFT_RATIO,
   buildCompactionPrompt,
-} from "@openloomi/ai/agent/compaction";
+} from "@melandlabs/ai";
 import { describe, expect, it } from "vitest";
 
 describe("compaction prompt", () => {

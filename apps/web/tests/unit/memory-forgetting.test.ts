@@ -6,7 +6,7 @@ import {
   type MemoryGraphSnapshot,
   type OwnerScope,
   createGraphAwareRetrievalDryRunRetriever,
-} from "@openloomi/memory-consolidation";
+} from "@melandlabs/memory-consolidation";
 import { describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_MEMORY_FORGETTING_POLICY,
@@ -28,7 +28,7 @@ import {
   resolveMemoryForgettingPolicy,
   summaryTierForTransition,
   transitionTargetTier,
-} from "../../../../packages/ai/src/memory";
+} from "@melandlabs/ai/memory";
 
 class InMemoryStorageAdapter implements MemoryStorageAdapter {
   records: MemoryRecord[] = [];

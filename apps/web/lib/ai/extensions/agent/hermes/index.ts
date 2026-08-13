@@ -1,6 +1,6 @@
-import { defineAgentPlugin } from "@openloomi/ai/agent";
-import type { AgentPlugin } from "@openloomi/ai/agent/plugin";
-import type { AgentConfig } from "@openloomi/ai/agent/types";
+import { defineAgentPlugin } from "@melandlabs/ai/agent";
+import type { AgentPlugin } from "@melandlabs/ai/agent";
+import type { AgentConfig } from "@melandlabs/ai/agent";
 
 import { AcpAgent, type AcpRuntimeDefinition } from "../acp/agent";
 import {
