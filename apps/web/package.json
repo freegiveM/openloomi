@@ -170,7 +170,7 @@
     "axios": "^1.13.3",
     "base64-js": "^1.5.1",
     "bcrypt-ts": "^5.0.2",
-    "better-sqlite3": "^11.10.0",
+    "better-sqlite3": "^13.0.2",
     "big-integer": "^1.6.52",
     "class-variance-authority": "^0.7.1",
     "classnames": "^2.5.1",
