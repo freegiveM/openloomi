@@ -7,20 +7,18 @@ import {
   type NativeAgentHost,
   type NativeAgentRunnerContext,
   runNativeAgentRequest,
-} from "@melandlabs/ai/agent/native-runner";
-import type { AgentRegistry } from "@melandlabs/ai/agent";
-import type {
-  AgentOptions,
-  AgentRuntimeRecovery,
-} from "@openloomi/ai/agent/types";
+} from "@openloomi/ai/agent/native-runner";
 import type {
   AgentConfig,
   AgentMessage,
+  AgentOptions,
   AgentProvider,
+  AgentRuntimeRecovery,
   ExecuteOptions,
   IAgent,
   TaskPlan,
-} from "@melandlabs/ai/agent";
+} from "@openloomi/ai/agent/types";
+import { AgentRegistry } from "@openloomi/ai/agent/registry";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const silentLogger = {
@@ -328,17 +326,7 @@ describe("native agent runner", () => {
     expect(messages).toEqual([{ type: "text", content: "ok" }]);
   });
 
-  it("does not forward runtime recovery to the agent options from any path", async () => {
-    // Phase 6 — npm `@melandlabs/ai/agent/native-runner` no longer
-    // forwards `runtimeRecovery` to the agent's `run()` options at
-    // all (neither from the trusted context nor from the request
-    // body). The contract is now "runtimeRecovery never reaches the
-    // agent options", regardless of which path it was supplied
-    // through. The previous assertion `trustedAgent.options?.runtimeRecovery
-    // === runtimeRecovery` is therefore stale and has been replaced
-    // with a uniform `undefined` check on both sides — the npm
-    // runner's safety guarantee is that the recovery lease / epoch
-    // / token never leak into the per-call agent options object.
+  it("accepts runtime recovery only from the trusted runner context", async () => {
     const trustedAgent = new CapturingAgent();
     const getDefaultMemoryContext = vi.fn(
       async (): Promise<{
@@ -353,13 +341,14 @@ describe("native agent runner", () => {
         diagnostic: { status: "no-op", reasonCodes: [], sourceCount: 0 },
       }),
     );
-    const runtimeRecovery = {
+    const runtimeRecovery: AgentRuntimeRecovery = {
       runtimeSessionId: "persisted-runtime-session",
       providerSessionId: "persisted-claude-session",
       workingDirectory: join(tmpdir(), "persisted-runtime-session"),
       runEpoch: 3,
       recoveryLeaseToken: "trusted-lease",
       instructionSettlements: [],
+      replayableInstructionIds: [],
     };
     const trustedRun = await runNativeAgentRequest(
       {
@@ -373,8 +362,6 @@ describe("native agent runner", () => {
       {
         ...createContext(),
         runtimeRecovery,
-      } as Parameters<typeof runNativeAgentRequest>[1] & {
-        runtimeRecovery: AgentRuntimeRecovery;
       },
       {
         registry: createRegistry(trustedAgent),
@@ -388,29 +375,23 @@ describe("native agent runner", () => {
       },
     );
     await collectMessages(trustedRun.generator);
-    expect(trustedAgent.options?.runtimeRecovery).toBeUndefined();
+    expect(trustedAgent.options?.runtimeRecovery).toEqual(runtimeRecovery);
     expect(trustedAgent.config).toMatchObject({
       apiKey: "current-trusted-key",
       baseUrl: "https://current-provider.example.test",
-      // Phase 6 — npm runner's `buildAgentConfig` merges
-      // `body.modelConfig` first and then overrides with the user
-      // LLM provider config, so the user-config `model` wins over
-      // the request `modelConfig.model`. The persisted session
-      // model is therefore reflected only on `thinkingLevel`, which
-      // the npm code still reads from the body.
+      model: "persisted-session-model",
       thinkingLevel: "adaptive",
     });
-    expect(getDefaultMemoryContext).toHaveBeenCalledTimes(1);
+    expect(getDefaultMemoryContext).not.toHaveBeenCalled();
 
     const requestAgent = new CapturingAgent();
+    const untrustedRequest = {
+      prompt: "request recovery attempt",
+      provider: "claude",
+      runtimeRecovery,
+    };
     const untrustedRun = await runNativeAgentRequest(
-      {
-        prompt: "request recovery attempt",
-        provider: "claude",
-        runtimeRecovery,
-      } as Parameters<typeof runNativeAgentRequest>[0] & {
-        runtimeRecovery: typeof runtimeRecovery;
-      },
+      untrustedRequest,
       createContext(),
       {
         registry: createRegistry(requestAgent),
@@ -797,12 +778,15 @@ class CapturingAgent implements IAgent {
 }
 
 function createRegistry(agent: CapturingAgent): AgentRegistry {
-  return {
-    create: (config: AgentConfig) => {
-      agent.config = config;
-      return agent;
-    },
-  } as unknown as AgentRegistry;
+  const registry = new AgentRegistry();
+  const factory = (config: AgentConfig) => {
+    agent.config = config;
+    return agent;
+  };
+  for (const provider of ["claude", "codex", "opencode", "hermes"]) {
+    registry.register(provider, factory);
+  }
+  return registry;
 }
 
 function createPlan(): TaskPlan {

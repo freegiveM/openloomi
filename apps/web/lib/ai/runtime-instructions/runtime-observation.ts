@@ -6,7 +6,7 @@ import type {
   GoalEvidenceType,
   RuntimeDeliveryReceipt,
   RuntimeInstruction,
-} from "@melandlabs/ai/agent/runtime-instructions";
+} from "@openloomi/ai/agent/runtime-instructions";
 
 export interface RuntimeEvidenceDraft {
   type: GoalEvidenceType;
@@ -201,6 +201,7 @@ export interface RuntimeProviderObservationPort {
     ownerId: string;
     runtimeSessionId: string;
     runEpoch: number;
+    instructionId?: string;
   }): Promise<RuntimeObservationContext | null>;
 
   observeProviderEvent(

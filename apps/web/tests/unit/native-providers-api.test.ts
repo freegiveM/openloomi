@@ -25,6 +25,9 @@ describe("native providers API", () => {
     expect(body.agents.filter((agent) => agent.type === "claude")).toHaveLength(
       1,
     );
+    expect(body.agents.filter((agent) => agent.type === "codex")).toHaveLength(
+      1,
+    );
     expect(
       body.agents.filter((agent) => agent.type === "opencode"),
     ).toHaveLength(1);

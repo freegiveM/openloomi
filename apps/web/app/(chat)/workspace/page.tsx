@@ -600,7 +600,7 @@ export default function LibraryPage() {
   const loadMessages = useCallback(async () => {
     if (!chatId) return;
     try {
-      const res = await fetch(`/api/chat/${chatId}/messages`);
+      const res = await fetch(`/api/chat/${chatId}`, { cache: "no-store" });
       if (res.ok) {
         const data = await res.json();
         setMessages(data.messages || []);

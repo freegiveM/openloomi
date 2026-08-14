@@ -2,7 +2,7 @@ import {
   DeliveryStateSchema,
   assertDeliveryStateTransition,
   type DeliveryState,
-} from "@melandlabs/ai/agent/runtime-instructions";
+} from "@openloomi/ai/agent/runtime-instructions";
 
 import { persistenceConflict } from "../errors";
 import {

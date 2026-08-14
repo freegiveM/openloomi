@@ -10,6 +10,7 @@ import {
   buildAgentCliSearchPath,
   buildCliEnvironment,
   shouldDetachCliProcess,
+  trackCliProcess,
   terminateCliProcessTree,
 } from "../cli-process";
 
@@ -190,7 +191,9 @@ export function buildCodexRunCommand(
   const providerConfig = normalizeCodexProviderConfig(options.providerConfig);
   const mode = options.mode ?? "run";
 
-  const args = ["exec", "--json"];
+  // OpenLoomi owns Goal planning, persistence, pause, and recovery. Disable
+  // Codex's native Goals so one task cannot fork a second autonomous loop.
+  const args = ["exec", "--json", "--disable", "goals"];
 
   if (providerConfig.profile) {
     args.push("-p", providerConfig.profile);
@@ -276,6 +279,7 @@ export async function* runCodexCli(
       detached: shouldDetachCliProcess(),
       windowsHide: true,
     }) as ChildProcessWithoutNullStreams;
+    trackCliProcess(proc);
     // Codex officially reads its prompt from stdin when no positional prompt
     // is supplied. This also avoids the Windows `cmd.exe`/npm-shim path, which
     // truncates multiline argv values at the first newline. Attach an error

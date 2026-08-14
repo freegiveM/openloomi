@@ -4,13 +4,11 @@ import { useCallback, useState } from "react";
 import useSWR, { mutate } from "swr";
 
 import type {
-  ActivateGoalRequest,
   AgentGoalCommandResponse,
   AgentGoalDetailResponse,
   AgentGoalSessionResponse,
+  PauseGoalRequest,
   ResumeGoalRequest,
-  UpdateGoalRequest,
-  UpsertGoalContextRequest,
 } from "@/lib/ai/runtime-instructions/api";
 import {
   activateAgentGoal,
@@ -18,10 +16,8 @@ import {
   agentGoalSessionUrl,
   fetchAgentGoalDetail,
   fetchAgentGoalSession,
-  removeAgentGoalContext,
+  pauseAgentGoal,
   resumeAgentGoal,
-  updateAgentGoal,
-  upsertAgentGoalContext,
 } from "@/lib/ai/runtime-instructions/api/client";
 import {
   createGoalCommandIdempotencyKeys,
@@ -100,28 +96,28 @@ export function useAgentGoalCommands(runtimeSessionId: string) {
   };
 
   return {
-    activate: async (goal: ActivateGoalRequest["goal"]) => {
-      const request = { runtimeSessionId, goal };
+    activate: async (objective: string) => {
+      const request = { runtimeSessionId, objective };
       const response = await execute("activate", request, (idempotencyKey) =>
         activateAgentGoal(request, idempotencyKey),
       );
       await refresh(response.goal.id);
       return response;
     },
-    update: async (
+    pause: async (
       goalId: string,
       expectedRevision: number,
-      update: UpdateGoalRequest["update"],
+      reason?: PauseGoalRequest["reason"],
     ) => {
       const request = {
         runtimeSessionId,
         expectedRevision,
-        update,
+        ...(reason === undefined ? {} : { reason }),
       };
       const response = await execute(
-        "update",
+        "pause",
         { goalId, ...request },
-        (idempotencyKey) => updateAgentGoal(goalId, request, idempotencyKey),
+        (idempotencyKey) => pauseAgentGoal(goalId, request, idempotencyKey),
       );
       await refresh(goalId);
       return response;
@@ -140,44 +136,6 @@ export function useAgentGoalCommands(runtimeSessionId: string) {
         "resume",
         { goalId, ...request },
         (idempotencyKey) => resumeAgentGoal(goalId, request, idempotencyKey),
-      );
-      await refresh(goalId);
-      return response;
-    },
-    upsertContext: async (
-      goalId: string,
-      expectedRevision: number,
-      contextRef: UpsertGoalContextRequest["contextRef"],
-    ) => {
-      const request = {
-        runtimeSessionId,
-        expectedRevision,
-        contextRef,
-      };
-      const response = await execute(
-        "upsert-context",
-        { goalId, ...request },
-        (idempotencyKey) =>
-          upsertAgentGoalContext(goalId, request, idempotencyKey),
-      );
-      await refresh(goalId);
-      return response;
-    },
-    removeContext: async (
-      goalId: string,
-      expectedRevision: number,
-      contextRefId: string,
-    ) => {
-      const request = {
-        runtimeSessionId,
-        expectedRevision,
-        contextRefId,
-      };
-      const response = await execute(
-        "remove-context",
-        { goalId, ...request },
-        (idempotencyKey) =>
-          removeAgentGoalContext(goalId, request, idempotencyKey),
       );
       await refresh(goalId);
       return response;

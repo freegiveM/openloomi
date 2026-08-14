@@ -19,6 +19,7 @@ import {
   createSqliteAgentGoalRuntime,
   type SqliteAgentGoalRuntime,
 } from "@/lib/ai/runtime-instructions/runtime";
+import type { RuntimeObservationContext } from "@/lib/ai/runtime-instructions/runtime-observation";
 import { GoalRuntimeRecoveryCoordinator } from "@/lib/ai/runtime-instructions/recovery/coordinator";
 import {
   RuntimeSessionPersistenceError,
@@ -62,10 +63,20 @@ const EVALUATION_PAUSE_MIGRATION = readFileSync(
   ),
   "utf8",
 );
+const CODEX_PROVIDER_MIGRATION = readFileSync(
+  fileURLToPath(
+    new URL(
+      "../../../lib/db/migrations-sqlite/0111_agent_runtime_codex_provider.sql",
+      import.meta.url,
+    ),
+  ),
+  "utf8",
+);
 const MIGRATIONS = [
   ...BASE_MIGRATIONS,
   RECOVERY_PAUSE_MIGRATION,
   EVALUATION_PAUSE_MIGRATION,
+  CODEX_PROVIDER_MIGRATION,
 ];
 
 const openDatabases = new Set<Database.Database>();
@@ -224,6 +235,183 @@ function claudeResultMessage(): SDKMessage {
 }
 
 describe("SQLite Runtime restart recovery", () => {
+  it("claims and cleanly releases Codex sessions without changing the Claude default", async () => {
+    const runtime = createFileBackedRuntime();
+
+    const codexLease = await runtime.recovery.claimLiveRuntime({
+      ownerId: OWNER_ID,
+      runtimeSessionId: "codex-live-session",
+      leaseOwner: "codex-live-host",
+      provider: "codex",
+    });
+
+    expect(codexLease).not.toBeNull();
+    await expect(
+      runtime.recovery.ensure(OWNER_ID, "codex-live-session", {
+        provider: "claude",
+      }),
+    ).rejects.toMatchObject({ code: "provider_session_conflict" });
+    await expect(
+      runtime.recovery.claimLiveRuntime({
+        ownerId: OWNER_ID,
+        runtimeSessionId: "unknown-provider-session",
+        leaseOwner: "unknown-provider-host",
+        provider: "unknown" as never,
+      }),
+    ).rejects.toThrow();
+
+    expect(
+      await runtime.recovery.get(OWNER_ID, "codex-live-session"),
+    ).toMatchObject({ provider: "codex" });
+    expect(
+      await runtime.recovery.ensure(OWNER_ID, "legacy-claude-session"),
+    ).toMatchObject({ provider: "claude" });
+
+    if (!codexLease) throw new Error("Expected Codex live ownership");
+    await runtime.recovery.bindProviderSession({
+      ownerId: OWNER_ID,
+      runtimeSessionId: codexLease.runtimeSessionId,
+      providerSessionId: "codex-clean-thread",
+      runtimeLeaseToken: codexLease.leaseToken,
+      expectedRunEpoch: codexLease.runEpoch,
+    });
+    await runtime.recovery.releaseLiveRuntime({
+      ownerId: OWNER_ID,
+      runtimeSessionId: codexLease.runtimeSessionId,
+      leaseOwner: codexLease.leaseOwner,
+      leaseToken: codexLease.leaseToken,
+      expectedRunEpoch: codexLease.runEpoch,
+    });
+    const released = await runtime.recovery.get(
+      OWNER_ID,
+      codexLease.runtimeSessionId,
+    );
+    expect(released).toMatchObject({ state: "idle" });
+    expect(released?.providerSessionId).toBeUndefined();
+    await expect(
+      runtime.recovery.claimLiveRuntime({
+        ownerId: OWNER_ID,
+        runtimeSessionId: codexLease.runtimeSessionId,
+        leaseOwner: "next-codex-live-host",
+        provider: "codex",
+      }),
+    ).resolves.not.toBeNull();
+  });
+
+  it.each(["released", "expired"] as const)(
+    "recovers provider-visible Codex work after its live lease is %s",
+    async (boundary) => {
+      const runtime = createFileBackedRuntime();
+      const runtimeSessionId = `codex-unfinished-${boundary}`;
+      await runtime.recovery.ensure(OWNER_ID, runtimeSessionId, {
+        provider: "codex",
+        recoveryDescriptor: { schemaVersion: 1, model: "gpt-5.5-codex" },
+      });
+      const ordinaryLease = await runtime.recovery.claimLiveRuntime({
+        ownerId: OWNER_ID,
+        runtimeSessionId,
+        leaseOwner: `ordinary-${boundary}-host`,
+        provider: "codex",
+      });
+      if (!ordinaryLease) throw new Error("Expected ordinary Codex ownership");
+      await runtime.recovery.releaseLiveRuntime({
+        ownerId: OWNER_ID,
+        runtimeSessionId,
+        leaseOwner: ordinaryLease.leaseOwner,
+        leaseToken: ordinaryLease.leaseToken,
+        expectedRunEpoch: ordinaryLease.runEpoch,
+      });
+      const activation = await runtime.runtime.goals.activate({
+        ownerId: OWNER_ID,
+        runtimeSessionId,
+        idempotencyKey: `activate-${runtimeSessionId}`,
+        source: { type: "user", authority: "user" },
+        goal: goalInput(`Keep ${runtimeSessionId} fail closed`),
+      });
+      const lease = await runtime.recovery.claimLiveRuntime({
+        ownerId: OWNER_ID,
+        runtimeSessionId,
+        leaseOwner: `codex-${boundary}-host`,
+        leaseDurationMs: 10_000,
+        provider: "codex",
+      });
+      if (!lease) {
+        throw new Error("A pristine Codex Goal must allow its first live host");
+      }
+      await runtime.recovery.bindProviderSession({
+        ownerId: OWNER_ID,
+        runtimeSessionId,
+        providerSessionId: `codex-${boundary}-thread`,
+        runtimeLeaseToken: lease.leaseToken,
+        expectedRunEpoch: lease.runEpoch,
+      });
+      await runtime.runtime.observations.prepareDelivery({
+        ownerId: OWNER_ID,
+        instruction: activation.instruction,
+      });
+      await runtime.runtime.observations.recordInstructionHandoff({
+        ownerId: OWNER_ID,
+        runtimeSessionId,
+        instructionId: activation.instruction.id,
+        runEpoch: lease.runEpoch,
+        recordedAt: START.toISOString(),
+      });
+
+      if (boundary === "released") {
+        await runtime.recovery.releaseLiveRuntime({
+          ownerId: OWNER_ID,
+          runtimeSessionId,
+          leaseOwner: lease.leaseOwner,
+          leaseToken: lease.leaseToken,
+          expectedRunEpoch: lease.runEpoch,
+        });
+      } else {
+        runtime.advance(11);
+      }
+
+      await expect(
+        runtime.recovery.claimLiveRuntime({
+          ownerId: OWNER_ID,
+          runtimeSessionId,
+          leaseOwner: `replacement-${boundary}-host`,
+          provider: "codex",
+        }),
+      ).resolves.toBeNull();
+
+      expect(
+        await runtime.recovery.get(OWNER_ID, runtimeSessionId),
+      ).toMatchObject({
+        provider: "codex",
+        providerSessionId: `codex-${boundary}-thread`,
+      });
+      await expect(runtime.recovery.listRecoverable()).resolves.toContainEqual(
+        expect.objectContaining({
+          ownerId: OWNER_ID,
+          runtimeSessionId,
+          providerSessionId: `codex-${boundary}-thread`,
+        }),
+      );
+      await expect(
+        runtime.runtime.runtimeSessions.listRecoveryPresentationSessions(
+          OWNER_ID,
+        ),
+      ).resolves.toContainEqual(expect.objectContaining({ runtimeSessionId }));
+
+      const claim = await runtime.recovery.claimRecovery({
+        ownerId: OWNER_ID,
+        runtimeSessionId,
+        leaseOwner: `recovery-${boundary}-host`,
+      });
+      expect(claim?.snapshot).toMatchObject({
+        session: {
+          provider: "codex",
+          providerSessionId: `codex-${boundary}-thread`,
+        },
+        recoveryDescriptor: { schemaVersion: 1, model: "gpt-5.5-codex" },
+      });
+    },
+  );
+
   it("persists live recovery metadata only for the runtime that wins ownership", async () => {
     const first = createFileBackedRuntime();
     const competing = first.reopen();
@@ -738,6 +926,149 @@ describe("SQLite Runtime restart recovery", () => {
         leaseOwner: "next-live-host",
       }),
     ).resolves.toMatchObject({ state: "idle" });
+  });
+
+  it("keeps the Codex input acknowledgement when a turn terminal applies the Delivery", async () => {
+    const runtime = createFileBackedRuntime();
+    const runtimeSessionId = "codex-terminal-input-identity";
+    await runtime.recovery.ensure(OWNER_ID, runtimeSessionId, {
+      provider: "codex",
+      recoveryDescriptor: { schemaVersion: 1 },
+    });
+    const liveLease = await runtime.recovery.claimLiveRuntime({
+      ownerId: OWNER_ID,
+      runtimeSessionId,
+      leaseOwner: "codex-live-host",
+      provider: "codex",
+    });
+    if (!liveLease) throw new Error("Expected Codex live ownership");
+    const observationLease = runtime.runtime.observations.attachRuntimeLease({
+      ownerId: OWNER_ID,
+      runtimeSessionId,
+      leaseToken: liveLease.leaseToken,
+    });
+    const activation = await runtime.runtime.goals.activate({
+      ownerId: OWNER_ID,
+      runtimeSessionId,
+      idempotencyKey: `activate-${runtimeSessionId}`,
+      source: { type: "user", authority: "user" },
+      goal: goalInput("Retain the Codex input event across recovery"),
+    });
+    const threadId = "codex-terminal-thread";
+    const turnId = "codex-terminal-turn";
+    await runtime.recovery.bindProviderSession({
+      ownerId: OWNER_ID,
+      runtimeSessionId,
+      providerSessionId: threadId,
+      runtimeLeaseToken: liveLease.leaseToken,
+      expectedRunEpoch: liveLease.runEpoch,
+    });
+    await runtime.recovery.persistState({
+      ownerId: OWNER_ID,
+      runtimeSessionId,
+      expectedState: liveLease.state,
+      expectedRunEpoch: liveLease.runEpoch,
+      state: "running",
+      recoveryLeaseToken: liveLease.leaseToken,
+    });
+    const contexts: RuntimeObservationContext[] = [];
+    const instructions = [activation.instruction];
+    const recordInput = async (instruction: typeof activation.instruction) => {
+      await runtime.runtime.observations.prepareDelivery({
+        ownerId: OWNER_ID,
+        instruction,
+      });
+      await runtime.runtime.observations.recordInstructionHandoff({
+        ownerId: OWNER_ID,
+        runtimeSessionId,
+        instructionId: instruction.id,
+        runEpoch: liveLease.runEpoch,
+        recordedAt: START.toISOString(),
+      });
+      const context = await runtime.runtime.observations.captureContext({
+        ownerId: OWNER_ID,
+        runtimeSessionId,
+        runEpoch: liveLease.runEpoch,
+        instructionId: instruction.id,
+      });
+      if (!context) throw new Error("Expected the Codex handoff context");
+      contexts.push(context);
+      const inputEventId = `codex:${threadId}:${turnId}:input:${instruction.id}`;
+      await runtime.runtime.observations.observeProviderEvent({
+        ownerId: OWNER_ID,
+        runtimeSessionId,
+        runEpoch: liveLease.runEpoch,
+        eventKey: inputEventId,
+        providerEventId: inputEventId,
+        providerSessionId: threadId,
+        observedAt: START.toISOString(),
+        terminal: false,
+        context,
+        acknowledgedContexts: [context],
+      });
+    };
+    await recordInput(activation.instruction);
+    const update = await runtime.runtime.goals.update({
+      ownerId: OWNER_ID,
+      runtimeSessionId,
+      goalId: activation.goal.goal.id,
+      expectedRevision: activation.goal.goal.revision,
+      idempotencyKey: `update-${runtimeSessionId}`,
+      source: { type: "user", authority: "user" },
+      update: { priority: 81 },
+    });
+    instructions.push(update.instruction);
+    await recordInput(update.instruction);
+    const context = contexts.at(-1);
+    if (!context) throw new Error("Expected a terminal Codex context");
+    await runtime.runtime.observations.observeProviderEvent({
+      ownerId: OWNER_ID,
+      runtimeSessionId,
+      runEpoch: liveLease.runEpoch,
+      eventKey: `codex:${threadId}:${turnId}:turn.completed`,
+      providerEventId: `codex:${threadId}:${turnId}:turn.completed`,
+      providerSessionId: threadId,
+      observedAt: START.toISOString(),
+      terminal: true,
+      context,
+      acknowledgedContexts: contexts,
+    });
+    for (const instruction of instructions) {
+      expect(
+        runtime.database
+          .prepare(
+            `SELECT state, provider_event_id AS providerEventId
+               FROM agent_runtime_deliveries
+              WHERE instruction_id = ?`,
+          )
+          .get(instruction.id),
+      ).toEqual({
+        state: "applied",
+        providerEventId: `codex:${threadId}:${turnId}:input:${instruction.id}`,
+      });
+    }
+
+    observationLease.release();
+    await runtime.recovery.releaseLiveRuntime({
+      ownerId: OWNER_ID,
+      runtimeSessionId,
+      leaseOwner: liveLease.leaseOwner,
+      leaseToken: liveLease.leaseToken,
+      expectedRunEpoch: liveLease.runEpoch,
+    });
+    const claim = await runtime.recovery.claimRecovery({
+      ownerId: OWNER_ID,
+      runtimeSessionId,
+      leaseOwner: "codex-recovery-host",
+    });
+    for (const instruction of instructions) {
+      expect(claim?.snapshot.instructionSettlements).toContainEqual({
+        instructionId: instruction.id,
+        disposition: "accepted",
+        recordedAt: START.toISOString(),
+        providerEventId: `codex:${threadId}:${turnId}:input:${instruction.id}`,
+      });
+    }
   });
 
   it("rejects provider writes and release from expired or reclaimed live tokens", async () => {
@@ -2300,7 +2631,7 @@ describe("SQLite Runtime restart recovery", () => {
     });
   });
 
-  it("deduplicates a provider event durably after the database is reopened", async () => {
+  it("deduplicates a terminal replay without counting usage twice", async () => {
     const first = createFileBackedRuntime();
     const runtimeSessionId = "recovery-provider-event";
     const activation = await activate(first, runtimeSessionId);
@@ -2326,26 +2657,23 @@ describe("SQLite Runtime restart recovery", () => {
       ownerId: OWNER_ID,
       runtimeSessionId,
       runEpoch: 0,
-      eventKey: "claude-result-1",
-      providerEventId: "claude-result-1",
+      eventKey: "codex:thread-1:turn-1:turn.completed",
+      providerEventId: "codex:thread-1:turn-1:turn.completed",
       observedAt: START.toISOString(),
       terminal: true,
       context,
       usage: { turnsUsed: 1, tokensUsed: 7 },
-      evidence: [
-        {
-          type: "tool_result" as const,
-          sourceEventId: "claude-result-1:test",
-          summary: "Focused test passed",
-          success: true,
-          payload: { toolName: "test", outcome: "passed" },
-          observedAt: START.toISOString(),
-        },
-      ],
     };
     await expect(
       first.runtime.observations.observeProviderEvent(observation),
     ).resolves.toBe(true);
+    first.database
+      .prepare(
+        `UPDATE agent_runtime_provider_events
+            SET event_fingerprint = '${"a".repeat(64)}'
+          WHERE runtime_session_id = ? AND event_key = ?`,
+      )
+      .run(runtimeSessionId, observation.eventKey);
     first.close();
 
     const recovered = first.reopen();
@@ -2353,10 +2681,7 @@ describe("SQLite Runtime restart recovery", () => {
     const replayedObservation = {
       ...observation,
       observedAt: replayedAt,
-      evidence: observation.evidence.map((item) => ({
-        ...item,
-        observedAt: replayedAt,
-      })),
+      usage: { turnsUsed: 1, tokensUsed: 0 },
     };
     await expect(
       recovered.runtime.observations.observeProviderEvent(replayedObservation),
@@ -2364,7 +2689,7 @@ describe("SQLite Runtime restart recovery", () => {
     await expect(
       recovered.runtime.observations.observeProviderEvent({
         ...replayedObservation,
-        usage: { turnsUsed: 1, tokensUsed: 8 },
+        terminal: false,
       }),
     ).rejects.toMatchObject({
       code: "conflict",
@@ -2388,6 +2713,6 @@ describe("SQLite Runtime restart recovery", () => {
                WHERE runtime_session_id = ?) AS evidence`,
         )
         .get(runtimeSessionId, runtimeSessionId),
-    ).toEqual({ providerEvents: 1, evidence: 1 });
+    ).toEqual({ providerEvents: 1, evidence: 0 });
   });
 });

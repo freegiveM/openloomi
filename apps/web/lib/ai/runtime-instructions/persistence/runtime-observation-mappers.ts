@@ -14,7 +14,7 @@ import {
   type RuntimeInstructionDelivery,
   type RuntimeProvider,
   type RuntimeSessionState,
-} from "@melandlabs/ai/agent/runtime-instructions";
+} from "@openloomi/ai/agent/runtime-instructions";
 
 import { invalidPersistenceRecord } from "./errors";
 import {

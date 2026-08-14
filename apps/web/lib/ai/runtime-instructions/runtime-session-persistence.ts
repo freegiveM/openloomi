@@ -5,14 +5,16 @@ import {
   assertGoalStatusTransition,
   assertGoalRunStatusTransition,
   assertRuntimeSessionStateTransition,
+  RuntimeProviderSchema,
   type AgentGoalRun,
   type AgentRuntimeSession,
   type GoalEvidence,
   type PersistedAgentGoal,
   type RuntimeClockPort,
   type RuntimeInstruction,
+  type RuntimeProvider,
   type RuntimeSessionState,
-} from "@melandlabs/ai/agent/runtime-instructions";
+} from "@openloomi/ai/agent/runtime-instructions";
 
 import type { AgentRuntimePendingOperation } from "@/lib/db/agent-goal-runtime-schema-types";
 
@@ -81,6 +83,9 @@ export interface RuntimeRecoveryFeatureSources {
 }
 
 export interface RuntimeSessionEnsureOptions {
+  readonly provider?: RuntimeProvider;
+  /** State used only when the Runtime Session is first created. */
+  readonly initialState?: "starting" | "idle";
   readonly workingDirectory?: string;
   readonly recoveryDescriptor?: RuntimeRecoveryDescriptor;
   /** Trusted token returned by `claimRecovery`; never accepted from HTTP. */
@@ -167,6 +172,7 @@ export interface RuntimeSessionRecoveryPersistencePort extends RuntimeSessionPer
     ownerId: string;
     runtimeSessionId: string;
     leaseOwner: string;
+    provider?: RuntimeProvider;
     leaseDurationMs?: number;
     workingDirectory?: string;
     recoveryDescriptor?: RuntimeRecoveryDescriptor;
@@ -275,11 +281,18 @@ export class InMemoryRuntimeSessionPersistence implements RuntimeSessionPersiste
   ): Promise<AgentRuntimeSession> {
     const owner = identifier(ownerId, "ownerId");
     const sessionId = identifier(runtimeSessionId, "runtimeSessionId");
+    const metadata = parseEnsureOptions(options);
     const existing = this.sessions.get(sessionId);
     if (existing) {
       if (existing.ownerId !== owner) throw sessionNotFound(sessionId);
-      const workingDirectory = options.workingDirectory
-        ? workingDirectoryPath(options.workingDirectory)
+      if (
+        metadata.provider !== undefined &&
+        metadata.provider !== existing.provider
+      ) {
+        throw providerConflict(sessionId);
+      }
+      const workingDirectory = metadata.workingDirectory
+        ? metadata.workingDirectory
         : existing.workingDirectory;
       if (workingDirectory === existing.workingDirectory) {
         return structuredClone(existing);
@@ -296,11 +309,11 @@ export class InMemoryRuntimeSessionPersistence implements RuntimeSessionPersiste
     const session: AgentRuntimeSession = {
       id: sessionId,
       ownerId: owner,
-      provider: "claude",
-      ...(options.workingDirectory === undefined
+      provider: metadata.provider ?? "claude",
+      ...(metadata.workingDirectory === undefined
         ? {}
-        : { workingDirectory: workingDirectoryPath(options.workingDirectory) }),
-      state: "starting",
+        : { workingDirectory: metadata.workingDirectory }),
+      state: metadata.initialState ?? "starting",
       runEpoch: 0,
       createdAt: now,
       updatedAt: now,
@@ -326,6 +339,15 @@ export class InMemoryRuntimeSessionPersistence implements RuntimeSessionPersiste
       session.providerSessionId !== providerSessionId
     ) {
       throw providerConflict(input.runtimeSessionId);
+    }
+    for (const assigned of this.sessions.values()) {
+      if (
+        assigned.id !== session.id &&
+        assigned.provider === session.provider &&
+        assigned.providerSessionId === providerSessionId
+      ) {
+        throw providerConflict(input.runtimeSessionId);
+      }
     }
     session.providerSessionId = providerSessionId;
     session.updatedAt = this.clock.now().toISOString();
@@ -384,6 +406,12 @@ export class SqliteRuntimeSessionPersistence implements RuntimeSessionRecoveryPe
         const byId = store.getSessionById(sessionId);
         if (byId) {
           if (byId.ownerId !== owner) throw sessionNotFound(sessionId);
+          if (
+            metadata.provider !== undefined &&
+            metadata.provider !== byId.provider
+          ) {
+            throw providerConflict(sessionId);
+          }
           const localClaim = this.claimed.get(claim);
           const recoveryToken = metadata.recoveryLeaseToken;
           const leaseIsCurrent =
@@ -460,6 +488,8 @@ export class SqliteRuntimeSessionPersistence implements RuntimeSessionRecoveryPe
         store.insertSession({
           ownerId: owner,
           runtimeSessionId: sessionId,
+          provider: metadata.provider ?? "claude",
+          state: metadata.initialState ?? "starting",
           ...(metadata.workingDirectory === undefined
             ? {}
             : { workingDirectory: metadata.workingDirectory }),
@@ -537,7 +567,10 @@ export class SqliteRuntimeSessionPersistence implements RuntimeSessionRecoveryPe
         if (current.providerSessionId !== undefined) {
           throw providerConflict(runtimeSessionId);
         }
-        const assigned = store.getSessionByProviderSessionId(providerSessionId);
+        const assigned = store.getSessionByProviderSessionId(
+          current.provider,
+          providerSessionId,
+        );
         if (assigned && assigned.runtimeSessionId !== runtimeSessionId) {
           throw providerConflict(runtimeSessionId);
         }
@@ -554,7 +587,7 @@ export class SqliteRuntimeSessionPersistence implements RuntimeSessionRecoveryPe
       });
     } catch (cause) {
       if (cause instanceof RuntimeSessionPersistenceError) throw cause;
-      throw storageFailure("Could not bind the Claude provider session", cause);
+      throw storageFailure("Could not bind the provider session", cause);
     }
   }
 
@@ -690,6 +723,7 @@ export class SqliteRuntimeSessionPersistence implements RuntimeSessionRecoveryPe
     ownerId: string;
     runtimeSessionId: string;
     leaseOwner: string;
+    provider?: RuntimeProvider;
     leaseDurationMs?: number;
     workingDirectory?: string;
     recoveryDescriptor?: RuntimeRecoveryDescriptor;
@@ -702,6 +736,7 @@ export class SqliteRuntimeSessionPersistence implements RuntimeSessionRecoveryPe
     const leaseOwner = identifier(input.leaseOwner, "leaseOwner");
     const leaseDurationMs = recoveryLeaseDuration(input.leaseDurationMs);
     const metadata = parseEnsureOptions({
+      ...(input.provider === undefined ? {} : { provider: input.provider }),
       ...(input.workingDirectory === undefined
         ? {}
         : { workingDirectory: input.workingDirectory }),
@@ -719,11 +754,19 @@ export class SqliteRuntimeSessionPersistence implements RuntimeSessionRecoveryPe
         if (current) {
           if (current.ownerId !== ownerId)
             throw sessionNotFound(runtimeSessionId);
+          if (
+            metadata.provider !== undefined &&
+            metadata.provider !== current.provider
+          ) {
+            throw providerConflict(runtimeSessionId);
+          }
         } else {
           if (!store.hasUser(ownerId)) throw sessionNotFound(runtimeSessionId);
           store.insertSession({
             ownerId,
             runtimeSessionId,
+            provider: metadata.provider ?? "claude",
+            state: "starting",
             ...(metadata.workingDirectory === undefined
               ? {}
               : { workingDirectory: metadata.workingDirectory }),
@@ -1632,7 +1675,7 @@ function providerConflict(
 ): RuntimeSessionPersistenceError {
   return new RuntimeSessionPersistenceError(
     "provider_session_conflict",
-    `Runtime Session ${runtimeSessionId} is already bound to another Claude session`,
+    `Runtime Session ${runtimeSessionId} is already bound to another runtime provider or provider session`,
   );
 }
 
@@ -1661,6 +1704,12 @@ function parseEnsureOptions(
     throw new TypeError("Runtime Session options must be an object");
   }
   return {
+    ...(options.provider === undefined
+      ? {}
+      : { provider: RuntimeProviderSchema.parse(options.provider) }),
+    ...(options.initialState === undefined
+      ? {}
+      : { initialState: initialRuntimeSessionState(options.initialState) }),
     ...(options.workingDirectory === undefined
       ? {}
       : { workingDirectory: workingDirectoryPath(options.workingDirectory) }),
@@ -1676,6 +1725,13 @@ function parseEnsureOptions(
           ),
         }),
   };
+}
+
+function initialRuntimeSessionState(value: unknown): "starting" | "idle" {
+  if (value !== "starting" && value !== "idle") {
+    throw new TypeError("initialState must be starting or idle");
+  }
+  return value;
 }
 
 function parseStoredDescriptor(

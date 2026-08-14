@@ -1,11 +1,14 @@
 import { stat } from "node:fs/promises";
 
+import type { RuntimeProvider } from "@openloomi/ai/agent/runtime-instructions";
+
 import { getDbInstance } from "@/lib/db";
 import { getUserById } from "@/lib/db/queries";
 import {
   runNativeAgentRequest,
   type NativeAgentRunnerContext,
 } from "@/lib/ai/native-agent/runner";
+import { resolveNativeAgentProviderRequest } from "@/lib/ai/native-agent/provider-env";
 import { getAgentGoalRuntime, type SqliteAgentGoalRuntime } from "../runtime";
 import type {
   RuntimeSessionPersistencePort,
@@ -86,11 +89,13 @@ export function createAgentGoalRuntimeRecoveryCoordinator(): GoalRuntimeRecovery
 
   return new GoalRuntimeRecoveryCoordinator({
     persistence,
-    providerPreflight: new ClaudeSdkSessionPreflight(),
+    providerPreflight: new RuntimeProviderSessionPreflight(),
     nativeRunner: {
       run: (request, context) =>
         runNativeAgentRequest(
-          request,
+          resolveNativeAgentProviderRequest(request, process.env, {
+            trustedProviderOverride: request.provider as "claude" | "codex",
+          }),
           context as unknown as NativeAgentRunnerContext,
         ),
     },
@@ -104,11 +109,17 @@ export function createAgentGoalRuntimeRecoveryCoordinator(): GoalRuntimeRecovery
   });
 }
 
-class ClaudeSdkSessionPreflight implements RuntimeProviderSessionPreflightPort {
+class RuntimeProviderSessionPreflight implements RuntimeProviderSessionPreflightPort {
   async verify(input: {
+    provider: RuntimeProvider;
     providerSessionId: string;
     workingDirectory: string;
   }): Promise<void> {
+    // Codex app-server validates the exact persisted thread as part of its
+    // authoritative thread/resume handshake. Starting a second app-server here
+    // would resolve configuration independently from the actual recovered run.
+    if (input.provider === "codex") return;
+
     let directory: Awaited<ReturnType<typeof stat>>;
     try {
       directory = await stat(input.workingDirectory);

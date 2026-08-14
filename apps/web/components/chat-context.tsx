@@ -125,6 +125,7 @@ export interface ChatContextValue {
     assistantMessageId: string;
   }) => void;
   stop: () => void;
+  stopChat: (chatId: string) => void;
 
   // Per-chat session states
   isAgentRunning: boolean;
@@ -2403,6 +2404,38 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
     return Promise.resolve();
   }, [chatSessionStates]);
 
+  // Abort only the requested chat. Goal pause uses this after the durable
+  // pause boundary so unrelated conversations keep running.
+  const stopChat = useCallback(
+    (chatId: string) => {
+      const sessionAbort = chatSessionStates.get(chatId)?.abortFn ?? null;
+      const abortFn =
+        sessionAbort ?? (activeChatId === chatId ? abortFnRef.current : null);
+
+      setChatSessionStates((prev) => {
+        const state = prev.get(chatId);
+        if (!state?.abortFn && !state?.isAgentRunning) return prev;
+        const next = new Map(prev);
+        next.set(chatId, {
+          ...state,
+          abortFn: null,
+          isAgentRunning: false,
+        });
+        return next;
+      });
+
+      if (activeChatId === chatId) setIsSending(false);
+      if (abortFnRef.current === abortFn) abortFnRef.current = null;
+
+      try {
+        abortFn?.();
+      } catch (error) {
+        console.error("[stopChat] Error aborting native agent:", error);
+      }
+    },
+    [activeChatId, chatSessionStates],
+  );
+
   const setIsAgentRunningFn = useCallback(
     (running: boolean, chatId?: string) => {
       const targetChatId = chatId ?? activeChatId;
@@ -2456,7 +2489,9 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
       // Load messages asynchronously without blocking UI
       (async () => {
         try {
-          const response = await fetch(`/api/chat/${newChatId}/messages`);
+          const response = await fetch(`/api/chat/${newChatId}`, {
+            cache: "no-store",
+          });
           // 404 means new conversation has no history, this is normal
           if (response.status === 404) {
             // Keep empty, do not store in map
@@ -2470,9 +2505,7 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
             return;
           }
           const data = await response.json();
-          if (
-            chatLoadSequenceRef.current.get(newChatId) !== loadSequence
-          ) {
+          if (chatLoadSequenceRef.current.get(newChatId) !== loadSequence) {
             return;
           }
           const uiMessages = data.messages || [];
@@ -2501,6 +2534,7 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
       confirmLifestyleImageGeneration,
       declineLifestyleImageGeneration,
       stop,
+      stopChat,
       // Per-chat states
       isAgentRunning: currentSessionState.isAgentRunning,
       setIsAgentRunning: setIsAgentRunningFn,
@@ -2535,6 +2569,7 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
     getIsAgentRunningByChatId,
     confirmLifestyleImageGeneration,
     declineLifestyleImageGeneration,
+    stopChat,
   ]);
 
   return (

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { canonicalJson } from "@melandlabs/ai/agent/runtime-instructions";
+import { canonicalJson } from "@openloomi/ai/agent/runtime-instructions";
 
 /**
  * Creates the stable identity used to distinguish an idempotent retry from an

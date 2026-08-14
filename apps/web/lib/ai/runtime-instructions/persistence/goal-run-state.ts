@@ -3,7 +3,7 @@ import {
   type AgentGoal,
   type AgentGoalRun,
   type GoalRunStatus,
-} from "@melandlabs/ai/agent/runtime-instructions";
+} from "@openloomi/ai/agent/runtime-instructions";
 
 import { AgentGoalStateError } from "../goal-state-error";
 

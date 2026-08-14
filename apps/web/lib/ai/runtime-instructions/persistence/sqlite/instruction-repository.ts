@@ -1,4 +1,4 @@
-import type { RuntimeInstruction } from "@melandlabs/ai/agent/runtime-instructions";
+import type { RuntimeInstruction } from "@openloomi/ai/agent/runtime-instructions";
 
 import type { StoredRuntimeInstruction } from "../goal-instruction-mappers";
 import {

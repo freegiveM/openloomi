@@ -14,7 +14,7 @@ import {
   type RuntimeInstruction,
   type RuntimeInstructionDraft,
   type RuntimeInstructionTransportPort,
-} from "@melandlabs/ai/agent/runtime-instructions";
+} from "@openloomi/ai/agent/runtime-instructions";
 
 import { createGoalCommandFingerprint } from "./command-fingerprint";
 import { GoalEvaluatorError, type GoalEvaluator } from "./goal-evaluator";
@@ -23,13 +23,11 @@ import { KeyedSerialExecutor } from "./keyed-serial-executor";
 import type { LocalAgentGoalStatePort } from "./persistence/local-ports";
 import type {
   RuntimeGoalEvaluationJournalPort,
-  RuntimeGoalEvaluationSnapshot,
   RuntimeObservationContext,
 } from "./runtime-observation";
 
 const CONTROLLER_SOURCE_REF = "openloomi:goal-controller";
 const MAX_CACHED_EVALUATIONS = 512;
-const MAX_IDENTICAL_CONTINUATIONS = 3;
 
 export interface GoalStopEvaluationInput {
   runEpoch: number;
@@ -49,13 +47,7 @@ export interface GoalFinalEvaluationInput {
 export type GoalStopDecision =
   | {
       decision: "allow";
-      outcome:
-        | "no_active_goal"
-        | "stale"
-        | "completed"
-        | "paused"
-        | "budget_limited"
-        | "expired";
+      outcome: "no_active_goal" | "stale" | "completed" | "paused";
       goalId?: string;
       goalRevision?: number;
     }
@@ -86,23 +78,8 @@ export interface GoalControllerSessionInput {
   ownerId: string;
   runtimeSessionId: string;
   transport: RuntimeInstructionTransportPort;
-}
-
-interface ContinuationProgress {
-  fingerprint: string;
-  count: number;
-}
-
-interface RemainingBudget {
-  turns?: number;
-  tokens?: number;
-  durationSeconds?: number;
-  deadline?: string;
-}
-
-interface BudgetAssessment {
-  remaining: RemainingBudget;
-  exhausted?: "budget_limited" | "expired";
+  /** Claude accepts Stop-hook continuations inline; other providers drain them normally. */
+  continuationDelivery?: "inline" | "transport";
 }
 
 /**
@@ -112,13 +89,10 @@ interface BudgetAssessment {
 export class GoalController {
   private readonly evaluations = new KeyedSerialExecutor();
   private readonly decisions = new Map<string, GoalStopDecision>();
-  private readonly continuationProgress = new Map<
-    string,
-    ContinuationProgress
-  >();
 
   constructor(
-    private readonly state: LocalAgentGoalStatePort & AgentGoalEvaluationStatePort,
+    private readonly state: LocalAgentGoalStatePort &
+      AgentGoalEvaluationStatePort,
     private readonly observations: RuntimeGoalEvaluationJournalPort,
     private readonly dispatcher: RuntimeInstructionDispatcher,
     private readonly evaluator: GoalEvaluator,
@@ -142,6 +116,7 @@ export class GoalController {
             ownerId,
             runtimeSessionId,
             input.transport,
+            input.continuationDelivery ?? "inline",
             stop,
           ),
         ),
@@ -162,10 +137,7 @@ export class GoalController {
     input: GoalFinalEvaluationInput,
   ): Promise<GoalFinalEvaluationDecision> {
     const runEpoch = nonNegativeInteger(input.runEpoch, "runEpoch");
-    const evaluationId = requiredIdentifier(
-      input.evaluationId,
-      "evaluationId",
-    );
+    const evaluationId = requiredIdentifier(input.evaluationId, "evaluationId");
     const runtimeLeaseToken =
       input.runtimeLeaseToken === undefined
         ? undefined
@@ -260,11 +232,6 @@ export class GoalController {
     if (decision.decision !== "allow") {
       throw new Error("A terminal Goal evaluation cannot request continuation");
     }
-    if (!isGoalFinalEvaluationDecision(decision)) {
-      throw new Error(
-        `A terminal Goal evaluation returned unsupported outcome ${decision.outcome}`,
-      );
-    }
     this.cacheDecision(evaluationKey, decision);
     return decision;
   }
@@ -273,6 +240,7 @@ export class GoalController {
     ownerId: string,
     runtimeSessionId: string,
     transport: RuntimeInstructionTransportPort,
+    continuationDelivery: "inline" | "transport",
     input: GoalStopEvaluationInput,
   ): Promise<GoalStopDecision> {
     const runEpoch = nonNegativeInteger(input.runEpoch, "runEpoch");
@@ -392,29 +360,6 @@ export class GoalController {
       return this.cacheDecision(evaluationKey, decision);
     }
 
-    const budget = assessBudget(active.goal, snapshot, now);
-    if (budget.exhausted) {
-      const terminalEvaluation = GoalEvaluationResultSchema.parse({
-        ...evaluation,
-        reason: boundedReason(
-          `${budgetTerminationReason(active.goal, snapshot, now, budget.exhausted)}\n${evaluation.reason}`,
-        ),
-        nextInstruction: undefined,
-      });
-      const decision = await this.commitEvaluationOutcome({
-        ownerId,
-        runtimeSessionId,
-        runEpoch,
-        evaluationKey,
-        goal: active.goal,
-        evaluation: terminalEvaluation,
-        status: budget.exhausted,
-        outcome: budget.exhausted,
-        now,
-      });
-      return this.cacheDecision(evaluationKey, decision);
-    }
-
     if (
       active.goal.completionPolicy === "manual" ||
       evaluation.missingCriteria.length === 0 ||
@@ -434,41 +379,16 @@ export class GoalController {
       return this.cacheDecision(evaluationKey, decision);
     }
 
-    if (this.recordContinuationProgress(active.goal, evaluation)) {
-      const guarded = GoalEvaluationResultSchema.parse({
-        ...evaluation,
-        reason: boundedReason(
-          `${evaluation.reason}\nAutomatic continuation stopped after ${MAX_IDENTICAL_CONTINUATIONS} evaluations without new evidence or satisfied criteria.`,
-        ),
-      });
-      const decision = await this.commitEvaluationOutcome({
-        ownerId,
-        runtimeSessionId,
-        runEpoch,
-        evaluationKey,
-        goal: active.goal,
-        evaluation: guarded,
-        status: "paused",
-        outcome: "paused",
-        now,
-      });
-      return this.cacheDecision(evaluationKey, decision);
-    }
-
     try {
-      const continuationEvaluation = withContinuationReason(
-        active.goal,
-        evaluation,
-      );
       const instruction = await this.commitContinuation({
         ownerId,
         runtimeSessionId,
         transport,
+        continuationDelivery,
         runEpoch,
         evaluationKey,
         goal: active.goal,
-        evaluation: continuationEvaluation,
-        budget: budget.remaining,
+        evaluation,
         now,
       });
       const finished = await this.observations.finishGoalEvaluation({
@@ -478,7 +398,7 @@ export class GoalController {
         goalRevision: active.goal.revision,
         runEpoch,
         evaluationKey,
-        evaluation: continuationEvaluation,
+        evaluation,
         outcome: "continuing",
         recordedAt: now.toISOString(),
       });
@@ -508,29 +428,29 @@ export class GoalController {
     ownerId: string;
     runtimeSessionId: string;
     transport: RuntimeInstructionTransportPort;
+    continuationDelivery: "inline" | "transport";
     runEpoch: number;
     evaluationKey: string;
     goal: AgentGoal;
     evaluation: GoalEvaluationResult;
-    budget: RemainingBudget;
     now: Date;
   }): Promise<RuntimeInstruction> {
-    const missingById = new Map(
-      input.goal.successCriteria.map((criterion) => [criterion.id, criterion]),
+    const missingCriterionIds = new Set(input.evaluation.missingCriteria);
+    const currentCriterion = input.goal.successCriteria.find(
+      (criterion) =>
+        criterion.required && missingCriterionIds.has(criterion.id),
     );
-    const missingCriteria = input.evaluation.missingCriteria.map((id) => {
-      const criterion = missingById.get(id);
-      if (!criterion?.required) {
-        throw new Error(
-          `Evaluator returned unknown or optional missing criterion ${id}`,
-        );
-      }
-      return { id, description: criterion.description };
-    });
+    if (!currentCriterion) {
+      throw new Error("Evaluator returned no required current criterion");
+    }
     const payload = {
-      missingCriteria,
+      missingCriteria: [
+        {
+          id: currentCriterion.id,
+          description: currentCriterion.description,
+        },
+      ],
       reason: input.evaluation.reason,
-      remainingBudget: input.budget,
     };
     const idempotencyKey = `goal-eval:${input.evaluationKey}`;
     const command: GoalCommandIdentity = {
@@ -570,18 +490,32 @@ export class GoalController {
       instruction,
       command,
     });
-    await this.dispatcher.acceptInline({
-      ownerId: input.ownerId,
-      runtimeSessionId: input.runtimeSessionId,
-      targetInstructionId: committed.instruction.id,
-      transport: input.transport,
-      receipt: {
-        instructionId: committed.instruction.id,
+    if (input.continuationDelivery === "inline") {
+      await this.dispatcher.acceptInline({
+        ownerId: input.ownerId,
         runtimeSessionId: input.runtimeSessionId,
-        state: "written_to_sdk",
-        recordedAt: input.now.toISOString(),
-      },
-    });
+        targetInstructionId: committed.instruction.id,
+        transport: input.transport,
+        receipt: {
+          instructionId: committed.instruction.id,
+          runtimeSessionId: input.runtimeSessionId,
+          state: "written_to_sdk",
+          recordedAt: input.now.toISOString(),
+        },
+      });
+    } else {
+      const dispatch = await this.dispatcher.drainOnTransport({
+        ownerId: input.ownerId,
+        runtimeSessionId: input.runtimeSessionId,
+        targetInstructionId: committed.instruction.id,
+        transport: input.transport,
+      });
+      if (dispatch.status !== "accepted") {
+        throw new Error(
+          `Goal continuation ${committed.instruction.id} was not accepted by the Runtime Session`,
+        );
+      }
+    }
     return committed.instruction;
   }
 
@@ -592,10 +526,7 @@ export class GoalController {
     evaluationKey: string;
     goal: AgentGoal;
     evaluation: GoalEvaluationResult;
-    status: Extract<
-      GoalStatus,
-      "paused" | "completed" | "budget_limited" | "expired"
-    >;
+    status: Extract<GoalStatus, "paused" | "completed">;
     outcome: Extract<GoalStopDecision, { decision: "allow" }>["outcome"];
     now?: Date;
     runtimeLeaseToken?: string;
@@ -631,12 +562,7 @@ export class GoalController {
       runEpoch: input.runEpoch,
       evaluationKey: input.evaluationKey,
       evaluation: input.evaluation,
-      outcome:
-        input.status === "completed"
-          ? "completed"
-          : input.status === "paused"
-            ? "paused"
-            : "budget_limited",
+      outcome: input.status === "completed" ? "completed" : "paused",
       recordedAt: now.toISOString(),
     });
     if (!finished) {
@@ -644,7 +570,6 @@ export class GoalController {
         `Goal evaluation ${input.evaluationKey} lost its observation lease before finalization`,
       );
     }
-    this.continuationProgress.delete(progressKey(input.goal));
     return {
       decision: "allow",
       outcome: input.outcome,
@@ -700,23 +625,6 @@ export class GoalController {
     });
   }
 
-  private recordContinuationProgress(
-    goal: AgentGoal,
-    evaluation: GoalEvaluationResult,
-  ): boolean {
-    const key = progressKey(goal);
-    const fingerprint = createGoalCommandFingerprint({
-      satisfiedCriteria: evaluation.satisfiedCriteria,
-      missingCriteria: evaluation.missingCriteria,
-      evidence: evaluation.evidence,
-    });
-    const previous = this.continuationProgress.get(key);
-    const count =
-      previous?.fingerprint === fingerprint ? previous.count + 1 : 1;
-    this.continuationProgress.set(key, { fingerprint, count });
-    return count >= MAX_IDENTICAL_CONTINUATIONS;
-  }
-
   private cacheDecision(
     evaluationKey: string,
     decision: GoalStopDecision,
@@ -731,113 +639,15 @@ export class GoalController {
   }
 }
 
-function assessBudget(
-  goal: AgentGoal,
-  snapshot: RuntimeGoalEvaluationSnapshot,
-  now: Date,
-): BudgetAssessment {
-  const remaining: RemainingBudget = {};
-  let exhausted: BudgetAssessment["exhausted"];
-  if (goal.maxTurns !== undefined) {
-    remaining.turns = Math.max(0, goal.maxTurns - snapshot.run.turnsUsed);
-    if (remaining.turns === 0) exhausted = "budget_limited";
-  }
-  if (goal.maxTokens !== undefined) {
-    remaining.tokens = Math.max(0, goal.maxTokens - snapshot.run.tokensUsed);
-    if (remaining.tokens === 0) exhausted = "budget_limited";
-  }
-  if (goal.maxDurationSeconds !== undefined) {
-    const elapsedMilliseconds = Math.max(
-      0,
-      now.getTime() - Date.parse(snapshot.run.startedAt),
-    );
-    remaining.durationSeconds = Math.max(
-      0,
-      Math.ceil(
-        (goal.maxDurationSeconds * 1_000 - elapsedMilliseconds) / 1_000,
-      ),
-    );
-    if (remaining.durationSeconds === 0) exhausted = "budget_limited";
-  }
-  if (goal.deadline !== undefined) {
-    if (Date.parse(goal.deadline) <= now.getTime()) exhausted = "expired";
-    else remaining.deadline = goal.deadline;
-  }
-  return { remaining, ...(exhausted === undefined ? {} : { exhausted }) };
-}
-
-function budgetTerminationReason(
-  goal: AgentGoal,
-  snapshot: RuntimeGoalEvaluationSnapshot,
-  now: Date,
-  outcome: NonNullable<BudgetAssessment["exhausted"]>,
-): string {
-  if (outcome === "expired") {
-    return `Automatic continuation stopped because the Goal deadline ${goal.deadline ?? ""} has passed.`.trim();
-  }
-
-  const exhausted: string[] = [];
-  if (
-    goal.maxTurns !== undefined &&
-    snapshot.run.turnsUsed >= goal.maxTurns
-  ) {
-    exhausted.push(`maximum turn budget of ${goal.maxTurns}`);
-  }
-  if (
-    goal.maxTokens !== undefined &&
-    snapshot.run.tokensUsed >= goal.maxTokens
-  ) {
-    exhausted.push(`maximum token budget of ${goal.maxTokens}`);
-  }
-  if (
-    goal.maxDurationSeconds !== undefined &&
-    now.getTime() - Date.parse(snapshot.run.startedAt) >=
-      goal.maxDurationSeconds * 1_000
-  ) {
-    exhausted.push(
-      `maximum duration budget of ${goal.maxDurationSeconds} seconds`,
-    );
-  }
-  const description =
-    exhausted.length === 0 ? "execution budget" : exhausted.join(" and ");
-  return `Automatic continuation stopped because the ${description} was exhausted.`;
-}
-
-function withContinuationReason(
-  goal: AgentGoal,
-  evaluation: GoalEvaluationResult,
-): GoalEvaluationResult {
-  const missingCriterionIds = new Set(evaluation.missingCriteria);
-  const missingCriteria = goal.successCriteria.filter(
-    (criterion) =>
-      criterion.required && missingCriterionIds.has(criterion.id),
-  );
-  return GoalEvaluationResultSchema.parse({
-    ...evaluation,
-    reason: [
-      "Continue working on the active Goal.",
-      "Complete the following remaining required success criteria:",
-      ...missingCriteria.map(
-        (criterion) => `- [${criterion.id}] ${criterion.description}`,
-      ),
-    ]
-      .join("\n")
-      .slice(0, 8_000),
-    nextInstruction: undefined,
-  });
-}
-
 function hasMissingManualCriterion(
   goal: AgentGoal,
   evaluation: GoalEvaluationResult,
 ): boolean {
   const missing = new Set(evaluation.missingCriteria);
-  return goal.successCriteria.some(
-    (criterion) =>
-      criterion.required &&
-      missing.has(criterion.id) &&
-      criterion.verification.type === "manual",
+  const currentCriterion = goal.successCriteria.find(
+    (criterion) => criterion.required && missing.has(criterion.id),
   );
+  return currentCriterion?.verification.type === "manual";
 }
 
 function failedEvaluation(
@@ -877,9 +687,7 @@ function evaluatorFailureEvaluation(
     confidence: 0,
     satisfiedCriteria,
     missingCriteria: goal.successCriteria
-      .filter(
-        (criterion) => criterion.required && !satisfied.has(criterion.id),
-      )
+      .filter((criterion) => criterion.required && !satisfied.has(criterion.id))
       .map((criterion) => criterion.id),
     evidence: partial.evidence.filter(({ criterionId }) =>
       satisfied.has(criterionId),
@@ -943,10 +751,6 @@ function instructionDraft(
   const parsed = RuntimeInstructionSchema.parse({ ...draft, sequence: 1 });
   const { sequence: _sequence, ...validated } = parsed;
   return validated as RuntimeInstructionDraft;
-}
-
-function progressKey(goal: AgentGoal): string {
-  return JSON.stringify([goal.id, goal.revision]);
 }
 
 function sessionScope(ownerId: string, runtimeSessionId: string): string {

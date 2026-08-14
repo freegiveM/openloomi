@@ -7,10 +7,12 @@
 import type { NativeAgentMemoryContextDiagnostic } from "@melandlabs/ai/agent/native-runner";
 import type { AgentMessage } from "@melandlabs/ai/agent";
 import type { MemoryApplicabilityContext } from "@melandlabs/memory-consolidation/graph-contracts";
+import type { RuntimeProvider } from "@openloomi/ai/agent/runtime-instructions";
 import type { Session } from "next-auth";
 import type { NextRequest } from "next/server";
 
 import { auth } from "@/app/(auth)/auth";
+import { getAgentGoalRuntime } from "@/lib/ai/runtime-instructions/runtime";
 import { resolveNativeAgentProviderRequest } from "@/lib/ai/native-agent/provider-env";
 import {
   type AuthenticatedNativeAgentSession,
@@ -235,7 +237,7 @@ async function resolveTrustedApplicabilityContexts(input: {
   }
 }
 
-async function rejectsForeignClaudeSession(input: {
+async function rejectsForeignRuntimeSession(input: {
   sessionId: unknown;
   userId: string;
 }): Promise<boolean> {
@@ -246,6 +248,36 @@ async function rejectsForeignClaudeSession(input: {
   // A newly-created chat can race its asynchronous initial save. Missing is
   // therefore allowed, but an existing chat owned by somebody else is not.
   return selectedChat !== undefined && selectedChat.userId !== input.userId;
+}
+
+async function resolveRuntimeRouting(input: {
+  sessionId: unknown;
+  userId: string;
+}): Promise<{
+  pinnedProvider?: RuntimeProvider;
+  goalRuntimeSessionId?: string | null;
+}> {
+  const sessionId =
+    typeof input.sessionId === "string" ? input.sessionId.trim() : "";
+  if (!sessionId) return {};
+
+  const runtime = getAgentGoalRuntime();
+  const [session, activeGoal] = await Promise.all([
+    // Provider pinning remains authoritative: a failed read must fail the
+    // request instead of silently selecting a different Runtime.
+    runtime.runtimeSessions.get(input.userId, sessionId),
+    // Goal attachment is opt-in. A missing/dormant Goal or a transient Goal
+    // read failure runs an ordinary chat turn; explicit resume reattaches it.
+    runtime.goals
+      .getActivePrimaryGoal(input.userId, sessionId)
+      .catch(() => null),
+  ]);
+  return {
+    ...(session?.provider === undefined
+      ? {}
+      : { pinnedProvider: session.provider }),
+    goalRuntimeSessionId: activeGoal ? sessionId : null,
+  };
 }
 
 // POST /api/native/agent - Run agent.
@@ -290,10 +322,21 @@ export async function POST(req: NextRequest) {
       session.platform = requestPlatform;
     }
 
-    const resolvedProviderBody = resolveNativeAgentProviderRequest(body);
+    const runtimeRouting = await resolveRuntimeRouting({
+      sessionId: body.sessionId,
+      userId: authUser.id,
+    });
+    const resolvedProviderBody = resolveNativeAgentProviderRequest(
+      body,
+      process.env,
+      runtimeRouting.pinnedProvider
+        ? { trustedProviderOverride: runtimeRouting.pinnedProvider }
+        : undefined,
+    );
     if (
-      resolvedProviderBody.provider === "claude" &&
-      (await rejectsForeignClaudeSession({
+      (resolvedProviderBody.provider === "claude" ||
+        resolvedProviderBody.provider === "codex") &&
+      (await rejectsForeignRuntimeSession({
         sessionId: body.sessionId,
         userId: authUser.id,
       }))
@@ -309,6 +352,7 @@ export async function POST(req: NextRequest) {
       userId: authUser.id,
       abortController,
       applicabilityContexts,
+      goalRuntimeSessionId: runtimeRouting.goalRuntimeSessionId,
     });
     const abortFromRequest = () => {
       if (!abortController.signal.aborted) {

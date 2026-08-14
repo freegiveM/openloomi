@@ -1,3 +1,5 @@
+import { spawn } from "node:child_process";
+import { once } from "node:events";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
@@ -7,6 +9,9 @@ import {
   buildAgentCliSearchPath,
   buildCliEnvironment,
   findCliExecutableOnSearchPath,
+  shouldDetachCliProcess,
+  terminateTrackedCliProcesses,
+  trackCliProcess,
 } from "@/lib/ai/extensions/agent/cli-process";
 
 const originalEnv = process.env;
@@ -100,5 +105,24 @@ describe("CLI process environment", () => {
       CORPORATE_CA: "/certs/ca.pem",
       RUN_MODE: "test",
     });
+  });
+
+  it("installs host signal cleanup and terminates tracked processes", async () => {
+    const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
+      detached: shouldDetachCliProcess(),
+      stdio: "ignore",
+    });
+    const closed = once(child, "close");
+    trackCliProcess(child);
+    expect(
+      process
+        .listeners("SIGINT")
+        .some((listener) => listener.name === "cleanupBeforeHostShutdown"),
+    ).toBe(true);
+
+    terminateTrackedCliProcesses();
+
+    await closed;
+    expect(child.exitCode !== null || child.signalCode !== null).toBe(true);
   });
 });

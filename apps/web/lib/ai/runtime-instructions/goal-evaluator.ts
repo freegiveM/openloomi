@@ -1,11 +1,12 @@
 import {
   GoalEvaluationResultSchema,
+  goalStepCompletionMarker,
   type AgentGoal,
   type AgentGoalRun,
   type GoalEvaluationResult,
   type GoalEvidence,
   type GoalSuccessCriterion,
-} from "@melandlabs/ai/agent/runtime-instructions";
+} from "@openloomi/ai/agent/runtime-instructions";
 
 const MAX_EVIDENCE_IDS_PER_CRITERION = 256;
 const MAX_REASON_CHARACTERS = 8_000;
@@ -82,7 +83,7 @@ interface CriterionEvaluation {
 }
 
 /**
- * Pure success-criteria evaluator.
+ * Ordered Goal-step evaluator.
  *
  * Command and tool criteria are resolved from durable evidence first. Only
  * unresolved, required `model_evidence` criteria can reach the optional
@@ -115,22 +116,24 @@ export class GoalEvaluator {
         item.goalRevision <= input.goal.revision,
     );
     const availableEvidenceIds = new Set(evidence.map(({ id }) => id));
-    const evaluations = input.goal.successCriteria.map((criterion) =>
-      restoreSatisfiedModelCriterion(
-        evaluateDeterministically(criterion, evidence),
-        input.run.lastEvaluation,
-        availableEvidenceIds,
+    const evaluations = enforceOrderedRequiredPrefix(
+      input.goal.successCriteria.map((criterion) =>
+        restoreSatisfiedModelCriterion(
+          evaluateDeterministically(criterion, evidence),
+          input.run.lastEvaluation,
+          availableEvidenceIds,
+        ),
       ),
     );
-    const blocking = evaluations.filter(
+    const currentStep = evaluations.find(
       (evaluation) => evaluation.criterion.required && !evaluation.satisfied,
     );
 
-    // A manual criterion is an explicit human boundary. Do not spend a model
-    // call when a model result cannot make the Goal eligible for completion.
+    // A manual current step is an explicit human boundary. Later steps do not
+    // affect the current boundary because Goal progress is strictly ordered.
     if (
       input.goal.completionPolicy === "manual" ||
-      blocking.some(({ criterion }) => criterion.verification.type === "manual")
+      currentStep?.criterion.verification.type === "manual"
     ) {
       return buildResult({
         goal: input.goal,
@@ -140,12 +143,12 @@ export class GoalEvaluator {
       });
     }
 
-    // Likewise, semantic evaluation cannot satisfy missing command/tool
-    // evidence. Keep those criteria deterministic and fail closed.
-    const deterministicBlocking = blocking.filter(
-      ({ criterion }) => criterion.verification.type !== "model_evidence",
-    );
-    if (deterministicBlocking.length > 0) {
+    // Command and tool steps remain deterministic. Evaluate only the first
+    // unfinished required step instead of allowing later work to skip it.
+    if (
+      currentStep &&
+      currentStep.criterion.verification.type !== "model_evidence"
+    ) {
       return buildResult({
         goal: input.goal,
         evaluations,
@@ -153,11 +156,7 @@ export class GoalEvaluator {
       });
     }
 
-    const semanticCriteria = blocking
-      .filter(
-        ({ criterion }) => criterion.verification.type === "model_evidence",
-      )
-      .map(({ criterion }) => criterion);
+    const semanticCriteria = currentStep ? [currentStep.criterion] : [];
     if (semanticCriteria.length === 0) {
       return buildResult({
         goal: input.goal,
@@ -243,16 +242,18 @@ export class GoalEvaluator {
         evidenceIds,
       ]),
     );
-    const merged = evaluations.map((evaluation) =>
-      semanticSatisfied.has(evaluation.criterion.id)
-        ? {
-            ...evaluation,
-            satisfied: true,
-            evidenceIds:
-              semanticEvidence.get(evaluation.criterion.id) ??
-              evaluation.evidenceIds,
-          }
-        : evaluation,
+    const merged = enforceOrderedRequiredPrefix(
+      evaluations.map((evaluation) =>
+        semanticSatisfied.has(evaluation.criterion.id)
+          ? {
+              ...evaluation,
+              satisfied: true,
+              evidenceIds:
+                semanticEvidence.get(evaluation.criterion.id) ??
+                evaluation.evidenceIds,
+            }
+          : evaluation,
+      ),
     );
 
     return buildResult({
@@ -283,6 +284,19 @@ function evaluateDeterministically(
   criterion: GoalSuccessCriterion,
   evidence: GoalEvidence[],
 ): CriterionEvaluation {
+  if (criterion.verification.type === "agent_report") {
+    const evidenceIds = evidence
+      .filter(
+        (item) =>
+          item.type === "agent_report" &&
+          item.success !== false &&
+          agentReportCompletesStep(item, criterion.id),
+      )
+      .map(({ id }) => id)
+      .slice(0, MAX_EVIDENCE_IDS_PER_CRITERION);
+    return { criterion, evidenceIds, satisfied: evidenceIds.length > 0 };
+  }
+
   if (criterion.verification.type === "command_result") {
     const evidenceIds = evidence
       .filter((item) => commandEvidenceMatches(criterion, item))
@@ -336,6 +350,32 @@ function restoreSatisfiedModelCriterion(
     satisfied: true,
     evidenceIds: evidenceIds.slice(0, MAX_EVIDENCE_IDS_PER_CRITERION),
   };
+}
+
+function agentReportCompletesStep(
+  evidence: GoalEvidence,
+  criterionId: string,
+): boolean {
+  const payload = asRecord(evidence.payload);
+  const report = payload?.outputPreview;
+  if (typeof report !== "string") return false;
+  const marker = goalStepCompletionMarker(criterionId);
+  return report.split(/\r?\n/, 1)[0]?.trim() === marker;
+}
+
+function enforceOrderedRequiredPrefix(
+  evaluations: CriterionEvaluation[],
+): CriterionEvaluation[] {
+  let requiredStepMissing = false;
+  return evaluations.map((evaluation) => {
+    if (requiredStepMissing && evaluation.satisfied) {
+      return { ...evaluation, satisfied: false, evidenceIds: [] };
+    }
+    if (evaluation.criterion.required && !evaluation.satisfied) {
+      requiredStepMissing = true;
+    }
+    return evaluation;
+  });
 }
 
 function commandEvidenceMatches(
@@ -479,10 +519,7 @@ function validateSemanticEvaluation(
     }
   }
 
-  if (
-    criteriaWithInvalidEvidence.size === 0 &&
-    !ignoredEvidenceAssociation
-  ) {
+  if (criteriaWithInvalidEvidence.size === 0 && !ignoredEvidenceAssociation) {
     return result;
   }
 
@@ -512,8 +549,7 @@ function validateSemanticEvaluation(
     missingCriteria,
     evidence: result.evidence.filter(
       ({ criterionId }) =>
-        satisfied.has(criterionId) &&
-        evidenceByCriterion.has(criterionId),
+        satisfied.has(criterionId) && evidenceByCriterion.has(criterionId),
     ),
     reason,
   });
@@ -544,8 +580,8 @@ function buildResult(input: {
   const summary = input.manualApprovalRequired
     ? "Manual approval is required; OpenLoomi will not complete this Goal automatically."
     : completed
-      ? "All required success criteria are satisfied by scoped runtime evidence."
-      : `Required success criteria remain unsatisfied: ${missingCriteria.join(", ")}.`;
+      ? "All required execution steps are complete."
+      : `Required execution steps remain incomplete: ${missingCriteria.join(", ")}.`;
   const reason = [summary, input.semanticReason]
     .filter((value): value is string => Boolean(value?.trim()))
     .join(" ")

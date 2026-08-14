@@ -6,7 +6,7 @@ import type {
   GoalEvidence,
   RuntimeInstructionKind,
   RuntimeSessionState,
-} from "@melandlabs/ai/agent/runtime-instructions";
+} from "@openloomi/ai/agent/runtime-instructions";
 
 export type PublicAgentGoal = AgentGoal & {
   runtimeSessionId: string;

@@ -2,7 +2,6 @@ import { z } from "zod";
 
 import {
   AGENT_GOAL_LIMITS,
-  DEFAULT_GOAL_MAX_TURNS,
   RUNTIME_INSTRUCTION_SCHEMA_VERSION,
 } from "./constants";
 
@@ -71,6 +70,7 @@ export const GoalSourceSchema = z
 
 export const GoalCriterionVerificationSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("model_evidence") }).strict(),
+  z.object({ type: z.literal("agent_report") }).strict(),
   z
     .object({
       type: z.literal("command_result"),
@@ -209,10 +209,6 @@ type GoalInvariantFields = Pick<
   | "successCriteria"
   | "constraints"
   | "contextRefs"
-  | "deadline"
-  | "maxTurns"
-  | "maxTokens"
-  | "maxDurationSeconds"
   | "createdAt"
   | "updatedAt"
 >;
@@ -221,19 +217,6 @@ function validateGoalInvariants(
   goal: GoalInvariantFields,
   context: z.RefinementCtx,
 ): void {
-  if (
-    goal.deadline === undefined &&
-    goal.maxTurns === undefined &&
-    goal.maxTokens === undefined &&
-    goal.maxDurationSeconds === undefined
-  ) {
-    context.addIssue({
-      code: "custom",
-      path: ["maxTurns"],
-      message: "A Goal must define a deadline or at least one execution budget",
-    });
-  }
-
   if (Date.parse(goal.updatedAt) < Date.parse(goal.createdAt)) {
     context.addIssue({
       code: "custom",
@@ -276,7 +259,6 @@ export const CreateAgentGoalInputSchema = agentGoalObjectSchema
   .extend({
     constraints: agentGoalObjectSchema.shape.constraints.default([]),
     contextRefs: agentGoalObjectSchema.shape.contextRefs.default([]),
-    maxTurns: z.int().positive().max(10_000).default(DEFAULT_GOAL_MAX_TURNS),
   });
 
 export const AgentGoalUpdateSchema = z
@@ -515,7 +497,9 @@ export const RuntimeInstructionSchema = z
             .min(1)
             .max(AGENT_GOAL_LIMITS.successCriteria),
           reason: z.string().trim().min(1).max(8_000),
-          remainingBudget: remainingExecutionBudgetSchema,
+          // Kept optional so persisted v2 instructions with legacy execution
+          // limits still parse while new Goals continue without a hard budget.
+          remainingBudget: remainingExecutionBudgetSchema.optional(),
         })
         .strict(),
     }),
@@ -675,7 +659,7 @@ export const RuntimeInstructionSchema = z
         });
       }
       if (
-        instruction.payload.remainingBudget.deadline !== undefined &&
+        instruction.payload.remainingBudget?.deadline !== undefined &&
         Date.parse(instruction.payload.remainingBudget.deadline) <=
           Date.parse(instruction.issuedAt)
       ) {
@@ -688,7 +672,7 @@ export const RuntimeInstructionSchema = z
     }
   });
 
-export const RuntimeProviderSchema = z.literal("claude");
+export const RuntimeProviderSchema = z.enum(["claude", "codex"]);
 
 export const RuntimeSessionStateSchema = z.enum([
   "starting",

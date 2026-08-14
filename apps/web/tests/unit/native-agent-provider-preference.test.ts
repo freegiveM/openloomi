@@ -84,6 +84,28 @@ describe("desktop agent runtime selection", () => {
     expect(request.providerConfig).toBeUndefined();
   });
 
+  it("uses a trusted Runtime Session pin instead of a newer desktop preference", () => {
+    writeAgentRuntimePreference("codex", preferencePath);
+
+    const request = resolveNativeAgentProviderRequest(
+      {
+        prompt: "continue",
+        provider: "codex",
+        modelConfig: { model: "existing-claude-model" },
+        providerConfig: { codexPath: "request-command" },
+      },
+      {
+        TAURI_MODE: "1",
+        OPENLOOMI_AGENT_CODEX_COMMAND: "codex-custom",
+      },
+      { preferencePath, trustedProviderOverride: "claude" },
+    );
+
+    expect(request.provider).toBe("claude");
+    expect(request.modelConfig).toEqual({ model: "existing-claude-model" });
+    expect(request.providerConfig).toBeUndefined();
+  });
+
   it("keeps server deployments environment-controlled", () => {
     writeAgentRuntimePreference("codex", preferencePath);
 

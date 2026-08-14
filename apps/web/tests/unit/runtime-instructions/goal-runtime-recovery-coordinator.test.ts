@@ -73,6 +73,7 @@ describe("GoalRuntimeRecoveryCoordinator", () => {
     const report = await harness.coordinator.start();
     expect(report.outcomes[0]?.status).toBe("resumed");
     expect(harness.providerPreflight).toHaveBeenCalledWith({
+      provider: "claude",
       providerSessionId: PROVIDER_SESSION_ID,
       workingDirectory: WORKING_DIRECTORY,
     });
@@ -122,6 +123,39 @@ describe("GoalRuntimeRecoveryCoordinator", () => {
       }),
     );
     expect(harness.pauseAfterRecoveryFailure).not.toHaveBeenCalled();
+  });
+
+  it("passes the persisted Codex provider through preflight and recovery dispatch", async () => {
+    const snapshot = recoverySnapshot("active", { provider: "codex" });
+    const harness = createHarness(snapshot, {
+      nativeGenerator: async function* (context) {
+        await context.runtimeRecovery.onProviderSessionInitialized?.({
+          runtimeSessionId: RUNTIME_SESSION_ID,
+          providerSessionId: PROVIDER_SESSION_ID,
+          runEpoch: 0,
+          continueGoal: async () => ({
+            decision: "allow",
+            outcome: "completed",
+          }),
+        });
+        yield { type: "done" };
+      },
+    });
+
+    const report = await harness.coordinator.start();
+
+    expect(report.outcomes[0]?.status).toBe("resumed");
+    expect(harness.providerPreflight).toHaveBeenCalledWith({
+      provider: "codex",
+      providerSessionId: PROVIDER_SESSION_ID,
+      workingDirectory: WORKING_DIRECTORY,
+    });
+    expect(harness.nativeRun.mock.calls[0]?.[0]).toMatchObject({
+      provider: "codex",
+      sessionId: RUNTIME_SESSION_ID,
+      workDir: WORKING_DIRECTORY,
+      useProvidedWorkDir: true,
+    });
   });
 
   it("keeps recovery successful when chat presentation persistence fails", async () => {
@@ -896,13 +930,14 @@ function recoverySnapshot(
   options: {
     sessionState?: RuntimeRecoverySnapshot["session"]["state"];
     replayableInstructionIds?: string[];
+    provider?: RuntimeRecoverySnapshot["session"]["provider"];
   } = {},
 ): RuntimeRecoverySnapshot {
   return {
     session: {
       id: RUNTIME_SESSION_ID,
       ownerId: OWNER_ID,
-      provider: "claude",
+      provider: options.provider ?? "claude",
       providerSessionId: PROVIDER_SESSION_ID,
       workingDirectory: WORKING_DIRECTORY,
       state: options.sessionState ?? "idle",

@@ -1,5 +1,5 @@
 import type { HookCallback, Options } from "@anthropic-ai/claude-agent-sdk";
-import type { RuntimeInstruction } from "@melandlabs/ai/agent/runtime-instructions";
+import type { RuntimeInstruction } from "@openloomi/ai/agent/runtime-instructions";
 import type { AgentSupplementalInput, AgentSupplementalInputSource } from "@/lib/ai/agent/types-shim";
 
 import type { ClaudeRuntimeLogger } from "../skills";

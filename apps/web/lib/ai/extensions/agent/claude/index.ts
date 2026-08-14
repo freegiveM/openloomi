@@ -9,7 +9,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { arch, homedir, platform } from "node:os";
-import { isAbsolute, join } from "node:path";
+import { join } from "node:path";
 import {
   createSdkMcpServer,
   query,
@@ -32,10 +32,9 @@ import {
 import { CLAUDE_METADATA, defineAgentPlugin } from "@melandlabs/ai/agent";
 import type { AgentPlugin } from "@melandlabs/ai/agent";
 import type {
-  AgentOptions,
   AgentRuntimeRecovery,
-} from "@openloomi/ai/agent/types";
-import type { AgentSupplementalInputSource } from "@/lib/ai/agent/types-shim";
+  GoalRuntimeAgentOptions,
+} from "@/lib/ai/agent/types-shim";
 import type {
   AgentConfig,
   AgentMessage,
@@ -47,6 +46,7 @@ import type {
   PDFAttachment,
   PlanOptions,
 } from "@melandlabs/ai/agent";
+import { validateAgentRuntimeRecovery } from "@/lib/ai/runtime-instructions/recovery/runtime-recovery-input";
 import { MAX_CONVERSATION_HISTORY_TOKENS } from "@/lib/ai/runtime/shared";
 import type { RuntimeRecoveryDescriptor } from "@/lib/ai/runtime-instructions/runtime-session-persistence";
 import {
@@ -94,9 +94,9 @@ import {
   createClaudeRecoveryInitialPrompt,
   createClaudeProviderFailureSessionStore,
   isFatalClaudeProviderDiagnostic,
-  resolveAuthenticatedGoalRuntimeOwnerId,
   startClaudeGoalRuntimeSession,
 } from "./runtime";
+import { resolveAuthenticatedGoalRuntimeOwnerId } from "@/lib/ai/runtime-instructions/runtime-owner";
 import {
   buildClaudeSettingSources,
   clearSkillsForClaudeSession,
@@ -106,6 +106,8 @@ import { createClaudeCodeProcessSpawner } from "./process-spawner";
 import { redactClaudeRuntimeDiagnostic } from "./runtime-preflight";
 
 const logger = createLogger("ClaudeAgent");
+
+type AgentOptions = GoalRuntimeAgentOptions;
 
 // Sandbox API URL - use the main API's sandbox endpoints
 // API port: 2620 for production, 2026 for development
@@ -803,46 +805,6 @@ function resolveClaudeWorkDir({
   }
 
   return getSessionWorkDir(workDir, prompt, taskId);
-}
-
-function validateClaudeRuntimeRecovery(
-  recovery: AgentRuntimeRecovery | undefined,
-): AgentRuntimeRecovery | undefined {
-  if (!recovery) return undefined;
-
-  for (const [field, value] of [
-    ["runtimeSessionId", recovery.runtimeSessionId],
-    ["providerSessionId", recovery.providerSessionId],
-  ] as const) {
-    if (
-      typeof value !== "string" ||
-      value.length === 0 ||
-      value.length > 256 ||
-      value !== value.trim()
-    ) {
-      throw new TypeError(`${field} must be a non-empty identifier`);
-    }
-  }
-  if (
-    typeof recovery.workingDirectory !== "string" ||
-    recovery.workingDirectory.length === 0 ||
-    recovery.workingDirectory !== recovery.workingDirectory.trim() ||
-    !isAbsolute(recovery.workingDirectory)
-  ) {
-    throw new TypeError("workingDirectory must be an absolute path");
-  }
-  if (!Number.isInteger(recovery.runEpoch) || recovery.runEpoch < 0) {
-    throw new TypeError("runEpoch must be a non-negative integer");
-  }
-  if (
-    recovery.recoveryLeaseToken !== undefined &&
-    (recovery.recoveryLeaseToken.length === 0 ||
-      recovery.recoveryLeaseToken.length > 512 ||
-      recovery.recoveryLeaseToken !== recovery.recoveryLeaseToken.trim())
-  ) {
-    throw new TypeError("recoveryLeaseToken must be a non-empty token");
-  }
-  return recovery;
 }
 
 function createClaudeRuntimeRecoveryDescriptor(
@@ -1580,7 +1542,7 @@ ${formattedMessages}${truncationNotice}\n\n---\n## Current Request\n`;
     prompt: string,
     options?: AgentOptions,
   ): AsyncGenerator<AgentMessage> {
-    const runtimeRecovery = validateClaudeRuntimeRecovery(
+    const runtimeRecovery = validateAgentRuntimeRecovery(
       options?.runtimeRecovery,
     );
     // Pass external abortController to session so that when connection closes it can properly stop Agent
@@ -1817,8 +1779,11 @@ ${formattedMessages}${truncationNotice}\n\n---\n## Current Request\n`;
       skipWebFetchPreflight: true,
     });
     const runtimeOptions: AgentOptions = options ?? {};
+    const goalRuntimeEnabled =
+      runtimeRecovery !== undefined || options?.goalRuntimeSessionId !== null;
     const goalRuntimeSessionId =
       runtimeRecovery?.runtimeSessionId ||
+      options?.goalRuntimeSessionId?.trim() ||
       options?.sessionId?.trim() ||
       session.id;
     const claudeRuntime = new ClaudeRuntimeSession({
@@ -1833,8 +1798,7 @@ ${formattedMessages}${truncationNotice}\n\n---\n## Current Request\n`;
           session.abortController.abort(reason);
         }
       },
-      supplementalInput:
-        options?.supplementalInput as AgentSupplementalInputSource | undefined,
+      supplementalInput: options?.supplementalInput,
     });
     // The SDK does not wire its stderr callback when a custom spawner is
     // supplied, so the spawner captures and line-buffers stderr directly.
@@ -1855,10 +1819,14 @@ ${formattedMessages}${truncationNotice}\n\n---\n## Current Request\n`;
       settings: settingsConfig,
       agentOptions: options,
       supplementalInput: claudeRuntime.liveInputSource,
-      toolObserver: resolveAuthenticatedGoalRuntimeOwnerId(options?.session)
+      toolObserver:
+        goalRuntimeEnabled &&
+        resolveAuthenticatedGoalRuntimeOwnerId(options?.session)
         ? claudeRuntime
         : undefined,
-      stopObserver: resolveAuthenticatedGoalRuntimeOwnerId(options?.session)
+      stopObserver:
+        goalRuntimeEnabled &&
+        resolveAuthenticatedGoalRuntimeOwnerId(options?.session)
         ? claudeRuntime
         : undefined,
       permissionMode: options?.permissionMode,
@@ -1871,7 +1839,6 @@ ${formattedMessages}${truncationNotice}\n\n---\n## Current Request\n`;
       logger,
       spawnClaudeCodeProcess: createClaudeCodeProcessSpawner(captureStderr),
       systemPrompt: getBusinessToolsInstruction(options?.excludeTools),
-      maxTurns: 1000,
       includePartialMessages: options?.stream ?? false,
       resumeProviderSessionId: runtimeRecovery?.providerSessionId,
       permissionLogMode: "run",
@@ -1915,7 +1882,7 @@ ${formattedMessages}${truncationNotice}\n\n---\n## Current Request\n`;
           : basePrompt;
 
       goalRuntimeRegistration = await startClaudeGoalRuntimeSession({
-        session: options?.session,
+        session: goalRuntimeEnabled ? options?.session : undefined,
         runtime: claudeRuntime,
         start: {
           initialPrompt: queryPrompt,

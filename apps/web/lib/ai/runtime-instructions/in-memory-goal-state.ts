@@ -1,4 +1,4 @@
-import { GoalEvaluationResultSchema } from "@melandlabs/ai/agent/runtime-instructions";
+import { GoalEvaluationResultSchema } from "@openloomi/ai/agent/runtime-instructions";
 import type {
   AgentGoal,
   AgentGoalEvaluationStatePort,
@@ -15,7 +15,7 @@ import type {
   PersistedAgentGoal,
   RuntimeInstruction,
   RuntimeInstructionDraft,
-} from "@melandlabs/ai/agent/runtime-instructions";
+} from "@openloomi/ai/agent/runtime-instructions";
 
 import {
   AgentGoalStateError as InMemoryGoalStateError,

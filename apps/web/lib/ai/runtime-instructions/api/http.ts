@@ -4,7 +4,7 @@ import {
   type GoalEvidence,
   type PersistedAgentGoal,
   type RuntimeDeliveryReceipt,
-} from "@melandlabs/ai/agent/runtime-instructions";
+} from "@openloomi/ai/agent/runtime-instructions";
 import { NextResponse } from "next/server";
 import type { z } from "zod";
 
@@ -35,6 +35,7 @@ import type {
   PublicInstructionDispatch,
   PublicInstructionDispatchFailure,
 } from "./contracts";
+import { GoalPlanningError } from "./goal-planner-port";
 import { AgentGoalApiError, type AgentGoalApiService } from "./service";
 import { IdempotencyKeySchema } from "./schemas";
 
@@ -151,6 +152,9 @@ export function publicGoalDetail(
 }
 
 function goalApiErrorResponse(error: unknown): NextResponse {
+  if (error instanceof GoalPlanningError) {
+    return apiError("goal_planning_failed", 502);
+  }
   if (error instanceof AgentGoalApiError) {
     return apiError(error.code, 404);
   }

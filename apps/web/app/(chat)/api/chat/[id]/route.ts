@@ -1,6 +1,30 @@
 import { auth } from "@/app/(auth)/auth";
-import { getChatById, deleteChatById } from "@/lib/db/queries";
+import {
+  deleteChatById,
+  getChatById,
+  getMessagesByChatId,
+} from "@/lib/db/queries";
+import { convertToUIMessages } from "@/lib/utils";
+import type { ChatMessage } from "@melandlabs/shared";
 import { AppError } from "@melandlabs/shared/errors";
+
+export const dynamic = "force-dynamic";
+
+/** Get the persisted messages for a chat. */
+export async function GET(
+  _: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const result = await authorizeChat(params);
+  if (result instanceof Response) return noStore(result);
+
+  const messages = await getMessagesByChatId({ id: result.id });
+  const uiMessages: ChatMessage[] = convertToUIMessages(messages);
+  return Response.json(
+    { messages: uiMessages },
+    { headers: { "Cache-Control": "no-store" } },
+  );
+}
 
 /**
  * Delete specified chat (only owner can delete)
@@ -9,6 +33,15 @@ export async function DELETE(
   _: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const result = await authorizeChat(params);
+  if (result instanceof Response) return result;
+
+  await deleteChatById({ id: result.id });
+
+  return Response.json({ id: result.id });
+}
+
+async function authorizeChat(params: Promise<{ id: string }>) {
   const { id: chatId } = await params;
 
   if (!chatId) {
@@ -31,7 +64,10 @@ export async function DELETE(
     return new AppError("forbidden:chat").toResponse();
   }
 
-  await deleteChatById({ id: chatId });
+  return chat;
+}
 
-  return Response.json({ id: chatId });
+function noStore(response: Response): Response {
+  response.headers.set("Cache-Control", "no-store");
+  return response;
 }

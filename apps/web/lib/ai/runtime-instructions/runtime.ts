@@ -1,7 +1,7 @@
 import type {
   RuntimeClockPort,
   RuntimeIdGeneratorPort,
-} from "@melandlabs/ai/agent/runtime-instructions";
+} from "@openloomi/ai/agent/runtime-instructions";
 
 import { getDbInstance, isTauriMode } from "@/lib/db";
 
@@ -283,6 +283,11 @@ function sqliteGoalReadSource(
       instructions.list(session(ownerId, runtimeSessionId)),
     listDeliveries: (ownerId, runtimeSessionId) =>
       deliveries.listBySession(session(ownerId, runtimeSessionId)),
+    getEvidence: (ownerId, runtimeSessionId, evidenceId) =>
+      evidence.getById({
+        ...session(ownerId, runtimeSessionId),
+        evidenceId,
+      }),
     listEvidence: async (ownerId, runtimeSessionId, goalRunId, limit) =>
       (
         await evidence.listByRun({
@@ -310,6 +315,10 @@ function inMemoryGoalReadSource(
       state.listInstructions(ownerId, runtimeSessionId),
     listDeliveries: (ownerId, runtimeSessionId) =>
       observations.listDeliveries(ownerId, runtimeSessionId),
+    getEvidence: async (ownerId, runtimeSessionId, evidenceId) =>
+      (await observations.listEvidence(ownerId, runtimeSessionId)).find(
+        (evidence) => evidence.id === evidenceId,
+      ) ?? null,
     listEvidence: async (ownerId, runtimeSessionId, goalRunId, limit) =>
       (await observations.listEvidence(ownerId, runtimeSessionId))
         .filter((evidence) => evidence.goalRunId === goalRunId)

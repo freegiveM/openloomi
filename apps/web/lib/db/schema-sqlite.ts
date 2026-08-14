@@ -2939,7 +2939,7 @@ export const agentRuntimeSessions = sqliteTable(
       .where(sql`${table.recoveryFailedAt} is null`),
     providerCheck: check(
       "agent_runtime_sessions_provider_check",
-      sql`${table.provider} in ('claude')`,
+      sql`${table.provider} in ('claude', 'codex')`,
     ),
     stateCheck: check(
       "agent_runtime_sessions_state_check",
@@ -3110,11 +3110,6 @@ export const agentGoals = sqliteTable(
       table.runtimeSessionId,
       table.status,
     ),
-    deadlineIdx: index("agent_goals_active_deadline_idx")
-      .on(table.ownerId, table.deadline)
-      .where(
-        sql`${table.slotState} = 'assigned' and ${table.status} = 'active' and ${table.deadline} is not null`,
-      ),
     sessionForeignKey: foreignKey({
       columns: [table.ownerId, table.runtimeSessionId],
       foreignColumns: [agentRuntimeSessions.ownerId, agentRuntimeSessions.id],
@@ -3143,7 +3138,7 @@ export const agentGoals = sqliteTable(
     ),
     budgetCheck: check(
       "agent_goals_budgets_check",
-      sql`(${table.deadline} is not null or ${table.maxTurns} is not null or ${table.maxTokens} is not null or ${table.maxDurationSeconds} is not null) and (${table.maxTurns} is null or ${table.maxTurns} > 0) and (${table.maxTokens} is null or ${table.maxTokens} > 0) and (${table.maxDurationSeconds} is null or ${table.maxDurationSeconds} > 0)`,
+      sql`(${table.maxTurns} is null or ${table.maxTurns} > 0) and (${table.maxTokens} is null or ${table.maxTokens} > 0) and (${table.maxDurationSeconds} is null or ${table.maxDurationSeconds} > 0)`,
     ),
     completionPolicyCheck: check(
       "agent_goals_completion_policy_check",

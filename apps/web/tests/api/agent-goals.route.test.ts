@@ -6,6 +6,7 @@ import {
   AgentGoalApiService,
   type AgentGoalApiDependencies,
 } from "@/lib/ai/runtime-instructions/api/service";
+import { GoalPlanningError } from "@/lib/ai/runtime-instructions/api/goal-planner-port";
 
 vi.mock("server-only", () => ({}));
 
@@ -133,7 +134,8 @@ const goalEvidence = {
 
 const dependencies = {
   goals: {
-    activate: vi.fn(),
+    activateResolved: vi.fn(),
+    pause: vi.fn(),
     update: vi.fn(),
     resume: vi.fn(),
     upsertContext: vi.fn(),
@@ -141,48 +143,80 @@ const dependencies = {
   },
   queries: { listBySession: vi.fn(), getById: vi.fn() },
   liveSessions: { resolve: vi.fn() },
-  runtimeSessions: { ensure: vi.fn() },
+  runtimeSessions: { get: vi.fn(), ensure: vi.fn() },
+  planner: { plan: vi.fn() },
+  resolveNewRuntimeProvider: vi.fn(),
   sessionOwnership: { isOwnedChat: vi.fn() },
 } satisfies AgentGoalApiDependencies;
 
-const goalInput = {
-  objective: "Complete the frontend",
-  successCriteria: persistedGoal.goal.successCriteria,
-  constraints: [
-    {
-      id: "privacy",
-      description: "Keep the change privacy preserving",
-    },
-  ],
-  priority: 50,
-  maxTurns: 20,
-  completionPolicy: "model_evaluator",
-};
+const goalInput = { objective: "Complete the frontend" };
+const plannedSteps = ["The production build succeeds"];
+let resolvedGoalInput: unknown;
+
+function runtimeSession(provider: "claude" | "codex", state = "idle") {
+  return {
+    id: runtimeSessionId,
+    ownerId: "user-a",
+    provider,
+    state: state as "idle" | "interrupted",
+    runEpoch: state === "interrupted" ? 1 : 0,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
 
 const collectionRoute = await import("@/app/api/agent-goals/route");
 const goalRoute = await import("@/app/api/agent-goals/[goalId]/route");
 const resumeRoute =
   await import("@/app/api/agent-goals/[goalId]/resume/route");
+const pauseRoute =
+  await import("@/app/api/agent-goals/[goalId]/pause/route");
 const contextRoute =
   await import("@/app/api/agent-goals/[goalId]/context/route");
 
+function postGoal(extra: Record<string, unknown> = {}, withKey = true) {
+  return collectionRoute.POST(
+    request(
+      "POST",
+      "/api/agent-goals",
+      { runtimeSessionId, objective: goalInput.objective, ...extra },
+      withKey,
+    ),
+  );
+}
+
 beforeEach(() => {
+  resolvedGoalInput = undefined;
   authState.user = { id: "user-a" };
   modeState.tauri = true;
   for (const mock of [
     ...Object.values(dependencies.goals),
     ...Object.values(dependencies.queries),
     dependencies.liveSessions.resolve,
+    dependencies.runtimeSessions.get,
     dependencies.runtimeSessions.ensure,
+    dependencies.planner.plan,
+    dependencies.resolveNewRuntimeProvider,
     dependencies.sessionOwnership.isOwnedChat,
   ]) {
     mock.mockReset();
   }
   dependencies.sessionOwnership.isOwnedChat.mockResolvedValue(true);
   dependencies.liveSessions.resolve.mockResolvedValue({});
-  dependencies.runtimeSessions.ensure.mockResolvedValue({});
-  dependencies.goals.activate.mockResolvedValue(acceptedCommand);
+  dependencies.runtimeSessions.get.mockResolvedValue(null);
+  dependencies.runtimeSessions.ensure.mockResolvedValue(
+    runtimeSession("claude"),
+  );
+  dependencies.planner.plan.mockResolvedValue(plannedSteps);
+  dependencies.resolveNewRuntimeProvider.mockReturnValue("claude");
+  dependencies.goals.activateResolved.mockImplementation(
+    async (_input, resolveGoal) => {
+      resolvedGoalInput = await resolveGoal();
+      return acceptedCommand;
+    },
+  );
   dependencies.goals.update.mockResolvedValue(acceptedCommand);
+  dependencies.goals.pause.mockResolvedValue(acceptedCommand);
   dependencies.goals.resume.mockResolvedValue(acceptedCommand);
   dependencies.goals.upsertContext.mockResolvedValue(acceptedCommand);
   dependencies.goals.removeContext.mockResolvedValue(acceptedCommand);
@@ -199,17 +233,12 @@ describe("Agent Goal API", () => {
     );
     authState.user = { id: "user-a" };
     modeState.tauri = false;
-    const unavailable = await collectionRoute.POST(
-      request("POST", "/api/agent-goals", {
-        runtimeSessionId,
-        goal: goalInput,
-      }),
-    );
+    const unavailable = await postGoal();
 
     expect(unauthorized.status).toBe(401);
     expect(unavailable.status).toBe(503);
     expect(dependencies.sessionOwnership.isOwnedChat).not.toHaveBeenCalled();
-    expect(dependencies.goals.activate).not.toHaveBeenCalled();
+    expect(dependencies.goals.activateResolved).not.toHaveBeenCalled();
   });
 
   test("does not reveal missing or foreign Chats", async () => {
@@ -281,68 +310,82 @@ describe("Agent Goal API", () => {
   });
 
   test("activates with server-owned provenance and strict input", async () => {
-    const accepted = await collectionRoute.POST(
-      request("POST", "/api/agent-goals", {
-        runtimeSessionId,
-        goal: goalInput,
-      }),
-    );
-    const spoofed = await collectionRoute.POST(
-      request("POST", "/api/agent-goals", {
-        runtimeSessionId,
-        ownerId: "other-user",
-        goal: { ...goalInput, allowedTools: ["shell"] },
-      }),
-    );
-    const missingKey = await collectionRoute.POST(
-      request(
-        "POST",
-        "/api/agent-goals",
-        { runtimeSessionId, goal: goalInput },
-        false,
-      ),
-    );
+    const accepted = await postGoal();
+    const spoofed = await postGoal({
+      ownerId: "other-user",
+      allowedTools: ["shell"],
+    });
+    const missingKey = await postGoal({}, false);
 
     expect(accepted.status).toBe(201);
     expect(spoofed.status).toBe(400);
     expect(missingKey.status).toBe(400);
-    expect(dependencies.goals.activate).toHaveBeenCalledTimes(1);
-    expect(dependencies.runtimeSessions.ensure).toHaveBeenCalledWith(
-      "user-a",
-      runtimeSessionId,
-    );
-    expect(dependencies.goals.activate).toHaveBeenCalledWith(
+    expect(dependencies.goals.activateResolved).toHaveBeenCalledTimes(1);
+    expect(dependencies.goals.activateResolved).toHaveBeenCalledWith(
       expect.objectContaining({
         ownerId: "user-a",
         idempotencyKey: "request-1",
         source: { type: "user", authority: "user" },
-        goal: expect.objectContaining({
-          contextRefs: [],
-          source: { type: "user" },
-          constraints: [
-            expect.objectContaining({
-              id: "privacy",
-              enforcement: "model_guidance",
-              authority: "user",
-            }),
-          ],
-        }),
+        idempotencyPayload: { objective: goalInput.objective },
       }),
+      expect.any(Function),
     );
+    expect(resolvedGoalInput).toEqual({
+      objective: goalInput.objective,
+      successCriteria: [
+        {
+          id: "step-1",
+          description: "The production build succeeds",
+          verification: { type: "agent_report" },
+          required: true,
+        },
+      ],
+      constraints: [],
+      contextRefs: [],
+      priority: 50,
+      completionPolicy: "tool_evidence",
+      source: { type: "user" },
+    });
+  });
+
+  test("uses the selected provider for a new session and the pinned provider thereafter", async () => {
+    dependencies.resolveNewRuntimeProvider.mockReturnValue("codex");
+    dependencies.runtimeSessions.ensure.mockResolvedValueOnce(
+      runtimeSession("codex"),
+    );
+
+    expect((await postGoal()).status).toBe(201);
+    expect(dependencies.runtimeSessions.ensure).toHaveBeenCalledWith(
+      "user-a",
+      runtimeSessionId,
+      { provider: "codex", initialState: "idle" },
+    );
+    expect(dependencies.planner.plan).toHaveBeenCalledWith(
+      expect.objectContaining({ provider: "codex" }),
+    );
+    dependencies.runtimeSessions.get.mockResolvedValue(runtimeSession("claude"));
+    dependencies.runtimeSessions.ensure.mockClear();
+    dependencies.planner.plan.mockClear();
+    dependencies.resolveNewRuntimeProvider.mockClear();
+
+    expect((await postGoal()).status).toBe(201);
+    expect(dependencies.runtimeSessions.ensure).toHaveBeenCalledWith(
+      "user-a",
+      runtimeSessionId,
+    );
+    expect(dependencies.planner.plan).toHaveBeenCalledWith(
+      expect.objectContaining({ provider: "claude" }),
+    );
+    expect(dependencies.resolveNewRuntimeProvider).not.toHaveBeenCalled();
   });
 
   test("uses idempotent status codes and hides transport errors", async () => {
-    dependencies.goals.activate.mockResolvedValueOnce({
+    dependencies.goals.activateResolved.mockResolvedValueOnce({
       ...acceptedCommand,
       deduplicated: true,
     });
-    const retry = await collectionRoute.POST(
-      request("POST", "/api/agent-goals", {
-        runtimeSessionId,
-        goal: goalInput,
-      }),
-    );
-    dependencies.goals.activate.mockResolvedValueOnce({
+    const retry = await postGoal();
+    dependencies.goals.activateResolved.mockResolvedValueOnce({
       ...acceptedCommand,
       dispatch: {
         status: "transport_failed",
@@ -351,12 +394,7 @@ describe("Agent Goal API", () => {
         error: new Error("private runtime path"),
       },
     });
-    const deferred = await collectionRoute.POST(
-      request("POST", "/api/agent-goals", {
-        runtimeSessionId,
-        goal: goalInput,
-      }),
-    );
+    const deferred = await postGoal();
     const deferredBody = await deferred.json();
 
     expect(retry.status).toBe(200);
@@ -371,6 +409,9 @@ describe("Agent Goal API", () => {
   });
 
   test("fails closed when an unfinished SQLite session needs recovery", async () => {
+    dependencies.runtimeSessions.get.mockResolvedValueOnce(
+      runtimeSession("claude", "interrupted"),
+    );
     dependencies.runtimeSessions.ensure.mockRejectedValueOnce(
       new RuntimeSessionPersistenceError(
         "runtime_session_recovery_required",
@@ -378,18 +419,27 @@ describe("Agent Goal API", () => {
       ),
     );
 
-    const response = await collectionRoute.POST(
-      request("POST", "/api/agent-goals", {
-        runtimeSessionId,
-        goal: goalInput,
-      }),
-    );
+    const response = await postGoal();
 
     expect(response.status).toBe(409);
     expect(await response.json()).toMatchObject({
       code: "runtime_session_recovery_required",
     });
-    expect(dependencies.goals.activate).not.toHaveBeenCalled();
+    expect(dependencies.planner.plan).not.toHaveBeenCalled();
+  });
+
+  test("does not activate a partial Goal when planning fails", async () => {
+    dependencies.planner.plan.mockRejectedValueOnce(
+      new GoalPlanningError("The selected Runtime did not return a plan"),
+    );
+
+    const response = await postGoal();
+
+    expect(response.status).toBe(502);
+    expect(await response.json()).toMatchObject({
+      code: "goal_planning_failed",
+    });
+    expect(dependencies.runtimeSessions.ensure).not.toHaveBeenCalled();
   });
 
   test("forces user authority on updates and maps revision conflicts", async () => {
@@ -452,6 +502,28 @@ describe("Agent Goal API", () => {
       reason: "Continue after resolving the blocker",
     });
     expect(dependencies.runtimeSessions.ensure).not.toHaveBeenCalled();
+  });
+
+  test("pauses an active Goal through the authenticated lifecycle boundary", async () => {
+    const response = await pauseRoute.POST(
+      request("POST", `/api/agent-goals/${goalId}/pause`, {
+        runtimeSessionId,
+        expectedRevision: 1,
+        reason: "User requested a pause",
+      }),
+      goalContext(),
+    );
+
+    expect(response.status).toBe(200);
+    expect(dependencies.goals.pause).toHaveBeenCalledWith({
+      ownerId: "user-a",
+      runtimeSessionId,
+      goalId,
+      expectedRevision: 1,
+      idempotencyKey: "request-1",
+      source: { type: "user", authority: "user" },
+      reason: "User requested a pause",
+    });
   });
 
   test("routes context changes with user provenance", async () => {

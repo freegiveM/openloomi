@@ -1,18 +1,16 @@
 /**
- * Local port extensions used by apps/web that build on the published
- * `@melandlabs/ai/agent/runtime-instructions` AgentGoalStatePort contract.
+ * Local port extensions used by apps/web on top of the workspace
+ * `@openloomi/ai/agent/runtime-instructions` AgentGoalStatePort contract.
  *
- * The published port omits the `evaluation` and `runtimeLeaseToken` fields on
- * `commitEvaluationTransition`. OpenLoomi's in-memory and sqlite
- * implementations both accept those fields, so we declare a structurally
- * wider port here for callers that need them.
+ * Keep the evaluator and recovery fencing fields explicit at the application
+ * boundary shared by the in-memory and sqlite implementations.
  */
 import type {
   AgentGoal,
   AgentGoalStatePort,
   GoalEvaluationResult,
   GoalEvaluationTransitionCommit,
-} from "@melandlabs/ai/agent/runtime-instructions";
+} from "@openloomi/ai/agent/runtime-instructions";
 
 export interface LocalAgentGoalStatePort extends AgentGoalStatePort {
   commitEvaluationTransition(input: {

@@ -6,7 +6,7 @@ import {
   type AgentGoal,
   type PersistedAgentGoal,
   type RuntimeInstruction,
-} from "@melandlabs/ai/agent/runtime-instructions";
+} from "@openloomi/ai/agent/runtime-instructions";
 import { describe, expect, it } from "vitest";
 
 import {

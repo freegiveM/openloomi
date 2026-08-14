@@ -4,7 +4,7 @@ import {
   type RuntimeInstruction,
   RuntimeInstructionSchema,
   type RuntimeInstructionTransportPort,
-} from "@melandlabs/ai/agent/runtime-instructions";
+} from "@openloomi/ai/agent/runtime-instructions";
 import { describe, expect, it } from "vitest";
 
 import { RuntimeInstructionDispatcher } from "@/lib/ai/runtime-instructions/instruction-dispatcher";

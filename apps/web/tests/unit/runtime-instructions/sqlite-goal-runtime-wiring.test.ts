@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { transitionAgentGoal } from "@melandlabs/ai/agent/runtime-instructions";
+import { transitionAgentGoal } from "@openloomi/ai/agent/runtime-instructions";
 import Database from "better-sqlite3";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -14,6 +14,7 @@ const START = new Date("2026-08-06T08:00:00.000Z");
 const MIGRATIONS = [
   "0107_agent_goal_runtime.sql",
   "0108_agent_goal_runtime_recovery.sql",
+  "0111_agent_runtime_codex_provider.sql",
 ].map((migration) =>
   readFileSync(
     join(
@@ -80,6 +81,34 @@ function goalInput() {
 }
 
 describe("SQLite Agent Goal runtime composition", () => {
+  it("lets a Goal-first Codex Session take its first live Runtime lease", async () => {
+    const { runtime } = harness();
+    const session = await runtime.runtimeSessions.ensure(OWNER_ID, SESSION_ID, {
+      provider: "codex",
+      initialState: "idle",
+    });
+    expect(session).toMatchObject({ provider: "codex", state: "idle" });
+
+    await runtime.goals.activate({
+      ownerId: OWNER_ID,
+      runtimeSessionId: SESSION_ID,
+      idempotencyKey: "goal-first-codex",
+      source: { type: "user", authority: "user" },
+      goal: goalInput(),
+    });
+
+    const liveLease = await runtime.runtimeSessions.claimLiveRuntime({
+      ownerId: OWNER_ID,
+      runtimeSessionId: SESSION_ID,
+      leaseOwner: "goal-first-codex-host",
+      provider: "codex",
+    });
+    expect(liveLease).not.toBeNull();
+    await expect(
+      runtime.runtimeSessions.get(OWNER_ID, SESSION_ID),
+    ).resolves.toMatchObject({ provider: "codex" });
+  });
+
   it("records a paused evaluation on the atomically paused Goal Run", async () => {
     const { runtime, advance } = harness();
     await runtime.runtimeSessions.ensure(OWNER_ID, SESSION_ID);
@@ -220,7 +249,8 @@ describe("SQLite Agent Goal runtime composition", () => {
       runtimeSessionId: SESSION_ID,
       runEpoch: 0,
     });
-    if (!context) throw new Error("Expected the activation observation context");
+    if (!context)
+      throw new Error("Expected the activation observation context");
     const observedAt = advance(1);
     expect(
       await runtime.observations.observeProviderEvent({
@@ -265,6 +295,17 @@ describe("SQLite Agent Goal runtime composition", () => {
       source: { type: "user", authority: "user" },
     });
     expect(resumed.goal.goal.revision).toBe(3);
+    await expect(
+      runtime.observations.captureContext({
+        ownerId: OWNER_ID,
+        runtimeSessionId: SESSION_ID,
+        runEpoch: 0,
+        instructionId: activation.instruction.id,
+      }),
+    ).resolves.toMatchObject({
+      goalRevision: 1,
+      instructionId: activation.instruction.id,
+    });
 
     const snapshot = await runtime.observations.beginGoalEvaluation({
       ownerId: OWNER_ID,

@@ -1,22 +1,30 @@
 import { describe, expect, test } from "vitest";
 
 import type {
+  AgentGoalDetailResponse,
   PublicAgentGoal,
   PublicGoalSummary,
 } from "@/lib/ai/runtime-instructions/api";
 import {
-  blankGoalDraft,
+  canCreateNewGoal,
   canResumeGoal,
   createGoalCommandIdempotencyKeys,
-  goalDraft,
-  goalInputFromDraft,
-  goalProgressPercent,
-  goalUpdateFromDraft,
+  displayGoalStatus,
+  goalStepsView,
   shouldPollGoal,
-  validateGoalDraft,
 } from "@/lib/ai/runtime-instructions/goal-ui-model";
 
 const now = "2026-08-06T08:00:00.000Z";
+const runId = "10000000-0000-4000-8000-000000000011";
+
+function step(id: string, required = true) {
+  return {
+    id,
+    description: id,
+    required,
+    verification: { type: "model_evidence" as const },
+  };
+}
 
 const goal: PublicAgentGoal = {
   id: "10000000-0000-4000-8000-000000000001",
@@ -24,28 +32,11 @@ const goal: PublicAgentGoal = {
   slot: "primary",
   revision: 2,
   objective: "Ship the Goal UI",
-  successCriteria: [
-    {
-      id: "tests",
-      description: "Focused tests pass",
-      required: true,
-      verification: { type: "model_evidence" },
-    },
-  ],
-  constraints: [
-    {
-      id: "scope",
-      description: "Do not add lifecycle controls",
-      enforcement: "model_guidance",
-      authority: "user",
-    },
-  ],
+  successCriteria: [step("tests")],
+  constraints: [],
   contextRefs: [],
-  priority: 70,
+  priority: 50,
   status: "active",
-  maxTurns: 12,
-  maxTokens: 10_000,
-  maxDurationSeconds: 900,
   completionPolicy: "model_evaluator",
   source: { type: "user" },
   createdAt: now,
@@ -58,8 +49,8 @@ function summary(status: PublicAgentGoal["status"]): PublicGoalSummary {
     latestRun: null,
     latestDelivery: null,
     progress: {
-      completedCriteria: 1,
-      totalCriteria: 2,
+      completedCriteria: 0,
+      totalCriteria: 1,
       turnsUsed: 3,
       tokensUsed: 400,
       timeUsedSeconds: 20,
@@ -67,99 +58,124 @@ function summary(status: PublicAgentGoal["status"]): PublicGoalSummary {
   };
 }
 
+function detail(
+  successCriteria: PublicAgentGoal["successCriteria"],
+  satisfied: string[] = [],
+  status: PublicAgentGoal["status"] = "active",
+): AgentGoalDetailResponse {
+  return {
+    ...summary(status),
+    runtimeSessionId: goal.runtimeSessionId,
+    live: status === "active",
+    goal: { ...goal, status, successCriteria },
+    evidence: satisfied.map((criterionId, index) => ({
+      id: `10000000-0000-4000-8000-${String(index + 20).padStart(12, "0")}`,
+      goalId: goal.id,
+      goalRunId: runId,
+      goalRevision: goal.revision,
+      criterionId,
+      type: "evaluation",
+      sourceEventId: `evaluation-${index}`,
+      summary: `${criterionId} completed`,
+      success: true,
+      observedAt: now,
+    })),
+  };
+}
+
 describe("Goal UI model", () => {
-  test("validates the required objective, criteria, and execution boundary", () => {
-    const draft = blankGoalDraft();
-    expect(validateGoalDraft(draft)).toBe("objective");
-
-    draft.objective = "Ship it";
-    expect(validateGoalDraft(draft)).toBe("criteria");
-
-    firstCriterion(draft).description = "Tests pass";
-    draft.maxTurns = "";
-    expect(validateGoalDraft(draft)).toBe("budget");
-
-    draft.deadline = "2026-08-07T12:00";
-    expect(validateGoalDraft(draft, false)).toBeNull();
+  test("only polls active Goals", () => {
+    expect(shouldPollGoal(summary("active"))).toBe(true);
+    for (const status of ["blocked", "completed", "budget_limited"] as const) {
+      expect(shouldPollGoal(summary(status))).toBe(false);
+    }
   });
 
-  test("builds a safe user Goal payload from the form", () => {
-    const draft = blankGoalDraft();
-    draft.objective = "  Ship it  ";
-    firstCriterion(draft).description = "  Tests pass  ";
-    draft.constraints = [{ id: "privacy", description: "  Avoid PII  " }];
-    draft.maxTokens = "5000";
+  test("shows all-required plans as a strict completed prefix", () => {
+    const criteria = [step("tests"), step("review"), step("ship")];
 
-    expect(goalInputFromDraft(draft)).toEqual({
-      objective: "Ship it",
-      successCriteria: [
-        {
-          id: "criterion-1",
-          description: "Tests pass",
-          verification: { type: "model_evidence" },
-          required: true,
-        },
+    expect(goalStepsView(detail(criteria, ["tests", "review"]))).toMatchObject({
+      completed: 2,
+      total: 3,
+      percent: 67,
+      steps: [
+        { id: "tests", state: "completed" },
+        { id: "review", state: "completed" },
+        { id: "ship", state: "current" },
       ],
-      constraints: [
-        {
-          id: "privacy",
-          description: "Avoid PII",
-          enforcement: "model_guidance",
-        },
+    });
+    expect(goalStepsView(detail(criteria, ["ship"]))).toMatchObject({
+      completed: 0,
+      percent: 0,
+      steps: [
+        { state: "current" },
+        { state: "pending" },
+        { state: "pending" },
       ],
-      priority: 50,
-      maxTurns: 12,
-      maxTokens: 5000,
-      completionPolicy: "model_evaluator",
     });
   });
 
-  test("preserves server identifiers and makes cleared optional budgets explicit", () => {
-    const draft = goalDraft(goal);
-    draft.maxTokens = "";
-    draft.maxDurationSeconds = "";
+  test("keeps legacy optional criteria independent from required progress", () => {
+    const criteria = [
+      step("tests"),
+      step("optional-review", false),
+      step("optional-notes", false),
+      step("ship"),
+    ];
+    const active = goalStepsView(
+      detail(criteria, ["tests", "optional-notes"]),
+    );
 
-    const update = goalUpdateFromDraft(draft);
-    expect(update.successCriteria).toBeUndefined();
-    expect(update.constraints).toBeUndefined();
-    expect(update.maxTokens).toBeNull();
-    expect(update.maxDurationSeconds).toBeNull();
-    expect(update.maxTurns).toBe(12);
+    expect(active).toMatchObject({
+      completed: 1,
+      total: 2,
+      percent: 50,
+      steps: [
+        { state: "completed" },
+        { state: "pending" },
+        { state: "completed" },
+        { state: "current" },
+      ],
+    });
+    expect(
+      goalStepsView(detail(criteria.slice(0, 2), [], "completed")),
+    ).toMatchObject({
+      completed: 1,
+      total: 1,
+      percent: 100,
+      steps: [{ state: "completed" }, { state: "pending" }],
+    });
   });
 
-  test("computes progress and only polls non-terminal Goals", () => {
-    expect(goalProgressPercent(summary("active"))).toBe(50);
-    expect(shouldPollGoal(summary("active"))).toBe(true);
-    expect(shouldPollGoal(summary("blocked"))).toBe(false);
-    expect(shouldPollGoal(summary("completed"))).toBe(false);
-    expect(shouldPollGoal(summary("budget_limited"))).toBe(false);
+  test("maps legacy blocked Goals to resumable pauses", () => {
+    for (const status of ["paused", "blocked"] as const) {
+      expect(canResumeGoal(status)).toBe(true);
+    }
+    for (const status of ["active", "completed", "expired"] as const) {
+      expect(canResumeGoal(status)).toBe(false);
+    }
+    expect(displayGoalStatus("blocked")).toBe("paused");
+    expect(displayGoalStatus("budget_limited")).toBe("budget_limited");
   });
 
-  test("offers an explicit continuation only for paused or blocked Goals", () => {
-    expect(canResumeGoal("paused")).toBe(true);
-    expect(canResumeGoal("blocked")).toBe(true);
-    expect(canResumeGoal("active")).toBe(false);
-    expect(canResumeGoal("completed")).toBe(false);
+  test("allows a second Goal only after the primary Goal is terminal", () => {
+    for (const status of ["completed", "cancelled", "failed"] as const) {
+      expect(canCreateNewGoal([summary(status)])).toBe(true);
+    }
+    for (const status of ["active", "paused"] as const) {
+      expect(canCreateNewGoal([summary(status)])).toBe(false);
+    }
   });
 
-  test("reuses a command key until success and rotates it when input changes", () => {
+  test("reuses idempotency keys until success or input changes", () => {
     let sequence = 0;
     const keys = createGoalCommandIdempotencyKeys(() => `key-${++sequence}`);
-    const first = { expectedRevision: 2, update: { objective: "Ship it" } };
+    const first = { expectedRevision: 2 };
 
     expect(keys.keyFor("update", first)).toBe("key-1");
     expect(keys.keyFor("update", first)).toBe("key-1");
-
-    const revised = { ...first, expectedRevision: 3 };
-    expect(keys.keyFor("update", revised)).toBe("key-2");
-
-    keys.clear("update", revised);
-    expect(keys.keyFor("update", revised)).toBe("key-3");
+    expect(keys.keyFor("update", { expectedRevision: 3 })).toBe("key-2");
+    keys.clear("update", { expectedRevision: 3 });
+    expect(keys.keyFor("update", { expectedRevision: 3 })).toBe("key-3");
   });
 });
-
-function firstCriterion(draft: ReturnType<typeof blankGoalDraft>) {
-  const criterion = draft.criteria[0];
-  if (!criterion) throw new Error("Expected the default success criterion");
-  return criterion;
-}

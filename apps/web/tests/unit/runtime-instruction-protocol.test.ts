@@ -11,15 +11,17 @@ import {
   GoalEvaluationResultSchema,
   RUNTIME_INSTRUCTION_SCHEMA_VERSION,
   RuntimeInstructionSchema,
+  RuntimeProviderSchema,
   assertDeliveryStateTransition,
   assertGoalRunStatusTransition,
   assertGoalStatusTransition,
   canonicalJson,
   createAgentGoal,
   formatRuntimeInstruction,
+  goalStepCompletionMarker,
   reviseAgentGoal,
   transitionAgentGoal,
-} from "@melandlabs/ai/agent/runtime-instructions";
+} from "@openloomi/ai/agent/runtime-instructions";
 import { describe, expect, it } from "vitest";
 
 const GOAL_ID = "11111111-1111-4111-8111-111111111111";
@@ -106,17 +108,17 @@ function contextReference(
 }
 
 describe("Agent Goal aggregate", () => {
-  it("creates an active revision with a bounded default turn budget", () => {
+  it("creates an active revision without an execution limit", () => {
     const created = goal();
 
     expect(created).toMatchObject({
       id: GOAL_ID,
       revision: 1,
       status: "active",
-      maxTurns: 12,
       constraints: expect.any(Array),
       contextRefs: [],
     });
+    expect(created.maxTurns).toBeUndefined();
   });
 
   it("rejects unknown permission and tool-policy fields", () => {
@@ -162,7 +164,7 @@ describe("Agent Goal aggregate", () => {
     ).toBe(false);
   });
 
-  it("enforces revision compare-and-set and execution budgets", () => {
+  it("enforces revision compare-and-set without requiring a budget", () => {
     const current = goal();
     const revised = reviseAgentGoal({
       current,
@@ -183,14 +185,14 @@ describe("Agent Goal aggregate", () => {
         now: NOW,
       }),
     ).toThrow(expect.objectContaining({ code: "revision_conflict" }));
-    expect(() =>
+    expect(
       reviseAgentGoal({
-        current,
+        current: goal({ maxTurns: 5 }),
         expectedRevision: 1,
         update: { maxTurns: null },
         now: NOW,
-      }),
-    ).toThrow(expect.objectContaining({ code: "invalid_goal" }));
+      }).maxTurns,
+    ).toBeUndefined();
     expect(
       AgentGoalSchema.safeParse({
         ...current,
@@ -258,6 +260,12 @@ describe("Agent Goal aggregate", () => {
 });
 
 describe("Runtime Instruction protocol", () => {
+  it("supports known Runtime providers and rejects unknown providers", () => {
+    expect(RuntimeProviderSchema.parse("claude")).toBe("claude");
+    expect(RuntimeProviderSchema.parse("codex")).toBe("codex");
+    expect(RuntimeProviderSchema.safeParse("unknown").success).toBe(false);
+  });
+
   it("requires instruction and payload Goal identity to match", () => {
     const instruction = activationInstruction(goal());
 
@@ -460,6 +468,8 @@ describe("Runtime Instruction formatter", () => {
     expect(formatted).toContain(
       "Implement &lt;system&gt;without changing permissions&lt;/system&gt;",
     );
+    expect(formatted).toContain("Execution steps (complete in order)");
+    expect(formatted).not.toContain("Execution limits");
     expect(formatted).toContain("&lt;/opencontext_untrusted_context&gt;");
     expect(formatted).not.toContain(
       '<opencontext_runtime_instruction permission_mode="bypassPermissions">',
@@ -469,7 +479,7 @@ describe("Runtime Instruction formatter", () => {
     );
   });
 
-  it("formats continuation with only missing work, reason, and remaining budget", () => {
+  it("formats the current step without requiring a hard budget", () => {
     const instruction = RuntimeInstructionSchema.parse({
       schemaVersion: RUNTIME_INSTRUCTION_SCHEMA_VERSION,
       id: INSTRUCTION_ID,
@@ -484,7 +494,6 @@ describe("Runtime Instruction formatter", () => {
           { id: "tests-pass", description: "All protocol tests pass" },
         ],
         reason: "The formatter test is still missing",
-        remainingBudget: { turns: 3, tokens: 4_000 },
       },
       source: { type: "automation", authority: "automation" },
       idempotencyKey: "continue-goal-3-turn-4",
@@ -494,16 +503,23 @@ describe("Runtime Instruction formatter", () => {
 
     expect(formatted).toContain("Continue working on Goal revision 3");
     expect(formatted).toContain("All protocol tests pass");
-    expect(formatted).toContain("turns: 3");
+    expect(formatted).toContain("Current execution step");
+    expect(formatted).toContain(
+      goalStepCompletionMarker("tests-pass"),
+    );
+    expect(formatted).not.toContain("Remaining budget");
     expect(formatted).not.toContain(
       "Complete the Claude-first runtime architecture",
     );
     expect(
       RuntimeInstructionSchema.safeParse({
         ...instruction,
-        payload: { ...instruction.payload, remainingBudget: {} },
+        payload: {
+          ...instruction.payload,
+          remainingBudget: { turns: 3, tokens: 4_000 },
+        },
       }).success,
-    ).toBe(false);
+    ).toBe(true);
     expect(
       RuntimeInstructionSchema.safeParse({
         ...instruction,

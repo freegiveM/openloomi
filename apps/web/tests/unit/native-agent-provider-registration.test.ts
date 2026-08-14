@@ -6,7 +6,7 @@ const state = vi.hoisted(() => ({
   has: vi.fn(() => false),
 }));
 
-vi.mock("@melandlabs/ai/agent", () => ({
+vi.mock("@openloomi/ai/agent/registry", () => ({
   getAgentRegistry: () => ({
     has: state.has,
     register: state.register,

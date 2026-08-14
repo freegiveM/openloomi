@@ -1,6 +1,9 @@
 import { isAbsolute } from "node:path";
 
-import type { RuntimeSessionState } from "@melandlabs/ai/agent/runtime-instructions";
+import type {
+  RuntimeProvider,
+  RuntimeSessionState,
+} from "@openloomi/ai/agent/runtime-instructions";
 import type {
   AgentRuntimeRecovery,
   AgentRuntimeRecoveryContinuationResult,
@@ -45,6 +48,7 @@ export interface RuntimeRecoveryOwnerSession extends NativeAgentSession {
 
 export interface RuntimeProviderSessionPreflightPort {
   verify(input: {
+    provider: RuntimeProvider;
     providerSessionId: string;
     workingDirectory: string;
   }): Promise<void>;
@@ -222,7 +226,7 @@ export class GoalRuntimeRecoveryCoordinator {
       this.scanLimit,
     );
     const outcomes: RuntimeRecoveryStartupOutcome[] = [];
-    // Start sequentially so desktop boot does not spawn several Claude CLI
+    // Start sequentially so desktop boot does not spawn several provider CLI
     // processes and database-heavy memory lookups at the same instant.
     for (const candidate of candidates) {
       outcomes.push(await this.startCandidate(candidate));
@@ -345,6 +349,7 @@ export class GoalRuntimeRecoveryCoordinator {
         );
       }
       await this.deps.providerPreflight.verify({
+        provider: snapshot.session.provider,
         providerSessionId: config.providerSessionId,
         workingDirectory: config.workingDirectory,
       });
@@ -489,6 +494,7 @@ export class GoalRuntimeRecoveryCoordinator {
       instructionSettlements: input.snapshot.instructionSettlements.map(
         (settlement) => ({ ...settlement }),
       ),
+      replayableInstructionIds: [...input.snapshot.replayableInstructionIds],
       onProviderSessionInitialized: async (provider) => {
         try {
           assertProviderInitialization(input.claim, input.snapshot, provider);
@@ -501,7 +507,8 @@ export class GoalRuntimeRecoveryCoordinator {
             state: "running",
           });
           continuationResult =
-            input.snapshot.replayableInstructionIds.length > 0
+            (provider.replayedInstructions ??
+            input.snapshot.replayableInstructionIds.length > 0)
               ? { decision: "block", outcome: "continue" }
               : await provider.continueGoal();
           if (continuationResult.decision === "allow") {
@@ -528,6 +535,7 @@ export class GoalRuntimeRecoveryCoordinator {
     };
 
     const request = recoveryRequest(
+      input.snapshot.session.provider,
       input.claim.runtimeSessionId,
       input.workingDirectory,
       input.descriptor,
@@ -603,7 +611,7 @@ export class GoalRuntimeRecoveryCoordinator {
         if (!continuationResult) {
           throw new RuntimeRecoveryError(
             "provider_resume_ended_before_initialization",
-            "Claude recovery ended before the provider session was initialized",
+            "Provider recovery ended before the provider session was initialized",
           );
         }
         if (continuationResult.decision === "block") {
@@ -614,7 +622,7 @@ export class GoalRuntimeRecoveryCoordinator {
           if (latest.activeGoal?.goal.status === "active") {
             throw new RuntimeRecoveryError(
               "provider_resume_ended_with_active_goal",
-              "Claude recovery ended while the Goal was still active",
+              "Provider recovery ended while the Goal was still active",
             );
           }
         }
@@ -665,7 +673,7 @@ export class GoalRuntimeRecoveryCoordinator {
       await withTimeout(
         initialized.promise,
         this.initializationTimeoutMs,
-        `Claude session ${input.providerSessionId} did not initialize in time`,
+        `Provider session ${input.providerSessionId} did not initialize in time`,
       );
       return outcome(input.candidate, "resumed");
     } catch (error) {
@@ -882,19 +890,13 @@ function validateResumeConfiguration(snapshot: RuntimeRecoverySnapshot): {
   workingDirectory: string;
   descriptor: RuntimeRecoveryDescriptor;
 } {
-  if (snapshot.session.provider !== "claude") {
-    throw new RuntimeRecoveryError(
-      "runtime_recovery_provider_unsupported",
-      `Runtime provider ${snapshot.session.provider} cannot be recovered by the Claude host`,
-    );
-  }
   const providerSessionId = normalizeIdentifier(
     snapshot.session.providerSessionId,
   );
   if (!providerSessionId) {
     throw new RuntimeRecoveryError(
       "provider_session_missing",
-      "The unfinished Goal has no persisted Claude provider session",
+      "The unfinished Goal has no persisted provider session",
     );
   }
   const workingDirectory = snapshot.session.workingDirectory;
@@ -923,13 +925,14 @@ function validateResumeConfiguration(snapshot: RuntimeRecoverySnapshot): {
 }
 
 function recoveryRequest(
+  provider: RuntimeProvider,
   runtimeSessionId: string,
   workingDirectory: string,
   descriptor: RuntimeRecoveryDescriptor,
 ): NativeAgentRequest {
   return {
     prompt: RECOVERY_BOOTSTRAP_PROMPT,
-    provider: "claude",
+    provider,
     platform: "desktop-recovery",
     sessionId: runtimeSessionId,
     workDir: workingDirectory,
@@ -986,7 +989,7 @@ function assertProviderInitialization(
   ) {
     throw new RuntimeRecoveryError(
       "provider_session_mismatch",
-      "Claude initialized a different provider session or runtime fence",
+      "The provider initialized a different session or runtime fence",
     );
   }
 }

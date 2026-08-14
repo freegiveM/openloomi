@@ -3,7 +3,7 @@ import type {
   GoalEvidence,
   PersistedAgentGoal,
   RuntimeInstruction,
-} from "@melandlabs/ai/agent/runtime-instructions";
+} from "@openloomi/ai/agent/runtime-instructions";
 
 import type {
   AgentGoalCommandCheckpoint,

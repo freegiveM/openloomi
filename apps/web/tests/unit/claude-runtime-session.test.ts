@@ -7,10 +7,12 @@ import {
   RUNTIME_INSTRUCTION_SCHEMA_VERSION,
   RuntimeInstructionSchema,
   type RuntimeInstructionTransportPort,
-} from "@melandlabs/ai/agent/runtime-instructions";
-import { AgentSupplementalInputQueue } from "@melandlabs/ai/agent/supplemental-input";
-import type { AgentRuntimeRecovery } from "@openloomi/ai/agent/types";
-import type { AgentSupplementalInputSource } from "@/lib/ai/agent/types-shim";
+} from "@openloomi/ai/agent/runtime-instructions";
+import { AgentSupplementalInputQueue } from "@openloomi/ai/agent/supplemental-input";
+import type {
+  AgentRuntimeRecovery,
+  AgentSupplementalInputSource,
+} from "@/lib/ai/agent/types-shim";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -1112,7 +1114,7 @@ describe("Claude runtime input and hooks", () => {
     const prompt = new ClaudeInputMultiplexer(
       initialMedia(),
       SESSION_ID,
-      queue as unknown as AgentSupplementalInputSource,
+      queue,
     ).toSdkPrompt() as AsyncIterable<SDKUserMessage>;
     const iterator = prompt[Symbol.asyncIterator]();
     await expect(iterator.next()).resolves.toEqual({
@@ -1144,7 +1146,7 @@ describe("Claude runtime input and hooks", () => {
       intent: "inform",
     });
     const hooks = createClaudeSupplementalInputHooks({
-      supplementalInput: queue as unknown as AgentSupplementalInputSource,
+      supplementalInput: queue,
       sessionId: SESSION_ID,
       logger: logger(),
     });

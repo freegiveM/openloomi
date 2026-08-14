@@ -16,6 +16,8 @@ import {
   convertClaudeSdkMessage,
   extractClaudeResultUsage,
 } from "@/lib/ai/extensions/agent/claude/message-converter";
+import { goalStepCompletionMarker } from "@openloomi/ai/agent/runtime-instructions";
+import { ClaudeOutputMultiplexer } from "@/lib/ai/extensions/agent/claude/runtime/output-multiplexer";
 
 describe("extractClaudeResultUsage", () => {
   it("maps input_tokens / output_tokens to the camelCase AgentMessage shape", () => {
@@ -161,5 +163,36 @@ describe("convertClaudeSdkMessage — provider API errors", () => {
       },
     ]);
     expect(JSON.stringify(messages)).not.toContain("Content block not found");
+  });
+});
+
+describe("Claude Goal step presentation", () => {
+  it("filters a completion marker split across stream chunks", () => {
+    let id = 0;
+    const output = new ClaudeOutputMultiplexer(() => `message-${++id}`);
+    const marker = goalStepCompletionMarker("step-1");
+    const messages = [
+      ...output.convert({
+        type: "stream_event",
+        event: {
+          type: "content_block_delta",
+          delta: { type: "text_delta", text: marker.slice(0, 12) },
+        },
+      } as never),
+      ...output.convert({
+        type: "stream_event",
+        event: {
+          type: "content_block_delta",
+          delta: {
+            type: "text_delta",
+            text: `${marker.slice(12)}\nStep completed.`,
+          },
+        },
+      } as never),
+    ];
+
+    expect(messages).toEqual([
+      expect.objectContaining({ type: "text", content: "Step completed." }),
+    ]);
   });
 });

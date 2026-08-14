@@ -18,8 +18,11 @@ const mocks = vi.hoisted(() => ({
   getAuthUser: vi.fn(),
   manager: undefined as unknown,
   capturedPrompts: [] as string[],
+  capturedAgentOptions: [] as Array<Record<string, unknown>>,
   recordUsage: vi.fn(),
   getChatById: vi.fn(),
+  getRuntimeSession: vi.fn(),
+  getActiveGoal: vi.fn(),
   resolveProviderRequest: vi.fn((body) => body),
 }));
 
@@ -31,12 +34,13 @@ vi.mock("@/lib/auth/dual-auth", () => ({
   getAuthUser: mocks.getAuthUser,
 }));
 
-vi.mock("@melandlabs/ai/agent", () => ({
+vi.mock("@openloomi/ai/agent/registry", () => ({
   getAgentRegistry: () => ({
     create: () => ({
       provider: "custom",
-      async *run(prompt: string) {
+      async *run(prompt: string, options?: Record<string, unknown>) {
         mocks.capturedPrompts.push(prompt);
+        mocks.capturedAgentOptions.push(options ?? {});
         yield { type: "text" as const, content: "ok" };
       },
     }),
@@ -81,6 +85,13 @@ vi.mock("@/lib/llm-usage/recorder", () => ({
 
 vi.mock("@/lib/ai/native-agent/provider-env", () => ({
   resolveNativeAgentProviderRequest: mocks.resolveProviderRequest,
+}));
+
+vi.mock("@/lib/ai/runtime-instructions/runtime", () => ({
+  getAgentGoalRuntime: () => ({
+    runtimeSessions: { get: mocks.getRuntimeSession },
+    goals: { getActivePrimaryGoal: mocks.getActiveGoal },
+  }),
 }));
 
 import { POST } from "@/app/api/native/agent/route";
@@ -262,6 +273,7 @@ afterEach(() => {
 beforeEach(async () => {
   vi.clearAllMocks();
   mocks.capturedPrompts.length = 0;
+  mocks.capturedAgentOptions.length = 0;
   vi.stubEnv("OPENCONTEXT_MEMORY_GRAPH_WRITE_ENABLED", "true");
   vi.stubEnv(
     "OPENCONTEXT_MEMORY_GRAPH_WRITE_COHORT_USER_IDS",
@@ -281,6 +293,8 @@ beforeEach(async () => {
     },
   });
   mocks.getChatById.mockResolvedValue(undefined);
+  mocks.getRuntimeSession.mockResolvedValue(null);
+  mocks.getActiveGoal.mockResolvedValue(null);
 
   const manager = new ContractBackedMemoryStorage();
   mocks.manager = manager;
@@ -335,6 +349,116 @@ describe("native agent memory-context route", () => {
       error: "Runtime Session not found",
     });
     expect(mocks.capturedPrompts).toEqual([]);
+  });
+
+  it("passes the persisted Runtime Session provider as a trusted override", async () => {
+    mocks.getChatById.mockResolvedValue({
+      id: "owned-session",
+      userId: "authenticated-user",
+    });
+    mocks.getRuntimeSession.mockResolvedValue({ provider: "claude" });
+
+    const response = await POST(
+      new Request("http://localhost/api/native/agent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: "Continue this session",
+          provider: "codex",
+          sessionId: "owned-session",
+        }),
+      }) as never,
+    );
+    await response.text();
+
+    expect(response.status).toBe(200);
+    expect(mocks.resolveProviderRequest).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: "owned-session" }),
+      expect.any(Object),
+      { trustedProviderOverride: "claude" },
+    );
+  });
+
+  it("runs ordinary chat without attaching a paused Goal Runtime", async () => {
+    mocks.getChatById.mockResolvedValue({
+      id: "paused-goal-chat",
+      userId: "authenticated-user",
+    });
+    mocks.getRuntimeSession.mockResolvedValue({ provider: "claude" });
+    mocks.getActiveGoal.mockResolvedValue(null);
+
+    const response = await POST(
+      new Request("http://localhost/api/native/agent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: "Answer an unrelated chat question",
+          sessionId: "paused-goal-chat",
+        }),
+      }) as never,
+    );
+    await response.text();
+
+    expect(response.status).toBe(200);
+    expect(mocks.capturedAgentOptions).toHaveLength(1);
+    expect(mocks.capturedAgentOptions[0]).toMatchObject({
+      sessionId: "paused-goal-chat",
+      goalRuntimeSessionId: null,
+    });
+  });
+
+  it("attaches the Runtime only when this chat has an active Goal", async () => {
+    mocks.getChatById.mockResolvedValue({
+      id: "active-goal-chat",
+      userId: "authenticated-user",
+    });
+    mocks.getActiveGoal.mockResolvedValue({
+      goal: { status: "active" },
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/native/agent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: "Continue the active Goal",
+          sessionId: "active-goal-chat",
+        }),
+      }) as never,
+    );
+    await response.text();
+
+    expect(response.status).toBe(200);
+    expect(mocks.capturedAgentOptions[0]).toMatchObject({
+      sessionId: "active-goal-chat",
+      goalRuntimeSessionId: "active-goal-chat",
+    });
+  });
+
+  it("falls back to ordinary chat when the active Goal lookup fails", async () => {
+    mocks.getChatById.mockResolvedValue({
+      id: "goal-read-failure-chat",
+      userId: "authenticated-user",
+    });
+    mocks.getActiveGoal.mockRejectedValue(new Error("database unavailable"));
+
+    const response = await POST(
+      new Request("http://localhost/api/native/agent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: "Keep ordinary chat available",
+          sessionId: "goal-read-failure-chat",
+        }),
+      }) as never,
+    );
+    await response.text();
+
+    expect(response.status).toBe(200);
+    expect(mocks.capturedAgentOptions[0]).toMatchObject({
+      sessionId: "goal-read-failure-chat",
+      goalRuntimeSessionId: null,
+    });
   });
 
   it("derives conversation/task applicability only from an owned server-side chat", async () => {

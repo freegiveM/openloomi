@@ -6,11 +6,11 @@ import {
   type NativeAgentRun,
   type NativeAgentRunnerContext as PackageNativeAgentRunnerContext,
   type NativeAgentSession,
-} from "@melandlabs/ai/agent/native-runner";
+} from "@openloomi/ai/agent/native-runner";
 import type {
   AgentRuntimePermissionHandler,
   AgentRuntimePermissionRequest,
-} from "@melandlabs/ai/agent/runtime";
+} from "@openloomi/ai/agent/runtime";
 
 import { nativeAgentHost } from "./host";
 import {
@@ -46,7 +46,7 @@ export interface NativeAgentRunnerContext extends Omit<
  * Web/API compatibility wrapper around the package-level native agent runner.
  *
  * New CLI and other non-HTTP entry points should call
- * @melandlabs/ai/agent/native-runner directly with nativeAgentHost.
+ * @openloomi/ai/agent/native-runner directly with nativeAgentHost.
  */
 export async function runNativeAgentRequest(
   preparedBody: NativeAgentRequest,

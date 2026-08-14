@@ -21,15 +21,17 @@ describe("Agent Goal API client", () => {
       ),
     );
     vi.stubGlobal("fetch", fetchMock);
-    const goal = {} as Parameters<typeof activateAgentGoal>[0]["goal"];
     await activateAgentGoal(
-      { runtimeSessionId: "chat-a", goal },
+      { runtimeSessionId: "chat-a", objective: "Complete the frontend" },
       "create-once",
     );
     const init = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined;
     expect(init).toMatchObject({ method: "POST", credentials: "same-origin" });
     expect(new Headers(init?.headers).get("idempotency-key")).toBe("create-once");
-    expect(JSON.parse(String(init?.body))).toMatchObject({ runtimeSessionId: "chat-a" });
+    expect(JSON.parse(String(init?.body))).toEqual({
+      runtimeSessionId: "chat-a",
+      objective: "Complete the frontend",
+    });
   });
 
   test("keeps revision and context commands on their dedicated routes", async () => {

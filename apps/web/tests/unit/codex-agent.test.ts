@@ -56,6 +56,8 @@ describe("Codex command builder", () => {
     expect(command.args).toEqual([
       "exec",
       "--json",
+      "--disable",
+      "goals",
       "-p",
       "work",
       "-m",
@@ -745,6 +747,8 @@ describe("CodexAgent", () => {
 
     await collectMessages(
       agent.run("what is in this image?", {
+        sessionId: "authenticated-image-session",
+        session: { user: { id: "authenticated-owner" } },
         images: [
           {
             data: imageBytes.toString("base64"),

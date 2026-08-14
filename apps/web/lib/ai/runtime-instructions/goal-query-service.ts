@@ -7,7 +7,7 @@ import type {
   RuntimeInstruction,
   RuntimeInstructionDelivery,
   RuntimeInstructionKind,
-} from "@melandlabs/ai/agent/runtime-instructions";
+} from "@openloomi/ai/agent/runtime-instructions";
 
 import { resolveGoalEvidenceRevisionFloor } from "./runtime-observation";
 
@@ -66,6 +66,11 @@ export interface AgentGoalReadSource {
     ownerId: string,
     runtimeSessionId: string,
   ): Promise<RuntimeInstructionDelivery[]>;
+  getEvidence(
+    ownerId: string,
+    runtimeSessionId: string,
+    evidenceId: string,
+  ): Promise<GoalEvidence | null>;
   listEvidence(
     ownerId: string,
     runtimeSessionId: string,
@@ -101,7 +106,7 @@ export class AgentGoalQueryService {
         [],
         now,
         instructions,
-        false,
+        null,
       ),
     );
   }
@@ -133,16 +138,28 @@ export class AgentGoalQueryService {
           MAX_VISIBLE_EVIDENCE,
         )
       : [];
+    const evaluationEvidence = latestRun
+      ? await loadEvaluationEvidence(
+          this.source,
+          input.ownerId,
+          input.runtimeSessionId,
+          latestRun,
+          evidence,
+        )
+      : [];
     const evidenceRevisionFloor = resolveGoalEvidenceRevisionFloor(
       goal.goal.id,
       goal.goal.revision,
       instructions,
     );
-    const scopedEvidence = evidence.filter(
-      (item) =>
-        item.goalId === goal.goal.id &&
-        item.goalRevision >= evidenceRevisionFloor &&
-        item.goalRevision <= goal.goal.revision,
+    const isCurrentEvidence = (item: GoalEvidence) =>
+      item.goalId === goal.goal.id &&
+      item.goalRunId === latestRun?.id &&
+      item.goalRevision >= evidenceRevisionFloor &&
+      item.goalRevision <= goal.goal.revision;
+    const scopedEvidence = evidence.filter(isCurrentEvidence);
+    const evaluationEvidenceIds = new Set(
+      evaluationEvidence.filter(isCurrentEvidence).map((item) => item.id),
     );
     return {
       ...summaryFor(
@@ -153,11 +170,40 @@ export class AgentGoalQueryService {
         scopedEvidence,
         this.clock.now(),
         instructions,
-        true,
+        evaluationEvidenceIds,
       ),
       evidence: scopedEvidence.map((item) => structuredClone(item)),
     };
   }
+}
+
+async function loadEvaluationEvidence(
+  source: AgentGoalReadSource,
+  ownerId: string,
+  runtimeSessionId: string,
+  run: AgentGoalRun,
+  visibleEvidence: readonly GoalEvidence[],
+): Promise<GoalEvidence[]> {
+  const evidenceById = new Map(
+    visibleEvidence.map((item) => [item.id, item] as const),
+  );
+  const referencedIds = new Set(
+    run.lastEvaluation?.evidence.flatMap(
+      (association) => association.evidenceIds,
+    ) ?? [],
+  );
+  const missingIds = [...referencedIds].filter(
+    (evidenceId) => !evidenceById.has(evidenceId),
+  );
+  const missingEvidence = await Promise.all(
+    missingIds.map((evidenceId) =>
+      source.getEvidence(ownerId, runtimeSessionId, evidenceId),
+    ),
+  );
+  for (const item of missingEvidence) {
+    if (item) evidenceById.set(item.id, item);
+  }
+  return [...evidenceById.values()];
 }
 
 function indexLatestDeliveries(
@@ -230,7 +276,7 @@ function summaryFor(
   evidence: readonly GoalEvidence[],
   now: Date,
   instructions: readonly RuntimeInstruction[],
-  validateEvaluationEvidence: boolean,
+  evaluationEvidenceIds: ReadonlySet<string> | null,
 ): AgentGoalSummaryView {
   const goal = structuredClone(persistedGoal);
   const run = latestRun ? structuredClone(latestRun) : null;
@@ -241,7 +287,6 @@ function summaryFor(
   );
   const evaluationIsCurrent =
     run !== null && run.goalRevision >= evidenceRevisionFloor;
-  const scopedEvidenceIds = new Set(evidence.map((item) => item.id));
   const evaluationEvidenceByCriterion = new Map(
     run?.lastEvaluation?.evidence.map((association) => [
       association.criterionId,
@@ -249,14 +294,14 @@ function summaryFor(
     ]) ?? [],
   );
   const evaluationEvidenceIsCurrent =
-    !validateEvaluationEvidence ||
+    evaluationEvidenceIds === null ||
     run?.lastEvaluation === undefined ||
     run.lastEvaluation.satisfiedCriteria.every((criterionId) => {
       const evidenceIds = evaluationEvidenceByCriterion.get(criterionId);
       return (
         evidenceIds !== undefined &&
         evidenceIds.length > 0 &&
-        evidenceIds.every((evidenceId) => scopedEvidenceIds.has(evidenceId))
+        evidenceIds.every((evidenceId) => evaluationEvidenceIds.has(evidenceId))
       );
     });
   if (run && (!evaluationIsCurrent || !evaluationEvidenceIsCurrent)) {

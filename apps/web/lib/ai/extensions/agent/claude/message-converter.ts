@@ -1,4 +1,5 @@
 import type { AgentMessage } from "@melandlabs/ai/agent";
+import { stripGoalStepCompletionMarkers } from "@openloomi/ai/agent/runtime-instructions";
 
 /**
  * Claude's SDK can surface provider stream failures as a synthetic assistant
@@ -26,7 +27,7 @@ export interface ClaudeSdkMessageConversionOptions {
  * not be exposed to users.
  */
 export function sanitizeClaudeAgentText(text: string): string {
-  let sanitized = text;
+  let sanitized = stripGoalStepCompletionMarkers(text);
 
   // Only match explicit authentication errors. Generic process failures can
   // include similar words, so keep crash/timeout detection separate.

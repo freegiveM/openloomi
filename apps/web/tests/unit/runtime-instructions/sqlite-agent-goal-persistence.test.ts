@@ -10,7 +10,7 @@ import {
   createAgentGoal,
   reviseAgentGoal,
   transitionAgentGoal,
-} from "@melandlabs/ai/agent/runtime-instructions";
+} from "@openloomi/ai/agent/runtime-instructions";
 import Database from "better-sqlite3";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -24,13 +24,14 @@ import {
   SqliteRunRepository,
 } from "@/lib/ai/runtime-instructions/persistence/sqlite";
 import { persistedInstantIsStrictlyAfter } from "@/lib/ai/runtime-instructions/persistence/mapping";
+import { runSqliteMigrationWithForeignKeysDisabled } from "@/lib/db/sqlite-migration-foreign-keys";
 
 const OWNER_A = "10000000-0000-4000-8000-000000000001";
 const OWNER_B = "10000000-0000-4000-8000-000000000002";
 const SESSION_A = "sqlite-runtime-a";
 const SESSION_B = "sqlite-runtime-b";
 const NOW = new Date("2026-08-05T08:00:00.000Z");
-const MIGRATIONS = [
+const BASE_MIGRATIONS = [
   "0107_agent_goal_runtime.sql",
   "0108_agent_goal_runtime_recovery.sql",
 ].map((migration) =>
@@ -42,6 +43,13 @@ const MIGRATIONS = [
     ),
     "utf8",
   ),
+);
+const OPTIONAL_GOAL_LIMITS_MIGRATION = readFileSync(
+  join(
+    dirname(fileURLToPath(import.meta.url)),
+    "../../../lib/db/migrations-sqlite/0112_agent_goal_optional_limits.sql",
+  ),
+  "utf8",
 );
 
 const databases: Database.Database[] = [];
@@ -68,6 +76,7 @@ function goal(
   id = uuid(1),
   objective = "Persist the Goal atomically",
   now = NOW,
+  maxTurns: number | null = 8,
 ) {
   return createAgentGoal({
     id,
@@ -89,7 +98,7 @@ function goal(
       constraints: [],
       contextRefs: [],
       priority: 80,
-      maxTurns: 8,
+      ...(maxTurns === null ? {} : { maxTurns }),
       completionPolicy: "tool_evidence",
       source: { type: "user" },
     },
@@ -142,7 +151,10 @@ function createHarness() {
   databases.push(database);
   database.pragma("foreign_keys = ON");
   database.exec('CREATE TABLE "User" ("id" text PRIMARY KEY NOT NULL)');
-  for (const migration of MIGRATIONS) database.exec(migration);
+  for (const migration of BASE_MIGRATIONS) database.exec(migration);
+  runSqliteMigrationWithForeignKeysDisabled(database, () =>
+    database.transaction(() => database.exec(OPTIONAL_GOAL_LIMITS_MIGRATION))(),
+  );
   database
     .prepare('INSERT INTO "User" (id) VALUES (?), (?)')
     .run(OWNER_A, OWNER_B);
@@ -180,6 +192,33 @@ function count(database: Database.Database, table: string): number {
 }
 
 describe("SqliteAgentGoalState", () => {
+  it("persists an objective Goal without a deadline or usage limits", async () => {
+    const { database, state } = createHarness();
+    const unlimitedGoal = goal(
+      uuid(2),
+      "Complete an objective without artificial limits",
+      NOW,
+      null,
+    );
+
+    await state.commitActivation(activationInput(unlimitedGoal));
+
+    expect(
+      database
+        .prepare(
+          `SELECT deadline, max_turns AS maxTurns, max_tokens AS maxTokens,
+                  max_duration_seconds AS maxDurationSeconds
+             FROM agent_goals WHERE id = ?`,
+        )
+        .get(unlimitedGoal.id),
+    ).toEqual({
+      deadline: null,
+      maxTurns: null,
+      maxTokens: null,
+      maxDurationSeconds: null,
+    });
+  });
+
   it("atomically activates once and returns the exact commit on retry", async () => {
     const { database, state } = createHarness();
     const activation = activationInput();

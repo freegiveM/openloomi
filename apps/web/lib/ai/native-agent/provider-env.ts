@@ -14,6 +14,12 @@ interface ProviderResolutionOptions {
   preferencePath?: string;
 }
 
+export interface NativeAgentProviderRequestResolutionOptions
+  extends ProviderResolutionOptions {
+  /** Trusted provider persisted for this Runtime Session. */
+  trustedProviderOverride?: SelectableAgentRuntime;
+}
+
 export interface ConfiguredAgentProviderResolution {
   provider: AgentProvider;
   preference?: SelectableAgentRuntime;
@@ -61,12 +67,14 @@ export function getConfiguredAgentProviderResolution(
 export function resolveNativeAgentProviderRequest(
   body: NativeAgentRequest,
   env: EnvSource = process.env,
-  options: ProviderResolutionOptions = {},
+  options: NativeAgentProviderRequestResolutionOptions = {},
 ): NativeAgentRequest {
   // Runtime selection is deployment configuration, not an HTTP request
   // option. External CLI agents inherit host credentials and can execute local
   // tools, so allowing callers to switch providers would cross a trust boundary.
-  const provider = getConfiguredDefaultAgentProvider(env, options);
+  const provider =
+    options.trustedProviderOverride ??
+    getConfiguredDefaultAgentProvider(env, options);
 
   if (provider === HERMES_PROVIDER) {
     const hermesEnvConfig = resolveHermesEnvConfig(env);

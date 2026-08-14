@@ -9,6 +9,7 @@ import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { existsSync, mkdirSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import * as sqliteSchema from "../schema-sqlite";
+import { runSqliteMigrationWithForeignKeysDisabled } from "../sqlite-migration-foreign-keys";
 import type { DrizzleDB } from "../types";
 
 let db: DrizzleDB | null = null;
@@ -194,7 +195,9 @@ export function initSqliteDb(dbPath: string): DrizzleDB {
 
     // Automatically apply all pending migrations
     console.log(`   Applying migrations...`);
-    applyPendingMigrations(sqlite);
+    runSqliteMigrationWithForeignKeysDisabled(sqlite, () =>
+      applyPendingMigrations(sqlite),
+    );
     console.log(`   ✅ Migrations applied`);
 
     // Create Drizzle instance and cast to DrizzleDB type (using SQLite schema)
@@ -290,7 +293,9 @@ export async function runSqliteMigrations(
 
   console.log("🔄 Running SQLite migrations...");
 
-  await migrate(drizzleDb, { migrationsFolder });
+  runSqliteMigrationWithForeignKeysDisabled(sqlite, () =>
+    migrate(drizzleDb, { migrationsFolder }),
+  );
 
   console.log("✅ SQLite migrations completed");
 

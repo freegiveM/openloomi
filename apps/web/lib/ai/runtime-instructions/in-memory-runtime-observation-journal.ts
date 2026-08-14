@@ -16,7 +16,7 @@ import {
   type RuntimeIdGeneratorPort,
   type RuntimeInstruction,
   type RuntimeInstructionDelivery,
-} from "@melandlabs/ai/agent/runtime-instructions";
+} from "@openloomi/ai/agent/runtime-instructions";
 
 import { KeyedSerialExecutor } from "./keyed-serial-executor";
 import type {
@@ -280,6 +280,7 @@ export class InMemoryRuntimeObservationJournal implements RuntimeObservationJour
     ownerId: string;
     runtimeSessionId: string;
     runEpoch: number;
+    instructionId?: string;
   }): Promise<RuntimeObservationContext | null> {
     const ownerId = requiredIdentifier(input.ownerId, "ownerId");
     const runtimeSessionId = requiredIdentifier(
@@ -296,7 +297,9 @@ export class InMemoryRuntimeObservationJournal implements RuntimeObservationJour
       if (authoritativeEpoch !== runEpoch) return null;
       const session = this.sessions.get(scope);
       if (!session) return null;
-      return cloneContext(this.latestWrittenContext(session, runEpoch));
+      return cloneContext(
+        this.latestWrittenContext(session, runEpoch, input.instructionId),
+      );
     });
   }
 
@@ -949,11 +952,14 @@ export class InMemoryRuntimeObservationJournal implements RuntimeObservationJour
   private latestWrittenContext(
     session: RuntimeObservationSession,
     runEpoch: number,
+    instructionId?: string,
   ): RuntimeObservationContext | null {
     let latest: StoredDelivery | undefined;
     for (const stored of session.deliveries.values()) {
       if (
         stored.runEpoch !== runEpoch ||
+        (instructionId !== undefined &&
+          stored.instruction.id !== instructionId) ||
         isInterruptControl(stored.instruction) ||
         stored.delivery.goalRunId === undefined ||
         stored.instruction.goalId === undefined ||
@@ -1073,7 +1079,8 @@ export class InMemoryRuntimeObservationJournal implements RuntimeObservationJour
       stored.delivery,
       "applied",
       observedAt,
-      providerEventId,
+      retainedProviderInputEventId(stored.delivery.providerEventId) ??
+        providerEventId,
     );
   }
 
@@ -1212,6 +1219,15 @@ export class InMemoryRuntimeObservationJournal implements RuntimeObservationJour
     assertGoalRunStatusTransition(run.status, next);
     run.status = next;
   }
+}
+
+function retainedProviderInputEventId(
+  providerEventId: string | undefined,
+): string | undefined {
+  return providerEventId?.startsWith("codex:") &&
+    providerEventId.includes(":input:")
+    ? providerEventId
+    : undefined;
 }
 
 function parseInstruction(candidate: RuntimeInstruction): RuntimeInstruction {

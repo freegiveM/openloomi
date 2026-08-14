@@ -4,6 +4,7 @@ import type {
   AgentGoalDetailResponse,
   AgentGoalSessionResponse,
   RemoveGoalContextRequest,
+  PauseGoalRequest,
   ResumeGoalRequest,
   UpdateGoalRequest,
   UpsertGoalContextRequest,
@@ -69,6 +70,17 @@ export async function resumeAgentGoal(
 ): Promise<AgentGoalCommandResponse> {
   return requestJson(
     `/api/agent-goals/${encodeURIComponent(goalId)}/resume`,
+    commandRequest("POST", request, idempotencyKey),
+  );
+}
+
+export async function pauseAgentGoal(
+  goalId: string,
+  request: PauseGoalRequest,
+  idempotencyKey = crypto.randomUUID(),
+): Promise<AgentGoalCommandResponse> {
+  return requestJson(
+    `/api/agent-goals/${encodeURIComponent(goalId)}/pause`,
     commandRequest("POST", request, idempotencyKey),
   );
 }

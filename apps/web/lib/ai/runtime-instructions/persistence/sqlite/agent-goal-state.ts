@@ -20,7 +20,7 @@ import {
   type RuntimeInstructionDraft,
   GoalEvaluationResultSchema,
   canonicalJson,
-} from "@melandlabs/ai/agent/runtime-instructions";
+} from "@openloomi/ai/agent/runtime-instructions";
 
 import type { AgentGoalCommandCheckpoint } from "@/lib/db/agent-goal-runtime-schema-types";
 
@@ -1314,9 +1314,7 @@ export class SqliteAgentGoalState
         ? {}
         : {
             lastEvaluation:
-              input.lastEvaluation === null
-                ? undefined
-                : input.lastEvaluation,
+              input.lastEvaluation === null ? undefined : input.lastEvaluation,
           }),
     };
     if (!this.storage.updateRun(run, next, recordedAt)) {

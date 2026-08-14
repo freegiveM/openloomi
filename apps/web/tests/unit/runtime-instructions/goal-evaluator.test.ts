@@ -1,12 +1,13 @@
 import {
   AgentGoalSchema,
   createAgentGoal,
+  goalStepCompletionMarker,
   type AgentGoal,
   type AgentGoalRun,
   type GoalCompletionPolicy,
   type GoalEvidence,
   type GoalSuccessCriterion,
-} from "@melandlabs/ai/agent/runtime-instructions";
+} from "@openloomi/ai/agent/runtime-instructions";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -94,6 +95,36 @@ function evidence(
 }
 
 describe("GoalEvaluator", () => {
+  it("completes an agent-planned step from the selected Runtime's durable completion marker", async () => {
+    const agentGoal = goal([criterion("step-1", { type: "agent_report" })]);
+    const semantic = { evaluate: vi.fn() };
+    const reportEvidence = evidence(
+      "30000000-0000-4000-8000-000000000099",
+      agentGoal,
+      {
+        type: "agent_report",
+        summary: "The selected Runtime completed step 1",
+        payload: {
+          outputPreview: `${goalStepCompletionMarker("step-1")}\nImplemented and verified the requested result.`,
+        },
+      },
+    );
+
+    await expect(
+      new GoalEvaluator(semantic).evaluate({
+        goal: agentGoal,
+        run: run(agentGoal),
+        evidence: [reportEvidence],
+      }),
+    ).resolves.toMatchObject({
+      completed: true,
+      satisfiedCriteria: ["step-1"],
+      missingCriteria: [],
+      evidence: [{ criterionId: "step-1", evidenceIds: [reportEvidence.id] }],
+    });
+    expect(semantic.evaluate).not.toHaveBeenCalled();
+  });
+
   it("completes from matching command and tool evidence while optional criteria do not block", async () => {
     const agentGoal = goal([
       criterion("tests-pass", {
@@ -607,17 +638,13 @@ describe("GoalEvaluator", () => {
         goalRevision: 3,
       },
     );
-    const future = evidence(
-      "30000000-0000-4000-8000-000000000022",
-      agentGoal,
-      {
-        type: "test_result",
-        success: true,
-        summary: "Test belongs to a future Goal revision",
-        payload: { command: "pnpm vitest run", exitCode: 0 },
-        goalRevision: 6,
-      },
-    );
+    const future = evidence("30000000-0000-4000-8000-000000000022", agentGoal, {
+      type: "test_result",
+      success: true,
+      summary: "Test belongs to a future Goal revision",
+      payload: { command: "pnpm vitest run", exitCode: 0 },
+      goalRevision: 6,
+    });
 
     const result = await new GoalEvaluator().evaluate({
       goal: agentGoal,
@@ -630,13 +657,11 @@ describe("GoalEvaluator", () => {
       completed: true,
       satisfiedCriteria: ["tests-pass"],
       missingCriteria: [],
-      evidence: [
-        { criterionId: "tests-pass", evidenceIds: [lifecycleEra.id] },
-      ],
+      evidence: [{ criterionId: "tests-pass", evidenceIds: [lifecycleEra.id] }],
     });
   });
 
-  it("keeps criteria with unscoped semantic evidence unsatisfied", async () => {
+  it("does not accept a later step before the current semantic step", async () => {
     const agentGoal = goal(
       [
         criterion("behavior-correct", { type: "model_evidence" }),
@@ -654,25 +679,22 @@ describe("GoalEvaluator", () => {
         payload: {},
       },
     );
-    const foreignEvidence = new GoalEvaluator({
-      evaluate: async () => ({
+    const semantic = {
+      evaluate: vi.fn(async () => ({
         completed: true,
         confidence: 0.8,
-        satisfiedCriteria: ["behavior-correct", "tests-pass"],
+        satisfiedCriteria: ["behavior-correct"],
         missingCriteria: [],
         evidence: [
           {
             criterionId: "behavior-correct",
             evidenceIds: ["40000000-0000-4000-8000-000000000001"],
           },
-          {
-            criterionId: "tests-pass",
-            evidenceIds: [reportEvidence.id],
-          },
         ],
         reason: "Referenced evidence is outside the snapshot.",
-      }),
-    });
+      })),
+    } satisfies GoalSemanticEvaluatorPort;
+    const foreignEvidence = new GoalEvaluator(semantic);
     const result = await foreignEvidence.evaluate({
       goal: agentGoal,
       run: run(agentGoal),
@@ -681,12 +703,15 @@ describe("GoalEvaluator", () => {
 
     expect(result).toMatchObject({
       completed: false,
-      satisfiedCriteria: ["tests-pass"],
-      missingCriteria: ["behavior-correct"],
-      evidence: [
-        { criterionId: "tests-pass", evidenceIds: [reportEvidence.id] },
-      ],
+      satisfiedCriteria: [],
+      missingCriteria: ["behavior-correct", "tests-pass"],
+      evidence: [],
     });
+    expect(semantic.evaluate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        criteria: [expect.objectContaining({ id: "behavior-correct" })],
+      }),
+    );
     expect(result.reason).toContain(
       "affected criteria remain unsatisfied: behavior-correct",
     );
@@ -781,16 +806,16 @@ describe("GoalEvaluator", () => {
         reason: "A missing criterion must not receive evidence associations.",
       }),
     });
-    await expect(evidenceForMissingCriterion.evaluate(input)).resolves.toMatchObject(
-      {
-        completed: false,
-        satisfiedCriteria: [],
-        missingCriteria: ["behavior-correct"],
-        evidence: [],
-        reason: expect.stringContaining(
-          "Invalid semantic evidence associations outside the delegated criteria were ignored",
-        ),
-      },
-    );
+    await expect(
+      evidenceForMissingCriterion.evaluate(input),
+    ).resolves.toMatchObject({
+      completed: false,
+      satisfiedCriteria: [],
+      missingCriteria: ["behavior-correct"],
+      evidence: [],
+      reason: expect.stringContaining(
+        "Invalid semantic evidence associations outside the delegated criteria were ignored",
+      ),
+    });
   });
 });

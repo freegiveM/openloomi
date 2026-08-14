@@ -1,11 +1,12 @@
-import type {
-  AgentGoalRun,
-  GoalEvidence,
-  PersistedAgentGoal,
-  RuntimeProvider,
-  RuntimeSessionState,
-  RuntimeInstruction,
-} from "@melandlabs/ai/agent/runtime-instructions";
+import {
+  RuntimeProviderSchema,
+  type AgentGoalRun,
+  type GoalEvidence,
+  type PersistedAgentGoal,
+  type RuntimeInstruction,
+  type RuntimeProvider,
+  type RuntimeSessionState,
+} from "@openloomi/ai/agent/runtime-instructions";
 
 import type {
   AgentGoalCommandCheckpoint,
@@ -86,7 +87,7 @@ const DELIVERY_ONLY_RECOVERY_PREDICATE = `(
 )`;
 
 /**
- * A Goal created while no Claude transport is attached has not crashed: it is
+ * A Goal created while no provider transport is attached has not crashed: it is
  * waiting for the next ordinary Runtime to claim the Session and replay its
  * pristine outbox. Keep this stricter than "no provider session" so an
  * abandoned lease, provider-visible delivery, or any execution evidence still
@@ -355,11 +356,7 @@ export class SqliteGoalRuntimeStore {
     return {
       ownerId: requiredString(row.owner_id, "runtime session owner_id"),
       runtimeSessionId: requiredString(row.id, "runtime session id"),
-      provider: requiredLiteral(
-        row.provider,
-        "claude",
-        "runtime session provider",
-      ),
+      provider: RuntimeProviderSchema.parse(row.provider),
       state: requiredSessionState(row.state),
       runEpoch: requiredInteger(row.run_epoch, "runtime session run_epoch", 0),
       lastInstructionSequence: requiredInteger(
@@ -440,14 +437,15 @@ export class SqliteGoalRuntimeStore {
   }
 
   getSessionByProviderSessionId(
+    provider: RuntimeProvider,
     providerSessionId: string,
   ): SqliteGoalSessionRecord | null {
     const row = this.client
       .prepare(
         `SELECT owner_id, id FROM agent_runtime_sessions
-          WHERE provider = 'claude' AND provider_session_id = ?`,
+          WHERE provider = ? AND provider_session_id = ?`,
       )
-      .get(providerSessionId) as RawRow | undefined;
+      .get(provider, providerSessionId) as RawRow | undefined;
     if (!row) return null;
     return this.getSession(
       requiredString(row.owner_id, "runtime session owner_id"),
@@ -464,6 +462,8 @@ export class SqliteGoalRuntimeStore {
   insertSession(input: {
     ownerId: string;
     runtimeSessionId: string;
+    provider: RuntimeProvider;
+    state: "starting" | "idle";
     workingDirectory?: string;
     recoveryDescriptor?: object;
     recordedAtSeconds: number;
@@ -473,11 +473,13 @@ export class SqliteGoalRuntimeStore {
         `INSERT INTO agent_runtime_sessions
            (id, owner_id, provider, state, working_directory,
             recovery_descriptor, created_at, updated_at)
-         VALUES (?, ?, 'claude', 'starting', ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         input.runtimeSessionId,
         input.ownerId,
+        input.provider,
+        input.state,
         input.workingDirectory ?? null,
         serializeJson(input.recoveryDescriptor),
         input.recordedAtSeconds,
@@ -607,7 +609,7 @@ export class SqliteGoalRuntimeStore {
    * Owner-scoped read model for the desktop recovery UI. Unlike
    * `listRecoverableSessionIds`, this intentionally includes a session whose
    * recovery lease is currently held: that is the session the restarted UI
-   * must keep displaying while the coordinator is consuming Claude output.
+   * must keep displaying while the coordinator consumes provider output.
    */
   listRecoveryPresentationSessionIds(ownerId: string, limit: number): string[] {
     return this.client
@@ -1857,15 +1859,6 @@ function mapEvidenceRow(row: RawRow): GoalEvidence {
 
 function isGoalSlotState(value: string): value is AgentGoalSlotState {
   return value === "assigned" || value === "reserved" || value === "released";
-}
-
-function requiredLiteral<T extends string>(
-  value: unknown,
-  expected: T,
-  field: string,
-): T {
-  if (value !== expected) throw new Error(`Invalid persisted ${field}`);
-  return expected;
 }
 
 function requiredSessionState(value: unknown): RuntimeSessionState {

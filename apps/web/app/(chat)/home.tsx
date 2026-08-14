@@ -129,6 +129,7 @@ export function Home() {
     previewFile,
     closeFilePreviewPanel,
     sendMessage,
+    stopChat,
   } = useChatContext();
 
   // Progressive authorization state
@@ -681,6 +682,13 @@ export function Home() {
                   <AgentGoalSidePanel
                     key={effectiveChatId}
                     runtimeSessionId={effectiveChatId}
+                    chatBusy={isAgentRunning}
+                    onGoalCreated={async (objective) => {
+                      await sendMessage({
+                        parts: [{ type: "text", text: objective }],
+                      });
+                    }}
+                    onGoalPaused={() => stopChat(effectiveChatId)}
                     onClose={() => setIsGoalPanelOpen(false)}
                   />
                 </div>
@@ -699,6 +707,13 @@ export function Home() {
                 <AgentGoalSidePanel
                   key={effectiveChatId}
                   runtimeSessionId={effectiveChatId}
+                  chatBusy={isAgentRunning}
+                  onGoalCreated={async (objective) => {
+                    await sendMessage({
+                      parts: [{ type: "text", text: objective }],
+                    });
+                  }}
+                  onGoalPaused={() => stopChat(effectiveChatId)}
                 />
               </SheetContent>
             </Sheet>

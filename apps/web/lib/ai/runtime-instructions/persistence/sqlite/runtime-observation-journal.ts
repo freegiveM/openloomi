@@ -15,7 +15,7 @@ import {
   type RuntimeDeliveryReceipt,
   type RuntimeIdGeneratorPort,
   type RuntimeInstruction,
-} from "@melandlabs/ai/agent/runtime-instructions";
+} from "@openloomi/ai/agent/runtime-instructions";
 
 import { KeyedSerialExecutor } from "../../keyed-serial-executor";
 import type {
@@ -406,6 +406,7 @@ export class SqliteRuntimeObservationJournal implements RuntimeObservationJourna
     ownerId: string;
     runtimeSessionId: string;
     runEpoch: number;
+    instructionId?: string;
   }): Promise<RuntimeObservationContext | null> {
     return this.serial.run(scope(input.ownerId, input.runtimeSessionId), () =>
       this.database.immediate((store) => {
@@ -416,6 +417,7 @@ export class SqliteRuntimeObservationJournal implements RuntimeObservationJourna
               input.ownerId,
               input.runtimeSessionId,
               input.runEpoch,
+              input.instructionId,
             )
           : null;
       }),
@@ -570,7 +572,9 @@ export class SqliteRuntimeObservationJournal implements RuntimeObservationJourna
                   "observed",
                   parsed.observedAt,
                   {
-                    providerEventId: parsed.providerEventId,
+                    providerEventId:
+                      retainedProviderInputEventId(delivery.providerEventId) ??
+                      parsed.providerEventId,
                   },
                 );
               }
@@ -581,7 +585,9 @@ export class SqliteRuntimeObservationJournal implements RuntimeObservationJourna
                   "applied",
                   parsed.observedAt,
                   {
-                    providerEventId: parsed.providerEventId,
+                    providerEventId:
+                      retainedProviderInputEventId(delivery.providerEventId) ??
+                      parsed.providerEventId,
                   },
                 );
               }
@@ -997,6 +1003,15 @@ export class SqliteRuntimeObservationJournal implements RuntimeObservationJourna
   }
 }
 
+function retainedProviderInputEventId(
+  providerEventId: string | undefined,
+): string | undefined {
+  return providerEventId?.startsWith("codex:") &&
+    providerEventId.includes(":input:")
+    ? providerEventId
+    : undefined;
+}
+
 function requireCanonicalInstruction(
   store: SqliteGoalRuntimeStore,
   ownerId: string,
@@ -1098,6 +1113,7 @@ function latestContext(
   ownerId: string,
   runtimeSessionId: string,
   runEpoch: number,
+  instructionId?: string,
 ): RuntimeObservationContext | null {
   const active = store.getAssignedPrimaryGoal(ownerId, runtimeSessionId);
   if (active?.persistedGoal.goal.status !== "active") return null;
@@ -1108,6 +1124,7 @@ function latestContext(
     .sort((left, right) => right.sequence - left.sequence);
   for (const instruction of candidates) {
     if (
+      (instructionId !== undefined && instruction.id !== instructionId) ||
       instruction.goalId === undefined ||
       instruction.goalRevision === undefined
     )
@@ -1124,7 +1141,7 @@ function latestContext(
     if (
       run?.goalId !== active.persistedGoal.goal.id ||
       run.goalRevision !== active.persistedGoal.goal.revision ||
-      run.goalRevision !== instruction.goalRevision ||
+      run.goalRevision < instruction.goalRevision ||
       run.status === "paused" ||
       run.status === "blocked" ||
       isTerminalRun(run.status)
@@ -1265,10 +1282,17 @@ function assertSameProviderEvent(
   observed: RuntimeProviderEventObservation,
   eventFingerprint: string,
 ): void {
+  // Older receipts included usage in the hash. Codex history has no matching
+  // per-turn usage snapshot, but the exact provider terminal ID is sufficient
+  // to treat its no-evidence replay as the already-applied terminal.
+  const replayableTerminal =
+    observed.terminal === true &&
+    observed.providerEventId.startsWith("codex:") &&
+    (observed.evidence?.length ?? 0) === 0;
   if (
     existing.providerEventId !== observed.providerEventId ||
     existing.providerSessionId !== observed.providerSessionId ||
-    existing.eventFingerprint !== eventFingerprint
+    (existing.eventFingerprint !== eventFingerprint && !replayableTerminal)
   ) {
     throw persistenceConflict(
       `Provider event key ${observed.eventKey} was reused with different event data`,
@@ -1282,8 +1306,15 @@ function providerEventFingerprint(
   // `observedAt` is assigned by the local observer. A provider can replay the
   // same durable event after restart with a new observation timestamp, so it
   // must not participate in identity. Evidence timestamps are observer-local
-  // for the same reason; all semantic payload fields remain fenced.
-  const { observedAt: _observedAt, evidence, ...stable } = observed;
+  // for the same reason; evidence content remains fenced.
+  // Usage is a process-local projection of Codex's cumulative counters. A
+  // historical turn replay may not include the original usage snapshot.
+  const {
+    observedAt: _observedAt,
+    usage: _usage,
+    evidence,
+    ...stable
+  } = observed;
   return createHash("sha256")
     .update(
       canonicalJson({

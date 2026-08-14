@@ -1,4 +1,4 @@
-import { runNativeAgentCliMain } from "@melandlabs/ai/agent/native-cli";
+import { runNativeAgentCliMain } from "@openloomi/ai/agent/native-cli";
 
 import { nativeAgentHost } from "@/lib/ai/native-agent/host";
 

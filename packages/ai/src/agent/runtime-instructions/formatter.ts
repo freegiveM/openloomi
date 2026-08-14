@@ -1,4 +1,5 @@
 import { RuntimeInstructionSchema } from "./schema";
+import { goalStepCompletionMarker } from "./constants";
 import type {
   AgentGoal,
   GoalConstraint,
@@ -34,9 +35,9 @@ function formatInstructionEnvelope(
   ] as const;
 
   return [
-    `<openloomi_runtime_instruction${formatAttributes(attributes)}>`,
+    `<opencontext_runtime_instruction${formatAttributes(attributes)}>`,
     body,
-    "</openloomi_runtime_instruction>",
+    "</opencontext_runtime_instruction>",
   ].join("\n");
 }
 
@@ -110,13 +111,18 @@ function formatGoal(goal: AgentGoal): string {
 
   return [
     `Objective:\n${escapeText(goal.objective)}`,
-    `Success criteria:\n${requiredCriteria.join("\n")}`,
+    `Execution steps (complete in order):\n${requiredCriteria.join("\n")}`,
+    formatStepCompletionProtocol(
+      goal.successCriteria.find(
+        (criterion) =>
+          criterion.required && criterion.verification.type === "agent_report",
+      ),
+    ),
     formatConstraintGroup("Model guidance", modelGuidance),
     formatConstraintGroup(
       "Runtime-enforced constraints (enforced outside the model)",
       runtimeConstraints,
     ),
-    `Execution limits:\n${formatExecutionLimits(goal).join("\n")}`,
     `Completion policy: ${goal.completionPolicy}`,
   ]
     .filter((section): section is string => section !== undefined)
@@ -147,6 +153,7 @@ function formatVerification(
   verification: AgentGoal["successCriteria"][number]["verification"],
 ): string {
   switch (verification.type) {
+    case "agent_report":
     case "model_evidence":
     case "manual":
       return verification.type;
@@ -179,23 +186,6 @@ function formatConstraint(constraint: GoalConstraint): string {
     .join("\n");
 }
 
-function formatExecutionLimits(goal: AgentGoal): string[] {
-  return [
-    goal.maxTurns === undefined
-      ? undefined
-      : `- Maximum turns: ${goal.maxTurns}`,
-    goal.maxTokens === undefined
-      ? undefined
-      : `- Maximum tokens: ${goal.maxTokens}`,
-    goal.maxDurationSeconds === undefined
-      ? undefined
-      : `- Maximum duration: ${goal.maxDurationSeconds} seconds`,
-    goal.deadline === undefined
-      ? undefined
-      : `- Deadline: ${escapeText(goal.deadline)}`,
-  ].filter((line): line is string => line !== undefined);
-}
-
 function formatLifecycleAction(action: string, reason?: string): string {
   return reason ? `${action}\nReason: ${escapeText(reason)}` : action;
 }
@@ -209,26 +199,27 @@ function formatContinuation(
         `${index + 1}. ${escapeText(criterion.description)} [${escapeText(criterion.id)}]`,
     )
     .join("\n");
-  const budget = [
-    ["turns", instruction.payload.remainingBudget.turns],
-    ["tokens", instruction.payload.remainingBudget.tokens],
-    ["durationSeconds", instruction.payload.remainingBudget.durationSeconds],
-    ["deadline", instruction.payload.remainingBudget.deadline],
-  ] as const;
-  const formattedBudget = budget
-    .flatMap(([key, value]) =>
-      value === undefined
-        ? []
-        : [`- ${escapeText(key)}: ${escapeText(String(value))}`],
-    )
-    .join("\n");
-
   return [
     `Action: Continue working on Goal revision ${instruction.goalRevision}.`,
-    `Missing criteria:\n${missing}`,
+    `Current execution step:\n${missing}`,
+    "Finish this step before starting a later step.",
+    formatStepCompletionProtocol(instruction.payload.missingCriteria[0]),
     `Evaluation reason:\n${escapeText(instruction.payload.reason)}`,
-    `Remaining budget:\n${formattedBudget}`,
-  ].join("\n\n");
+  ]
+    .filter((section): section is string => section !== undefined)
+    .join("\n\n");
+}
+
+function formatStepCompletionProtocol(
+  criterion: Pick<AgentGoal["successCriteria"][number], "id"> | undefined,
+): string | undefined {
+  if (!criterion) return undefined;
+  const marker = goalStepCompletionMarker(criterion.id);
+  return [
+    "Work only on this current step; do not start a later step yet.",
+    `When and only when the current step is fully complete, begin the final assistant response with this exact line: ${marker}`,
+    "If the step is incomplete, do not emit that line.",
+  ].join("\n");
 }
 
 function relatedContext(
@@ -264,9 +255,9 @@ function formatUntrustedContextBlock(context: GoalContextReference): string {
   ].filter((line): line is string => line !== undefined);
 
   return [
-    `<openloomi_untrusted_context${formatAttributes(attributes)}>`,
+    `<opencontext_untrusted_context${formatAttributes(attributes)}>`,
     body.length > 0 ? body.join("\n\n") : "No context snapshot was provided.",
-    "</openloomi_untrusted_context>",
+    "</opencontext_untrusted_context>",
   ].join("\n");
 }
 

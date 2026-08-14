@@ -1,7 +1,7 @@
 import {
   GoalEvaluationResultSchema,
   type GoalEvaluationResult,
-} from "@melandlabs/ai/agent/runtime-instructions";
+} from "@openloomi/ai/agent/runtime-instructions";
 
 import type { LlmProvider } from "@/lib/ai/provider";
 import type {

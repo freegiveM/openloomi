@@ -427,8 +427,10 @@ export interface AgentRuntimeRecovery {
    * coordinator verified that every canonical instruction remains retryable.
    */
   instructionSettlements: readonly AgentRuntimeInstructionSettlement[];
+  /** Canonical instructions left retryable by the durable recovery claim. */
+  replayableInstructionIds: readonly string[];
   /**
-   * Called only after Claude confirms that the expected provider session was
+   * Called only after the runtime confirms that the expected provider session was
    * resumed and any settlement-aware outbox replay has finished. The host may
    * repair an interrupted evaluation and ask the attached GoalController for
    * one canonical continuation through `continueGoal`.
@@ -437,6 +439,8 @@ export interface AgentRuntimeRecovery {
     runtimeSessionId: string;
     providerSessionId: string;
     runEpoch: number;
+    /** True when registration actually replayed at least one outbox instruction. */
+    replayedInstructions?: boolean;
     continueGoal: () => Promise<AgentRuntimeRecoveryContinuationResult>;
     /**
      * Evaluates durable evidence after provider loss without producing another
@@ -482,6 +486,14 @@ export type AgentRuntimeRecoveryGoalFinalizationResult = {
 export interface AgentOptions {
   /** Session ID for continuing conversations */
   sessionId?: string;
+  /**
+   * Trusted Goal Runtime attachment selected by the host.
+   *
+   * `undefined` preserves the legacy behavior of using `sessionId`, a string
+   * pins a different Runtime Session, and `null` deliberately runs an
+   * ordinary chat turn without attaching it to a paused Goal.
+   */
+  goalRuntimeSessionId?: string | null;
   /** User session for authentication and context (used for business tools) */
   session?: any; // Session from next-auth
   /** Cloud auth token for embeddings API (needed in native mode) */

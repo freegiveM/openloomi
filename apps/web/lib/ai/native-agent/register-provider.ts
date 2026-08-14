@@ -1,7 +1,7 @@
-import { getAgentRegistry } from "@melandlabs/ai/agent";
-import { NativeAgentRequestError } from "@melandlabs/ai/agent/native-runner";
-import type { AgentPlugin } from "@melandlabs/ai/agent";
-import type { AgentProvider } from "@melandlabs/ai/agent";
+import { NativeAgentRequestError } from "@openloomi/ai/agent/native-runner";
+import type { AgentPlugin } from "@openloomi/ai/agent/plugin";
+import { getAgentRegistry } from "@openloomi/ai/agent/registry";
+import type { AgentProvider } from "@openloomi/ai/agent/types";
 
 type ProviderLoader = () => Promise<AgentPlugin>;
 

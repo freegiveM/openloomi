@@ -16,15 +16,14 @@ export default defineConfig({
         find: "@openloomi/ui/*",
         replacement: alias("./components/ui/*"),
       },
-      // `packages/ai/src/agent/*` stays local. The 7 remaining
-      // `@openloomi/ai/agent/*` imports in tests must resolve here.
+      // Goal Runtime extensions stay local until the published package catches up.
       {
-        find: "@openloomi/ai/agent",
-        replacement: alias("../packages/ai/src/agent/index.ts"),
+        find: /^@openloomi\/ai\/agent\/(.+)$/,
+        replacement: `${alias("../../packages/ai/src/agent")}/$1`,
       },
       {
-        find: "@openloomi/ai/agent/*",
-        replacement: alias("../packages/ai/src/agent/*"),
+        find: "@openloomi/ai/agent",
+        replacement: alias("../../packages/ai/src/agent/index.ts"),
       },
       { find: "@", replacement: alias(".") },
     ],
