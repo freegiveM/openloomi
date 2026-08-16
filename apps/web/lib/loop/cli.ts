@@ -11,7 +11,8 @@
  *   tick [--userId <id>]       run one tick (signals → classify → enqueue)
  *   analyze                    alias for `tick`
  *   inbox [--status=X]         list decisions (default: all)
- *   run <id> [--dry]           invoke agent on a decision
+ *   run <id> [--dry] [--userId <id>]
+ *                              invoke agent on a decision
  *   dismiss <id> [reason]      move decision → dismissed
  *   promote <id>               dismissed → pending
  *   status                     aggregated loop state
@@ -84,7 +85,8 @@ Commands:
   tick [--userId <id>]       run one tick (default: agentic)
   analyze                    alias for tick
   inbox [--status=X]         list decisions (default: all)
-  run <id> [--dry]           invoke agent on a decision
+  run <id> [--dry] [--userId <id>]
+                             invoke agent on a decision
   dismiss <id> [reason]      dismiss a decision
   promote <id>               dismissed → pending
   status                     aggregated state
@@ -134,8 +136,21 @@ async function main(): Promise<number> {
           return 3;
         }
         const dry = !!args.flags.dry;
+        const userId =
+          typeof args.flags.userId === "string"
+            ? args.flags.userId.trim()
+            : undefined;
+        const decision = decisions.get(id);
+        if (!dry && decision?.action.kind === "agent_goal" && !userId) {
+          process.stderr.write("run: --userId required for agent_goal\n");
+          return 3;
+        }
         const action: "run" | "dry" = dry ? "dry" : "run";
-        const out = await applyDecisionAction(id, { action });
+        const out = await applyDecisionAction(
+          id,
+          { action },
+          userId ? { ownerId: userId } : undefined,
+        );
         process.stdout.write(JSON.stringify(out, null, 2));
         return out.ok ? 0 : 1;
       }

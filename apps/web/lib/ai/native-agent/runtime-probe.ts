@@ -22,6 +22,10 @@ import {
   shouldDetachCliProcess,
   terminateCliProcessTree,
 } from "@/lib/ai/extensions/agent/cli-process";
+import {
+  resolveCodexCommand,
+  type ResolveCodexCommandOptions,
+} from "@/lib/ai/extensions/agent/codex/command-resolver";
 import { createLogger } from "@/lib/utils/logger";
 import { APP_DIR_NAME } from "@/lib/env/config/constants";
 
@@ -384,10 +388,13 @@ function isAuthCommandUnavailable(result: ProbeResult): boolean {
 async function probeCliRuntime<
   Provider extends "claude" | "codex",
   Status extends string,
->(definition: RuntimeDefinition<Provider, Status>) {
-  const resolved = resolveCliPath(
-    definition as RuntimeDefinition<"claude" | "codex", string>,
-  );
+>(
+  definition: RuntimeDefinition<Provider, Status>,
+  resolvedOverride?: ResolvedCliPath,
+) {
+  const resolved =
+    resolvedOverride ??
+    resolveCliPath(definition as RuntimeDefinition<"claude" | "codex", string>);
   const base = { checked: true as const, provider: definition.provider };
 
   if (!resolved.path) {
@@ -521,7 +528,10 @@ export async function probeNativeClaudeRuntime(
 }
 
 export async function probeNativeCodexRuntime(
-  options: { force?: boolean } = {},
+  options: {
+    force?: boolean;
+    resolverOptions?: Omit<ResolveCodexCommandOptions, "configuredCommand">;
+  } = {},
 ): Promise<CodexRuntimeProbe | null> {
   if (
     !options.force &&
@@ -532,7 +542,7 @@ export async function probeNativeCodexRuntime(
   }
   if (codexInFlight) return codexInFlight;
 
-  const operation = probeCliRuntime({
+  const definition: RuntimeDefinition<"codex", CodexRuntimeStatus> = {
     provider: "codex",
     binary: "codex",
     explicitCommand: process.env.OPENLOOMI_AGENT_CODEX_COMMAND,
@@ -547,7 +557,27 @@ export async function probeNativeCodexRuntime(
       versionTimeout: "CODEX_CLI_VERSION_TIMEOUT",
       unavailable: "CODEX_CLI_UNAVAILABLE",
     },
-  }).then((result) => {
+  };
+  const operation = (async () => {
+    try {
+      return await probeCliRuntime(
+        definition,
+        resolveCodexProbePath(options.resolverOptions),
+      );
+    } catch (error) {
+      logger.warn(
+        `[NativeAgentRuntime] Codex command resolution failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return probeCliRuntime(definition, {
+        path: null,
+        source: null,
+        searchPath: "",
+        argsPrefix: [],
+      });
+    }
+  })().then((result) => {
     codexCache = { at: Date.now(), value: result };
     return result;
   });
@@ -557,6 +587,29 @@ export async function probeNativeCodexRuntime(
   } finally {
     if (codexInFlight === operation) codexInFlight = null;
   }
+}
+
+function resolveCodexProbePath(
+  options: Omit<ResolveCodexCommandOptions, "configuredCommand"> = {},
+): ResolvedCliPath {
+  const searchPath =
+    options.searchPath ??
+    buildAgentCliSearchPath(options.basePath, {
+      platform: options.platform,
+      homeDirectory: options.homeDirectory,
+      localAppData: options.localAppData,
+    });
+  const explicit = process.env.OPENLOOMI_AGENT_CODEX_COMMAND?.trim();
+  return {
+    path: resolveCodexCommand({
+      ...options,
+      configuredCommand: explicit,
+      searchPath,
+    }),
+    source: explicit ? "OPENLOOMI_AGENT_CODEX_COMMAND" : "PATH",
+    searchPath,
+    argsPrefix: [],
+  };
 }
 
 export function clearNativeClaudeRuntimeCache(): void {

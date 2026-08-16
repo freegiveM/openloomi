@@ -73,6 +73,7 @@ describe("buildTickPrompt with custom extensions", () => {
     expect(prompt).not.toContain(
       "User-defined channels (custom signal sources)",
     );
+    expect(prompt).not.toContain("### Agent Goal action");
   });
 
   it("includes a custom type in the classifier list", () => {
@@ -89,6 +90,20 @@ describe("buildTickPrompt with custom extensions", () => {
     expect(prompt).toContain("`pr_followup`");
     expect(prompt).toContain("PR follow-up");
     expect(prompt).toContain("`im_reply`");
+  });
+
+  it("documents agent_goal only when a custom extension selects it", () => {
+    customTypes.upsert({
+      id: "launch_goal",
+      label: "Launch goal",
+      icon: "ri-focus-3-line",
+      actionKind: "agent_goal",
+      createdAt: new Date().toISOString(),
+    });
+    const prompt = buildTickPrompt();
+    expect(prompt).toContain("### Agent Goal action");
+    expect(prompt).toContain("Never upgrade ordinary `todo`");
+    expect(prompt).toContain("decision `title` becomes the Goal objective");
   });
 
   it("includes a custom channel in the signal sources block", () => {

@@ -43,7 +43,20 @@ import { ChatHistorySidePanel } from "@/components/agent/chat-history-side-panel
 import { AgentGoalSidePanel } from "@/components/agent/goal-side-panel";
 import type { ChatHistoryResponse } from "@/lib/ai/chat/api";
 import { selectStartupChat } from "@/lib/ai/chat/startup-selection";
-import type { AgentGoalRecoverySessionsResponse } from "@/lib/ai/runtime-instructions/api";
+import type {
+  AgentGoalCommandResponse,
+  AgentGoalRecoverySessionsResponse,
+} from "@/lib/ai/runtime-instructions/api";
+import {
+  activateAgentGoal,
+  agentGoalSessionUrl,
+} from "@/lib/ai/runtime-instructions/api/client";
+import {
+  activateGoalWithChatFallback,
+  createGoalCommandIdempotencyKeys,
+  createGoalStartSingleFlight,
+} from "@/lib/ai/runtime-instructions/goal-ui-model";
+import { toast } from "@/components/toast";
 import { decodeSearchParamText } from "@/lib/chat/query-text";
 import useSWR, { mutate } from "swr";
 import useSWRInfinite from "swr/infinite";
@@ -116,20 +129,29 @@ export function Home() {
     false,
   );
   const [isGoalPanelOpen, setIsGoalPanelOpen] = useState(false);
+  const [goalPanelFocusRequest, setGoalPanelFocusRequest] = useState(0);
+  const [goalCommandKeys] = useState(createGoalCommandIdempotencyKeys);
+  const [goalStartSingleFlight] = useState(() =>
+    createGoalStartSingleFlight<AgentGoalCommandResponse>(),
+  );
+  const [goalPlanningBySession, setGoalPlanningBySession] = useState<
+    Record<string, string>
+  >({});
+  const [claimedStartupChatId, setClaimedStartupChatId] = useState<
+    string | null
+  >(null);
   const isMobile = useIsMobile();
 
   // Get state from ChatContext
   const {
-    messages,
     setMessages,
-    isAgentRunning,
-    isSending,
     activeChatId,
     switchChatId,
     previewFile,
     closeFilePreviewPanel,
     sendMessage,
     stopChat,
+    getIsAgentRunningByChatId,
   } = useChatContext();
 
   // Progressive authorization state
@@ -200,7 +222,7 @@ export function Home() {
       shouldReadRecoverySessions ? "/api/agent-goals/runtime-sessions" : null,
       fetcher,
       {
-        refreshInterval: 2000,
+        refreshInterval: (data) => (data?.sessions.length ? 2_000 : 0),
         revalidateOnFocus: true,
         dedupingInterval: 1000,
       },
@@ -212,6 +234,9 @@ export function Home() {
         pathname,
         page,
         urlChatId,
+        claimedChatId: claimedStartupChatId ?? undefined,
+        forceNewChat:
+          !urlChatId && Boolean(initialMessageToSend || initialInput),
         recoveryLoaded:
           !shouldReadRecoverySessions ||
           recoverySessions !== undefined ||
@@ -222,6 +247,9 @@ export function Home() {
       }),
     [
       activeChatId,
+      claimedStartupChatId,
+      initialInput,
+      initialMessageToSend,
       page,
       pathname,
       recoverySessions,
@@ -231,15 +259,31 @@ export function Home() {
     ],
   );
   const effectiveChatId = startupSelection.chatId;
+  const isChatPage =
+    page === "chat" || (pathname === "/" && page === null);
+  const claimStartupChat = useCallback(
+    (chatId: string) => {
+      if (pathname === "/" && page === null) {
+        setClaimedStartupChatId(chatId);
+      }
+    },
+    [page, pathname],
+  );
+  const claimEffectiveChat = useCallback(() => {
+    if (effectiveChatId) claimStartupChat(effectiveChatId);
+  }, [claimStartupChat, effectiveChatId]);
   const selectedRecoverySession = recoverySessions?.sessions.find(
     (session) => session.runtimeSessionId === effectiveChatId,
   );
   const isSelectedRecoveryActive = selectedRecoverySession !== undefined;
-  const recoveryPresentationPending =
-    shouldReadRecoverySessions &&
-    recoverySessions === undefined &&
-    recoverySessionsError === undefined;
+  // Recovery discovery must not lock unrelated chats while the read model is
+  // compiling or loading. The server-side runtime lease rejects a conflicting
+  // provider start for the one session that is actually being recovered.
   const recoverySessionsLoaded = recoverySessions !== undefined;
+  const isEffectiveChatRunning = effectiveChatId
+    ? getIsAgentRunningByChatId(effectiveChatId)
+    : false;
+  const goalChatBusy = isEffectiveChatRunning || isSelectedRecoveryActive;
 
   // Retrying an authorized integration starts a new provider turn directly
   // through ChatContext. Apply the same recovery ownership gate as the
@@ -247,8 +291,11 @@ export function Home() {
   useEffect(() => {
     const handler = () => {
       mutateIntegrations();
-      if (recoveryPresentationPending || isSelectedRecoveryActive) return;
-      sendMessage({ parts: [{ type: "text", text: "continue" }] });
+      if (isSelectedRecoveryActive) return;
+      sendMessage(
+        { parts: [{ type: "text", text: "continue" }] },
+        { chatId: effectiveChatId },
+      );
     };
     window.addEventListener("integration:accountAuthorized", handler);
     return () =>
@@ -256,7 +303,7 @@ export function Home() {
   }, [
     isSelectedRecoveryActive,
     mutateIntegrations,
-    recoveryPresentationPending,
+    effectiveChatId,
     sendMessage,
   ]);
 
@@ -327,7 +374,7 @@ export function Home() {
 
     if (isSelectedRecoveryActive) {
       lastRecoveryChatRef.current = effectiveChatId;
-      if (isSending || isAgentRunning) return;
+      if (isEffectiveChatRunning) return;
       const interval = window.setInterval(() => {
         switchChatId(effectiveChatId, true);
       }, 2000);
@@ -338,7 +385,7 @@ export function Home() {
       lastRecoveryChatRef.current = null;
       return;
     }
-    if (isSending || isAgentRunning) return;
+    if (isEffectiveChatRunning) return;
 
     // The session just left the recovery read model (normally completion).
     // Pull its final message once and refresh history so the recovered tab
@@ -350,8 +397,7 @@ export function Home() {
     lastRecoveryChatRef.current = null;
   }, [
     effectiveChatId,
-    isAgentRunning,
-    isSending,
+    isEffectiveChatRunning,
     isSelectedRecoveryActive,
     recoverySessionsLoaded,
     switchChatId,
@@ -384,7 +430,7 @@ export function Home() {
   useEffect(() => {
     // Wait for the recovery read before deciding between a recovered, restored,
     // or brand-new chat.
-    if (page !== null || !effectiveChatId) return;
+    if (page !== null || startupSelection.pending || !effectiveChatId) return;
 
     if (pathname !== "/") return;
 
@@ -397,28 +443,28 @@ export function Home() {
       },
     });
     router.replace(newPath, { scroll: false });
-  }, [page, effectiveChatId, pathname, searchParams, router]);
+  }, [
+    page,
+    effectiveChatId,
+    pathname,
+    searchParams,
+    router,
+    startupSelection.pending,
+  ]);
 
   // ============================================================================
   // Chat Hook & Refs
   // ============================================================================
 
-  // Use ref to keep messages value always up-to-date in closures
-  // This ensures always getting latest messages in native agent's onDone callback
-  const messagesRef = useRef(messages);
-  const previsAgentRunningRef = useRef(false);
-
-  useEffect(() => {
-    messagesRef.current = messages;
-  }, [messages]);
+  const previousRunningByChatRef = useRef(new Map<string, boolean>());
 
   // When isAgentRunning becomes false, automatically update all "executing" status tool parts to "completed"
   // This prevents some tools from not receiving tool_result event causing status to remain "executing"
   useEffect(() => {
-    // Only execute when changing from true to false
-    if (previsAgentRunningRef.current && !isAgentRunning) {
-      // Use current activeChatId to ensure messages update to correct chat
-      const currentChatId = activeChatId;
+    if (!effectiveChatId) return;
+    const wasRunning =
+      previousRunningByChatRef.current.get(effectiveChatId) ?? false;
+    if (wasRunning && !isEffectiveChatRunning) {
       setMessages((prev) => {
         const updated = prev.map((message) => {
           if (message.role !== "assistant" || !Array.isArray(message.parts)) {
@@ -451,24 +497,28 @@ export function Home() {
           } as ChatMessage;
         });
         return updated;
-      }, currentChatId);
+      }, effectiveChatId);
     }
-    previsAgentRunningRef.current = isAgentRunning;
-  }, [isAgentRunning, setMessages, activeChatId]);
+    previousRunningByChatRef.current.set(
+      effectiveChatId,
+      isEffectiveChatRunning,
+    );
+  }, [effectiveChatId, isEffectiveChatRunning, setMessages]);
 
   // Extracted inline handlers to useCallback for better performance
   const handleChatIdChange = useCallback(
     (newChatId: string | null) => {
       // If newChatId is null (new conversation), generate a new UUID
       const targetChatId = newChatId ?? generateUUID();
+      claimStartupChat(targetChatId);
       // When page=chat, use query parameters instead of /chat/[id] route
       // Because app doesn't have /chat/[id] dynamic route, using /chat/${chatId} will cause 404
       const newPath = buildNavigationUrl({
-        pathname: page === "chat" ? "/" : pathname,
+        pathname: isChatPage ? "/" : pathname,
         searchParams,
-        chatId: page === "chat" ? undefined : targetChatId,
+        chatId: isChatPage ? undefined : targetChatId,
         paramsToUpdate: {
-          ...(page === "chat"
+          ...(isChatPage
             ? { page: "chat", chatId: targetChatId }
             : { rightPanel: "chat" }),
         },
@@ -477,7 +527,7 @@ export function Home() {
       console.debug("handleChatIdChange New path:", newPath);
       router.push(newPath);
     },
-    [router, pathname, searchParams, page],
+    [claimStartupChat, router, pathname, searchParams, isChatPage],
   );
 
   /** Delete chat: call API then remove from local list, switch to new chat if deleted current chat */
@@ -506,6 +556,83 @@ export function Home() {
       }
     },
     [effectiveChatId, handleChatIdChange, mutateHistoryPages],
+  );
+
+  const openGoalPanel = useCallback(() => {
+    claimEffectiveChat();
+    setIsChatHistoryOpen(false);
+    setIsGoalPanelOpen(true);
+    setGoalPanelFocusRequest((request) => request + 1);
+  }, [claimEffectiveChat, setIsChatHistoryOpen]);
+
+  const startGoal = useCallback(
+    (rawObjective: string): Promise<AgentGoalCommandResponse> => {
+      const objective = rawObjective.trim();
+      if (!objective || !effectiveChatId) {
+        return Promise.reject(
+          new Error(t("agentGoals.errors.requestFailed")),
+        );
+      }
+      openGoalPanel();
+      const runtimeSessionId = effectiveChatId;
+
+      return goalStartSingleFlight.run({
+        runtimeSessionId,
+        objective,
+        conflictError: () =>
+          new Error(t("agentGoals.errors.planningInProgress")),
+        onPendingChange: (pendingObjective) => {
+          setGoalPlanningBySession((current) => {
+            if (pendingObjective) {
+              if (current[runtimeSessionId] === pendingObjective) return current;
+              return { ...current, [runtimeSessionId]: pendingObjective };
+            }
+            if (!(runtimeSessionId in current)) return current;
+            const next = { ...current };
+            delete next[runtimeSessionId];
+            return next;
+          });
+        },
+        start: async () => {
+          const request = { runtimeSessionId, objective };
+          const commandKey = goalCommandKeys.keyFor("activate", request);
+          return activateGoalWithChatFallback({
+            activate: async () => {
+              const response = await activateAgentGoal(request, commandKey);
+              goalCommandKeys.clear("activate", request);
+              return response;
+            },
+            refresh: () => mutate(agentGoalSessionUrl(runtimeSessionId)),
+            startFallback: () =>
+              sendMessage(
+                {
+                  role: "user",
+                  parts: [{ type: "text", text: objective }],
+                },
+                { chatId: runtimeSessionId },
+              ),
+            onRefreshError: (error) => {
+              console.error("[Goal] Failed to refresh activated Goal", error);
+            },
+            onFallbackError: (error) => {
+              console.error("[Goal] Failed to start activated Goal", error);
+              toast({
+                type: "error",
+                description: t("agentGoals.errors.startFailed"),
+              });
+            },
+          });
+        },
+      });
+    },
+    [
+      effectiveChatId,
+      goalCommandKeys,
+      goalStartSingleFlight,
+      openGoalPanel,
+      sendMessage,
+      t,
+    ],
   );
 
   /** Utility page title mapping (single source of truth: only maintain here, PageSectionHeader reuses) */
@@ -611,7 +738,7 @@ export function Home() {
     }
 
     // Chat page (entered from left menu "New chat" or Library/Chat Vault "Open chat"): full-screen display chat, no left Focus/Tracking panel; use effectiveChatId to support chatId in URL
-    if (page === "chat") {
+    if (isChatPage) {
       return (
         <>
           <AgentLayout centerTitle={t("nav.newChat")} hideCenterHeader={true}>
@@ -637,8 +764,8 @@ export function Home() {
                         aria-label={t("agentGoals.open")}
                         aria-expanded={isGoalPanelOpen}
                         onClick={() => {
-                          setIsChatHistoryOpen(false);
-                          setIsGoalPanelOpen((open) => !open);
+                          if (isGoalPanelOpen) setIsGoalPanelOpen(false);
+                          else openGoalPanel();
                         }}
                       >
                         <RemixIcon name="target" size="size-4" />
@@ -657,7 +784,12 @@ export function Home() {
                     prefillToken={prefillToken}
                     initialMessageToSend={initialMessageToSend}
                     serverRecoveryActive={isSelectedRecoveryActive}
-                    serverRecoveryPending={recoveryPresentationPending}
+                    onUserIntent={claimEffectiveChat}
+                    onStartGoal={startGoal}
+                    onOpenGoal={openGoalPanel}
+                    goalStartPending={Boolean(
+                      goalPlanningBySession[effectiveChatId],
+                    )}
                   />
                 </div>
               </div>
@@ -682,12 +814,12 @@ export function Home() {
                   <AgentGoalSidePanel
                     key={effectiveChatId}
                     runtimeSessionId={effectiveChatId}
-                    chatBusy={isAgentRunning}
-                    onGoalCreated={async (objective) => {
-                      await sendMessage({
-                        parts: [{ type: "text", text: objective }],
-                      });
-                    }}
+                    chatBusy={goalChatBusy}
+                    planningObjective={
+                      goalPlanningBySession[effectiveChatId]
+                    }
+                    focusRequest={goalPanelFocusRequest}
+                    onStartGoal={startGoal}
                     onGoalPaused={() => stopChat(effectiveChatId)}
                     onClose={() => setIsGoalPanelOpen(false)}
                   />
@@ -707,12 +839,10 @@ export function Home() {
                 <AgentGoalSidePanel
                   key={effectiveChatId}
                   runtimeSessionId={effectiveChatId}
-                  chatBusy={isAgentRunning}
-                  onGoalCreated={async (objective) => {
-                    await sendMessage({
-                      parts: [{ type: "text", text: objective }],
-                    });
-                  }}
+                  chatBusy={goalChatBusy}
+                  planningObjective={goalPlanningBySession[effectiveChatId]}
+                  focusRequest={goalPanelFocusRequest}
+                  onStartGoal={startGoal}
                   onGoalPaused={() => stopChat(effectiveChatId)}
                 />
               </SheetContent>

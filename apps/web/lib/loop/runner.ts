@@ -76,11 +76,18 @@ interface NativeAgentResponse {
 export interface SseEvent {
   type?: string;
   content?: unknown;
+  message?: unknown;
 }
 
 export interface InvokeAgentOptions {
   timeoutMs?: number;
+  /** Do not retain unbounded text/event arrays for background Goal runs. */
+  collectOutput?: boolean;
   onEvent?: (e: SseEvent) => void;
+  /** Authenticated owner used only by trusted Goal starts. */
+  ownerId?: string;
+  sessionId?: string;
+  signal?: AbortSignal;
 }
 
 /**
@@ -95,15 +102,33 @@ export async function invokeAgentPrompt(
   opts: InvokeAgentOptions = {},
 ): Promise<NativeAgentResponse> {
   const url = resolveNativeAgentUrl();
-  return postNativeAgent(url, { prompt }, opts);
+  return postNativeAgent(
+    url,
+    { prompt, ...(opts.sessionId ? { sessionId: opts.sessionId } : {}) },
+    opts,
+  );
 }
 
 async function postNativeAgent(
   urlStr: string,
   body: Record<string, unknown>,
-  opts: { timeoutMs?: number; onEvent?: (e: SseEvent) => void } = {},
+  opts: {
+    timeoutMs?: number;
+    collectOutput?: boolean;
+    onEvent?: (e: SseEvent) => void;
+    ownerId?: string;
+    signal?: AbortSignal;
+  } = {},
 ): Promise<NativeAgentResponse> {
-  const token = readToken();
+  let token: string | null;
+  try {
+    token = opts.ownerId ? await createOwnerToken(opts.ownerId) : readToken();
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
   let parsed: URL;
   try {
     parsed = new URL(urlStr);
@@ -119,7 +144,8 @@ async function postNativeAgent(
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(opts.timeoutMs ?? 15 * 60 * 1000),
+      signal:
+        opts.signal ?? AbortSignal.timeout(opts.timeoutMs ?? 15 * 60 * 1000),
     })
       .then(async (res) => {
         if (!res.ok) {
@@ -138,14 +164,17 @@ async function postNativeAgent(
         }
         const decoder = new TextDecoder();
         let buf = "";
-        const textChunks: string[] = [];
-        const reasoningChunks: string[] = [];
+        const collectOutput = opts.collectOutput !== false;
+        const textChunks: string[] | undefined = collectOutput ? [] : undefined;
+        const reasoningChunks: string[] | undefined = collectOutput
+          ? []
+          : undefined;
         // #358 — capture every parsed SSE event so the runner's outcome
         // parser can ask "did any tool call happen?" after the stream
         // closes. Without this the heuristic always sees `events: []` and
         // would default to `skipped / no external action performed` even
         // when the agent did emit a tool_call event earlier.
-        const events: unknown[] = [];
+        const events: unknown[] | undefined = collectOutput ? [] : undefined;
         let result: unknown = null;
         for (;;) {
           const { value, done } = await reader.read();
@@ -160,15 +189,15 @@ async function postNativeAgent(
               if (payload) {
                 try {
                   const evt = JSON.parse(payload) as SseEvent;
-                  events.push(evt);
                   opts.onEvent?.(evt);
+                  events?.push(evt);
                   if (evt.type === "text" && typeof evt.content === "string") {
-                    textChunks.push(evt.content);
+                    textChunks?.push(evt.content);
                   } else if (
                     evt.type === "reasoning" &&
                     typeof evt.content === "string"
                   ) {
-                    reasoningChunks.push(evt.content);
+                    reasoningChunks?.push(evt.content);
                   } else if (evt.type === "result" && evt.content) {
                     result = evt.content;
                   }
@@ -183,14 +212,24 @@ async function postNativeAgent(
         resolve({
           ok: true,
           status: res.status,
-          text: textChunks.join(""),
-          reasoning: reasoningChunks.join(""),
+          ...(textChunks ? { text: textChunks.join("") } : {}),
+          ...(reasoningChunks ? { reasoning: reasoningChunks.join("") } : {}),
           result,
-          events,
+          ...(events ? { events } : {}),
         });
       })
       .catch((err: Error) => resolve({ ok: false, error: err.message }));
   });
+}
+
+async function createOwnerToken(ownerId: string): Promise<string> {
+  const [{ getUserById }, { generateToken }] = await Promise.all([
+    import("@/lib/db/queries"),
+    import("@/lib/auth/remote-auth-utils"),
+  ]);
+  const owner = await getUserById(ownerId);
+  if (!owner?.email) throw new Error("Goal owner was not found");
+  return generateToken(owner.id, owner.email);
 }
 
 function buildPrompt(decision: LoopDecision, mode: "dry" | "run"): string {

@@ -697,20 +697,13 @@ export class SqliteRuntimeSessionPersistence implements RuntimeSessionRecoveryPe
     try {
       const store = this.database.store;
       return store
-        .listRecoveryPresentationSessionIds(owner, parsedLimit)
-        .flatMap((runtimeSessionId) => {
-          const session = store.getSession(owner, runtimeSessionId);
-          return session
-            ? [
-                {
-                  runtimeSessionId,
-                  state: session.state,
-                  runEpoch: session.runEpoch,
-                  updatedAt: secondsIso(session.updatedAtSeconds),
-                },
-              ]
-            : [];
-        });
+        .listRecoveryPresentationSessions(owner, parsedLimit)
+        .map((session) => ({
+          runtimeSessionId: session.runtimeSessionId,
+          state: session.state,
+          runEpoch: session.runEpoch,
+          updatedAt: secondsIso(session.updatedAtSeconds),
+        }));
     } catch (cause) {
       throw storageFailure(
         "Could not list Runtime Sessions for recovery presentation",

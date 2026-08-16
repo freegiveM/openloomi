@@ -96,7 +96,7 @@ Install the OpenLoomi skill set directly from this repository:
 
 ```bash
 npx skills add https://github.com/melandlabs/openloomi/tree/main/skills \
-  --skill openloomi openloomi-setup openloomi-memory openloomi-connectors openloomi-loop openloomi-api openloomi-feature-guide composio \
+  --skill openloomi openloomi-setup openloomi-memory openloomi-connectors openloomi-loop openloomi-goals openloomi-api openloomi-feature-guide composio \
   -y
 ```
 

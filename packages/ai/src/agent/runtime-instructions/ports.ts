@@ -70,12 +70,6 @@ export interface AgentGoalStatePort {
     command: GoalCommandIdentity;
   }): Promise<GoalInstructionCommit | null>;
 
-  findReplacementByIdempotency(input: {
-    ownerId: string;
-    runtimeSessionId: string;
-    command: GoalCommandIdentity;
-  }): Promise<GoalReplacementCommit | null>;
-
   findLifecycleTransitionByIdempotency(input: {
     ownerId: string;
     runtimeSessionId: string;

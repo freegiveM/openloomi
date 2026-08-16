@@ -16,17 +16,53 @@ describe("selectStartupChat", () => {
       selectStartupChat({
         ...base,
         urlChatId: "url-chat",
+        claimedChatId: "claimed-chat",
+        forceNewChat: true,
         recoveryChatId: "recovery-chat",
       }),
     ).toEqual({ pending: false, chatId: "url-chat", source: "url" });
   });
 
-  it("waits for the recovery read model on a cold home start", () => {
+  it("shows the restored chat while the recovery read model loads", () => {
     expect(selectStartupChat({ ...base, recoveryLoaded: false })).toEqual({
       pending: true,
-      chatId: null,
-      source: null,
+      chatId: "restored-chat",
+      source: "restored",
     });
+  });
+
+  it("shows a new chat while recovery loads when nothing was restored", () => {
+    expect(
+      selectStartupChat({
+        ...base,
+        recoveryLoaded: false,
+        restoredChatId: null,
+      }),
+    ).toEqual({ pending: true, chatId: "new-chat", source: "new" });
+  });
+
+  it("keeps a provisional chat once the user claims it", () => {
+    expect(
+      selectStartupChat({
+        ...base,
+        recoveryChatId: "recovery-chat",
+        claimedChatId: "claimed-chat",
+      }),
+    ).toEqual({
+      pending: false,
+      chatId: "claimed-chat",
+      source: "claimed",
+    });
+  });
+
+  it("starts URL-driven send and prefill flows in a new chat", () => {
+    expect(
+      selectStartupChat({
+        ...base,
+        recoveryChatId: "recovery-chat",
+        forceNewChat: true,
+      }),
+    ).toEqual({ pending: false, chatId: "new-chat", source: "new" });
   });
 
   it("restores a recoverable Goal chat before local storage", () => {

@@ -1,10 +1,20 @@
 import type {
   AgentGoalUpdate,
   CreateAgentGoalInput,
+  GoalContextReference,
+  GoalSource,
   RuntimeProvider,
 } from "@openloomi/ai/agent/runtime-instructions";
+import { GoalContextReferenceSchema } from "@openloomi/ai/agent/runtime-instructions";
 
-import type { GoalCommandResult, GoalService } from "../goal-service";
+import { createGoalCommandFingerprint } from "../command-fingerprint";
+import {
+  GoalServiceError,
+  type GoalActivationCommandSource,
+  type GoalCommandResult,
+  type GoalService,
+} from "../goal-service";
+import { goalOccupiesPrimarySlot } from "../goal-state-validation";
 import type {
   AgentGoalDetailView,
   AgentGoalQueryService,
@@ -13,19 +23,22 @@ import type {
 import type { RuntimeSessionRegistry } from "../runtime-session-registry";
 import type { RuntimeSessionPersistencePort } from "../runtime-session-persistence";
 import type { GoalPlannerPort } from "./goal-planner-port";
-import type {
-  ActivateGoalRequest,
-  PauseGoalRequest,
-  RemoveGoalContextRequest,
-  ResumeGoalRequest,
-  UpdateGoalRequest,
-  UpsertGoalContextRequest,
+import { KeyedSerialExecutor } from "../keyed-serial-executor";
+import {
+  ActivateGoalRequestSchema,
+  type ActivateGoalRequest,
+  type PauseGoalRequest,
+  type RemoveGoalContextRequest,
+  type ResumeGoalRequest,
+  type UpdateGoalRequest,
+  type UpsertGoalContextRequest,
 } from "./schemas";
 
 export interface AgentGoalApiDependencies {
   goals: Pick<
     GoalService,
     | "activateResolved"
+    | "cancel"
     | "pause"
     | "update"
     | "resume"
@@ -38,9 +51,42 @@ export interface AgentGoalApiDependencies {
   planner: GoalPlannerPort;
   resolveNewRuntimeProvider(): RuntimeProvider;
   sessionOwnership: {
-    isOwnedChat(ownerId: string, runtimeSessionId: string): Promise<boolean>;
+    getOwner(runtimeSessionId: string): Promise<string | null>;
+    ensureOwnedChat(input: {
+      ownerId: string;
+      runtimeSessionId: string;
+      title: string;
+    }): Promise<boolean>;
+    listOwnedChatIds(ownerId: string): Promise<string[]>;
+    deleteOwnedChat(runtimeSessionId: string): Promise<void>;
   };
 }
+
+interface PlannedGoalActivationInput {
+  ownerId: string;
+  runtimeSessionId: string;
+  objective: string;
+  idempotencyKey: string;
+  commandSource: GoalActivationCommandSource;
+  goalSource: GoalSource;
+  idempotencyPayload: unknown;
+}
+
+const sessionMutations = new KeyedSerialExecutor();
+
+export interface TrustedAgentGoalStartInput {
+  ownerId: string;
+  runtimeSessionId: string;
+  objective: string;
+  idempotencyKey: string;
+  sourceId: string;
+  connectorContext?: GoalContextReference;
+}
+
+type TrustedConnectorGoalContext = GoalContextReference & {
+  origin: "connector";
+  sourceRef: string;
+};
 
 export interface AgentGoalSessionView {
   runtimeSessionId: string;
@@ -91,6 +137,62 @@ export class AgentGoalApiService {
     };
   }
 
+  async listCurrent(ownerId: string): Promise<AgentGoalSummaryView[]> {
+    const runtimeSessionIds =
+      await this.dependencies.sessionOwnership.listOwnedChatIds(ownerId);
+    const goals = (
+      await Promise.all(
+        runtimeSessionIds.map((runtimeSessionId) =>
+          this.dependencies.queries.listBySession(ownerId, runtimeSessionId),
+        ),
+      )
+    )
+      .flat()
+      // `blocked` remains readable as the persisted predecessor of `paused`.
+      .filter(({ goal }) => goalOccupiesPrimarySlot(goal.goal.status));
+    return goals.sort((left, right) =>
+      right.goal.goal.updatedAt.localeCompare(left.goal.goal.updatedAt),
+    );
+  }
+
+  async deleteSession(
+    ownerId: string,
+    runtimeSessionId: string,
+  ): Promise<void> {
+    return sessionMutations.run(
+      sessionMutationScope(ownerId, runtimeSessionId),
+      async () => {
+        if (
+          (await this.dependencies.sessionOwnership.getOwner(
+            runtimeSessionId,
+          )) !== ownerId
+        ) {
+          throw runtimeSessionNotFound();
+        }
+        const current = (
+          await this.dependencies.queries.listBySession(
+            ownerId,
+            runtimeSessionId,
+          )
+        ).find(({ goal }) => goalOccupiesPrimarySlot(goal.goal.status));
+        if (current) {
+          await this.dependencies.goals.cancel({
+            ownerId,
+            runtimeSessionId,
+            goalId: current.goal.goal.id,
+            expectedRevision: current.goal.goal.revision,
+            idempotencyKey: `chat-delete:${current.goal.goal.id}:${current.goal.goal.revision}`,
+            source: userCommandSource(),
+            reason: "The owning chat was deleted",
+          });
+        }
+        await this.dependencies.sessionOwnership.deleteOwnedChat(
+          runtimeSessionId,
+        );
+      },
+    );
+  }
+
   async getById(input: {
     ownerId: string;
     runtimeSessionId: string;
@@ -119,52 +221,159 @@ export class AgentGoalApiService {
     request: ActivateGoalRequest,
     idempotencyKey: string,
   ): Promise<GoalCommandResult> {
-    await this.requireSession(ownerId, request.runtimeSessionId);
-    const source = userCommandSource();
-    const idempotencyPayload = { objective: request.objective };
-    return this.dependencies.goals.activateResolved(
+    return this.activatePlanned({
+      ownerId,
+      runtimeSessionId: request.runtimeSessionId,
+      objective: request.objective,
+      idempotencyKey,
+      commandSource: userCommandSource(),
+      goalSource: { type: "user" },
+      idempotencyPayload: { objective: request.objective },
+    });
+  }
+
+  async startTrusted(
+    input: TrustedAgentGoalStartInput,
+  ): Promise<GoalCommandResult> {
+    const request = parseTrustedGoalRequest(input);
+    const sourceId = parseTrustedSourceId(input.sourceId);
+    const source = { type: "loop", id: sourceId } as const;
+    const connectorContext = parseTrustedConnectorContext(
+      input.connectorContext,
+    );
+    let result = await this.activatePlanned({
+      ownerId: input.ownerId,
+      runtimeSessionId: request.runtimeSessionId,
+      objective: request.objective,
+      idempotencyKey: input.idempotencyKey,
+      commandSource: {
+        type: "automation",
+        authority: "automation",
+        sourceRef: sourceId,
+      },
+      goalSource: source,
+      idempotencyPayload: { objective: request.objective, source },
+    });
+    if (!connectorContext) return result;
+
+    result = await this.dependencies.goals.upsertContext({
+      ownerId: input.ownerId,
+      runtimeSessionId: request.runtimeSessionId,
+      goalId: result.goal.goal.id,
+      expectedRevision: result.goal.goal.revision,
+      idempotencyKey: createGoalCommandFingerprint({
+        command: "trusted-goal-context",
+        activationIdempotencyKey: input.idempotencyKey,
+        contextId: connectorContext.id,
+      }),
+      source: {
+        type: "connector",
+        authority: "untrusted_data",
+        sourceRef: connectorContext.sourceRef,
+      },
+      contextRef: connectorContext,
+    });
+    return result;
+  }
+
+  private activatePlanned(
+    input: PlannedGoalActivationInput,
+  ): Promise<GoalCommandResult> {
+    return sessionMutations.run(
+      sessionMutationScope(input.ownerId, input.runtimeSessionId),
+      () => this.activatePlannedSerialized(input),
+    );
+  }
+
+  private async activatePlannedSerialized(
+    input: PlannedGoalActivationInput,
+  ): Promise<GoalCommandResult> {
+    const existingOwner = await this.dependencies.sessionOwnership.getOwner(
+      input.runtimeSessionId,
+    );
+    if (existingOwner !== null && existingOwner !== input.ownerId) {
+      throw runtimeSessionNotFound();
+    }
+
+    let chatOwned = existingOwner === input.ownerId;
+    if (!chatOwned) {
+      // A durable Runtime Session can only exist after its Chat was created.
+      // If the Chat is now missing, fail before activateResolved can replay and
+      // dispatch an orphaned instruction. Re-read ownership to allow a
+      // concurrent first-time creator that won between these two reads.
+      const existingRuntimeSession =
+        await this.dependencies.runtimeSessions.get(
+          input.ownerId,
+          input.runtimeSessionId,
+        );
+      if (existingRuntimeSession) {
+        chatOwned =
+          (await this.dependencies.sessionOwnership.getOwner(
+            input.runtimeSessionId,
+          )) === input.ownerId;
+        if (!chatOwned) throw runtimeSessionNotFound();
+      }
+    }
+    const result = await this.dependencies.goals.activateResolved(
       {
-        ownerId,
-        runtimeSessionId: request.runtimeSessionId,
-        idempotencyKey,
-        source,
-        idempotencyPayload,
+        ownerId: input.ownerId,
+        runtimeSessionId: input.runtimeSessionId,
+        idempotencyKey: input.idempotencyKey,
+        source: input.commandSource,
+        idempotencyPayload: input.idempotencyPayload,
       },
       async () => {
         const existingRuntimeSession =
           await this.dependencies.runtimeSessions.get(
-            ownerId,
-            request.runtimeSessionId,
+            input.ownerId,
+            input.runtimeSessionId,
           );
         const provider =
           existingRuntimeSession?.provider ??
           this.dependencies.resolveNewRuntimeProvider();
         if (existingRuntimeSession) {
-          // Validate an existing durable session (including recovery fences)
-          // before spending another provider turn on planning.
           await this.dependencies.runtimeSessions.ensure(
-            ownerId,
-            request.runtimeSessionId,
+            input.ownerId,
+            input.runtimeSessionId,
           );
         }
         const plan = await this.dependencies.planner.plan({
-          ownerId,
+          ownerId: input.ownerId,
           provider,
-          objective: request.objective,
+          objective: input.objective,
           ...(existingRuntimeSession?.workingDirectory === undefined
             ? {}
             : { workingDirectory: existingRuntimeSession.workingDirectory }),
         });
+        const chatEnsured = chatOwned
+          ? (await this.dependencies.sessionOwnership.getOwner(
+              input.runtimeSessionId,
+            )) === input.ownerId
+          : await this.dependencies.sessionOwnership.ensureOwnedChat({
+              ownerId: input.ownerId,
+              runtimeSessionId: input.runtimeSessionId,
+              title: input.objective,
+            });
+        if (!chatEnsured) throw runtimeSessionNotFound();
+        chatOwned = true;
         if (!existingRuntimeSession) {
           await this.dependencies.runtimeSessions.ensure(
-            ownerId,
-            request.runtimeSessionId,
+            input.ownerId,
+            input.runtimeSessionId,
             { provider, initialState: "idle" },
           );
         }
-        return userGoalInput(request.objective, plan);
+        return userGoalInput(input.objective, plan, input.goalSource);
       },
     );
+    if (!chatOwned) {
+      chatOwned =
+        (await this.dependencies.sessionOwnership.getOwner(
+          input.runtimeSessionId,
+        )) === input.ownerId;
+    }
+    if (!chatOwned) throw runtimeSessionNotFound();
+    return result;
   }
 
   async update(
@@ -277,15 +486,10 @@ export class AgentGoalApiService {
 
   private async requireSession(ownerId: string, runtimeSessionId: string) {
     if (
-      !(await this.dependencies.sessionOwnership.isOwnedChat(
-        ownerId,
-        runtimeSessionId,
-      ))
+      (await this.dependencies.sessionOwnership.getOwner(runtimeSessionId)) !==
+      ownerId
     ) {
-      throw new AgentGoalApiError(
-        "runtime_session_not_found",
-        "Runtime Session was not found for this user",
-      );
+      throw runtimeSessionNotFound();
     }
     return {
       live: Boolean(
@@ -302,6 +506,7 @@ function userCommandSource() {
 function userGoalInput(
   objective: string,
   steps: readonly string[],
+  source: GoalSource,
 ): CreateAgentGoalInput {
   return {
     objective,
@@ -315,7 +520,72 @@ function userGoalInput(
     contextRefs: [],
     priority: 50,
     completionPolicy: "tool_evidence",
-    source: { type: "user" },
+    source,
+  };
+}
+
+function runtimeSessionNotFound(): AgentGoalApiError {
+  return new AgentGoalApiError(
+    "runtime_session_not_found",
+    "Runtime Session was not found for this user",
+  );
+}
+
+function sessionMutationScope(
+  ownerId: string,
+  runtimeSessionId: string,
+): string {
+  return `${ownerId}\u0000${runtimeSessionId}`;
+}
+
+function parseTrustedSourceId(value: unknown): string {
+  const sourceId = typeof value === "string" ? value.trim() : "";
+  if (!sourceId || sourceId.length > 256) {
+    throw new GoalServiceError(
+      "invalid_command",
+      "Trusted Goal source id is invalid",
+    );
+  }
+  return sourceId;
+}
+
+function parseTrustedGoalRequest(
+  input: TrustedAgentGoalStartInput,
+): ActivateGoalRequest {
+  const parsed = ActivateGoalRequestSchema.safeParse({
+    runtimeSessionId: input.runtimeSessionId,
+    objective: input.objective,
+  });
+  if (!parsed.success) {
+    throw new GoalServiceError(
+      "invalid_command",
+      "Trusted Goal request is invalid",
+      parsed.error,
+    );
+  }
+  return parsed.data;
+}
+
+function parseTrustedConnectorContext(
+  input: TrustedAgentGoalStartInput["connectorContext"],
+): TrustedConnectorGoalContext | undefined {
+  if (!input) return undefined;
+  const parsed = GoalContextReferenceSchema.safeParse(input);
+  if (
+    !parsed.success ||
+    parsed.data.origin !== "connector" ||
+    parsed.data.sourceRef === undefined
+  ) {
+    throw new GoalServiceError(
+      "invalid_context_provenance",
+      "Trusted connector context must preserve connector provenance",
+      parsed.success ? undefined : parsed.error,
+    );
+  }
+  return {
+    ...parsed.data,
+    origin: "connector",
+    sourceRef: parsed.data.sourceRef,
   };
 }
 

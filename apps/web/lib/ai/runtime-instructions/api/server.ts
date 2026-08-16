@@ -3,10 +3,20 @@ import "server-only";
 import type { RuntimeProvider } from "@openloomi/ai/agent/runtime-instructions";
 
 import { getConfiguredDefaultAgentProvider } from "@/lib/ai/native-agent/provider-env";
-import { getChatById } from "@/lib/db/queries";
+import {
+  CHAT_OWNER_SCOPE_CONFLICT,
+  deleteChatById,
+  ensureOwnedChat,
+  getChatById,
+  getChatIdsByUserId,
+} from "@/lib/db/queries";
 
+import type { GoalCommandResult } from "../goal-service";
 import { getAgentGoalRuntime } from "../runtime";
-import { AgentGoalApiService } from "./service";
+import {
+  AgentGoalApiService,
+  type TrustedAgentGoalStartInput,
+} from "./service";
 import type { GoalPlannerPort } from "./goal-planner-port";
 
 export * from "./http";
@@ -23,12 +33,37 @@ export function getAgentGoalApiService(): AgentGoalApiService {
     planner: nativeGoalPlanner,
     resolveNewRuntimeProvider: selectedGoalRuntimeProvider,
     sessionOwnership: {
-      isOwnedChat: async (ownerId, runtimeSessionId) => {
+      getOwner: async (runtimeSessionId) => {
         const chat = await getChatById({ id: runtimeSessionId });
-        return chat?.userId === ownerId;
+        return chat?.userId ?? null;
+      },
+      ensureOwnedChat: async ({ ownerId, runtimeSessionId, title }) => {
+        try {
+          await ensureOwnedChat({ id: runtimeSessionId, userId: ownerId, title });
+          return true;
+        } catch (error) {
+          if (
+            error instanceof Error &&
+            error.message === CHAT_OWNER_SCOPE_CONFLICT
+          ) {
+            return false;
+          }
+          throw error;
+        }
+      },
+      listOwnedChatIds: getChatIdsByUserId,
+      deleteOwnedChat: async (runtimeSessionId) => {
+        await deleteChatById({ id: runtimeSessionId });
       },
     },
   });
+}
+
+/** Server-only automation boundary used by trusted Loop executors. */
+export function startTrustedAgentGoal(
+  input: TrustedAgentGoalStartInput,
+): Promise<GoalCommandResult> {
+  return getAgentGoalApiService().startTrusted(input);
 }
 
 const nativeGoalPlanner: GoalPlannerPort = {

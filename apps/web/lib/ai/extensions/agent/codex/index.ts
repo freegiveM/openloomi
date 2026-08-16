@@ -41,6 +41,7 @@ import {
   type CodexInterruptedContext,
 } from "./interrupt-marker";
 import { preflightCodexRuntime } from "./runtime-preflight";
+import { resolveCodexCommand } from "./command-resolver";
 import { CodexAppServerClient } from "./app-server";
 import { CodexRuntimeSession, startCodexGoalRuntimeSession } from "./runtime";
 import { resolveAuthenticatedGoalRuntimeOwnerId } from "@/lib/ai/runtime-instructions/runtime-owner";
@@ -112,13 +113,17 @@ export class CodexAgent extends BaseAgent {
             options?.sessionId?.trim()));
       const ownerId = resolveAuthenticatedGoalRuntimeOwnerId(options?.session);
       if (runtimeRecovery && !ownerId) {
-        throw new TypeError("Codex Runtime recovery requires an authenticated owner");
+        throw new TypeError(
+          "Codex Runtime recovery requires an authenticated owner",
+        );
       }
       if (
         runtimeRecovery &&
         (options?.images?.length || options?.[FORCE_CODEX_EXEC])
       ) {
-        throw new TypeError("Codex Runtime recovery requires the app-server path");
+        throw new TypeError(
+          "Codex Runtime recovery requires the app-server path",
+        );
       }
       if (
         runtimeSessionId &&
@@ -164,16 +169,22 @@ export class CodexAgent extends BaseAgent {
     const providerConfig = normalizeCodexProviderConfig(
       this.config.providerConfig,
     );
-    const command = providerConfig.codexPath || "codex";
-    if (!runtimeRecovery) {
-      await preflightCodexRuntime({
-        command,
-        cwd,
-        model: this.config.model,
-        providerConfig,
-        signal: abortController.signal,
-      });
-    }
+    const configuredCommand = providerConfig.codexPath || "codex";
+    const command = runtimeRecovery
+      ? resolveCodexCommand({
+          configuredCommand: providerConfig.codexPath,
+          basePath: providerConfig.env?.PATH,
+          workingDirectory: cwd,
+        })
+      : (
+          await preflightCodexRuntime({
+            command: configuredCommand,
+            cwd,
+            model: this.config.model,
+            providerConfig,
+            signal: abortController.signal,
+          })
+        ).command;
 
     const client = new CodexAppServerClient({
       command,
@@ -404,7 +415,7 @@ export class CodexAgent extends BaseAgent {
       providerConfig: this.config.providerConfig,
     });
 
-    await preflightCodexRuntime({
+    const preflight = await preflightCodexRuntime({
       command: command.command,
       cwd,
       model: this.config.model,
@@ -425,7 +436,7 @@ export class CodexAgent extends BaseAgent {
     const inFlightToolIds = new Set<string>();
     const completedArtifacts = new Set<string>();
 
-    for await (const event of runCodexCli(command.command, command.args, {
+    for await (const event of runCodexCli(preflight.command, command.args, {
       cwd,
       stdin: command.stdin,
       env: providerConfig.env,

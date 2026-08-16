@@ -214,6 +214,31 @@ describe("InMemoryAgentGoalState lifecycle transition barriers", () => {
     });
   });
 
+  it("can cancel a legacy blocked Goal before deleting its session", async () => {
+    const { state, goal } = await activeState();
+    const blocked = transitionAgentGoal({
+      current: goal,
+      expectedRevision: goal.revision,
+      status: "blocked",
+      now: TRANSITIONED_AT,
+    });
+    await state.commitEvaluationTransition({
+      ownerId: OWNER_ID,
+      runtimeSessionId: SESSION_ID,
+      expectedRevision: goal.revision,
+      expectedRunEpoch: 0,
+      goal: blocked,
+    });
+
+    await expect(
+      state.prepareLifecycleTransition(cancelInput(blocked)),
+    ).resolves.toMatchObject({
+      transition: {
+        transitionedGoal: { goal: { status: "cancelled", revision: 3 } },
+      },
+    });
+  });
+
   it("advances cancel through a durable boundary before releasing its slot", async () => {
     const { state, goal } = await activeState();
     const input = cancelInput(goal);

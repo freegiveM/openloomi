@@ -9,15 +9,18 @@
  *   - the tick prompt (classifier candidate list)
  *   - the web decision card (icon / label)
  *   - the pet bubble + card (icon / label)
- * The action must still be one of the 14 built-in `ActionKind` literals
+ * The action must still be one of the 15 built-in `ActionKind` literals
  * — the runner does not learn new execution paths.
  */
 
 import { NextResponse } from "next/server";
 import { auth } from "@/app/(auth)/auth";
-import { customTypes, validateCustomType } from "@/lib/loop";
-import { log } from "@/lib/loop";
-import { CUSTOM_TYPE_ID_RE } from "@/lib/loop";
+import {
+  CUSTOM_TYPE_ID_RE,
+  customTypes,
+  validateCustomType,
+} from "@/lib/loop/custom-types";
+import { log } from "@/lib/loop/store";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";

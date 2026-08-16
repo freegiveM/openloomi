@@ -22,6 +22,8 @@ import { useConversationApiConfiguration } from "@/components/conversation-api-o
 import { ConversationApiSetup } from "@/components/conversation-api-setup";
 import { getTextFromMessage } from "@/lib/utils";
 import { resolveAgentChatRuntimePresentation } from "@/lib/ai/chat/runtime-presentation";
+import { resolveGoalComposerSubmission } from "@/lib/ai/runtime-instructions/goal-ui-model";
+import { toast } from "@/components/toast";
 
 interface AgentChatPanelProps {
   chatId?: string | null; // External chatId; if null, creates a new chat
@@ -33,8 +35,14 @@ interface AgentChatPanelProps {
   initialMessageToSend?: string;
   /** A server-owned recovery Query is running without a browser abort handle. */
   serverRecoveryActive?: boolean;
-  /** Recovery ownership is still loading; do not race it with a new Query. */
-  serverRecoveryPending?: boolean;
+  /** Pins a provisional cold-start chat before late recovery data can replace it. */
+  onUserIntent?: () => void;
+  /** Starts a Goal without sending the `/goal` command as a chat message. */
+  onStartGoal?: (objective: string) => Promise<unknown>;
+  /** Opens and focuses the Goal panel for a bare `/goal` command. */
+  onOpenGoal?: () => void;
+  /** A Goal activation request is planning for this chat. */
+  goalStartPending?: boolean;
 }
 
 /**
@@ -48,7 +56,10 @@ export function AgentChatPanel({
   prefillToken,
   initialMessageToSend,
   serverRecoveryActive = false,
-  serverRecoveryPending = false,
+  onUserIntent,
+  onStartGoal,
+  onOpenGoal,
+  goalStartPending = false,
 }: AgentChatPanelProps = {}) {
   const { t } = useTranslation();
   const router = useRouter();
@@ -79,9 +90,8 @@ export function AgentChatPanel({
     messages,
     sendMessage,
     setMessages,
-    stop,
+    stopChat,
     activeChatId: contextActiveChatId,
-    switchChatId,
     isVaultOpen,
     setVaultOpen,
     getIsAgentRunningByChatId,
@@ -103,8 +113,22 @@ export function AgentChatPanel({
   const runtimePresentation = resolveAgentChatRuntimePresentation({
     browserRunActive: isAgentRunningForChat,
     serverRecoveryActive,
-    serverRecoveryPending,
   });
+  const composerCommands = useMemo(
+    () => [
+      {
+        id: "goal",
+        trigger: "/goal" as const,
+        label: t("chat.goalCommandMenuLabel", "Create a Goal"),
+        description: t(
+          "chat.goalCommandMenuDescription",
+          "Plan and run a long-running task",
+        ),
+        modeLabel: t("chat.goalCommandMode", "Goal mode"),
+      },
+    ],
+    [t],
+  );
 
   useEffect(() => {
     if (lastTtsChatIdRef.current !== chatId) {
@@ -239,6 +263,7 @@ export function AgentChatPanel({
   const saveInputTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const handleSetInput = useCallback(
     (value: string | ((prev: string) => string)) => {
+      onUserIntent?.();
       setInput((prev) => {
         const newValue = typeof value === "function" ? value(prev) : value;
 
@@ -263,7 +288,14 @@ export function AgentChatPanel({
         return newValue;
       });
     },
-    [],
+    [onUserIntent],
+  );
+  const handleSetAttachments = useCallback<typeof setAttachments>(
+    (value) => {
+      onUserIntent?.();
+      setAttachments(value);
+    },
+    [onUserIntent],
   );
 
   /**
@@ -411,46 +443,47 @@ export function AgentChatPanel({
         return Promise.reject(new Error("Agent is already running"));
       }
 
-      return sendMessage(message, requestOptions);
+      onUserIntent?.();
+      return sendMessage(message, { ...requestOptions, chatId });
     },
-    [apiConfigurationState, runtimePresentation.canStartRun, sendMessage],
+    [
+      apiConfigurationState,
+      chatId,
+      onUserIntent,
+      runtimePresentation.canStartRun,
+      sendMessage,
+    ],
   );
 
-  /** Auto-send initialMessageToSend after mount (e.g., from onboarding "Chat with openloomi" click): switches to new chat first, then sends, runs only once; if from URL send param, clears after sending */
+  /** Auto-send initialMessageToSend after mount (e.g., from onboarding "Chat with openloomi" click), only once; if from URL send param, clears after sending. */
   const initialMessageSentRef = useRef(false);
   useEffect(() => {
     if (
       !initialMessageToSend?.trim() ||
       initialMessageSentRef.current ||
       serverRecoveryActive ||
-      serverRecoveryPending ||
       apiConfigurationState !== "available" ||
       !sendMessagePresent
     )
       return;
     initialMessageSentRef.current = true;
     const sendParam = searchParams.get("send");
-    // First switch to new chat, then delay send to ensure context is updated to new session
-    switchChatId(null);
-    const timerId = setTimeout(() => {
-      sendMessagePresent({
-        role: "user",
-        parts: [{ type: "text", text: initialMessageToSend.trim() }],
+    void sendMessagePresent({
+      role: "user",
+      parts: [{ type: "text", text: initialMessageToSend.trim() }],
+    })
+      .then(() => {
+        if (sendParam != null) {
+          const next = new URLSearchParams(searchParams.toString());
+          next.delete("send");
+          const qs = next.toString();
+          const url = qs ? `${pathname}?${qs}` : (pathname ?? "/");
+          router.replace(url, { scroll: false });
+        }
       })
-        .then(() => {
-          if (sendParam != null) {
-            const next = new URLSearchParams(searchParams.toString());
-            next.delete("send");
-            const qs = next.toString();
-            const url = qs ? `${pathname}?${qs}` : (pathname ?? "/");
-            router.replace(url, { scroll: false });
-          }
-        })
-        .catch(() => {
-          initialMessageSentRef.current = false;
-        });
-    }, 350);
-    return () => clearTimeout(timerId);
+      .catch(() => {
+        initialMessageSentRef.current = false;
+      });
   }, [
     initialMessageToSend,
     apiConfigurationState,
@@ -459,8 +492,6 @@ export function AgentChatPanel({
     searchParams,
     sendMessagePresent,
     serverRecoveryActive,
-    serverRecoveryPending,
-    switchChatId,
   ]);
 
   // Fetch vote data
@@ -592,13 +623,86 @@ export function AgentChatPanel({
                 value={input}
                 setValue={handleSetInput}
                 onStop={
-                  runtimePresentation.canStopFromBrowser ? stop : undefined
+                  runtimePresentation.canStopFromBrowser
+                    ? () => stopChat(chatId)
+                    : undefined
                 }
                 isAgentRunning={runtimePresentation.effectiveRunning}
+                isSubmitting={goalStartPending}
                 isLocked={runtimePresentation.composerLocked}
                 attachments={attachments}
-                setAttachments={setAttachments}
+                setAttachments={handleSetAttachments}
+                commands={
+                  onStartGoal && onOpenGoal ? composerCommands : undefined
+                }
                 onSubmit={async ({ text, attachments: submitAttachments }) => {
+                  const goalSubmission = resolveGoalComposerSubmission(
+                    text,
+                    submitAttachments.length,
+                  );
+                  if (goalSubmission.kind === "reject_attachments") {
+                    toast({
+                      type: "error",
+                      description: t(
+                        "chat.goalCommandAttachmentsUnsupported",
+                        "Create the Goal without attachments, then add files in the chat.",
+                      ),
+                    });
+                    return;
+                  }
+                  if (goalSubmission.kind === "open") {
+                    if (!onOpenGoal) {
+                      toast({
+                        type: "error",
+                        description: t(
+                          "chat.goalCommandUnavailable",
+                          "Goal creation is unavailable in this chat.",
+                        ),
+                      });
+                      return;
+                    }
+                    handleSetInput("");
+                    onOpenGoal();
+                    return;
+                  }
+                  if (goalSubmission.kind === "start") {
+                    if (!onStartGoal) {
+                      toast({
+                        type: "error",
+                        description: t(
+                          "chat.goalCommandUnavailable",
+                          "Goal creation is unavailable in this chat.",
+                        ),
+                      });
+                      return;
+                    }
+                    const submittedCommand = text;
+                    handleSetInput("");
+                    try {
+                      await onStartGoal(goalSubmission.objective);
+                      setAttachments([]);
+                    } catch (error) {
+                      handleSetInput((current) =>
+                        current.length === 0 ? submittedCommand : current,
+                      );
+                      console.error(
+                        "[AgentChatPanel] Failed to start Goal",
+                        error,
+                      );
+                      toast({
+                        type: "error",
+                        description:
+                          error instanceof Error && error.message
+                            ? error.message
+                            : t(
+                                "chat.goalCommandFailed",
+                                "Goal could not be created. Please try again.",
+                              ),
+                      });
+                    }
+                    return;
+                  }
+
                   type UploadingAttachment = Attachment & {
                     isUploading?: boolean;
                     file?: File;

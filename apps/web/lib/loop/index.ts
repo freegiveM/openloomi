@@ -140,7 +140,6 @@ export {
   getDecision,
   getCard,
   applyDecisionAction,
-  connectors,
   triggerBrief,
   triggerWrap,
   triggerTick,

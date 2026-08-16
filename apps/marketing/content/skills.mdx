@@ -68,7 +68,7 @@ For agents that consume the [skills.sh](https://skills.sh/) skill protocol, inst
 
 ```bash
 npx skills add https://github.com/melandlabs/openloomi/tree/main/skills \
-  --skill openloomi openloomi-setup openloomi-memory openloomi-connectors openloomi-loop openloomi-api openloomi-feature-guide composio \
+  --skill openloomi openloomi-setup openloomi-memory openloomi-connectors openloomi-loop openloomi-goals openloomi-api openloomi-feature-guide composio \
   -y
 ```
 
@@ -84,6 +84,7 @@ Start with the `openloomi` or `openloomi-setup` skill — it verifies the local 
 | **[openloomi-connectors](#openloomi-connectors)** ([GitHub](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi-connectors/SKILL.md))          | Manage the 7 native messaging-platform connectors (Telegram, WhatsApp, iMessage, Lark/Feishu, DingTalk, QQ, WeChat) — list accounts, connect, disconnect, query contacts, send messages. Slack / Gmail / GitHub / Notion / etc. live in the paired [`composio`](#composio) skill |
 | **[openloomi-api](#openloomi-api)** ([GitHub](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi-api/SKILL.md))                               | OpenLoomi REST API reference — 131 routes across 36 modules (auth, AI, RAG, memory, loop, integrations, workspace, platform callbacks)                                                                                                                                           |
 | **[openloomi-loop](#openloomi-loop)** ([GitHub](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi-loop/SKILL.md))                            | Proactive execution brain — pulls signals from Gmail/Calendar/GitHub/Slack via Composio MCP, enriches through openloomi-memory, classifies into typed decisions, and executes via Claude Code                                                                                    |
+| **[openloomi-goals](#openloomi-goals)** ([GitHub](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi-goals/SKILL.md))                         | Read-only access to durable Goals — list active Goals across chats or inspect one Goal's steps and progress without changing its lifecycle                                                                                                                                        |
 | **[openloomi-feature-guide](#openloomi-feature-guide)** ([GitHub](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi-feature-guide/SKILL.md)) | Explain OpenLoomi concepts, product capabilities, and user workflows. Glossary (Loop, Signal, Decision, Card, ActionKind, Attention Agent, Connector, Memory, Plugin, Composio) and usage answers                                                                                |
 | **[composio](#composio)** ([GitHub](https://github.com/melandlabs/openloomi/tree/main/skills/composio/SKILL.md))                                              | Access 1000+ external apps (Gmail, Slack, GitHub, Notion, Linear, Jira, HubSpot, Asana, …) via the Composio CLI — search tools, link accounts, execute actions, listen for triggers                                                                                              |
 
@@ -1393,6 +1394,20 @@ POST /api/notify               fire macOS desktop test notification
 - **Full skill reference (commands, env vars, troubleshooting):** [openloomi-loop SKILL.md on GitHub](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi-loop/SKILL.md)
 - **Source code:** [`skills/openloomi-loop/`](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi-loop)
 - **Apache 2.0 license** — fork it, extend it, integrate it into your own Agent workflow.
+
+---
+
+### openloomi-goals
+
+> **Read-only Goal inspection.** List durable Goals across chats or inspect one Goal's steps and progress through the local OpenLoomi runtime.
+
+```bash
+node $SKILL_DIR/scripts/openloomi-goals.cjs list
+node $SKILL_DIR/scripts/openloomi-goals.cjs list <runtime-session-id>
+node $SKILL_DIR/scripts/openloomi-goals.cjs get <runtime-session-id> <goal-id>
+```
+
+This skill never creates, updates, pauses, resumes, or cancels a Goal; lifecycle changes stay in OpenLoomi. See the [source and full reference](https://github.com/melandlabs/openloomi/tree/main/skills/openloomi-goals).
 
 ---
 

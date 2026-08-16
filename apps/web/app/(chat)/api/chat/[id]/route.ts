@@ -1,9 +1,9 @@
 import { auth } from "@/app/(auth)/auth";
 import {
-  deleteChatById,
   getChatById,
   getMessagesByChatId,
 } from "@/lib/db/queries";
+import { getAgentGoalApiService } from "@/lib/ai/runtime-instructions/api/server";
 import { convertToUIMessages } from "@/lib/utils";
 import type { ChatMessage } from "@melandlabs/shared";
 import { AppError } from "@melandlabs/shared/errors";
@@ -36,7 +36,7 @@ export async function DELETE(
   const result = await authorizeChat(params);
   if (result instanceof Response) return result;
 
-  await deleteChatById({ id: result.id });
+  await getAgentGoalApiService().deleteSession(result.userId, result.id);
 
   return Response.json({ id: result.id });
 }

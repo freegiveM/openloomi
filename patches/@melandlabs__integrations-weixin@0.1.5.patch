@@ -1,0 +1,28 @@
+diff --git a/dist/ilink-client.js b/dist/ilink-client.js
+--- a/dist/ilink-client.js
++++ b/dist/ilink-client.js
+@@ -1,4 +1,4 @@
+ import crypto, { createCipheriv, createDecipheriv } from 'crypto';
+-import { TypingStatus, MessageState, MessageType, UploadMediaType } from '@tencent-weixin/openclaw-weixin/src/api/types';
+-export { MessageItemType, MessageState, MessageType, TypingStatus, UploadMediaType } from '@tencent-weixin/openclaw-weixin/src/api/types';
++import { TypingStatus, MessageState, MessageType, UploadMediaType } from '@tencent-weixin/openclaw-weixin/dist/src/api/types.js';
++export { MessageItemType, MessageState, MessageType, TypingStatus, UploadMediaType } from '@tencent-weixin/openclaw-weixin/dist/src/api/types.js';
+ 
+diff --git a/dist/index.js b/dist/index.js
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -1,5 +1,5 @@
+ import { MessagePlatformAdapter } from '@melandlabs/integrations-channels';
+ import crypto, { createCipheriv, createDecipheriv } from 'crypto';
+-import { MessageType, MessageItemType, MessageState, UploadMediaType } from '@tencent-weixin/openclaw-weixin/src/api/types';
++import { MessageType, MessageItemType, MessageState, UploadMediaType } from '@tencent-weixin/openclaw-weixin/dist/src/api/types.js';
+ import { homedir } from 'os';
+ import { join } from 'path';
+diff --git a/dist/ws-listener.js b/dist/ws-listener.js
+--- a/dist/ws-listener.js
++++ b/dist/ws-listener.js
+@@ -1,3 +1,3 @@
+ import crypto, { createDecipheriv } from 'crypto';
+-import { MessageType, MessageItemType } from '@tencent-weixin/openclaw-weixin/src/api/types';
++import { MessageType, MessageItemType } from '@tencent-weixin/openclaw-weixin/dist/src/api/types.js';
+ 

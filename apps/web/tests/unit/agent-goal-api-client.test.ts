@@ -111,6 +111,7 @@ describe("Agent Goal API client", () => {
       details: "Expected revision 3",
     } satisfies Partial<AgentGoalApiError>);
   });
+
 });
 
 function jsonResponse(body: unknown, status = 200): Response {

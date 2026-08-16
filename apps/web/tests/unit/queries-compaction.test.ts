@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   mockIsTauriMode: vi.fn(() => false),
   mockGenerateUUID: vi.fn(() => "summary-message-id"),
   mockDbInsert: vi.fn(),
+  mockDbSelect: vi.fn(),
   mockDbTransaction: vi.fn(),
   mockSqlitePrepare: vi.fn(),
   mockSqliteTransaction: vi.fn(),
@@ -24,6 +25,7 @@ vi.mock("@/lib/db/adapters", () => {
       transaction: (...args: unknown[]) => mocks.mockSqliteTransaction(...args),
     },
     insert: (...args: unknown[]) => mocks.mockDbInsert(...args),
+    select: (...args: unknown[]) => mocks.mockDbSelect(...args),
     transaction: (...args: unknown[]) => mocks.mockDbTransaction(...args),
   };
   return {
@@ -41,6 +43,7 @@ vi.mock("@/lib/db/schema", () => {
           return {
             id: "schema:chat.id",
             userId: "schema:chat.userId",
+            createdAt: "schema:chat.createdAt",
           };
         }
         return `schema:${String(key)}`;
@@ -109,6 +112,8 @@ import {
   CHAT_OWNER_SCOPE_CONFLICT,
   DB_INSERT_CHUNK_SIZE,
   MESSAGE_ID_SCOPE_CONFLICT,
+  ensureOwnedChat,
+  getChatIdsByUserId,
   replaceMessagesWithCompactionSummary,
   saveChat,
   saveMessages,
@@ -223,6 +228,57 @@ describe("chat message owner isolation queries", () => {
         },
       }),
     );
+  });
+
+  it("creates a Chat without overwriting and verifies the winning owner", async () => {
+    const onConflictDoNothing = vi.fn().mockResolvedValue([]);
+    const values = vi.fn().mockReturnValue({ onConflictDoNothing });
+    mocks.mockDbInsert.mockReturnValue({ values });
+    const where = vi
+      .fn()
+      .mockResolvedValue([{ id: "chat-1", userId: "owner-1" }]);
+    const from = vi.fn().mockReturnValue({ where });
+    mocks.mockDbSelect.mockReturnValue({ from });
+
+    await expect(
+      ensureOwnedChat({ id: "chat-1", userId: "owner-1", title: "Goal" }),
+    ).resolves.toMatchObject({ id: "chat-1", userId: "owner-1" });
+
+    expect(onConflictDoNothing).toHaveBeenCalledWith({
+      target: "schema:chat.id",
+    });
+  });
+
+  it("rejects a create-only Chat collision won by another owner", async () => {
+    const onConflictDoNothing = vi.fn().mockResolvedValue([]);
+    const values = vi.fn().mockReturnValue({ onConflictDoNothing });
+    mocks.mockDbInsert.mockReturnValue({ values });
+    const where = vi
+      .fn()
+      .mockResolvedValue([{ id: "chat-1", userId: "other-owner" }]);
+    const from = vi.fn().mockReturnValue({ where });
+    mocks.mockDbSelect.mockReturnValue({ from });
+
+    await expect(
+      ensureOwnedChat({ id: "chat-1", userId: "owner-1", title: "Goal" }),
+    ).rejects.toThrow(CHAT_OWNER_SCOPE_CONFLICT);
+  });
+
+  it("lists only the owner's Chat ids for cross-session Goal reads", async () => {
+    const where = vi
+      .fn()
+      .mockResolvedValue([{ id: "chat-2" }, { id: "chat-1" }]);
+    const from = vi.fn().mockReturnValue({ where });
+    mocks.mockDbSelect.mockReturnValue({ from });
+
+    await expect(getChatIdsByUserId("owner-1")).resolves.toEqual([
+      "chat-2",
+      "chat-1",
+    ]);
+    expect(where).toHaveBeenCalledWith({
+      kind: "eq",
+      args: ["schema:chat.userId", "owner-1"],
+    });
   });
 
   it("persists every message chunk inside one transaction", async () => {

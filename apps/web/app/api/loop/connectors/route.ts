@@ -20,11 +20,15 @@ import { NextResponse, type NextRequest } from "next/server";
 import { authenticateCloudRequest } from "@/lib/auth/cloud-auth";
 import { listIntegrationAccountRecordsByUser } from "@/lib/db/queries";
 import {
+  getLastProbeError,
+  listConnectors,
+  refreshConnectors,
+} from "@/lib/loop/connectors";
+import {
   buildNativeChatConnectorEntries,
   buildNativeConnectorReadinessEntries,
-  connectors,
   mergeNativeConnectorEntries,
-} from "@/lib/loop";
+} from "@/lib/loop/connectors-pure";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -36,7 +40,10 @@ async function handleConnectors(req: NextRequest, refresh: boolean) {
   // `{refresh:true}` — full 120s probe timeout, no silent-mode
   // short-circuit. Use POST when you want a controlled refresh and
   // don't mind the wait.
-  const { items, lastProbeError } = await connectors({ refresh });
+  const items = refresh
+    ? await refreshConnectors()
+    : await listConnectors();
+  const lastProbeError = getLastProbeError();
 
   // Surface native integrations on the Loomi online card without writing
   // them into the on-disk connector cache. An unauthenticated probe gets

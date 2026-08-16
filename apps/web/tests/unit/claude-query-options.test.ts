@@ -46,4 +46,41 @@ describe("Claude query recovery options", () => {
     expect(Object.hasOwn(options, "sessionId")).toBe(false);
     expect(Object.hasOwn(options, "forkSession")).toBe(false);
   });
+
+  it("preserves an explicitly tool-free planning surface", () => {
+    const options = createClaudeQueryOptions({
+      sessionId: "planning-session",
+      cwd: "D:\\workspace\\goal-plan",
+      settingSources: [],
+      tools: [],
+      allowedTools: [],
+      abortController: new AbortController(),
+      env: { ANTHROPIC_API_KEY: "test-key" },
+      config: { provider: "claude", model: "claude-test" },
+      claudeCodePath: "claude-code",
+      isDev: false,
+      debugFilePath: "openloomi.log",
+      logger: {
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+      },
+      spawnClaudeCodeProcess: vi.fn() as unknown as NonNullable<
+        Options["spawnClaudeCodeProcess"]
+      >,
+      systemPrompt: "return plan JSON",
+      permissionMode: "dontAsk",
+      maxTurns: 1,
+      permissionLogMode: "run",
+    });
+
+    expect(options).toMatchObject({
+      tools: [],
+      allowedTools: [],
+      settingSources: [],
+      permissionMode: "dontAsk",
+      maxTurns: 1,
+    });
+    expect(options.canUseTool).toBeUndefined();
+  });
 });

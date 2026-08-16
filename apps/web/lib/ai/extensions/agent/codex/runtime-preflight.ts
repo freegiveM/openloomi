@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 
 import { CodexAppServerClient } from "./app-server";
 import { runCodexCli, type CodexProviderConfig } from "./command";
+import { resolveCodexCommand } from "./command-resolver";
 
 const PREFLIGHT_TIMEOUT_MS = 5_000;
 const PREFLIGHT_CACHE_TTL_MS = 60_000;
@@ -27,6 +28,7 @@ export interface CodexRuntimePreflightOptions {
 }
 
 export interface CodexRuntimePreflightResult {
+  command: string;
   version: string;
   availableModels?: string[];
   modelCatalogChecked: boolean;
@@ -83,7 +85,18 @@ export async function preflightCodexRuntime(
 ): Promise<CodexRuntimePreflightResult> {
   throwIfAborted(options.signal);
 
-  const cacheKey = createPreflightCacheKey(options);
+  const resolvedOptions = {
+    ...options,
+    command: resolveCodexCommand({
+      configuredCommand:
+        options.providerConfig.codexPath ??
+        (options.command === "codex" ? undefined : options.command),
+      basePath: options.providerConfig.env?.PATH,
+      workingDirectory: options.cwd,
+    }),
+  };
+
+  const cacheKey = createPreflightCacheKey(resolvedOptions);
   const now = Date.now();
   let cached = preflightCache.get(cacheKey);
   if (cached && cached.expiresAt <= now) {
@@ -92,7 +105,7 @@ export async function preflightCodexRuntime(
   }
 
   if (!cached) {
-    const result = runPreflight(options).catch((error) => {
+    const result = runPreflight(resolvedOptions).catch((error) => {
       if (!(error instanceof CodexModelCompatibilityError)) {
         preflightCache.delete(cacheKey);
       }
@@ -127,6 +140,7 @@ async function runPreflight(
   const version = await probeCodexVersion(options);
   if (!options.model) {
     return {
+      command: options.command,
       version,
       modelCatalogChecked: false,
     };
@@ -138,6 +152,7 @@ async function runPreflight(
   } catch (probeError) {
     console.error("[DIAG] probeCodexModels failed:", probeError);
     return {
+      command: options.command,
       version,
       modelCatalogChecked: false,
     };
@@ -145,6 +160,7 @@ async function runPreflight(
 
   if (availableModels.length === 0) {
     return {
+      command: options.command,
       version,
       modelCatalogChecked: false,
     };
@@ -159,6 +175,7 @@ async function runPreflight(
   }
 
   return {
+    command: options.command,
     version,
     availableModels,
     modelCatalogChecked: true,

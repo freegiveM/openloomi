@@ -43,19 +43,4 @@ describe("AgentChatPanel recovery presentation", () => {
       canStopFromBrowser: true,
     });
   });
-
-  it("locks an explicit chat while recovery ownership is still loading", () => {
-    expect(
-      resolveAgentChatRuntimePresentation({
-        browserRunActive: false,
-        serverRecoveryActive: false,
-        serverRecoveryPending: true,
-      }),
-    ).toEqual({
-      effectiveRunning: false,
-      composerLocked: true,
-      canStartRun: false,
-      canStopFromBrowser: false,
-    });
-  });
 });

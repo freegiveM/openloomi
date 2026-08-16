@@ -8,7 +8,13 @@ import {
   ScrollArea,
   Textarea,
 } from "@openloomi/ui";
-import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 
@@ -37,18 +43,22 @@ import "../../i18n";
 
 interface AgentGoalSidePanelProps {
   runtimeSessionId: string;
-  onGoalCreated?: (objective: string) => Promise<void>;
+  onStartGoal: (objective: string) => Promise<AgentGoalCommandResponse>;
   onGoalPaused?: () => void | Promise<void>;
   chatBusy?: boolean;
+  planningObjective?: string;
+  focusRequest?: number;
   onClose?: () => void;
   className?: string;
 }
 
 export function AgentGoalSidePanel({
   runtimeSessionId,
-  onGoalCreated,
+  onStartGoal,
   onGoalPaused,
   chatBusy = false,
+  planningObjective,
+  focusRequest,
   onClose,
   className,
 }: AgentGoalSidePanelProps) {
@@ -62,6 +72,8 @@ export function AgentGoalSidePanel({
     tone: "error" | "info";
     message: string;
   }>();
+  const panelRef = useRef<HTMLElement>(null);
+  const handledFocusRequest = useRef<number | undefined>(undefined);
 
   useEffect(() => {
     if (!session.data) return;
@@ -75,6 +87,30 @@ export function AgentGoalSidePanel({
     }
   }, [selectedGoalId, session.data]);
 
+  useEffect(() => {
+    if (!planningObjective) return;
+    setComposing(false);
+    setFeedback(undefined);
+  }, [planningObjective]);
+
+  useEffect(() => {
+    if (
+      focusRequest === undefined ||
+      handledFocusRequest.current === focusRequest ||
+      session.isLoading
+    ) {
+      return;
+    }
+    const frame = requestAnimationFrame(() => {
+      const panel = panelRef.current;
+      const target =
+        panel?.querySelector<HTMLElement>("#goal-objective") ?? panel;
+      target?.focus();
+      handledFocusRequest.current = focusRequest;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [focusRequest, session.isLoading]);
+
   const detail = useAgentGoalDetail(
     runtimeSessionId,
     selectedGoalId,
@@ -85,6 +121,8 @@ export function AgentGoalSidePanel({
   const canCreate = Boolean(
     session.data?.goals.length && canCreateNewGoal(session.data.goals),
   );
+  const missingSession =
+    session.error instanceof AgentGoalApiError && session.error.status === 404;
 
   const runCommand = async (
     action: () => Promise<AgentGoalCommandResponse>,
@@ -107,22 +145,27 @@ export function AgentGoalSidePanel({
   };
 
   let body: ReactNode;
-  if (session.isLoading) {
-    body = <PanelState icon="loader_icon" title={t("agentGoals.loading")} spin />;
-  } else if (session.error) {
-    const unsaved =
-      session.error instanceof AgentGoalApiError && session.error.status === 404;
+  if (planningObjective) {
+    body = (
+      <div role="status" aria-live="polite">
+        <PanelState
+          icon="loader_icon"
+          title={t("agentGoals.planning")}
+          description={planningObjective}
+          spin
+        />
+      </div>
+    );
+  } else if (session.isLoading) {
+    body = (
+      <PanelState icon="loader_icon" title={t("agentGoals.loading")} spin />
+    );
+  } else if (session.error && !missingSession) {
     body = (
       <PanelState
-        icon={unsaved ? "message" : "error_warning"}
-        title={
-          unsaved ? t("agentGoals.unsavedTitle") : t("agentGoals.loadFailed")
-        }
-        description={
-          unsaved
-            ? t("agentGoals.unsavedDescription")
-            : goalErrorMessage(t, session.error)
-        }
+        icon="error_warning"
+        title={t("agentGoals.loadFailed")}
+        description={goalErrorMessage(t, session.error)}
         action={
           <Button size="sm" variant="outline" onClick={() => session.mutate()}>
             {t("common.retry", "Retry")}
@@ -130,29 +173,15 @@ export function AgentGoalSidePanel({
         }
       />
     );
-  } else if (!session.data?.goals.length || composing) {
+  } else if (missingSession || !session.data?.goals.length || composing) {
     body = (
       <GoalForm
-        busy={busy || chatBusy}
+        busy={busy}
+        disabled={busy || chatBusy}
         onSubmit={async (objective) => {
-          const response = await runCommand(() =>
-            commands.activate(objective),
-          );
+          const response = await runCommand(() => onStartGoal(objective));
           setSelectedGoalId(response.goal.id);
           setComposing(false);
-          if (onGoalCreated && response.dispatch.status === "unavailable") {
-            setBusy(true);
-            try {
-              await onGoalCreated(objective);
-            } catch {
-              setFeedback({
-                tone: "error",
-                message: t("agentGoals.errors.startFailed"),
-              });
-            } finally {
-              setBusy(false);
-            }
-          }
         }}
       />
     );
@@ -200,10 +229,9 @@ export function AgentGoalSidePanel({
 
   return (
     <section
-      className={cn(
-        "flex h-full min-h-0 flex-col bg-background",
-        className,
-      )}
+      ref={panelRef}
+      tabIndex={-1}
+      className={cn("flex h-full min-h-0 flex-col bg-background", className)}
     >
       <header className="flex h-14 shrink-0 items-center justify-between border-b px-4">
         <div className="flex min-w-0 items-center gap-2">
@@ -213,9 +241,7 @@ export function AgentGoalSidePanel({
             <span
               className={cn(
                 "size-2 rounded-full",
-                session.data.live
-                  ? "bg-emerald-500"
-                  : "bg-muted-foreground/40",
+                session.data.live ? "bg-emerald-500" : "bg-muted-foreground/40",
               )}
               title={
                 session.data.live
@@ -226,7 +252,7 @@ export function AgentGoalSidePanel({
           )}
         </div>
         <div className="flex items-center gap-1">
-          {canCreate && (
+          {canCreate && !planningObjective && (
             <Button
               variant="ghost"
               size="icon"
@@ -253,7 +279,7 @@ export function AgentGoalSidePanel({
         </div>
       </header>
 
-      {session.data && session.data.goals.length > 1 && (
+      {!planningObjective && session.data && session.data.goals.length > 1 && (
         <div className="border-b px-4 py-3">
           <Label htmlFor="goal-history" className="sr-only">
             {t("agentGoals.history")}
@@ -277,7 +303,7 @@ export function AgentGoalSidePanel({
         </div>
       )}
 
-      {feedback && (
+      {feedback && !planningObjective && (
         <div
           role={feedback.tone === "error" ? "alert" : "status"}
           className={cn(
@@ -300,9 +326,11 @@ export function AgentGoalSidePanel({
 
 function GoalForm({
   busy,
+  disabled,
   onSubmit,
 }: {
   busy: boolean;
+  disabled: boolean;
   onSubmit: (objective: string) => Promise<void>;
 }) {
   const { t } = useTranslation();
@@ -328,7 +356,7 @@ function GoalForm({
           placeholder={t("agentGoals.objectivePlaceholder")}
           rows={5}
           maxLength={8_000}
-          disabled={busy}
+          disabled={disabled}
         />
         {invalid && (
           <FieldError>{t("agentGoals.objectiveRequired")}</FieldError>
@@ -339,7 +367,7 @@ function GoalForm({
       </div>
 
       <div className="flex justify-end border-t pt-4">
-        <Button type="submit" disabled={busy}>
+        <Button type="submit" disabled={disabled}>
           {busy && (
             <RemixIcon
               name="loader_icon"

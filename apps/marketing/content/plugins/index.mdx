@@ -15,7 +15,7 @@ First-party plugins that turn external agent shells into a coding surface for a 
 | **Claude Code**         | `/plugin marketplace add melandlabs/plugins` then `/plugin install openloomi`                                                                                                                                             | `/openloomi:setup`                                  |
 | **Codex CLI**           | `codex plugin marketplace add melandlabs/plugins` then `codex plugin add openloomi@openloomi`                                                                                                                             | `@OpenLoomi Run first-use setup.`                   |
 | **MCP runtime**         | `pnpm --filter @openloomi/mcp build` then `node dist/cli.js`                                                                                                                                                              | `openloomi_setup`                                   |
-| **Skills.sh runtime**   | `npx skills add https://github.com/melandlabs/openloomi/tree/main/skills` then `--skill openloomi openloomi-setup openloomi-memory openloomi-connectors openloomi-loop openloomi-api openloomi-feature-guide composio -y` | `/openloomi:setup` (or the agent-native equivalent) |
+| **Skills.sh runtime**   | `npx skills add https://github.com/melandlabs/openloomi/tree/main/skills` then `--skill openloomi openloomi-setup openloomi-memory openloomi-connectors openloomi-loop openloomi-goals openloomi-api openloomi-feature-guide composio -y` | `/openloomi:setup` (or the agent-native equivalent) |
 
 ## Overview
 
@@ -60,7 +60,7 @@ For agents that only consume the [`skills.sh`](https://skills.sh/) skill protoco
 
 ```bash
 npx skills add https://github.com/melandlabs/openloomi/tree/main/skills \
-  --skill openloomi openloomi-setup openloomi-memory openloomi-connectors openloomi-loop openloomi-api openloomi-feature-guide composio \
+  --skill openloomi openloomi-setup openloomi-memory openloomi-connectors openloomi-loop openloomi-goals openloomi-api openloomi-feature-guide composio \
   -y
 ```
 

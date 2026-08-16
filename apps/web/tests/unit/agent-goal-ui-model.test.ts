@@ -1,16 +1,21 @@
 import { describe, expect, test } from "vitest";
 
 import type {
+  AgentGoalCommandResponse,
   AgentGoalDetailResponse,
   PublicAgentGoal,
   PublicGoalSummary,
 } from "@/lib/ai/runtime-instructions/api";
 import {
+  activateGoalWithChatFallback,
   canCreateNewGoal,
   canResumeGoal,
   createGoalCommandIdempotencyKeys,
+  createGoalStartSingleFlight,
   displayGoalStatus,
   goalStepsView,
+  parseGoalCommand,
+  resolveGoalComposerSubmission,
   shouldPollGoal,
 } from "@/lib/ai/runtime-instructions/goal-ui-model";
 
@@ -84,6 +89,30 @@ function detail(
 }
 
 describe("Goal UI model", () => {
+  test("parses only the exact /goal composer command", () => {
+    expect(parseGoalCommand("/goal ship the UI")).toBe("ship the UI");
+    expect(parseGoalCommand("  /goal\nship it  ")).toBe("ship it");
+    expect(parseGoalCommand("/goal")).toBe("");
+    expect(parseGoalCommand("/goalkeeper ship it")).toBeNull();
+    expect(parseGoalCommand("please /goal ship it")).toBeNull();
+  });
+
+  test("routes bare, objective, attachment, and ordinary composer submits", () => {
+    expect(resolveGoalComposerSubmission("/goal", 0)).toEqual({
+      kind: "open",
+    });
+    expect(resolveGoalComposerSubmission("/goal ship it", 0)).toEqual({
+      kind: "start",
+      objective: "ship it",
+    });
+    expect(resolveGoalComposerSubmission("/goal ship it", 1)).toEqual({
+      kind: "reject_attachments",
+    });
+    expect(resolveGoalComposerSubmission("/goalkeeper ship it", 1)).toEqual({
+      kind: "chat",
+    });
+  });
+
   test("only polls active Goals", () => {
     expect(shouldPollGoal(summary("active"))).toBe(true);
     for (const status of ["blocked", "completed", "budget_limited"] as const) {
@@ -107,11 +136,7 @@ describe("Goal UI model", () => {
     expect(goalStepsView(detail(criteria, ["ship"]))).toMatchObject({
       completed: 0,
       percent: 0,
-      steps: [
-        { state: "current" },
-        { state: "pending" },
-        { state: "pending" },
-      ],
+      steps: [{ state: "current" }, { state: "pending" }, { state: "pending" }],
     });
   });
 
@@ -122,9 +147,7 @@ describe("Goal UI model", () => {
       step("optional-notes", false),
       step("ship"),
     ];
-    const active = goalStepsView(
-      detail(criteria, ["tests", "optional-notes"]),
-    );
+    const active = goalStepsView(detail(criteria, ["tests", "optional-notes"]));
 
     expect(active).toMatchObject({
       completed: 1,
@@ -167,15 +190,163 @@ describe("Goal UI model", () => {
     }
   });
 
-  test("reuses idempotency keys until success or input changes", () => {
+  test("keeps idempotency keys isolated across concurrent requests", () => {
     let sequence = 0;
     const keys = createGoalCommandIdempotencyKeys(() => `key-${++sequence}`);
-    const first = { expectedRevision: 2 };
+    const chatA = { runtimeSessionId: "chat-a", objective: "Ship A" };
+    const chatB = { runtimeSessionId: "chat-b", objective: "Ship B" };
 
-    expect(keys.keyFor("update", first)).toBe("key-1");
-    expect(keys.keyFor("update", first)).toBe("key-1");
-    expect(keys.keyFor("update", { expectedRevision: 3 })).toBe("key-2");
-    keys.clear("update", { expectedRevision: 3 });
-    expect(keys.keyFor("update", { expectedRevision: 3 })).toBe("key-3");
+    expect(keys.keyFor("activate", chatA)).toBe("key-1");
+    expect(keys.keyFor("activate", chatB)).toBe("key-2");
+    expect(keys.keyFor("activate", chatA)).toBe("key-1");
+
+    keys.clear("activate", chatB);
+    expect(keys.keyFor("activate", chatB)).toBe("key-3");
+    expect(keys.keyFor("activate", chatA)).toBe("key-1");
+  });
+
+  test("runs the same pending Goal start only once per chat", async () => {
+    let resolveStart!: (value: string) => void;
+    const deferred = new Promise<string>((resolve) => {
+      resolveStart = resolve;
+    });
+    const starts: string[] = [];
+    const pending: Array<string | undefined> = [];
+    const singleFlight = createGoalStartSingleFlight<string>();
+    const start = () => {
+      starts.push("started");
+      return deferred;
+    };
+
+    const first = singleFlight.run({
+      runtimeSessionId: "chat-a",
+      objective: "Ship it",
+      start,
+      onPendingChange: (objective) => pending.push(objective),
+    });
+    const duplicate = singleFlight.run({
+      runtimeSessionId: "chat-a",
+      objective: "Ship it",
+      start,
+    });
+
+    expect(duplicate).toBe(first);
+    expect(pending).toEqual(["Ship it"]);
+    await Promise.resolve();
+    expect(starts).toEqual(["started"]);
+    resolveStart("done");
+    await expect(first).resolves.toBe("done");
+    expect(pending).toEqual(["Ship it", undefined]);
+  });
+
+  test("releases planning after activation without waiting for fallback execution", async () => {
+    let rejectExecution!: (error: Error) => void;
+    const execution = new Promise<void>((_resolve, reject) => {
+      rejectExecution = reject;
+    });
+    const response: AgentGoalCommandResponse = {
+      goal,
+      instruction: {
+        id: "10000000-0000-4000-8000-000000000002",
+        sequence: 1,
+        kind: "goal.activate",
+        goalRevision: goal.revision,
+        issuedAt: now,
+      },
+      deduplicated: false,
+      dispatch: {
+        status: "unavailable",
+        runtimeSessionId: goal.runtimeSessionId,
+        instructionId: "10000000-0000-4000-8000-000000000002",
+      },
+    };
+    const pending: Array<string | undefined> = [];
+    const failures: unknown[] = [];
+    let activations = 0;
+    let refreshes = 0;
+    let executions = 0;
+    const singleFlight =
+      createGoalStartSingleFlight<AgentGoalCommandResponse>();
+    const start = () =>
+      activateGoalWithChatFallback({
+        activate: async () => {
+          activations += 1;
+          return response;
+        },
+        refresh: () => {
+          refreshes += 1;
+        },
+        startFallback: () => {
+          executions += 1;
+          return execution;
+        },
+        onFallbackError: (error) => failures.push(error),
+      });
+
+    const first = singleFlight.run({
+      runtimeSessionId: goal.runtimeSessionId,
+      objective: goal.objective,
+      start,
+      onPendingChange: (objective) => pending.push(objective),
+    });
+    const duplicate = singleFlight.run({
+      runtimeSessionId: goal.runtimeSessionId,
+      objective: goal.objective,
+      start,
+    });
+
+    expect(duplicate).toBe(first);
+    await expect(first).resolves.toBe(response);
+    expect({ activations, refreshes, executions }).toEqual({
+      activations: 1,
+      refreshes: 1,
+      executions: 1,
+    });
+    expect(pending).toEqual([goal.objective, undefined]);
+
+    const executionError = new Error("runtime start failed");
+    rejectExecution(executionError);
+    await Promise.resolve();
+    expect(failures).toEqual([executionError]);
+  });
+
+  test("isolates pending Goal starts by chat and releases them after failure", async () => {
+    const singleFlight = createGoalStartSingleFlight<string>();
+    let rejectA!: (error: Error) => void;
+    const startA = new Promise<string>((_resolve, reject) => {
+      rejectA = reject;
+    });
+    const firstA = singleFlight.run({
+      runtimeSessionId: "chat-a",
+      objective: "Goal A",
+      start: () => startA,
+    });
+    const conflict = new Error("busy");
+
+    await expect(
+      singleFlight.run({
+        runtimeSessionId: "chat-a",
+        objective: "Different Goal",
+        start: async () => "unexpected",
+        conflictError: () => conflict,
+      }),
+    ).rejects.toBe(conflict);
+    await expect(
+      singleFlight.run({
+        runtimeSessionId: "chat-b",
+        objective: "Goal B",
+        start: async () => "done-b",
+      }),
+    ).resolves.toBe("done-b");
+
+    rejectA(new Error("failed"));
+    await expect(firstA).rejects.toThrow("failed");
+    await expect(
+      singleFlight.run({
+        runtimeSessionId: "chat-a",
+        objective: "Goal A",
+        start: async () => "retried",
+      }),
+    ).resolves.toBe("retried");
   });
 });

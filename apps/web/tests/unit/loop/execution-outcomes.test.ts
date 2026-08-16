@@ -552,4 +552,120 @@ describe("applyDecisionAction — propagates execution", () => {
     expect(out.status).toBe("pending");
     expect(decisions.get(id)?.status).toBe("pending");
   });
+
+  it("moves an approved agent_goal to done after runtime acceptance", async () => {
+    const { id } = addPending({
+      type: "todo",
+      action: { kind: "agent_goal", params: {} },
+    });
+    const out = await applyDecisionAction(
+      id,
+      { action: "run" },
+      {
+        ownerId: "user-1",
+        startGoal: async () => goalStartResult(),
+      },
+    );
+
+    expect(out.ok).toBe(true);
+    expect(out.status).toBe("done");
+    expect(out.execution?.evidence).toMatchObject({
+      goalId: "goal-1",
+      runtimeSessionId: "runtime-1",
+    });
+  });
+
+  it("serializes dismiss behind an agent_goal handoff", async () => {
+    const { id } = addPending({
+      type: "todo",
+      action: { kind: "agent_goal", params: {} },
+    });
+    let release!: () => void;
+    let entered!: () => void;
+    const waiting = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const run = applyDecisionAction(
+      id,
+      { action: "run" },
+      {
+        ownerId: "user-1",
+        startGoal: async () => {
+          entered();
+          await waiting;
+          return goalStartResult();
+        },
+      },
+    );
+    await started;
+    const dismiss = applyDecisionAction(id, { action: "dismiss" });
+    release();
+
+    const [runResult, dismissResult] = await Promise.all([run, dismiss]);
+    expect(runResult.ok).toBe(true);
+    expect(dismissResult).toMatchObject({ ok: false, status: "done" });
+    expect(decisions.get(id)?.status).toBe("done");
+  });
+
+  it("does not complete an agent_goal after its scheduled lock changes", async () => {
+    const { id } = addPending({
+      type: "todo",
+      action: { kind: "agent_goal", params: {} },
+    });
+    const current = decisions.get(id);
+    if (!current) throw new Error("decision fixture is required");
+    decisions.update(id, {
+      context: {
+        pending_action: {
+          action_id: "job-1",
+          action: "run",
+          scheduled_at: new Date().toISOString(),
+        },
+      },
+    });
+    const out = await applyDecisionAction(
+      id,
+      { action: "run" },
+      {
+        ownerId: "user-1",
+        pendingActionId: "job-old",
+        startGoal: async () => goalStartResult(),
+      },
+    );
+
+    expect(out).toMatchObject({ ok: false, status: "pending" });
+    expect(decisions.get(id)?.status).toBe("pending");
+  });
+
+  it("keeps agent_goal pending when startup fails", async () => {
+    const { id } = addPending({
+      type: "todo",
+      action: { kind: "agent_goal", params: {} },
+    });
+    const out = await applyDecisionAction(
+      id,
+      { action: "run" },
+      {
+        ownerId: "user-1",
+        startGoal: async () => {
+          throw new Error("provider did not become ready");
+        },
+      },
+    );
+
+    expect(out.ok).toBe(false);
+    expect(out.status).toBe("pending");
+    expect(decisions.get(id)?.status).toBe("pending");
+    expect(decisions.get(id)?.context?.last_error).toMatch(/did not become ready/);
+  });
 });
+
+function goalStartResult() {
+  return {
+    runtimeSessionId: "runtime-1",
+    goalId: "goal-1",
+  };
+}

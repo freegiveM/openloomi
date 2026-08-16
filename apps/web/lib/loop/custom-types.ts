@@ -39,6 +39,7 @@ export const BUILTIN_ACTION_KINDS = [
   "brief",
   "wrap",
   "quiet_digest",
+  "agent_goal",
 ] as const;
 
 export type BuiltInActionKind = (typeof BUILTIN_ACTION_KINDS)[number];

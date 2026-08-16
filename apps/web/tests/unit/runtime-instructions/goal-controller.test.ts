@@ -126,6 +126,41 @@ async function observeAssistantTurn(
   );
 }
 
+async function observeFailedCommandAttempt(fixture: Fixture, attempt: number) {
+  const context = await fixture.runtime.observations.captureContext({
+    ownerId: OWNER_ID,
+    runtimeSessionId: SESSION_ID,
+    runEpoch: 0,
+  });
+  if (!context) throw new Error("Expected an active Goal observation context");
+  const eventId = `deterministic-command-failure-${attempt}`;
+  const observedAt = new Date(NOW.getTime() + attempt * 1_000).toISOString();
+  await fixture.runtime.observations.observeProviderEvent({
+    ownerId: OWNER_ID,
+    runtimeSessionId: SESSION_ID,
+    runEpoch: 0,
+    eventKey: eventId,
+    providerEventId: eventId,
+    observedAt,
+    context,
+    evidence: [
+      {
+        type: "command_result",
+        sourceEventId: eventId,
+        summary: "Command failed: pwsh Get-Location",
+        success: false,
+        payload: {
+          command: "pwsh Get-Location",
+          exitCode: -1,
+          outputPreview:
+            "windows sandbox: orchestrator_helper_launch_failed: codex-windows-sandbox-setup.exe program not found",
+        },
+        observedAt,
+      },
+    ],
+  });
+}
+
 function commandGoal(overrides: Partial<GoalDraft> = {}): GoalDraft {
   return {
     objective: "Run the required test",
@@ -744,6 +779,55 @@ describe("GoalController Claude Stop integration", () => {
       ).resolves.toMatchObject({
         goal: { goal: { status: "active" } },
         latestRun: { status: "running" },
+      });
+    } finally {
+      await closeFixture(fixture);
+    }
+  });
+
+  it("pauses after three instructions repeat one deterministic failure", async () => {
+    const fixture = await createFixture();
+    try {
+      const activation = await activateGoal(fixture, commandGoal());
+      for (let attempt = 1; attempt <= 3; attempt += 1) {
+        const assistantTurnId = `assistant-deterministic-failure-${attempt}`;
+        await observeAssistantTurn(fixture, assistantTurnId);
+        await observeFailedCommandAttempt(fixture, attempt);
+        const decision = await fixture.claude.evaluateStop({
+          runEpoch: 0,
+          assistantTurnId,
+          lastAssistantMessage: "The sandbox helper is still unavailable.",
+          stopHookActive: false,
+        });
+        expect(decision).toMatchObject(
+          attempt < 3
+            ? { decision: "block", outcome: "continue" }
+            : { decision: "allow", outcome: "paused" },
+        );
+      }
+
+      await expectPausedGoal(fixture, activation.goal.goal.id);
+      await expect(
+        fixture.runtime.state.listInstructions(OWNER_ID, SESSION_ID),
+      ).resolves.toEqual([
+        expect.objectContaining({ kind: "goal.activate" }),
+        expect.objectContaining({ kind: "goal.continue" }),
+        expect.objectContaining({ kind: "goal.continue" }),
+      ]);
+      await expect(
+        fixture.runtime.queries.getById({
+          ownerId: OWNER_ID,
+          runtimeSessionId: SESSION_ID,
+          goalId: activation.goal.goal.id,
+        }),
+      ).resolves.toMatchObject({
+        latestRun: {
+          lastEvaluation: {
+            reason: expect.stringContaining(
+              "paused after 3 separate Runtime Instructions",
+            ),
+          },
+        },
       });
     } finally {
       await closeFixture(fixture);

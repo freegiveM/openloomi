@@ -13,17 +13,14 @@ export interface AgentChatRuntimePresentation {
 export function resolveAgentChatRuntimePresentation(input: {
   browserRunActive: boolean;
   serverRecoveryActive: boolean;
-  serverRecoveryPending?: boolean;
 }): AgentChatRuntimePresentation {
-  const recoveryOwnsOrMayOwnRun =
-    input.serverRecoveryActive || input.serverRecoveryPending === true;
   return {
     effectiveRunning: input.browserRunActive || input.serverRecoveryActive,
     // A browser-owned run already has its normal submit guard and a real stop
     // handle. Do not make its composer look like a server-owned recovery merely
     // because the persistence read model observes the same live session.
-    composerLocked: !input.browserRunActive && recoveryOwnsOrMayOwnRun,
-    canStartRun: !input.browserRunActive && !recoveryOwnsOrMayOwnRun,
+    composerLocked: !input.browserRunActive && input.serverRecoveryActive,
+    canStartRun: !input.browserRunActive && !input.serverRecoveryActive,
     // If the browser has a real abort handle, keep its functional stop even
     // while the server read model also observes the ordinary live lease.
     canStopFromBrowser: input.browserRunActive,
