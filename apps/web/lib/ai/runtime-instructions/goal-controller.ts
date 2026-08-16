@@ -17,6 +17,7 @@ import {
 } from "@openloomi/ai/agent/runtime-instructions";
 
 import { createGoalCommandFingerprint } from "./command-fingerprint";
+import { findRepeatedDeterministicFailure } from "./goal-failure-circuit-breaker";
 import { GoalEvaluatorError, type GoalEvaluator } from "./goal-evaluator";
 import type { RuntimeInstructionDispatcher } from "./instruction-dispatcher";
 import { KeyedSerialExecutor } from "./keyed-serial-executor";
@@ -372,6 +373,32 @@ export class GoalController {
         evaluationKey,
         goal: active.goal,
         evaluation,
+        status: "paused",
+        outcome: "paused",
+        now,
+      });
+      return this.cacheDecision(evaluationKey, decision);
+    }
+
+    const repeatedFailure = findRepeatedDeterministicFailure({
+      evidence: snapshot.evidence,
+      previousEvaluation: snapshot.run.lastEvaluation,
+      evaluation,
+    });
+    if (repeatedFailure) {
+      const guarded = GoalEvaluationResultSchema.parse({
+        ...evaluation,
+        reason: boundedReason(
+          `${evaluation.reason}\nAutomatic continuation paused after ${repeatedFailure.attempts} separate Runtime Instructions repeated the same deterministic execution failure without Goal criterion progress: ${repeatedFailure.description}`,
+        ),
+      });
+      const decision = await this.commitEvaluationOutcome({
+        ownerId,
+        runtimeSessionId,
+        runEpoch,
+        evaluationKey,
+        goal: active.goal,
+        evaluation: guarded,
         status: "paused",
         outcome: "paused",
         now,

@@ -4,7 +4,15 @@ import cx from "classnames";
 import { motion } from "framer-motion";
 import type { Attachment } from "@melandlabs/shared";
 import type React from "react";
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ArrowUpIcon, StopIcon } from "@/components/icons";
@@ -21,6 +29,12 @@ import { SUPPORTED_FILE_EXTENSIONS } from "@/lib/files/config";
 import { useAttachmentUpload } from "./use-attachment-upload";
 import type { TaskComposerProps, TaskComposerSubmitPayload } from "./types";
 import { VoiceRecordingBar } from "./voice-recording-bar";
+import {
+  filterTaskComposerCommands,
+  findActiveTaskComposerCommand,
+  moveTaskComposerCommandIndex,
+  type TaskComposerCommand,
+} from "./command-menu";
 
 const isTauriEnv = typeof window !== "undefined" && "__TAURI__" in window;
 const IME_COMPOSITION_BUFFER_MS = 120;
@@ -31,6 +45,7 @@ const MIN_TEXTAREA_HEIGHT_PX = TEXTAREA_LINE_HEIGHT_PX * DEFAULT_VISIBLE_LINES;
 const MAX_TEXTAREA_HEIGHT_PX = TEXTAREA_LINE_HEIGHT_PX * MAX_VISIBLE_LINES;
 const MAX_TEXT_LENGTH = 5000;
 const TASK_COMPOSER_MAX_WIDTH_CLASS = "max-w-[730px]";
+const EMPTY_COMMANDS: readonly TaskComposerCommand[] = [];
 
 function isImageAttachmentMissingLocalSource(attachment: Attachment): boolean {
   const file =
@@ -93,6 +108,7 @@ function PureTaskComposer({
   isUploadingFile: controlledUploadingState,
   onFilesSelected,
   enableDropzone = true,
+  commands = EMPTY_COMMANDS,
 }: TaskComposerProps) {
   const { t } = useTranslation();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -102,7 +118,13 @@ function PureTaskComposer({
   );
   const isComposingOrJustEndedRef = useRef(false);
   const [isDraggingFile, setIsDraggingFile] = useState(false);
+  const [highlightedCommandIndex, setHighlightedCommandIndex] = useState(0);
+  const [dismissedCommandValue, setDismissedCommandValue] = useState<
+    string | null
+  >(null);
   const dragCounterRef = useRef(0);
+  const highlightedCommandRef = useRef<HTMLButtonElement | null>(null);
+  const commandMenuId = useId();
   const focusTextarea = useCallback(() => {
     setTimeout(() => textareaRef.current?.focus(), 0);
   }, []);
@@ -142,6 +164,49 @@ function PureTaskComposer({
     !isLocked &&
     !hasUploadingAttachment &&
     !hasImageMissingLocalSource;
+  const matchingCommands = filterTaskComposerCommands(value, commands);
+  const activeCommand = findActiveTaskComposerCommand(value, commands);
+  const commandMenuOpen =
+    !isLocked &&
+    matchingCommands.length > 0 &&
+    dismissedCommandValue !== value;
+  const displayedActiveCommand = commandMenuOpen ? undefined : activeCommand;
+  const effectiveHighlightedCommandIndex =
+    matchingCommands.length === 0
+      ? 0
+      : Math.min(highlightedCommandIndex, matchingCommands.length - 1);
+  const highlightedCommand =
+    matchingCommands[effectiveHighlightedCommandIndex];
+
+  useEffect(() => {
+    setHighlightedCommandIndex((current) =>
+      matchingCommands.length === 0
+        ? 0
+        : Math.min(current, matchingCommands.length - 1),
+    );
+  }, [matchingCommands.length]);
+
+  useEffect(() => {
+    if (!commandMenuOpen) return;
+    highlightedCommandRef.current?.scrollIntoView({ block: "nearest" });
+  }, [commandMenuOpen, effectiveHighlightedCommandIndex]);
+
+  const selectCommand = useCallback(
+    (command: TaskComposerCommand) => {
+      const nextValue = `${command.trigger} `;
+      setDismissedCommandValue(null);
+      setHighlightedCommandIndex(0);
+      setValue(nextValue);
+      setTimeout(() => {
+        textareaRef.current?.focus();
+        textareaRef.current?.setSelectionRange(
+          nextValue.length,
+          nextValue.length,
+        );
+      }, 0);
+    },
+    [setValue],
+  );
 
   const adjustHeight = useCallback(() => {
     const el = textareaRef.current;
@@ -372,8 +437,94 @@ function PureTaskComposer({
         </div>
       )}
 
-      <div className="rounded-[16px] border border-[#E9E9E9] bg-[#FFFFFF] shadow-[0_4px_12px_0_rgba(167,167,167,0.12)]">
+      {commandMenuOpen ? (
+        <div
+          id={commandMenuId}
+          role="listbox"
+          aria-label={t("chat.commandMenu", "Commands")}
+          className="absolute bottom-full left-0 z-50 mb-2 w-full overflow-hidden rounded-xl border border-border/80 bg-popover/95 p-1.5 text-popover-foreground shadow-xl backdrop-blur-sm animate-in fade-in-0 zoom-in-95 duration-150 sm:w-[420px]"
+        >
+          <div className="px-2.5 pt-1 pb-1.5 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+            {t("chat.commandMenu", "Commands")}
+          </div>
+          {matchingCommands.map((command, index) => {
+            const highlighted = index === effectiveHighlightedCommandIndex;
+            return (
+              <button
+                id={`${commandMenuId}-${command.id}`}
+                key={command.id}
+                type="button"
+                role="option"
+                aria-selected={highlighted}
+                ref={highlighted ? highlightedCommandRef : undefined}
+                className={cx(
+                  "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors",
+                  highlighted
+                    ? "bg-accent text-accent-foreground shadow-sm"
+                    : "hover:bg-accent/60",
+                )}
+                onPointerDown={(event) => event.preventDefault()}
+                onMouseEnter={() => setHighlightedCommandIndex(index)}
+                onClick={() => selectCommand(command)}
+              >
+                <span
+                  className={cx(
+                    "flex size-9 shrink-0 items-center justify-center rounded-lg",
+                    highlighted
+                      ? "bg-primary/15 text-primary"
+                      : "bg-muted text-muted-foreground",
+                  )}
+                >
+                  <RemixIcon name="target" size="size-4" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-center gap-2">
+                    <span className="text-sm font-semibold">
+                      {command.trigger}
+                    </span>
+                    <span className="truncate text-xs text-muted-foreground">
+                      {command.label}
+                    </span>
+                  </span>
+                  <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+                    {command.description}
+                  </span>
+                </span>
+                <kbd className="rounded border border-border bg-background px-1.5 py-0.5 text-[10px] text-muted-foreground shadow-sm">
+                  Enter
+                </kbd>
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+
+      <div
+        className={cx(
+          "rounded-[16px] border bg-[#FFFFFF] shadow-[0_4px_12px_0_rgba(167,167,167,0.12)] transition-[border-color,box-shadow,background-color] duration-150",
+          displayedActiveCommand
+            ? "border-primary/50 bg-primary/[0.025] ring-2 ring-primary/10"
+            : "border-[#E9E9E9]",
+        )}
+      >
         <div className="p-3">
+          {displayedActiveCommand ? (
+            <div
+              className="mb-2 flex items-center gap-2 text-xs text-primary"
+              aria-live="polite"
+            >
+              <span className="flex size-6 items-center justify-center rounded-md bg-primary text-primary-foreground">
+                <RemixIcon name="target" size="size-3.5" />
+              </span>
+              <span className="font-semibold">
+                {displayedActiveCommand.modeLabel}
+              </span>
+              <span className="text-muted-foreground">
+                {displayedActiveCommand.description}
+              </span>
+            </div>
+          ) : null}
+
           {attachments.length > 0 ? (
             <div className="no-scrollbar mb-3 flex gap-2 overflow-x-auto">
               {attachments.map((attachment, index) => (
@@ -399,6 +550,8 @@ function PureTaskComposer({
               value={value}
               onChange={(event) => {
                 const next = event.target.value;
+                setDismissedCommandValue(null);
+                setHighlightedCommandIndex(0);
                 if (next.length > MAX_TEXT_LENGTH) {
                   setValue(next.slice(0, MAX_TEXT_LENGTH));
                   return;
@@ -407,6 +560,10 @@ function PureTaskComposer({
               }}
               onPaste={(event) => {
                 void handlePaste(event);
+              }}
+              onFocus={() => setDismissedCommandValue(null)}
+              onBlur={() => {
+                if (commandMenuOpen) setDismissedCommandValue(value);
               }}
               onCompositionStart={() => {
                 if (compositionEndTimerRef.current) {
@@ -426,6 +583,47 @@ function PureTaskComposer({
                 }, IME_COMPOSITION_BUFFER_MS);
               }}
               onKeyDown={(event) => {
+                if (commandMenuOpen) {
+                  if (event.key === "Escape") {
+                    event.preventDefault();
+                    setDismissedCommandValue(value);
+                    return;
+                  }
+                  if (event.key === "ArrowDown") {
+                    event.preventDefault();
+                    setHighlightedCommandIndex(
+                      (current) =>
+                        moveTaskComposerCommandIndex(
+                          current,
+                          "next",
+                          matchingCommands.length,
+                        ),
+                    );
+                    return;
+                  }
+                  if (event.key === "ArrowUp") {
+                    event.preventDefault();
+                    setHighlightedCommandIndex(
+                      (current) =>
+                        moveTaskComposerCommandIndex(
+                          current,
+                          "previous",
+                          matchingCommands.length,
+                        ),
+                    );
+                    return;
+                  }
+                  if (
+                    (event.key === "Enter" ||
+                      (event.key === "Tab" && !event.shiftKey)) &&
+                    !event.nativeEvent.isComposing &&
+                    !isComposingOrJustEndedRef.current
+                  ) {
+                    event.preventDefault();
+                    if (highlightedCommand) selectCommand(highlightedCommand);
+                    return;
+                  }
+                }
                 if (event.key !== "Enter" || event.shiftKey) return;
                 if (
                   event.nativeEvent.isComposing ||
@@ -439,6 +637,16 @@ function PureTaskComposer({
                 handleSubmit();
               }}
               placeholder={placeholder ?? t("common.message")}
+              role={commands.length > 0 ? "combobox" : undefined}
+              aria-autocomplete={commands.length > 0 ? "list" : undefined}
+              aria-haspopup={commands.length > 0 ? "listbox" : undefined}
+              aria-expanded={commands.length > 0 ? commandMenuOpen : undefined}
+              aria-controls={commandMenuOpen ? commandMenuId : undefined}
+              aria-activedescendant={
+                commandMenuOpen && highlightedCommand
+                  ? `${commandMenuId}-${highlightedCommand.id}`
+                  : undefined
+              }
               className={cx(
                 "min-h-0 w-full resize-none rounded-none border-0 bg-transparent px-0 py-0 text-left text-[14px] font-normal leading-5 text-[#000000] normal-case shadow-none outline-none ring-0 ring-offset-0 focus-visible:ring-0 focus-visible:ring-offset-0",
                 isVoiceActive ? "pointer-events-none opacity-100" : "",

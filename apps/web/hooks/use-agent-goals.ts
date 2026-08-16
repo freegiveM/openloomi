@@ -11,7 +11,6 @@ import type {
   ResumeGoalRequest,
 } from "@/lib/ai/runtime-instructions/api";
 import {
-  activateAgentGoal,
   agentGoalDetailUrl,
   agentGoalSessionUrl,
   fetchAgentGoalDetail,
@@ -23,6 +22,9 @@ import {
   createGoalCommandIdempotencyKeys,
   shouldPollGoal,
 } from "@/lib/ai/runtime-instructions/goal-ui-model";
+
+const AGENT_GOAL_RECOVERY_SESSIONS_URL =
+  "/api/agent-goals/runtime-sessions";
 
 export function useAgentGoalSession(runtimeSessionId: string | undefined) {
   const key = runtimeSessionId ? agentGoalSessionUrl(runtimeSessionId) : null;
@@ -77,6 +79,7 @@ export function useAgentGoalCommands(runtimeSessionId: string) {
     async (goalId?: string) => {
       await Promise.allSettled([
         mutate(agentGoalSessionUrl(runtimeSessionId)),
+        mutate(AGENT_GOAL_RECOVERY_SESSIONS_URL),
         goalId
           ? mutate(agentGoalDetailUrl(runtimeSessionId, goalId))
           : Promise.resolve(),
@@ -96,14 +99,6 @@ export function useAgentGoalCommands(runtimeSessionId: string) {
   };
 
   return {
-    activate: async (objective: string) => {
-      const request = { runtimeSessionId, objective };
-      const response = await execute("activate", request, (idempotencyKey) =>
-        activateAgentGoal(request, idempotencyKey),
-      );
-      await refresh(response.goal.id);
-      return response;
-    },
     pause: async (
       goalId: string,
       expectedRevision: number,

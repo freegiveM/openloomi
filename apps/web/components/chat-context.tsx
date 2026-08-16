@@ -12,10 +12,7 @@ import {
 } from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import type { ChatMessage } from "@melandlabs/shared";
-import {
-  generateUUID,
-  getTextFromMessage,
-} from "@/lib/utils";
+import { generateUUID, getTextFromMessage } from "@/lib/utils";
 import { mutate } from "swr";
 import { dismissToast, toast } from "@/components/toast";
 import { streamNativeAgentResponse } from "@/lib/ai/router/index";
@@ -26,6 +23,7 @@ import {
   attachChatSessionAbort,
   finishChatSession,
   getChatSessionState as readChatSessionState,
+  prepareRetryConversation,
   setChatSessionRunning,
   type ChatSessionState,
 } from "@/lib/ai/chat/runtime-state";
@@ -112,7 +110,10 @@ export interface ChatContextValue {
     updater: React.SetStateAction<ChatMessage[]>,
     chatId?: string | null,
   ) => void;
-  sendMessage: (content: any, options?: any) => Promise<void>;
+  sendMessage: (
+    content: any,
+    options?: { chatId?: string; [key: string]: unknown },
+  ) => Promise<void>;
   setSendMessage: (fn: (content: any, options?: any) => Promise<void>) => void;
   confirmLifestyleImageGeneration: (input: {
     chatId: string;
@@ -153,7 +154,7 @@ export interface ChatContextValue {
   // Switch chatId
   switchChatId: (chatId: string | null, forceRefresh?: boolean) => void;
 
-  // Sending lock - prevents chat switching while message is being sent
+  // Aggregate compatibility flag; navigation and runtime ownership are per chat.
   isSending: boolean;
 
   // Get all chat session states (used to display running status of each chat in header)
@@ -305,11 +306,6 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
     new Map(),
   );
 
-  // Sending lock - prevents chat switching while message is being sent
-  const [isSending, setIsSending] = useState(false);
-  const isSendingRef = useRef(isSending);
-  isSendingRef.current = isSending;
-
   // Get messages for a specific chat
   const getMessages = useCallback(
     (chatId: string | null): ChatMessage[] => {
@@ -361,12 +357,6 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
     [activeChatId, setMessagesForChat],
   );
 
-  // Messages ref (used to access latest messages in callbacks)
-  const messagesRef = useRef<ChatMessage[]>(messages);
-  useEffect(() => {
-    messagesRef.current = messages;
-  }, [messages]);
-
   // messagesMap ref, used to access latest map in callbacks
   const messagesMapRef = useRef(messagesMap);
   useEffect(() => {
@@ -375,11 +365,11 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
   // A recovery-active chat is refreshed in the background. Fence overlapping
   // reads so a slower, older response cannot replace a newer/final snapshot.
   const chatLoadSequenceRef = useRef(new Map<string, number>());
-
-  // Stream error retry management
-  const [streamRetryCount, setStreamRetryCount] = useState(0);
-  const [lastUserMessage, setLastUserMessage] = useState<any>(null);
-  const [isRetrying, setIsRetrying] = useState(false);
+  // Fence every stream callback by chat and run generation. A stopped stream
+  // may still deliver a late callback after the user starts a newer run in the
+  // same conversation; those callbacks must not mutate or finish the new run.
+  const chatRunGenerationRef = useRef(new Map<string, number>());
+  const abortFnsByChatRef = useRef(new Map<string, () => void>());
 
   // =====================================================================
   // sendMessage implementation
@@ -614,24 +604,16 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
     return buildLifestyleReferenceImages(sources);
   }
 
-  // Set isAgentRunning for a specific chatId (used by stream callbacks to clear lock for correct chat)
-  // Defined early to avoid initialization order issues with sendMessage
-  const setIsAgentRunningForChatFn = useCallback(
-    (chatId: string, running: boolean) => {
-      if (!chatId) return;
+  const finishNativeAgentRun = useCallback(
+    (chatId: string, runGeneration: number) => {
+      if (chatRunGenerationRef.current.get(chatId) !== runGeneration) return;
+      abortFnsByChatRef.current.delete(chatId);
       setChatSessionStates((prev) =>
-        setChatSessionRunning(prev, chatId, running),
+        finishChatSession(prev, chatId, runGeneration),
       );
     },
     [],
   );
-
-  const finishNativeAgentRun = useCallback((chatId: string | null) => {
-    abortFnRef.current = null;
-    setIsSending(false);
-    if (!chatId) return;
-    setChatSessionStates((prev) => finishChatSession(prev, chatId));
-  }, []);
 
   const saveChatMessageImmediately = useCallback(
     (message: ChatMessage, chatId: string) => {
@@ -700,12 +682,14 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
       assistantMessageId,
       sourceUserMessageId,
       referenceImages,
+      runGeneration,
     }: {
       chatId: string;
       prompt: string;
       assistantMessageId?: string;
       sourceUserMessageId?: string;
       referenceImages?: LifestyleReferenceImagePayload[];
+      runGeneration?: number;
     }) => {
       const replyId = assistantMessageId || generateUUID();
       const replyCreatedAt = new Date();
@@ -733,9 +717,13 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
           },
         },
       } as ChatMessage;
+      const isCurrentGeneration = () =>
+        runGeneration === undefined ||
+        chatRunGenerationRef.current.get(chatId) === runGeneration;
 
-      setIsSending(true);
-      setIsAgentRunningForChatFn(chatId, true);
+      setChatSessionStates((prev) =>
+        setChatSessionRunning(prev, chatId, true, runGeneration),
+      );
       setMessages((prev) => {
         const index = prev.findIndex((message) => message.id === replyId);
         if (index === -1) return [...prev, loadingMessage];
@@ -778,6 +766,7 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
         const data = (await response
           .json()
           .catch(() => null)) as LifestyleImageGenerationApiResponse | null;
+        if (!isCurrentGeneration()) return;
 
         if (!response.ok || !data?.success) {
           throw new Error(
@@ -853,6 +842,7 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
         }, chatId);
         saveChatMessageImmediately(successMessage, chatId);
       } catch (error) {
+        if (!isCurrentGeneration()) return;
         const errorMessage =
           error instanceof Error
             ? error.message
@@ -899,16 +889,14 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
           description: errorMessage,
         });
       } finally {
-        setIsSending(false);
-        setIsAgentRunningForChatFn(chatId, false);
+        setChatSessionStates((prev) =>
+          runGeneration === undefined
+            ? setChatSessionRunning(prev, chatId, false)
+            : finishChatSession(prev, chatId, runGeneration),
+        );
       }
     },
-    [
-      saveChatMessageImmediately,
-      setIsAgentRunningForChatFn,
-      setMessages,
-      setIsSending,
-    ],
+    [saveChatMessageImmediately, setMessages],
   );
 
   const confirmLifestyleImageGeneration = useCallback<
@@ -963,33 +951,46 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
   // Create safe sendMessage wrapper, integrating intelligent routing
   const sendMessage: ChatContextValue["sendMessage"] = useCallback(
     async (message, options) => {
-      // Wait for activeChatId to stabilize, avoid adding messages to wrong chat when switching chat immediately after sending
-      // Try multiple times to get stable activeChatId
-      let stableActiveChatId = activeChatId;
-      const maxRetries = 5;
-      for (let i = 0; i < maxRetries; i++) {
-        // Brief wait to ensure activeChatId has updated
-        await new Promise((resolve) => setTimeout(resolve, 10));
-        if (activeChatId === stableActiveChatId) {
-          break;
-        }
-        stableActiveChatId = activeChatId;
-      }
+      const chatIdForMessages =
+        typeof options?.chatId === "string" ? options.chatId : activeChatId;
 
-      if (!stableActiveChatId || stableActiveChatId.length === 0) {
+      if (!chatIdForMessages || chatIdForMessages.length === 0) {
         return Promise.reject(new Error("Chat is not properly initialized"));
       }
 
-      // Capture chatId for message updates, ensure streaming updates still write to correct chat after switching
-      const chatIdForMessages = stableActiveChatId;
-
-      // Set sending lock to prevent chat switching during send
-      setIsSending(true);
-
-      // Save user message for possible stream error retry
-      if (message && !isRetrying) {
-        setLastUserMessage(message);
+      const chatMessagesAtStart =
+        messagesMapRef.current.get(chatIdForMessages) ?? [];
+      const retryAttempt =
+        typeof options?.retryAttempt === "number" ? options.retryAttempt : 0;
+      const isRetryAttempt = options?.isRetry === true;
+      const retryUserMessageIds = Array.isArray(options?.retryUserMessageIds)
+        ? options.retryUserMessageIds.filter(
+            (value): value is string => typeof value === "string",
+          )
+        : [];
+      const requestedRetryGeneration =
+        typeof options?.retryGeneration === "number"
+          ? options.retryGeneration
+          : null;
+      let runGeneration: number;
+      if (isRetryAttempt && requestedRetryGeneration !== null) {
+        if (
+          chatRunGenerationRef.current.get(chatIdForMessages) !==
+          requestedRetryGeneration
+        ) {
+          return;
+        }
+        runGeneration = requestedRetryGeneration;
+      } else {
+        runGeneration =
+          (chatRunGenerationRef.current.get(chatIdForMessages) ?? 0) + 1;
+        chatRunGenerationRef.current.set(chatIdForMessages, runGeneration);
       }
+      const isCurrentRun = () =>
+        chatRunGenerationRef.current.get(chatIdForMessages) === runGeneration;
+      setChatSessionStates((prev) =>
+        setChatSessionRunning(prev, chatIdForMessages, true, runGeneration),
+      );
 
       // Extract message content (handle different message types)
       let messageContent: string;
@@ -1055,6 +1056,7 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
             hasReferenceImage: hasLifestyleReferenceImage,
             model: DEFAULT_AI_MODEL,
           });
+      if (!isCurrentRun()) return;
       const lifestyleSkillDecision = lifestyleSkillRoute.decision;
       const shouldGenerateFromClassifierFallback =
         shouldGenerateLifestyleImageFromClassifierFallback({
@@ -1093,11 +1095,19 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
           id: generateUUID(),
         } as ChatMessage;
         setMessages((prev) => [...prev, userMessage], chatIdForMessages);
-        await saveUserMessageAndUpdateHistory(userMessage, chatIdForMessages);
+        try {
+          await saveUserMessageAndUpdateHistory(userMessage, chatIdForMessages);
+        } catch (error) {
+          if (!isCurrentRun()) return;
+          finishNativeAgentRun(chatIdForMessages, runGeneration);
+          throw error;
+        }
+        if (!isCurrentRun()) return;
 
         const referenceImages = hasLifestyleReferenceImage
           ? await collectLifestyleReferenceImages(triggerMessageObject)
           : [];
+        if (!isCurrentRun()) return;
         if (!hasAcceptedLifestyleImageConsent()) {
           const consentMessageId = generateUUID();
           const consentCreatedAt = new Date(userMessageCreatedAt.getTime() + 1);
@@ -1130,7 +1140,7 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
           } as ChatMessage;
           setMessages((prev) => [...prev, consentMessage], chatIdForMessages);
           saveChatMessageImmediately(consentMessage, chatIdForMessages);
-          setIsSending(false);
+          finishNativeAgentRun(chatIdForMessages, runGeneration);
           return Promise.resolve();
         }
 
@@ -1139,6 +1149,7 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
           prompt: generationPrompt,
           sourceUserMessageId: userMessage.id,
           referenceImages,
+          runGeneration,
         });
         return Promise.resolve();
       }
@@ -1161,6 +1172,7 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
               // Image attachment - check if there is an original file object
               try {
                 const image = await resolveImagePartToBase64(part, message);
+                if (!isCurrentRun()) return;
                 if (image) images.push(image);
               } catch (error) {
                 console.error(
@@ -1190,6 +1202,7 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
                   // Use TUS for large non-image files
                   if (file.size > TUS_SIZE_THRESHOLD) {
                     const blobUrl = await uploadImageTUS(file);
+                    if (!isCurrentRun()) return;
                     if (blobUrl) {
                       // Fetch back from our TUS endpoint as base64 for the agent
                       const headers: HeadersInit = { credentials: "include" };
@@ -1198,7 +1211,9 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
                         headers.Authorization = `Bearer ${cloudToken}`;
                       }
                       const resp = await fetch(blobUrl, headers);
+                      if (!isCurrentRun()) return;
                       const buffer = await resp.arrayBuffer();
+                      if (!isCurrentRun()) return;
                       const base64 = Buffer.from(buffer).toString("base64");
                       const mimeType =
                         part.mediaType || "application/octet-stream";
@@ -1208,6 +1223,7 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
                         type: "error",
                         description: `File "${part.name}" upload failed`,
                       });
+                      finishNativeAgentRun(chatIdForMessages, runGeneration);
                       return;
                     }
                   } else {
@@ -1221,6 +1237,7 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
                         reader.readAsDataURL(part.file);
                       },
                     );
+                    if (!isCurrentRun()) return;
                     base64Data = base64;
                   }
                 }
@@ -1236,6 +1253,7 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
                     // Use TUS for large non-image files
                     if (file.size > TUS_SIZE_THRESHOLD) {
                       const blobUrl = await uploadImageTUS(file);
+                      if (!isCurrentRun()) return;
                       if (blobUrl) {
                         const headers: HeadersInit = { credentials: "include" };
                         const cloudToken = getAuthToken();
@@ -1243,7 +1261,9 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
                           headers.Authorization = `Bearer ${cloudToken}`;
                         }
                         const resp = await fetch(blobUrl, headers);
+                        if (!isCurrentRun()) return;
                         const buffer = await resp.arrayBuffer();
+                        if (!isCurrentRun()) return;
                         const base64 = Buffer.from(buffer).toString("base64");
                         const mimeType =
                           part.mediaType || "application/octet-stream";
@@ -1253,6 +1273,7 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
                           type: "error",
                           description: `File "${part.name}" upload failed`,
                         });
+                        finishNativeAgentRun(chatIdForMessages, runGeneration);
                         return;
                       }
                     } else {
@@ -1265,6 +1286,7 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
                           reader.readAsDataURL(file);
                         },
                       );
+                      if (!isCurrentRun()) return;
                       base64Data = base64;
                     }
                   }
@@ -1272,23 +1294,29 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
                 // Method 3: Get via downloadUrl
                 else if (part.downloadUrl) {
                   const response = await fetch(part.downloadUrl);
+                  if (!isCurrentRun()) return;
                   const blob = await response.blob();
+                  if (!isCurrentRun()) return;
                   const base64 = await new Promise<string>((resolve) => {
                     const reader = new FileReader();
                     reader.onloadend = () => resolve(reader.result as string);
                     reader.readAsDataURL(blob);
                   });
+                  if (!isCurrentRun()) return;
                   base64Data = base64;
                 }
                 // Method 4: Try normal URL
                 else if (part.url) {
                   const response = await fetch(part.url);
+                  if (!isCurrentRun()) return;
                   const blob = await response.blob();
+                  if (!isCurrentRun()) return;
                   const base64 = await new Promise<string>((resolve) => {
                     const reader = new FileReader();
                     reader.onloadend = () => resolve(reader.result as string);
                     reader.readAsDataURL(blob);
                   });
+                  if (!isCurrentRun()) return;
                   base64Data = base64;
                 }
 
@@ -1315,6 +1343,7 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
           ragDocuments = (message as any).metadata.ragDocuments;
         }
       }
+      if (!isCurrentRun()) return;
 
       // Add user message to conversation history (preserve original parts and metadata)
       const userMessage = {
@@ -1329,7 +1358,7 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
       setMessages((prev) => [...prev, userMessage], chatIdForMessages);
 
       // Immediately save user message to database and update history cache
-      saveMessagesToDatabase([userMessage], activeChatId ?? "").then(
+      saveMessagesToDatabase([userMessage], chatIdForMessages).then(
         (result) => {
           if (!result?.chat) return;
 
@@ -1385,10 +1414,6 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
       } as ChatMessage;
       setMessages((prev) => [...prev, assistantMessage], chatIdForMessages);
 
-      // Record start index of new message (for saving to database)
-      // Bug fix: store assistantMessageId for onDone to use instead of index
-      const newMessageStartIndex = messages.length;
-      const assistantMessageIdForRetry = assistantMessageId;
       const codexTransportToastId = `codex-transport-${assistantMessageId}`;
       const codexTransportStatus = createCodexTransportStatusController({
         show: (status) => {
@@ -1424,24 +1449,15 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
 
         // Build conversation history
         // During retry, need to remove incomplete last round of conversation
-        let conversationMessages = messages.filter((m) => m.role !== "system");
+        let conversationMessages = chatMessagesAtStart.filter(
+          (m) => m.role !== "system",
+        );
 
-        // If retrying, check if last round of conversation is complete
-        // (assistant message may only have error, no actual content)
-        if (isRetrying && conversationMessages.length >= 2) {
-          const lastMessage =
-            conversationMessages[conversationMessages.length - 1];
-          if (lastMessage.role === "assistant") {
-            // Check if message has actual content (via parts)
-            const hasContent = lastMessage.parts?.some(
-              (part: any) =>
-                part.type === "text" && part.text && part.text.trim() !== "",
-            );
-            if (!hasContent) {
-              // Remove incomplete assistant message
-              conversationMessages = conversationMessages.slice(0, -1);
-            }
-          }
+        if (isRetryAttempt && retryUserMessageIds.length > 0) {
+          conversationMessages = prepareRetryConversation(
+            conversationMessages,
+            retryUserMessageIds,
+          );
         }
 
         const conversation = conversationMessages.map((m) => ({
@@ -1473,15 +1489,12 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
             }
           : undefined;
 
-        setIsAgentRunningFn(true, stableActiveChatId);
-        // Set abort function and message update for current conversation
-        const chatIdForAbort = stableActiveChatId;
-
         // Directly save AI message parts during streaming updates
         // Avoid AI message parts being lost to database when switching chats
         const saveAssistantMessage = () => {
           // Directly use local parts variable and assistantMessageId to construct message
-          // Because messagesRef.current has not been updated to the latest state yet
+          // Build from this run's local stream state so chat switches cannot
+          // redirect persistence to whichever conversation is now active.
           if (parts.length === 0) return;
 
           const messageToSave = {
@@ -1490,16 +1503,15 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
             parts: [...parts], // Copy current parts
             id: assistantMessageId,
           } as ChatMessage;
-          saveMessagesToDatabase([messageToSave], activeChatId ?? "");
+          saveMessagesToDatabase([messageToSave], chatIdForMessages);
         };
 
-        const abortFn = await streamNativeAgentResponse(messageContent, {
-          chatId: stableActiveChatId ?? undefined,
+        await streamNativeAgentResponse(messageContent, {
+          chatId: chatIdForMessages,
           conversation,
-          taskId: stableActiveChatId ?? undefined, // Use stableActiveChatId as taskId so Workspace can correctly display files
-          workDir: stableActiveChatId
-            ? `~/.openloomi/sessions/${stableActiveChatId}`
-            : undefined, // Pass complete workDir path to ensure files are created in the correct directory
+          taskId: chatIdForMessages,
+          // Pass complete workDir path to ensure files are created in the correct directory.
+          workDir: `~/.openloomi/sessions/${chatIdForMessages}`,
           images,
           fileAttachments:
             fileAttachments.length > 0 ? fileAttachments : undefined,
@@ -1507,15 +1519,25 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
           authToken: cloudAuthToken,
           // Immediately save abortFn to ref and state, reduce race conditions
           onAbortFnReady: (abortFn) => {
-            // Update both ref and state simultaneously to ensure stop function can access synchronously
-            abortFnRef.current = abortFn;
-            if (chatIdForAbort) {
-              setChatSessionStates((prev) =>
-                attachChatSessionAbort(prev, chatIdForAbort, abortFn),
-              );
+            if (
+              chatRunGenerationRef.current.get(chatIdForMessages) !==
+              runGeneration
+            ) {
+              abortFn();
+              return;
             }
+            abortFnsByChatRef.current.set(chatIdForMessages, abortFn);
+            setChatSessionStates((prev) =>
+              attachChatSessionAbort(
+                prev,
+                chatIdForMessages,
+                abortFn,
+                runGeneration,
+              ),
+            );
           },
           onUpdate: async (data) => {
+            if (!isCurrentRun()) return;
             // Deduplicate based on messageId - avoid duplicate messages
             const messageId = (data as { messageId?: string }).messageId;
             if (messageId) {
@@ -1634,6 +1656,7 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
                       queryRawMessagesGrouped,
                       formatRawMessagesForAI,
                     } = await import("@melandlabs/indexeddb");
+                    if (!isCurrentRun()) return;
 
                     const params = outputObj.params;
                     let messages: any[];
@@ -1642,6 +1665,7 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
                     // Use grouped query if groupBy is specified
                     if (params.groupBy && params.groupBy !== "none") {
                       const grouped = await queryRawMessagesGrouped(params);
+                      if (!isCurrentRun()) return;
                       const groupKeys = Object.keys(grouped).sort((a, b) => {
                         if (a === "Today") return -1;
                         if (b === "Today") return 1;
@@ -1664,6 +1688,7 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
                       messages = Object.values(grouped).flat();
                     } else {
                       messages = await queryRawMessages(params);
+                      if (!isCurrentRun()) return;
                       resultText = formatRawMessagesForAI(messages);
                     }
 
@@ -1998,7 +2023,7 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
                   return updated;
                 }, chatIdForMessages);
               }
-              finishNativeAgentRun(chatIdForAbort || activeChatId);
+              finishNativeAgentRun(chatIdForMessages, runGeneration);
             }
 
             // Save AI message parts on every update
@@ -2009,27 +2034,25 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
           modelConfig,
           onDone: async () => {
             codexTransportStatus.clear();
-            finishNativeAgentRun(chatIdForAbort || activeChatId);
+            if (!isCurrentRun()) return;
+            finishNativeAgentRun(chatIdForMessages, runGeneration);
 
-            // Reset stream error retry count and retry flag (execution success)
-            setStreamRetryCount(0);
-            setIsRetrying(false);
-
-            // Save Native Agent messages to database (only non-user messages, user messages already saved on send)
-            // Bug fix: use assistantMessageId to find messages instead of index
-            const allNewMessages =
-              messagesRef.current.length > newMessageStartIndex
-                ? messagesRef.current.slice(newMessageStartIndex)
-                : messagesRef.current.filter(
-                    (m) => m.id === assistantMessageIdForRetry,
-                  );
-            const messagesToSave = allNewMessages.filter(
-              (m) => m.role !== "user",
-            );
-            saveMessagesToDatabase(messagesToSave, activeChatId ?? "", {
-              immediate: true,
-              skipSync: false,
-            });
+            // Persist the locally accumulated assistant response to the chat
+            // that started this run, even if the user has since switched.
+            if (parts.length > 0) {
+              saveMessagesToDatabase(
+                [
+                  {
+                    role: "assistant" as const,
+                    content: textContent,
+                    parts: [...parts],
+                    id: assistantMessageId,
+                  } as ChatMessage,
+                ],
+                chatIdForMessages,
+                { immediate: true, skipSync: false },
+              );
+            }
 
             mutate(
               (key) =>
@@ -2040,8 +2063,9 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
           },
           onError: (error) => {
             codexTransportStatus.clear();
+            if (!isCurrentRun()) return;
             console.error("[NativeAgent] Stream error:", error);
-            finishNativeAgentRun(chatIdForAbort || activeChatId);
+            finishNativeAgentRun(chatIdForMessages, runGeneration);
 
             // Safely extract error properties
             const errorName =
@@ -2105,91 +2129,86 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
             // If it is a stream connection error and max retry count not reached, auto retry
             if (
               isStreamConnectionError &&
-              streamRetryCount < MAX_STREAM_RETRY_ATTEMPTS
+              retryAttempt < MAX_STREAM_RETRY_ATTEMPTS
             ) {
               toast({
                 type: "info",
                 description: t("auth.errors.streamError.retrying", {
-                  current: streamRetryCount + 1,
+                  current: retryAttempt + 1,
                   max: MAX_STREAM_RETRY_ATTEMPTS,
                 }),
               });
 
-              // Immediately increment retry count
-              const nextRetryCount = streamRetryCount + 1;
-              setStreamRetryCount(nextRetryCount);
-
               // Retry after delay
               setTimeout(() => {
-                if (lastUserMessage) {
-                  // Set retry flag, force use native agent
-                  setIsRetrying(true);
-
+                if (!isCurrentRun()) return;
+                if (message) {
                   // Remove assistant message by ID instead of position (bug fix: avoid deleting wrong message if user sent new message during delay)
                   setMessages((prev) => {
                     const updated = prev.filter(
-                      (m) => m.id !== assistantMessageIdForRetry,
+                      (m) => m.id !== assistantMessageId,
                     );
                     return updated;
                   }, chatIdForMessages);
 
                   // Build retry message, tell AI to continue previous task
-                  // Create new message object to avoid modifying original lastUserMessage
+                  // Create a new message object without mutating this attempt's
+                  // input. The retry stays bound to the originating chat even
+                  // if the user has navigated elsewhere during the delay.
                   const retryPromptText = t(
                     "auth.errors.streamError.retryPrompt",
                   );
                   let retryMessage: any;
-                  if (
-                    typeof lastUserMessage === "object" &&
-                    lastUserMessage.parts
-                  ) {
+                  if (typeof message === "object" && message.parts) {
                     // If object format (with parts), add continue instruction
-                    const textPart = lastUserMessage.parts.find(
+                    const textPart = message.parts.find(
                       (p: any) => p.type === "text",
                     );
                     if (textPart) {
                       // Create new parts array, prepend "Please continue:" to original text
-                      const updatedParts = lastUserMessage.parts.map(
-                        (part: any) =>
-                          part.type === "text"
-                            ? {
-                                ...part,
-                                text: `${retryPromptText}${part.text}`,
-                              }
-                            : part,
+                      const updatedParts = message.parts.map((part: any) =>
+                        part.type === "text"
+                          ? {
+                              ...part,
+                              text: `${retryPromptText}${part.text}`,
+                            }
+                          : part,
                       );
                       retryMessage = {
-                        ...lastUserMessage,
+                        ...message,
                         parts: updatedParts,
                       };
                     } else {
                       // If no text part, create one
                       retryMessage = {
-                        ...lastUserMessage,
+                        ...message,
                         parts: [
                           { type: "text", text: retryPromptText },
-                          ...lastUserMessage.parts,
+                          ...message.parts,
                         ],
                       };
                     }
-                  } else if (typeof lastUserMessage === "string") {
+                  } else if (typeof message === "string") {
                     // If string format, prepend continue prefix
-                    retryMessage = `${retryPromptText}${lastUserMessage}`;
+                    retryMessage = `${retryPromptText}${message}`;
                   } else {
                     // Other cases, use original message directly
-                    retryMessage = lastUserMessage;
+                    retryMessage = message;
                   }
 
                   // Resend message
-                  sendMessage(retryMessage)
-                    .then(() => {
-                      // Reset retry flag on success
-                      setIsRetrying(false);
-                    })
-                    .catch((err) => {
-                      console.error("[NativeAgent] Retry failed:", err);
-                      setIsRetrying(false);
-                    });
+                  sendMessage(retryMessage, {
+                    chatId: chatIdForMessages,
+                    isRetry: true,
+                    retryAttempt: retryAttempt + 1,
+                    retryGeneration: runGeneration,
+                    retryUserMessageIds: [
+                      ...retryUserMessageIds,
+                      userMessage.id,
+                    ],
+                  }).catch((err) => {
+                    console.error("[NativeAgent] Retry failed:", err);
+                  });
                 }
               }, 2000); // Retry after 2 seconds
 
@@ -2211,22 +2230,15 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
                 description: `${t("auth.errors.streamError.description")}: ${errorMessage}`,
               });
             }
-
-            // Reset retry count
-            setStreamRetryCount(0);
           },
         });
-
-        // Save abort function for current conversation so it can still abort after switching conversations
-        if (chatIdForAbort) {
-          setChatSessionStates((prev) =>
-            attachChatSessionAbort(prev, chatIdForAbort, abortFn),
-          );
-        }
 
         return Promise.resolve();
       } catch (error) {
         codexTransportStatus.clear();
+        if (!isCurrentRun()) {
+          return Promise.resolve();
+        }
         console.error("[NativeAgent] API call failed:", error);
         const errorMessage =
           error instanceof Error ? error.message : String(error);
@@ -2261,16 +2273,14 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
           }
           return updated;
         }, chatIdForMessages);
-        finishNativeAgentRun(stableActiveChatId);
+        finishNativeAgentRun(chatIdForMessages, runGeneration);
         return Promise.reject(error);
       }
     },
     [
       activeChatId,
-      messages,
       setMessages,
       t,
-      setIsAgentRunningForChatFn,
       finishNativeAgentRun,
       saveUserMessageAndUpdateHistory,
       saveChatMessageImmediately,
@@ -2308,10 +2318,6 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
     Map<string, ChatSessionState>
   >(() => new Map());
 
-  // Use ref to store current abortFn, ensure stop function can access synchronously
-  // Avoid issues caused by React state async updates
-  const abortFnRef = useRef<(() => void) | null>(null);
-
   // Runtime state cannot survive a reload because abort functions are not
   // serializable. Remove legacy persisted flags so a stale `true` value cannot
   // resurrect a stop button without a live request.
@@ -2346,61 +2352,43 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
     ? getChatSessionState(activeChatId)
     : { isAgentRunning: false, abortFn: null };
 
-  // stop function - iterate all sessions to find and abort running agent
+  // Compatibility stop: cancel every local run without allowing a late
+  // callback to match a generation that gets reused by the next run.
   const stop = useCallback(() => {
-    // Prefer using abortFn in ref to ensure synchronous access
-    let abortFn = abortFnRef.current;
-    let chatIdWithAbort: string | null = null;
-
-    // If not in ref, try to get from state
-    if (!abortFn) {
-      for (const [chatId, state] of chatSessionStates) {
-        if (state.abortFn) {
-          abortFn = state.abortFn;
-          chatIdWithAbort = chatId;
-          break;
-        }
-      }
+    const chatIds = new Set([
+      ...chatSessionStates.keys(),
+      ...abortFnsByChatRef.current.keys(),
+    ]);
+    for (const chatId of chatIds) {
+      chatRunGenerationRef.current.set(
+        chatId,
+        (chatRunGenerationRef.current.get(chatId) ?? 0) + 1,
+      );
     }
 
-    // Immediately set isAgentRunning = false to prevent triggering new requests during abort
-    if (chatIdWithAbort) {
-      setChatSessionStates((prev) => {
-        const newMap = new Map(prev);
-        const state = newMap.get(chatIdWithAbort);
-        if (state) {
-          newMap.set(chatIdWithAbort, { ...state, isAgentRunning: false });
-        }
-        return newMap;
-      });
-    }
-
-    try {
-      if (abortFn) {
+    const abortFns = [...abortFnsByChatRef.current.values()];
+    abortFnsByChatRef.current.clear();
+    for (const abortFn of abortFns) {
+      try {
         abortFn();
-      } else {
-        console.warn("[stop] No abortFn found, cannot stop the request");
+      } catch (error) {
+        console.error("[stop] Error aborting native agent:", error);
       }
-    } catch (error) {
-      console.error("[stop] Error aborting native agent:", error);
-    } finally {
-      abortFnRef.current = null;
-      setIsSending(false);
-      // Clear abort functions and running state for all conversations
-      setChatSessionStates((prev) => {
-        const newMap = new Map(prev);
-        for (const [chatId, state] of newMap) {
-          if (state.abortFn || state.isAgentRunning) {
-            newMap.set(chatId, {
-              ...state,
-              abortFn: null,
-              isAgentRunning: false,
-            });
-          }
-        }
-        return newMap;
-      });
     }
+
+    setChatSessionStates((prev) => {
+      const next = new Map(prev);
+      for (const [chatId, state] of next) {
+        if (state.abortFn || state.isAgentRunning) {
+          next.set(chatId, {
+            ...state,
+            abortFn: null,
+            isAgentRunning: false,
+          });
+        }
+      }
+      return next;
+    });
     return Promise.resolve();
   }, [chatSessionStates]);
 
@@ -2408,9 +2396,15 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
   // pause boundary so unrelated conversations keep running.
   const stopChat = useCallback(
     (chatId: string) => {
-      const sessionAbort = chatSessionStates.get(chatId)?.abortFn ?? null;
+      chatRunGenerationRef.current.set(
+        chatId,
+        (chatRunGenerationRef.current.get(chatId) ?? 0) + 1,
+      );
       const abortFn =
-        sessionAbort ?? (activeChatId === chatId ? abortFnRef.current : null);
+        abortFnsByChatRef.current.get(chatId) ??
+        chatSessionStates.get(chatId)?.abortFn ??
+        null;
+      abortFnsByChatRef.current.delete(chatId);
 
       setChatSessionStates((prev) => {
         const state = prev.get(chatId);
@@ -2424,16 +2418,13 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
         return next;
       });
 
-      if (activeChatId === chatId) setIsSending(false);
-      if (abortFnRef.current === abortFn) abortFnRef.current = null;
-
       try {
         abortFn?.();
       } catch (error) {
         console.error("[stopChat] Error aborting native agent:", error);
       }
     },
-    [activeChatId, chatSessionStates],
+    [chatSessionStates],
   );
 
   const setIsAgentRunningFn = useCallback(
@@ -2460,11 +2451,6 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
 
   const switchChatId = useCallback(
     async (newChatId: string | null, forceRefresh?: boolean) => {
-      // Prevent chat switching while sending a message
-      if (isSendingRef.current) {
-        return;
-      }
-
       if (!newChatId) {
         const newUuid = generateUUID();
         setActiveChatId(newUuid);
@@ -2547,8 +2533,11 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
       setVaultOpen: setIsVaultOpen,
       // Switch chat
       switchChatId,
-      // Sending lock
-      isSending,
+      // Aggregate runtime activity (kept for the pet bridge). A terminal event
+      // from one chat must not hide another chat that is still running.
+      isSending: [...chatSessionStates.values()].some(
+        (state) => state.isAgentRunning,
+      ),
       // Get all chat session states
       getChatSessionStates: () => chatSessionStates,
       // Get isAgentRunning for a specific chatId
@@ -2565,7 +2554,6 @@ export function ChatContextProvider({ children }: { children: ReactNode }) {
     closeFilePreviewPanel,
     isVaultOpen,
     switchChatId,
-    isSending,
     getIsAgentRunningByChatId,
     confirmLifestyleImageGeneration,
     declineLifestyleImageGeneration,

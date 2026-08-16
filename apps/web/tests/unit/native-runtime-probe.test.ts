@@ -1,6 +1,6 @@
 import type { ChildProcess } from "node:child_process";
 import { EventEmitter } from "node:events";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import { PassThrough } from "node:stream";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
@@ -44,6 +44,8 @@ const {
   probeNativeClaudeRuntime,
   probeNativeCodexRuntime,
 } = await import("@/lib/ai/native-agent/runtime-probe");
+const { resolveCodexCommand } =
+  await import("@/lib/ai/extensions/agent/codex/command-resolver");
 
 function completedProcess({
   code = 0,
@@ -252,5 +254,64 @@ describe("native agent runtime probes", () => {
       "ANTHROPIC_AUTH_TOKEN",
     );
     expect(spawnMock).toHaveBeenCalledTimes(4);
+  });
+
+  test("does not report an incomplete native Codex bundle as ready", async () => {
+    const incompleteDirectory = join(process.cwd(), "incomplete-codex");
+    existingPaths.add(join(incompleteDirectory, "codex.exe"));
+    spawnMock
+      .mockImplementationOnce(() =>
+        completedProcess({ stdout: "codex-cli 1.2.0" }),
+      )
+      .mockImplementationOnce(() =>
+        completedProcess({ stdout: "Logged in using ChatGPT" }),
+      );
+
+    const probe = await probeNativeCodexRuntime({
+      force: true,
+      resolverOptions: {
+        platform: "win32",
+        searchPath: incompleteDirectory,
+      },
+    });
+
+    expect(probe).toMatchObject({
+      available: false,
+      ready: false,
+      reason: "CODEX_CLI_UNAVAILABLE",
+    });
+    expect(spawnMock).not.toHaveBeenCalled();
+  });
+
+  test("probes the same complete PATH bundle selected by the runtime resolver", async () => {
+    const incompleteDirectory = join(process.cwd(), "incomplete-codex");
+    const completeDirectory = join(process.cwd(), "complete-codex");
+    existingPaths.add(join(incompleteDirectory, "codex.exe"));
+    existingPaths.add(join(completeDirectory, "codex.exe"));
+    existingPaths.add(
+      join(completeDirectory, "codex-windows-sandbox-setup.exe"),
+    );
+    existingPaths.add(join(completeDirectory, "codex-command-runner.exe"));
+    const resolverOptions = {
+      platform: "win32" as const,
+      searchPath: [incompleteDirectory, completeDirectory].join(delimiter),
+    };
+    const expectedCommand = resolveCodexCommand(resolverOptions);
+    spawnMock
+      .mockImplementationOnce(() =>
+        completedProcess({ stdout: "codex-cli 1.2.0" }),
+      )
+      .mockImplementationOnce(() =>
+        completedProcess({ stdout: "Logged in using ChatGPT" }),
+      );
+
+    const probe = await probeNativeCodexRuntime({
+      force: true,
+      resolverOptions,
+    });
+
+    expect(probe?.ready).toBe(true);
+    expect(spawnMock.mock.calls[0]?.[0]).toBe(expectedCommand);
+    expect(spawnMock.mock.calls[1]?.[0]).toBe(expectedCommand);
   });
 });

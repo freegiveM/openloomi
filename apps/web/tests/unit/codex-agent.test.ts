@@ -18,6 +18,7 @@ import { parseCodexJsonLine } from "@/lib/ai/extensions/agent/codex/parser";
 import {
   clearCodexRuntimePreflightCache,
   parseCodexVersion,
+  preflightCodexRuntime,
 } from "@/lib/ai/extensions/agent/codex/runtime-preflight";
 import { createCodexTransportStatusController } from "@/lib/ai/extensions/agent/codex/transport-status";
 import type { AgentMessage, TaskPlan } from "@melandlabs/ai/agent";
@@ -199,6 +200,19 @@ describe("Codex runtime preflight", () => {
     expect(parseCodexVersion("codex-cli 0.145.0")).toBe("0.145.0");
     expect(parseCodexVersion("codex 1.2.3-beta.4")).toBe("1.2.3-beta.4");
     expect(parseCodexVersion("not a version")).toBeUndefined();
+  });
+
+  it("returns the same resolved absolute command for runtime startup", async () => {
+    const workDir = await mkdtemp(join(tmpdir(), "openloomi-codex-test-"));
+    tempDirs.push(workDir);
+
+    const result = await preflightCodexRuntime({
+      command: process.execPath,
+      cwd: workDir,
+      providerConfig: {},
+    });
+
+    expect(result.command).toBe(process.execPath);
   });
 
   it("starts codex exec when the selected model is in the CLI catalog", async () => {

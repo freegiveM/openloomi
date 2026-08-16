@@ -1,11 +1,16 @@
 export type StartupChatSelectionSource =
   | "url"
+  | "claimed"
   | "recovery"
   | "restored"
   | "new";
 
 export type StartupChatSelection =
-  | { pending: true; chatId: null; source: null }
+  | {
+      pending: true;
+      chatId: string;
+      source: "restored" | "new";
+    }
   | {
       pending: false;
       chatId: string;
@@ -16,6 +21,8 @@ export function selectStartupChat(input: {
   pathname: string;
   page: string | null;
   urlChatId?: string;
+  claimedChatId?: string;
+  forceNewChat?: boolean;
   recoveryLoaded: boolean;
   recoveryChatId?: string;
   restoredChatId: string | null;
@@ -24,10 +31,26 @@ export function selectStartupChat(input: {
   if (input.urlChatId) {
     return { pending: false, chatId: input.urlChatId, source: "url" };
   }
+  if (input.claimedChatId) {
+    return {
+      pending: false,
+      chatId: input.claimedChatId,
+      source: "claimed",
+    };
+  }
+  if (input.forceNewChat) {
+    return { pending: false, chatId: input.newChatId, source: "new" };
+  }
 
   const isColdHomeStart = input.pathname === "/" && input.page === null;
   if (isColdHomeStart && !input.recoveryLoaded) {
-    return { pending: true, chatId: null, source: null };
+    return input.restoredChatId
+      ? {
+          pending: true,
+          chatId: input.restoredChatId,
+          source: "restored",
+        }
+      : { pending: true, chatId: input.newChatId, source: "new" };
   }
   if (isColdHomeStart && input.recoveryChatId) {
     return {

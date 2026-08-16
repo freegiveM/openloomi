@@ -95,7 +95,10 @@ export async function runAgentRuntimeRequest(
           permissionRequest,
         );
         // Planning should describe actions, not perform protected tool calls.
-        return { behavior: "allow" };
+        return {
+          behavior: "deny",
+          message: "Tools are unavailable during planning",
+        };
       },
     });
   } else if (request.phase === "execute") {

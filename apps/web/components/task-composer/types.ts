@@ -1,5 +1,6 @@
 import type React from "react";
 import type { Attachment } from "@melandlabs/shared";
+import type { TaskComposerCommand } from "./command-menu";
 
 export type TaskComposerPlacement = "centered" | "docked";
 
@@ -26,4 +27,5 @@ export interface TaskComposerProps {
   isUploadingFile?: boolean;
   onFilesSelected?: (files: FileList | File[] | null) => Promise<void> | void;
   enableDropzone?: boolean;
+  commands?: readonly TaskComposerCommand[];
 }

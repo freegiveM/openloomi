@@ -6,6 +6,14 @@ const zh = {
   chat: {
     ...baseZh.chat,
     stopGenerating: "停止生成",
+    goalCommandAttachmentsUnsupported:
+      "请先创建不带附件的目标，再在对话中添加文件。",
+    goalCommandUnavailable: "当前对话无法创建目标。",
+    goalCommandFailed: "目标创建失败，请重试。",
+    commandMenu: "命令",
+    goalCommandMenuLabel: "创建目标",
+    goalCommandMenuDescription: "规划并执行一个长期任务",
+    goalCommandMode: "目标模式",
     codexTransport: {
       retrying: "Codex WebSocket 超时，正在重试，任务仍在运行",
       retryingWithAttempt:
@@ -18,8 +26,6 @@ const zh = {
     open: "打开目标",
     description: "管理此对话中的活动目标",
     loading: "正在加载目标…",
-    unsavedTitle: "请先开始对话",
-    unsavedDescription: "发送第一条消息保存此对话后，即可创建目标。",
     loadFailed: "目标加载失败",
     create: "创建目标",
     newGoal: "新建目标",
@@ -56,7 +62,8 @@ const zh = {
       runtimeUnavailable: "Goal Runtime 仅在 OpenLoomi 桌面端可用。",
       recoveryRequired: "此目标需要完成重启恢复后，Agent 才能继续执行。",
       planningFailed: "Agent 暂时无法为这个目标生成步骤，请重试。",
-      startFailed: "目标已保存，但首次运行没有启动。请点击继续目标重试。",
+      planningInProgress: "此对话正在规划另一个目标，请稍候。",
+      startFailed: "Agent 未能启动此目标，请检查运行时后重试。",
       requestFailed: "目标请求失败，请重试。",
     },
     states: {

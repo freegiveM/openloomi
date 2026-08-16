@@ -5,16 +5,15 @@
  * thinly wrap these so we can also unit-test them outside the Next runtime.
  */
 
+import { KeyedSerialExecutor } from "@/lib/ai/runtime-instructions/keyed-serial-executor";
+
 import {
   buildAndEnqueue as buildBrief,
   build as buildBriefOnly,
 } from "./brief";
-import {
-  listConnectors,
-  refreshConnectors,
-  getLastProbeError,
-} from "./connectors";
+import { listConnectors } from "./connectors";
 import { summarizeConnectorCapability } from "./connectors-pure";
+import { readPendingAction } from "./decision-lock";
 import { decisions, log, readStatus, signals } from "./store";
 import { readPreferences, writePreferences } from "./preferences";
 import {
@@ -23,6 +22,7 @@ import {
   resurrectDecision,
   runDecision,
   runDecisionWithRsvpResponse,
+  type RunResult,
 } from "./runner";
 import { run as runTick, setActiveUser as setTickActiveUser } from "./tick";
 import { buildAndEnqueue as buildWrap, build as buildWrapOnly } from "./wrap";
@@ -37,7 +37,6 @@ import type {
   LoopPreferences,
   LoopState,
   LoopTickResult,
-  ProbeErrorInfo,
 } from "./types";
 
 /** GET /api/loop/state — aggregated dashboard payload. */
@@ -213,33 +212,121 @@ export interface DecisionActionInput {
   reason?: string;
 }
 
-export async function applyDecisionAction(
+interface DecisionActionContext {
+  /** Authenticated owner; required only for an agent_goal action. */
+  ownerId?: string;
+  /** Scheduled action lock that must still own the decision on completion. */
+  pendingActionId?: string;
+  startGoal?: typeof import("./goal-adapter").startLoopDecisionGoal;
+}
+
+const decisionActions = new KeyedSerialExecutor();
+
+export function applyDecisionAction(
   id: string,
   input: DecisionActionInput,
-): Promise<{
-  ok: boolean;
-  status: DecisionStatus | "pending";
-  decision: LoopDecision | null;
-  result?: unknown;
-  error?: string;
-  /**
-   * #358 — structured execution verdict from the runner. Surfaced to the
-   * web UI so the card can render the actual outcome without re-reading
-   * the decision. Absent for dismiss/promote/resurrect because they don't
-   * execute anything.
-   */
-  execution?: LoopDecisionExecution;
-}> {
-  let out: {
-    ok: boolean;
-    status: DecisionStatus | "pending";
-    decision: LoopDecision | null;
-    result?: unknown;
-    error?: string;
-    execution?: LoopDecisionExecution;
-  };
+  context: DecisionActionContext = {},
+): Promise<RunResult> {
+  return decisionActions.run(id, () =>
+    applyDecisionActionOnce(id, input, context),
+  );
+}
+
+async function applyDecisionActionOnce(
+  id: string,
+  input: DecisionActionInput,
+  context: DecisionActionContext,
+): Promise<RunResult> {
+  let out: RunResult;
   switch (input.action) {
     case "run": {
+      const decision = decisions.get(id);
+      if (decision?.action.kind === "agent_goal") {
+        if (decision.status !== "pending") {
+          out = {
+            ok: false,
+            status: decision.status,
+            decision,
+            error: `not pending (${decision.status})`,
+          };
+          break;
+        }
+        if (!context.ownerId) {
+          out = {
+            ok: false,
+            status: "pending",
+            decision,
+            error: "authenticated owner required to start a Goal",
+          };
+          break;
+        }
+        try {
+          const startGoal =
+            context.startGoal ??
+            (await import("./goal-adapter")).startLoopDecisionGoal;
+          const goal = await startGoal(
+            context.ownerId,
+            decision,
+          );
+          const current = decisions.get(id);
+          if (
+            !current ||
+            !canCompleteGoalDecision(current, context.pendingActionId)
+          ) {
+            out = {
+              ok: false,
+              status: current?.status ?? "pending",
+              decision: current,
+              error: "decision changed while the Goal was starting",
+            };
+            break;
+          }
+          const execution: LoopDecisionExecution = {
+            outcome: "executed",
+            reason: "The approved decision was handed to the Goal runtime.",
+            evidence: {
+              goalId: goal.goalId,
+              runtimeSessionId: goal.runtimeSessionId,
+            },
+            evaluatedAt: new Date().toISOString(),
+          };
+          const moved = decisions.moveTo(id, "done", goal);
+          const updated = decisions.update(id, { execution });
+          out = {
+            ok: true,
+            status: "done",
+            decision: updated ?? moved,
+            result: goal,
+            execution,
+          };
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          const current = decisions.get(id);
+          if (
+            !current ||
+            !canCompleteGoalDecision(current, context.pendingActionId)
+          ) {
+            out = {
+              ok: false,
+              status: current?.status ?? "pending",
+              decision: current,
+              error: message,
+            };
+            break;
+          }
+          const updated = decisions.update(id, {
+            context: { ...(current.context ?? {}), last_error: message },
+          });
+          out = {
+            ok: false,
+            status: "pending",
+            decision: updated ?? decision,
+            error: message,
+          };
+        }
+        break;
+      }
       const r = await runDecision(id);
       out = {
         ok: r.ok,
@@ -264,6 +351,19 @@ export async function applyDecisionAction(
       break;
     }
     case "dismiss": {
+      const decision = decisions.get(id);
+      if (
+        decision?.action.kind === "agent_goal" &&
+        decision.status !== "pending"
+      ) {
+        out = {
+          ok: false,
+          status: decision.status,
+          decision,
+          error: `not pending (${decision.status})`,
+        };
+        break;
+      }
       const r = await dismissDecision(id, input.reason);
       out = {
         ok: r.ok,
@@ -353,20 +453,15 @@ export async function applyDecisionAction(
   return out;
 }
 
-/** GET /api/loop/connectors */
-export interface ConnectorsResult {
-  items: LoopState["connectors"];
-  /** #391 — present when the most recent probe failed. */
-  lastProbeError: ProbeErrorInfo | null;
-}
-
-export async function connectors(
-  opts: { refresh?: boolean } = {},
-): Promise<ConnectorsResult> {
-  const items = opts.refresh
-    ? await refreshConnectors()
-    : await listConnectors();
-  return { items, lastProbeError: getLastProbeError() };
+function canCompleteGoalDecision(
+  decision: LoopDecision,
+  pendingActionId?: string,
+): boolean {
+  if (decision.status !== "pending") return false;
+  return (
+    !pendingActionId ||
+    readPendingAction(decision.id)?.action_id === pendingActionId
+  );
 }
 
 /** POST /api/loop/brief */

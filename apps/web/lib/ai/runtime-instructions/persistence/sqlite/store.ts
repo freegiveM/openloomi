@@ -272,6 +272,13 @@ export interface SqliteGoalSessionRecord {
   readonly updatedAtSeconds: number;
 }
 
+export interface SqliteRecoveryPresentationSessionRecord {
+  readonly runtimeSessionId: string;
+  readonly state: RuntimeSessionState;
+  readonly runEpoch: number;
+  readonly updatedAtSeconds: number;
+}
+
 export interface SqliteGoalRecord {
   readonly persistedGoal: PersistedAgentGoal;
   readonly slotState: AgentGoalSlotState;
@@ -611,10 +618,14 @@ export class SqliteGoalRuntimeStore {
    * recovery lease is currently held: that is the session the restarted UI
    * must keep displaying while the coordinator consumes provider output.
    */
-  listRecoveryPresentationSessionIds(ownerId: string, limit: number): string[] {
+  listRecoveryPresentationSessions(
+    ownerId: string,
+    limit: number,
+  ): SqliteRecoveryPresentationSessionRecord[] {
     return this.client
       .prepare(
-        `SELECT session.id
+        `SELECT session.id, session.state, session.run_epoch,
+                session.updated_at
            FROM agent_runtime_sessions AS session
           WHERE session.owner_id = ?
             AND session.recovery_failed_at IS NULL
@@ -625,7 +636,23 @@ export class SqliteGoalRuntimeStore {
           LIMIT ?`,
       )
       .all(ownerId, limit)
-      .map((row) => requiredString((row as RawRow).id, "recovery session id"));
+      .map((row) => {
+        const session = row as RawRow;
+        return {
+          runtimeSessionId: requiredString(session.id, "recovery session id"),
+          state: requiredSessionState(session.state),
+          runEpoch: requiredInteger(
+            session.run_epoch,
+            "recovery session run_epoch",
+            0,
+          ),
+          updatedAtSeconds: requiredInteger(
+            session.updated_at,
+            "recovery session updated_at",
+            0,
+          ),
+        };
+      });
   }
 
   hasUnfinishedRuntimeState(

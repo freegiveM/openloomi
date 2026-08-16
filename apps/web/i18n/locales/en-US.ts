@@ -6,6 +6,14 @@ const en = {
   chat: {
     ...baseEn.chat,
     stopGenerating: "Stop generating",
+    goalCommandAttachmentsUnsupported:
+      "Create the Goal without attachments, then add files in the chat.",
+    goalCommandUnavailable: "Goal creation is unavailable in this chat.",
+    goalCommandFailed: "Goal could not be created. Please try again.",
+    commandMenu: "Commands",
+    goalCommandMenuLabel: "Create a Goal",
+    goalCommandMenuDescription: "Plan and run a long-running task",
+    goalCommandMode: "Goal mode",
     codexTransport: {
       retrying:
         "Codex WebSocket timed out. Retrying; the task is still running.",
@@ -20,9 +28,6 @@ const en = {
     open: "Open Goal",
     description: "Manage this chat's active Goal",
     loading: "Loading Goal…",
-    unsavedTitle: "Start this chat first",
-    unsavedDescription:
-      "Send the first message to save this chat, then create a Goal.",
     loadFailed: "Goal could not be loaded",
     create: "Create Goal",
     newGoal: "New Goal",
@@ -63,8 +68,9 @@ const en = {
       recoveryRequired:
         "This Goal needs restart recovery before the agent can continue it.",
       planningFailed: "The agent could not plan this Goal. Please try again.",
+      planningInProgress: "A Goal is already being planned for this chat.",
       startFailed:
-        "The Goal was saved, but its first run could not start. Continue the Goal to retry.",
+        "The agent did not start this Goal. Check the runtime and try again.",
       requestFailed: "Goal request failed. Please try again.",
     },
     states: {

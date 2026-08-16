@@ -21,6 +21,7 @@ import {
 } from "@/lib/ai/runtime-instructions/runtime";
 import type { RuntimeObservationContext } from "@/lib/ai/runtime-instructions/runtime-observation";
 import { GoalRuntimeRecoveryCoordinator } from "@/lib/ai/runtime-instructions/recovery/coordinator";
+import { readAgentGoalRecoveryPresentations } from "@/lib/ai/runtime-instructions/recovery/presentation-read-model";
 import {
   RuntimeSessionPersistenceError,
   SqliteRuntimeSessionPersistence,
@@ -152,6 +153,13 @@ function initializeDatabase(path: string, migrations: readonly string[]): void {
   const database = new Database(path);
   database.pragma("foreign_keys = ON");
   database.exec('CREATE TABLE "User" ("id" text PRIMARY KEY NOT NULL)');
+  database.exec(`CREATE TABLE "Chat" (
+    "id" text PRIMARY KEY NOT NULL,
+    "createdAt" integer NOT NULL,
+    "title" text NOT NULL,
+    "userId" text NOT NULL REFERENCES "User"("id"),
+    "visibility" text NOT NULL DEFAULT 'private'
+  )`);
   for (const migration of migrations) database.exec(migration);
   database.prepare('INSERT INTO "User" (id) VALUES (?)').run(OWNER_ID);
   database.close();
@@ -1275,6 +1283,50 @@ describe("SQLite Runtime restart recovery", () => {
         leaseOwner: "losing-recovery-worker",
       }),
     ).resolves.toBeNull();
+  });
+
+  it("reads recovery Chats in one owner-scoped presentation batch", async () => {
+    const runtime = createFileBackedRuntime();
+    const visibleSessionId = "visible-recovery-chat";
+    const missingChatSessionId = "missing-recovery-chat";
+    const foreignChatSessionId = "foreign-recovery-chat";
+    const otherOwnerId = "20000000-0000-4000-8000-000000000002";
+    const chatCreatedAt = new Date("2026-08-10T09:30:00.000Z");
+
+    await activate(runtime, visibleSessionId);
+    await activate(runtime, missingChatSessionId);
+    await activate(runtime, foreignChatSessionId);
+    runtime.database
+      .prepare('INSERT INTO "User" (id) VALUES (?)')
+      .run(otherOwnerId);
+    const insertChat = runtime.database.prepare(
+      `INSERT INTO "Chat" (id, "createdAt", title, "userId", visibility)
+       VALUES (?, ?, ?, ?, 'private')`,
+    );
+    insertChat.run(
+      visibleSessionId,
+      Math.floor(chatCreatedAt.getTime() / 1_000),
+      "Recovered project chat",
+      OWNER_ID,
+    );
+    insertChat.run(
+      foreignChatSessionId,
+      Math.floor(chatCreatedAt.getTime() / 1_000),
+      "Another owner's chat",
+      otherOwnerId,
+    );
+
+    expect(
+      readAgentGoalRecoveryPresentations(runtime.database, OWNER_ID),
+    ).toEqual([
+      {
+        runtimeSessionId: visibleSessionId,
+        chat: {
+          title: "Recovered project chat",
+          createdAt: chatCreatedAt.toISOString(),
+        },
+      },
+    ]);
   });
 
   it("rejects delayed provider observations after live ownership is reclaimed", async () => {

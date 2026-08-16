@@ -103,10 +103,10 @@ export function ChatHeaderPanel({
     [getChatSessionStates, recoverySessions],
   );
 
-  // Prefer context's activeChatId (for highlighting), otherwise use externally passed chatId
-  // This enables correct highlighting when switching chats purely client-side
+  // The URL/effective chat is authoritative. Context can lag briefly while
+  // message hydration starts, especially when another chat runs in background.
   const currentChatId = useMemo(() => {
-    const result = chatContext?.activeChatId ?? externalChatId ?? null;
+    const result = externalChatId ?? chatContext?.activeChatId ?? null;
     return result;
   }, [chatContext?.activeChatId, externalChatId]);
 
@@ -126,7 +126,7 @@ export function ChatHeaderPanel({
   const recoveryChats = useMemo<HeaderChat[]>(
     () =>
       recoverySessions.map((session) => ({
-        id: session.chat.id,
+        id: session.runtimeSessionId,
         title: session.chat.title,
         createdAt: new Date(session.chat.createdAt),
         latestMessageContent: null,
@@ -250,17 +250,17 @@ export function ChatHeaderPanel({
    * Handle chat selection
    */
   const handleChatSelect = (selectedChatId: string) => {
-    if (chatContextOptional?.activeChatId === selectedChatId) {
+    if (currentChatId === selectedChatId) return;
+    if (onChatIdChange) {
+      onChatIdChange(selectedChatId);
       return;
     }
-    setTimeout(() => {
-      const newPath = buildNavigationUrl({
-        pathname,
-        searchParams,
-        paramsToUpdate: { page: "chat", chatId: selectedChatId },
-      });
-      router.replace(newPath);
-    }, 50);
+    const newPath = buildNavigationUrl({
+      pathname,
+      searchParams,
+      paramsToUpdate: { page: "chat", chatId: selectedChatId },
+    });
+    router.replace(newPath);
   };
 
   return (

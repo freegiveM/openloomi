@@ -102,7 +102,10 @@ describe("validateCustomType", () => {
     }
   });
 
-  it("rejects actionKind outside the 14 built-ins", () => {
+  it("accepts agent_goal and rejects unknown action kinds", () => {
+    expect(
+      validateCustomType({ ...valid(), actionKind: "agent_goal" }).ok,
+    ).toBe(true);
     const r = validateCustomType({
       ...valid(),
       actionKind: "send_sms" as never,

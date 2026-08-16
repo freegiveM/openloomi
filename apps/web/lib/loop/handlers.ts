@@ -222,9 +222,16 @@ async function handleAction(
     // skew, manual deletion), this catches it before any external
     // write.
     const locked = readPendingAction(decisionId);
-    if (locked && locked.action_id !== context.jobId) {
+    const decision = decisions.get(decisionId);
+    const requiresExactLock =
+      action === "run" &&
+      decision?.action.kind === "agent_goal";
+    if (
+      (requiresExactLock || locked) &&
+      locked?.action_id !== context.jobId
+    ) {
       throw new Error(
-        `stale_action: pending_action=${locked.action_id} expected=${context.jobId}`,
+        `stale_action: pending_action=${locked?.action_id ?? "missing"} expected=${context.jobId}`,
       );
     }
 
@@ -293,9 +300,13 @@ async function handleAction(
           : {}),
       };
     }
-    const out = await applyDecisionAction(decisionId, {
-      action: action as "run" | "dry" | "dismiss" | "promote",
-    });
+    const out = await applyDecisionAction(
+      decisionId,
+      {
+        action: action as "run" | "dry" | "dismiss" | "promote",
+      },
+      { ownerId: context.userId, pendingActionId: context.jobId },
+    );
     // #364 — record the outcome in the immutable history. The
     // runner's verdict (#358) flows back as `out.execution`; we map
     // it onto the record so a card reload shows the exact outcome

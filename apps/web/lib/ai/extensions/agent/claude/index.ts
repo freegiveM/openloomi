@@ -31,10 +31,7 @@ import {
 // Import plugin definition helpers
 import { CLAUDE_METADATA, defineAgentPlugin } from "@melandlabs/ai/agent";
 import type { AgentPlugin } from "@melandlabs/ai/agent";
-import type {
-  AgentRuntimeRecovery,
-  GoalRuntimeAgentOptions,
-} from "@/lib/ai/agent/types-shim";
+import type { GoalRuntimeAgentOptions } from "@/lib/ai/agent/types-shim";
 import type {
   AgentConfig,
   AgentMessage,
@@ -64,7 +61,6 @@ import { filterToolCallText } from "@melandlabs/shared";
 import { generateUUID } from "@/lib/utils";
 import { estimateTokens } from "@/lib/ai";
 import { loadMcpServers } from "@/lib/ai/mcp";
-import { syncSkillsToClaude } from "@/lib/ai/skills/loader";
 
 // Skills are loaded directly by Claude SDK from ~/.openloomi/skills/ via settingSources: ['user']
 // No custom loading needed
@@ -1822,13 +1818,13 @@ ${formattedMessages}${truncationNotice}\n\n---\n## Current Request\n`;
       toolObserver:
         goalRuntimeEnabled &&
         resolveAuthenticatedGoalRuntimeOwnerId(options?.session)
-        ? claudeRuntime
-        : undefined,
+          ? claudeRuntime
+          : undefined,
       stopObserver:
         goalRuntimeEnabled &&
         resolveAuthenticatedGoalRuntimeOwnerId(options?.session)
-        ? claudeRuntime
-        : undefined,
+          ? claudeRuntime
+          : undefined,
       permissionMode: options?.permissionMode,
       abortController: session.abortController,
       env: envConfig,
@@ -2104,23 +2100,8 @@ ${formattedMessages}${truncationNotice}\n\n---\n## Current Request\n`;
     // Ensure the working directory exists before calling SDK
     await ensureDir(sessionCwd);
 
-    // Planning can still invoke Skill lookup, so sync skills even though the
-    // allowed tool list below is intentionally empty.
-    syncSkillsForClaudeSession({
-      sessionId: session.id,
-      sessionCwd,
-      bundledCliPath: getClaudeCodePath(),
-      logger,
-    });
     console.log(`[Claude ${session.id}] Working directory: ${sessionCwd}`);
     console.log(`[Claude ${session.id}] Planning phase started`);
-
-    // Include workspace instruction in planning prompt
-    const workspaceInstruction = `
-## CRITICAL: Output Directory
-**ALL files must be saved to: ${sessionCwd}**
-If you need to create any files during planning, use this directory.
-`;
 
     // Get user aiSoulPrompt from options
     const userAiSoulPrompt = options?.aiSoulPrompt ?? undefined;
@@ -2137,8 +2118,7 @@ If you need to create any files during planning, use this directory.
     // Include language instruction based on user preference
     const languageInstruction = getLanguageInstruction(userLanguage);
 
-    const planningPrompt =
-      workspaceInstruction + languageInstruction + aiSoulInstruction + prompt;
+    const planningPrompt = languageInstruction + aiSoulInstruction + prompt;
 
     let fullResponse = "";
 
@@ -2155,7 +2135,6 @@ If you need to create any files during planning, use this directory.
 
     // Planning uses the same env/settings builder as normal runs, but does not
     // expose tools because it should only produce a plan or direct answer.
-    const planSettingSources = buildClaudeSettingSources(options?.skillsConfig);
     const envConfig = await buildClaudeEnvConfig(this.config);
     const planSettingsConfig = buildClaudeSettingsConfig(this.config);
     // The SDK does not wire its stderr callback when a custom spawner is
@@ -2168,11 +2147,16 @@ If you need to create any files during planning, use this directory.
     const queryOptions = createClaudeQueryOptions({
       sessionId: session.id,
       cwd: sessionCwd,
-      settingSources: planSettingSources,
+      // Goal planning is a bounded structured-output call. Project settings and
+      // skills make it behave like a full agent run and can keep the query open.
+      settingSources: [],
       settings: planSettingsConfig,
+      tools: [],
       allowedTools: [],
-      agentOptions: options,
-      permissionMode: options?.permissionMode,
+      // Claude's native plan mode expects an approval hand-off into execution.
+      // OpenLoomi owns that lifecycle, so use a tool-free, fail-closed response.
+      permissionMode: "dontAsk",
+      maxTurns: 1,
       abortController: session.abortController,
       env: envConfig,
       config: this.config,
@@ -2186,7 +2170,7 @@ If you need to create any files during planning, use this directory.
     });
 
     logger.info(
-      `[Claude ${session.id}] [PLAN] about to call query() with cwd=${sessionCwd}, settingSources=${planSettingSources.join(",")}`,
+      `[Claude ${session.id}] [PLAN] about to call tool-free query() with cwd=${sessionCwd}`,
     );
 
     try {
@@ -2265,12 +2249,6 @@ If you need to create any files during planning, use this directory.
         message: error instanceof Error ? error.message : String(error),
       };
     } finally {
-      // Cleanup mirrors run/execute so repeated planning sessions do not reuse
-      // stale Windows skill sync output.
-      clearSkillsForClaudeSession({
-        sessionCwd,
-        bundledCliPath: getClaudeCodePath(),
-      });
       yield { type: "done", messageId: this.generateMessageId() };
     }
   }
@@ -2688,14 +2666,6 @@ If you need to create any files during planning, use this directory.
  * Factory function to create Claude agent
  */
 export function createClaudeAgent(config: AgentConfig): ClaudeAgent {
-  // Sync ~/.openloomi/skills/ to project .claude/skills/ for Claude SDK to load them
-  // When using custom API, we use 'project' source which reads from .claude/skills/ in the working directory
-  try {
-    syncSkillsToClaude(config.workDir);
-  } catch (error) {
-    // Don't fail agent creation if skills sync fails
-    console.error("[ClaudeAgent] Failed to sync skills:", error);
-  }
   return new ClaudeAgent(config);
 }
 

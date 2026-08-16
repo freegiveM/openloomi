@@ -153,6 +153,15 @@ export function publicGoalDetail(
 
 function goalApiErrorResponse(error: unknown): NextResponse {
   if (error instanceof GoalPlanningError) {
+    console.warn("[Agent Goal API] Planning failed", {
+      message: error.message,
+      cause:
+        error.cause instanceof Error
+          ? `${error.cause.name}: ${error.cause.message}`
+          : error.cause === undefined
+            ? undefined
+            : String(error.cause),
+    });
     return apiError("goal_planning_failed", 502);
   }
   if (error instanceof AgentGoalApiError) {

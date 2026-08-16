@@ -237,13 +237,24 @@ export async function startClaudeGoalRuntimeSession(
     // Do not expose its transport to normal dispatch until Claude proves that
     // it resumed the exact persisted provider session. Otherwise a concurrent
     // Goal command could enter the SDK input stream before the identity fence.
+    // Capture the pre-start boundary as well: the synthetic recovery prompt
+    // emits its own terminal result after system/init. That result must pass
+    // through the runtime observer before any recovered instruction is handed
+    // off, or it could consume the new instruction's turn context.
+    const recoveryBootstrapBoundary = input.recovery
+      ? input.runtime.captureTurnBoundary()
+      : undefined;
     if (!input.recovery) registerRuntime();
     input.runtime.start(input.start);
     runtimeStarted = true;
     await liveLease?.persistRunning();
-    if (input.recovery) {
+    if (input.recovery && recoveryBootstrapBoundary) {
       const providerSessionId =
         await input.runtime.waitUntilProviderSessionInitialized();
+      await input.runtime.waitForTurnTerminal({
+        expectedRunEpoch: recoveryBootstrapBoundary.runEpoch,
+        afterTerminalSequence: recoveryBootstrapBoundary.terminalSequence,
+      });
       registerRuntime();
 
       await goalRuntime.dispatcher.initializeRecoveredProgress({

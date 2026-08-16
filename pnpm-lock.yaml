@@ -8,6 +8,11 @@ overrides:
   postcss: ^8.5.6
   '@whiskeysockets/libsignal-node': git+https://github.com/WhiskeySockets/libsignal-node.git#1c30d7d7e76a3b0aa120b04dc6a26f5a12dccf67
 
+patchedDependencies:
+  '@melandlabs/integrations-weixin@0.1.5':
+    hash: 381398d760c8f517be81967c3dd93bbeae1d6f84161c213fdc4e6b630902aea3
+    path: patches/@melandlabs__integrations-weixin@0.1.5.patch
+
 importers:
 
   .:
@@ -301,7 +306,7 @@ importers:
         version: 0.1.5(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
       '@melandlabs/integrations-weixin':
         specifier: ^0.1.5
-        version: 0.1.5(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(openclaw@2026.7.1(@aws-sdk/credential-provider-node@3.972.44)(@cfworker/json-schema@4.1.1)(@opentelemetry/api@1.9.1)(@smithy/signature-v4@5.4.4)(bufferutil@4.1.0)(utf-8-validate@5.0.10))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
+        version: 0.1.5(patch_hash=381398d760c8f517be81967c3dd93bbeae1d6f84161c213fdc4e6b630902aea3)(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(openclaw@2026.7.1(@aws-sdk/credential-provider-node@3.972.44)(@cfworker/json-schema@4.1.1)(@opentelemetry/api@1.9.1)(@smithy/signature-v4@5.4.4)(bufferutil@4.1.0)(utf-8-validate@5.0.10))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
       '@melandlabs/integrations-whatsapp':
         specifier: ^0.1.5
         version: 0.1.5(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(bufferutil@4.1.0)(jimp@1.6.1)(link-preview-js@4.0.0)(react@19.2.5)(sharp@0.34.5)(utf-8-validate@5.0.10)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
@@ -456,8 +461,8 @@ importers:
         specifier: ^2.4.2
         version: 2.4.2
       '@tencent-weixin/openclaw-weixin':
-        specifier: ^1.0.2
-        version: 1.0.3
+        specifier: ^2.1.9
+        version: 2.4.6(openclaw@2026.7.1(@aws-sdk/credential-provider-node@3.972.44)(@cfworker/json-schema@4.1.1)(@opentelemetry/api@1.9.1)(@smithy/signature-v4@5.4.4)(bufferutil@4.1.0)(utf-8-validate@5.0.10))
       '@tiptap/extension-link':
         specifier: ^3.13.0
         version: 3.22.4(@tiptap/core@3.22.4(@tiptap/pm@3.22.4))(@tiptap/pm@3.22.4)
@@ -5469,10 +5474,6 @@ packages:
 
   '@tauri-apps/plugin-store@2.4.2':
     resolution: {integrity: sha512-0ClHS50Oq9HEvLPhNzTNFxbWVOqoAp3dRvtewQBeqfIQ0z5m3JRnOISIn2ZVPCrQC0MyGyhTS9DWhHjpigQE7A==}
-
-  '@tencent-weixin/openclaw-weixin@1.0.3':
-    resolution: {integrity: sha512-TOo9rb5gt3ce3lJEulFT5Ta4/8ocWkR40wzM7lZ8OM3/fjTk3UHYeNjHmDcZlLeg93XYJKdVUFUEiujrf8zMYw==}
-    engines: {node: '>=22'}
 
   '@tencent-weixin/openclaw-weixin@2.4.6':
     resolution: {integrity: sha512-qw9k3PLTiMWGNjjsknHgcTManH1w4j+Ji1ArWIaYLKCq3aFRsVwcqnPi127bvOoVMJGW4dbyJ8NECEMgoO+iRw==}
@@ -15765,7 +15766,7 @@ snapshots:
       - supports-color
       - ws
 
-  '@melandlabs/integrations-weixin@0.1.5(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(openclaw@2026.7.1(@aws-sdk/credential-provider-node@3.972.44)(@cfworker/json-schema@4.1.1)(@opentelemetry/api@1.9.1)(@smithy/signature-v4@5.4.4)(bufferutil@4.1.0)(utf-8-validate@5.0.10))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))':
+  '@melandlabs/integrations-weixin@0.1.5(patch_hash=381398d760c8f517be81967c3dd93bbeae1d6f84161c213fdc4e6b630902aea3)(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(openclaw@2026.7.1(@aws-sdk/credential-provider-node@3.972.44)(@cfworker/json-schema@4.1.1)(@opentelemetry/api@1.9.1)(@smithy/signature-v4@5.4.4)(bufferutil@4.1.0)(utf-8-validate@5.0.10))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))':
     dependencies:
       '@melandlabs/ai': 0.2.0(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
       '@melandlabs/integrations': 0.1.4
@@ -18000,11 +18001,6 @@ snapshots:
   '@tauri-apps/plugin-store@2.4.2':
     dependencies:
       '@tauri-apps/api': 2.11.0
-
-  '@tencent-weixin/openclaw-weixin@1.0.3':
-    dependencies:
-      qrcode-terminal: 0.12.0
-      zod: 4.3.6
 
   '@tencent-weixin/openclaw-weixin@2.4.6(openclaw@2026.7.1(@aws-sdk/credential-provider-node@3.972.44)(@cfworker/json-schema@4.1.1)(@opentelemetry/api@1.9.1)(@smithy/signature-v4@5.4.4)(bufferutil@4.1.0)(utf-8-validate@5.0.10))':
     dependencies:

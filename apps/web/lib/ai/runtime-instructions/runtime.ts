@@ -19,7 +19,6 @@ import {
   GoalLifecycleService,
   type RuntimeSessionRecoveryWakePort,
 } from "./goal-lifecycle-service";
-import { GoalReplacementCoordinator } from "./goal-replacement-coordinator";
 import { InMemoryAgentGoalState } from "./in-memory-goal-state";
 import { InMemoryRuntimeObservationJournal } from "./in-memory-runtime-observation-journal";
 import { RuntimeInstructionDispatcher } from "./instruction-dispatcher";
@@ -50,7 +49,6 @@ export interface InMemoryAgentGoalRuntime {
   readonly dispatcher: RuntimeInstructionDispatcher;
   readonly controller: GoalController;
   readonly goals: GoalService;
-  readonly replacements: GoalReplacementCoordinator;
   readonly queries: AgentGoalQueryService;
   readonly runtimeSessions: RuntimeSessionPersistencePort;
 }
@@ -61,7 +59,6 @@ export interface AgentGoalRuntime {
   readonly goals: GoalService;
   readonly controller: GoalController;
   readonly observations: RuntimeProviderObservationPort;
-  readonly replacements: GoalReplacementCoordinator;
   readonly queries: AgentGoalQueryService;
   readonly runtimeSessions: RuntimeSessionPersistencePort;
 }
@@ -130,15 +127,6 @@ export function createInMemoryAgentGoalRuntime(
     idGenerator,
     lifecycle,
   );
-  const replacements = new GoalReplacementCoordinator(
-    state,
-    dispatcher,
-    sessions,
-    clock,
-    idGenerator,
-    30_000,
-    observations,
-  );
   return {
     state,
     observations,
@@ -146,7 +134,6 @@ export function createInMemoryAgentGoalRuntime(
     dispatcher,
     controller,
     goals,
-    replacements,
     queries,
     runtimeSessions,
   };
@@ -246,15 +233,6 @@ function composeRuntime(input: {
       input.clock,
       input.idGenerator,
       lifecycle,
-    ),
-    replacements: new GoalReplacementCoordinator(
-      input.state,
-      dispatcher,
-      input.sessions,
-      input.clock,
-      input.idGenerator,
-      30_000,
-      input.observations,
     ),
     queries,
   };

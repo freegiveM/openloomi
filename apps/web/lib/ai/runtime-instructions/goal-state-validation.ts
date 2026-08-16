@@ -376,7 +376,9 @@ export function assertGoalLifecyclePreparation(
   const validSourceStatus =
     action === "pause"
       ? previousGoal.status === "active"
-      : previousGoal.status === "active" || previousGoal.status === "paused";
+      : previousGoal.status === "active" ||
+        previousGoal.status === "paused" ||
+        previousGoal.status === "blocked";
   if (
     !validSourceStatus ||
     goal.status !== expectedStatus ||

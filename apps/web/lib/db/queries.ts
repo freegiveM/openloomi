@@ -687,6 +687,51 @@ export async function saveChat({
 }
 
 /**
+ * Create a Chat only when its client-generated id is unused.
+ *
+ * Unlike `saveChat`, this never updates an existing row. Re-reading the
+ * winner after the conflict-safe insert also closes concurrent creation and
+ * prevents another owner from claiming the same Runtime Session id.
+ */
+export async function ensureOwnedChat({
+  id,
+  userId,
+  title,
+}: {
+  id: string;
+  userId: string;
+  title: string;
+}): Promise<Chat> {
+  try {
+    await db
+      .insert(chat)
+      .values({
+        id,
+        createdAt: new Date(),
+        userId,
+        title,
+        visibility: "public",
+      })
+      .onConflictDoNothing({ target: chat.id });
+
+    const selectedChat = await getChatById({ id });
+    if (!selectedChat || selectedChat.userId !== userId) {
+      throw new Error(CHAT_OWNER_SCOPE_CONFLICT);
+    }
+    return selectedChat;
+  } catch (error) {
+    if (error instanceof Error && error.message === CHAT_OWNER_SCOPE_CONFLICT) {
+      throw error;
+    }
+    console.error(error);
+    throw new AppError(
+      "bad_request:database",
+      `Failed to ensure owned chat. ${error}`,
+    );
+  }
+}
+
+/**
  * Save the association between Chat and Insight
  * A Chat can be associated with multiple Insights, used to record the context source of conversations
  */
@@ -1074,6 +1119,22 @@ export async function getChatById({ id }: { id: string }) {
     throw new AppError(
       "bad_request:database",
       `Failed to get chat by id. ${error}`,
+    );
+  }
+}
+
+/** Lightweight owner-scoped Chat ids for cross-session Goal reads. */
+export async function getChatIdsByUserId(userId: string): Promise<string[]> {
+  try {
+    const rows = await db
+      .select({ id: chat.id })
+      .from(chat)
+      .where(eq(chat.userId, userId));
+    return rows.map((row: { id: string }) => row.id);
+  } catch (error) {
+    throw new AppError(
+      "bad_request:database",
+      `Failed to get chat ids by user id. ${error}`,
     );
   }
 }

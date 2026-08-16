@@ -1,9 +1,9 @@
 import { hermesPlugin } from "@/lib/ai/extensions/agent/hermes";
-import { AgentRegistry } from "@melandlabs/ai/agent";
+import { AgentRegistry } from "@openloomi/ai/agent";
 import {
   type AgentRuntimePermissionRequest,
   runAgentRuntimeRequest,
-} from "@melandlabs/ai/agent/runtime";
+} from "@openloomi/ai/agent/runtime";
 import type {
   AgentConfig,
   AgentMessage,
@@ -12,7 +12,7 @@ import type {
   ExecuteOptions,
   IAgent,
   TaskPlan,
-} from "@melandlabs/ai/agent";
+} from "@openloomi/ai/agent";
 import { describe, expect, it } from "vitest";
 
 const silentLogger = {
@@ -150,6 +150,27 @@ describe("agent runtime", () => {
     expect(messages[1].content).toBe("permission:deny");
   });
 
+  it("denies protected tool requests during planning", async () => {
+    const run = await runAgentRuntimeRequest(
+      {
+        prompt: "plan without executing",
+        phase: "plan",
+        config: createConfig(),
+        options: { permissionMode: "plan" },
+      },
+      {
+        registry: createRegistry(new PlanPermissionAgent()),
+        logger: silentLogger,
+      },
+    );
+
+    const messages = await collectMessages(run.generator);
+
+    expect(messages).toEqual([
+      { type: "text", content: "planning-permission:deny" },
+    ]);
+  });
+
   it("converts sudo password prompts into runtime password_input events", async () => {
     const run = await runAgentRuntimeRequest(
       {
@@ -223,7 +244,10 @@ class PermissionAgent implements IAgent {
     };
   }
 
-  async *plan(): AsyncGenerator<AgentMessage> {
+  async *plan(
+    _prompt: string,
+    _options?: AgentOptions,
+  ): AsyncGenerator<AgentMessage> {
     yield { type: "plan", plan: createPlan() };
   }
 
@@ -255,6 +279,23 @@ class SudoAgent extends PermissionAgent {
       type: "tool_result",
       toolUseId: "tool-1",
       output: "Password:",
+    };
+  }
+}
+
+class PlanPermissionAgent extends PermissionAgent {
+  override async *plan(
+    _prompt: string,
+    options?: AgentOptions,
+  ): AsyncGenerator<AgentMessage> {
+    const decision = await options?.onPermissionRequest?.({
+      toolName: "Bash",
+      toolInput: { command: "echo should-not-run" },
+      toolUseID: "planning-tool-1",
+    });
+    yield {
+      type: "text",
+      content: `planning-permission:${decision?.behavior ?? "none"}`,
     };
   }
 }

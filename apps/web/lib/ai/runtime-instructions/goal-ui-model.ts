@@ -1,4 +1,5 @@
 import type {
+  AgentGoalCommandResponse,
   AgentGoalDetailResponse,
   PublicAgentGoal,
   PublicGoalSummary,
@@ -9,25 +10,125 @@ export interface GoalCommandIdempotencyKeys {
   clear(command: string, request: unknown): void;
 }
 
+export interface GoalStartSingleFlight<T> {
+  run(input: {
+    runtimeSessionId: string;
+    objective: string;
+    start: () => Promise<T>;
+    onPendingChange?: (objective: string | undefined) => void;
+    conflictError?: () => Error;
+  }): Promise<T>;
+}
+
+export interface GoalActivationFlow {
+  activate: () => Promise<AgentGoalCommandResponse>;
+  refresh: () => unknown | PromiseLike<unknown>;
+  startFallback: () => unknown | PromiseLike<unknown>;
+  onRefreshError?: (error: unknown) => void;
+  onFallbackError: (error: unknown) => void;
+}
+
+export type GoalComposerSubmission =
+  | { kind: "chat" }
+  | { kind: "open" }
+  | { kind: "start"; objective: string }
+  | { kind: "reject_attachments" };
+
+/** Matches only `/goal` or `/goal <objective>` at the start of the composer. */
+export function parseGoalCommand(text: string): string | null {
+  const match = /^\/goal(?:\s+([\s\S]*))?$/.exec(text.trim());
+  return match ? (match[1]?.trim() ?? "") : null;
+}
+
+export function resolveGoalComposerSubmission(
+  text: string,
+  attachmentCount: number,
+): GoalComposerSubmission {
+  const objective = parseGoalCommand(text);
+  if (objective === null) return { kind: "chat" };
+  if (attachmentCount > 0) return { kind: "reject_attachments" };
+  return objective ? { kind: "start", objective } : { kind: "open" };
+}
+
 export function createGoalCommandIdempotencyKeys(
   createKey: () => string = () => crypto.randomUUID(),
 ): GoalCommandIdempotencyKeys {
-  let pending: { fingerprint: string; key: string } | undefined;
+  const pending = new Map<string, string>();
 
   return {
     keyFor(command, request) {
       const fingerprint = commandFingerprint(command, request);
-      if (pending?.fingerprint !== fingerprint) {
-        pending = { fingerprint, key: createKey() };
-      }
-      return pending.key;
+      const existing = pending.get(fingerprint);
+      if (existing) return existing;
+
+      const key = createKey();
+      pending.set(fingerprint, key);
+      return key;
     },
     clear(command, request) {
-      if (pending?.fingerprint === commandFingerprint(command, request)) {
-        pending = undefined;
-      }
+      pending.delete(commandFingerprint(command, request));
     },
   };
+}
+
+/**
+ * Keeps Goal planning single-flight per chat. Durable idempotency remains the
+ * server-side safety net; this gate prevents duplicate browser requests and
+ * exposes the pending objective for immediate UI feedback.
+ */
+export function createGoalStartSingleFlight<T>(): GoalStartSingleFlight<T> {
+  const pending = new Map<string, { objective: string; promise: Promise<T> }>();
+
+  return {
+    run({
+      runtimeSessionId,
+      objective,
+      start,
+      onPendingChange,
+      conflictError,
+    }) {
+      const existing = pending.get(runtimeSessionId);
+      if (existing) {
+        if (existing.objective === objective) return existing.promise;
+        return Promise.reject(
+          conflictError?.() ??
+            new Error("A Goal is already being planned for this chat."),
+        );
+      }
+
+      onPendingChange?.(objective);
+      const promise = Promise.resolve()
+        .then(start)
+        .finally(() => {
+          if (pending.get(runtimeSessionId)?.promise !== promise) return;
+          pending.delete(runtimeSessionId);
+          onPendingChange?.(undefined);
+        });
+      pending.set(runtimeSessionId, { objective, promise });
+      return promise;
+    },
+  };
+}
+
+/**
+ * Ends the interactive planning request as soon as activation succeeds while
+ * keeping the Goal refresh and first chat turn supervised in the background.
+ */
+export async function activateGoalWithChatFallback({
+  activate,
+  refresh,
+  startFallback,
+  onRefreshError,
+  onFallbackError,
+}: GoalActivationFlow): Promise<AgentGoalCommandResponse> {
+  const response = await activate();
+
+  runGoalBackgroundAction(refresh, onRefreshError);
+  if (response.dispatch.status === "unavailable") {
+    runGoalBackgroundAction(startFallback, onFallbackError);
+  }
+
+  return response;
 }
 
 export interface GoalStepView {
@@ -130,6 +231,31 @@ export function formatDuration(seconds: number): string {
 
 function commandFingerprint(command: string, request: unknown): string {
   return `${command}:${stableSerialize(request)}`;
+}
+
+function runGoalBackgroundAction(
+  action: () => unknown | PromiseLike<unknown>,
+  onError?: (error: unknown) => void,
+): void {
+  try {
+    void Promise.resolve(action()).catch((error) => {
+      reportGoalBackgroundError(onError, error);
+    });
+  } catch (error) {
+    reportGoalBackgroundError(onError, error);
+  }
+}
+
+function reportGoalBackgroundError(
+  onError: ((error: unknown) => void) | undefined,
+  error: unknown,
+): void {
+  try {
+    onError?.(error);
+  } catch {
+    // A reporting failure must not turn a supervised background task into an
+    // unhandled rejection.
+  }
 }
 
 function stableSerialize(value: unknown): string {

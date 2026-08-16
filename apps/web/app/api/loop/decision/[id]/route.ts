@@ -40,8 +40,13 @@ export async function GET(_req: Request, ctx: RouteCtx) {
   }
 }
 
-export async function POST(req: Request, ctx: RouteCtx) {
+export const POST = withAutoGuest<RouteCtx>(async (req, ctx) => {
   try {
+    const session = await auth();
+    const userId = session?.user?.id;
+    if (!userId) {
+      return NextResponse.json({ error: "auth required" }, { status: 401 });
+    }
     const { id } = await ctx.params;
     let body: DecisionActionInput;
     try {
@@ -52,7 +57,7 @@ export async function POST(req: Request, ctx: RouteCtx) {
     if (!body || !body.action) {
       return NextResponse.json({ error: "action required" }, { status: 400 });
     }
-    const out = await applyDecisionAction(id, body);
+    const out = await applyDecisionAction(id, body, { ownerId: userId });
     const status = out.ok ? 200 : 400;
     return NextResponse.json(out, { status });
   } catch (e) {
@@ -61,7 +66,7 @@ export async function POST(req: Request, ctx: RouteCtx) {
       { status: 500 },
     );
   }
-}
+});
 
 const MAX_DRAFT_BODY = 50_000;
 const MAX_DRAFT_SUBJECT = 998;
