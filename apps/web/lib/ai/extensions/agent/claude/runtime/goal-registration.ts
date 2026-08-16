@@ -248,12 +248,12 @@ export async function startClaudeGoalRuntimeSession(
     input.runtime.start(input.start);
     runtimeStarted = true;
     await liveLease?.persistRunning();
-    if (input.recovery) {
+    if (input.recovery && recoveryBootstrapBoundary) {
       const providerSessionId =
         await input.runtime.waitUntilProviderSessionInitialized();
       await input.runtime.waitForTurnTerminal({
-        expectedRunEpoch: recoveryBootstrapBoundary!.runEpoch,
-        afterTerminalSequence: recoveryBootstrapBoundary!.terminalSequence,
+        expectedRunEpoch: recoveryBootstrapBoundary.runEpoch,
+        afterTerminalSequence: recoveryBootstrapBoundary.terminalSequence,
       });
       registerRuntime();
 
