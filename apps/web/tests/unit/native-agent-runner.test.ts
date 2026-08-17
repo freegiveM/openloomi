@@ -161,9 +161,13 @@ describe("native agent runner", () => {
     expect(agent.config?.thinkingLevel).toBeUndefined();
   });
 
-  it("uses Hermes env defaults without reading Anthropic-compatible settings", async () => {
+  it("passes saved Anthropic-compatible settings to the Hermes process", async () => {
     const agent = new CapturingAgent();
-    const getUserLlmProviderConfig = vi.fn();
+    const getUserLlmProviderConfig = vi.fn(async () => ({
+      apiKey: "saved-hermes-key",
+      baseUrl: "https://anthropic.example.test",
+      model: "claude-hermes-test",
+    }));
     const host: NativeAgentHost = {
       registry: createRegistry(agent),
       prepareRequest: (body) =>
@@ -192,18 +196,26 @@ describe("native agent runner", () => {
 
     await collectMessages(run.generator);
 
-    expect(getUserLlmProviderConfig).not.toHaveBeenCalled();
+    expect(getUserLlmProviderConfig).toHaveBeenCalledWith({
+      userId: "user-1",
+      providerType: "anthropic_compatible",
+    });
     expect(agent.config).toMatchObject({
       provider: "hermes",
+      model: "claude-hermes-test",
       providerConfig: {
         hermesPath: "env-hermes",
         profile: "env-profile",
         timeoutMs: 5000,
+        env: {
+          HERMES_INFERENCE_PROVIDER: "anthropic",
+          ANTHROPIC_API_KEY: "saved-hermes-key",
+          ANTHROPIC_BASE_URL: "https://anthropic.example.test",
+        },
       },
     });
     expect(agent.config?.apiKey).toBeUndefined();
     expect(agent.config?.baseUrl).toBeUndefined();
-    expect(agent.config?.model).toBeUndefined();
     expect(agent.config?.thinkingLevel).toBeUndefined();
   });
 

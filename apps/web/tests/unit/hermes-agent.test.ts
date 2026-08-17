@@ -42,7 +42,13 @@ describe("Hermes ACP command builder", () => {
 describe("HermesAgent", () => {
   it("runs initialize/session/new/session/prompt and maps ACP updates", async () => {
     const workDir = await createFakeHermesWorkDir(defaultFakeAcpScript());
-    const agent = createAgent(workDir);
+    const agent = createAgent(workDir, {
+      env: {
+        HERMES_INFERENCE_PROVIDER: "anthropic",
+        ANTHROPIC_API_KEY: "process-only-key",
+        ANTHROPIC_BASE_URL: "https://anthropic.example.test",
+      },
+    });
 
     const messages = await collectMessages(agent.run("normal run"));
 
@@ -89,6 +95,13 @@ describe("HermesAgent", () => {
       cwd: workDir,
       mcpServers: [],
     });
+    await expect(readFile(join(workDir, "env.json"), "utf8")).resolves.toBe(
+      JSON.stringify({
+        provider: "anthropic",
+        apiKey: "process-only-key",
+        baseUrl: "https://anthropic.example.test",
+      }),
+    );
   });
 
   it("applies an explicitly configured model to the new ACP session", async () => {
@@ -111,6 +124,23 @@ describe("HermesAgent", () => {
     expect(calls[2].params).toEqual({
       sessionId: "hermes-session-1",
       modelId: "openrouter:anthropic/claude-sonnet-4.6",
+    });
+  });
+
+  it("keeps custom endpoint models on the injected Anthropic provider", async () => {
+    const workDir = await createFakeHermesWorkDir(defaultFakeAcpScript());
+    const agent = createAgent(
+      workDir,
+      { env: { HERMES_INFERENCE_PROVIDER: "anthropic" } },
+      "gemini-3.7-flash",
+    );
+
+    await collectMessages(agent.run("normal run"));
+
+    const calls = await readJsonLines(join(workDir, "calls.jsonl"));
+    expect(calls[2].params).toEqual({
+      sessionId: "hermes-session-1",
+      modelId: "anthropic:gemini-3.7-flash",
     });
   });
 
@@ -398,6 +428,12 @@ function defaultFakeAcpScript() {
   return `
 const fs = require("node:fs");
 const readline = require("node:readline");
+
+fs.writeFileSync("env.json", JSON.stringify({
+  provider: process.env.HERMES_INFERENCE_PROVIDER,
+  apiKey: process.env.ANTHROPIC_API_KEY,
+  baseUrl: process.env.ANTHROPIC_BASE_URL,
+}));
 
 function append(file, value) {
   fs.appendFileSync(file, JSON.stringify(value) + "\\n");

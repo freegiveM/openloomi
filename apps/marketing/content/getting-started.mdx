@@ -237,9 +237,9 @@ OpenLoomi Desktop includes the Claude Agent SDK runtime, so users do not install
 | OpenClaw   | ✅ Supported   | Gateway-backed `openclaw acp` bridge                    |
 | DeepAgents | 🔜 Coming Soon | Metadata exists; a production adapter is not registered |
 
-In the desktop app, open **Settings → Agent runtime** to choose **Claude** or **Codex CLI**. Claude uses the runtime bundled with OpenLoomi and a saved Anthropic-compatible configuration or existing Claude authentication. Codex requires a local CLI installation and `codex login`. OpenLoomi performs read-only version and authentication checks before enabling a switch; it does not start a model request. The saved device preference applies to new tasks and takes precedence over `OPENLOOMI_AGENT_PROVIDER`; running tasks are not interrupted. Use **Use environment/default** to remove that override.
+In the desktop app, open **Settings → Agent runtime** to choose Claude, Codex, OpenCode, Hermes, or OpenClaw. Claude uses the runtime bundled with OpenLoomi; the others require their local CLI. Hermes can reuse the current user's saved Anthropic-compatible OpenLoomi API setting, while the remaining CLIs use their runtime-specific authentication or setup. OpenLoomi performs bounded, read-only readiness checks before enabling a switch; it does not start a model request. The saved device preference applies to new tasks and takes precedence over `OPENLOOMI_AGENT_PROVIDER`; running tasks are not interrupted. Use **Use environment/default** to remove that override.
 
-Server/headless deployments—and the OpenCode, Hermes, and OpenClaw runtimes—remain environment-controlled. Claude is used when neither a desktop preference nor `OPENLOOMI_AGENT_PROVIDER` is set; supported environment values are `claude`, `codex`, `opencode`, `hermes`, and `openclaw`.
+Server/headless deployments remain environment-controlled. Claude is used when neither a desktop preference nor `OPENLOOMI_AGENT_PROVIDER` is set; supported environment values are `claude`, `codex`, `opencode`, `hermes`, and `openclaw`.
 
 ```bash
 # OpenCode
@@ -273,7 +273,7 @@ See the **[Agent Runtimes reference](/docs/reference/agent-runtimes)** for detai
 
 **Configure Claude in the desktop app**
 
-In **Settings → Conversation models**, save the API key or gateway token, base URL, and model under **Anthropic compatible**. Return to **Agent runtime**, select **Check again**, and choose Claude when its status is **Ready**. Use **Test connection** as an endpoint check, then start a new task to confirm the complete Agent SDK path.
+In **Settings → Conversation models**, save the API key or gateway token, base URL, and model under **Anthropic compatible**. Return to **Agent runtime**, select **Re-detect**, and choose Claude when its status is **Ready**. Use **Test connection** as an endpoint check, then start a new task to confirm the complete Agent SDK path.
 
 <Callout type="warning">
   **Security:** OpenLoomi stores the saved credential as an encrypted user

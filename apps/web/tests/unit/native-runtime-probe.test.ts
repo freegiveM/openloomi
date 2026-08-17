@@ -43,6 +43,9 @@ const {
   clearNativeRuntimeCaches,
   probeNativeClaudeRuntime,
   probeNativeCodexRuntime,
+  probeNativeHermesRuntime,
+  probeNativeOpenClawRuntime,
+  probeNativeOpenCodeRuntime,
 } = await import("@/lib/ai/native-agent/runtime-probe");
 const { resolveCodexCommand } =
   await import("@/lib/ai/extensions/agent/codex/command-resolver");
@@ -77,6 +80,21 @@ function completedProcess({
   return child as ChildProcess;
 }
 
+function hangingProcess(): ChildProcess {
+  type MutableChildProcess = {
+    -readonly [Key in keyof ChildProcess]: ChildProcess[Key];
+  };
+  const child = new EventEmitter() as MutableChildProcess;
+  child.stdout = new PassThrough();
+  child.stderr = new PassThrough();
+  child.stdin = null;
+  child.exitCode = null;
+  child.signalCode = null;
+  child.pid = 1234;
+  child.kill = vi.fn(() => true);
+  return child as ChildProcess;
+}
+
 describe("native agent runtime probes", () => {
   beforeEach(() => {
     clearNativeRuntimeCaches();
@@ -84,12 +102,21 @@ describe("native agent runtime probes", () => {
     existingPaths.clear();
     Reflect.deleteProperty(process.env, "CLAUDE_CODE_PATH");
     Reflect.deleteProperty(process.env, "OPENLOOMI_AGENT_CODEX_COMMAND");
+    Reflect.deleteProperty(process.env, "OPENLOOMI_AGENT_OPENCODE_COMMAND");
+    Reflect.deleteProperty(process.env, "OPENLOOMI_AGENT_HERMES_COMMAND");
+    Reflect.deleteProperty(process.env, "OPENLOOMI_AGENT_HERMES_PROFILE");
+    Reflect.deleteProperty(process.env, "OPENLOOMI_AGENT_OPENCLAW_COMMAND");
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     clearNativeRuntimeCaches();
     Reflect.deleteProperty(process.env, "CLAUDE_CODE_PATH");
     Reflect.deleteProperty(process.env, "OPENLOOMI_AGENT_CODEX_COMMAND");
+    Reflect.deleteProperty(process.env, "OPENLOOMI_AGENT_OPENCODE_COMMAND");
+    Reflect.deleteProperty(process.env, "OPENLOOMI_AGENT_HERMES_COMMAND");
+    Reflect.deleteProperty(process.env, "OPENLOOMI_AGENT_HERMES_PROFILE");
+    Reflect.deleteProperty(process.env, "OPENLOOMI_AGENT_OPENCLAW_COMMAND");
     vi.unstubAllEnvs();
   });
 
@@ -230,10 +257,16 @@ describe("native agent runtime probes", () => {
         completedProcess({ stdout: "Logged in using ChatGPT" }),
       )
       .mockImplementationOnce(() =>
+        completedProcess({ stdout: "--json  Print events as JSONL" }),
+      )
+      .mockImplementationOnce(() =>
         completedProcess({ stdout: "codex-cli 1.2.1" }),
       )
       .mockImplementationOnce(() =>
         completedProcess({ stdout: "Logged in using ChatGPT" }),
+      )
+      .mockImplementationOnce(() =>
+        completedProcess({ stdout: "--json  Print events as JSONL" }),
       );
 
     const initial = await probeNativeCodexRuntime();
@@ -247,13 +280,14 @@ describe("native agent runtime probes", () => {
     });
     expect(refreshed?.version).toBe("1.2.1");
     expect(spawnMock.mock.calls[1]?.[1]).toEqual(["login", "status"]);
+    expect(spawnMock.mock.calls[2]?.[1]).toEqual(["exec", "--help"]);
     expect(spawnMock.mock.calls[0]?.[2]?.env).toMatchObject({
       OPENAI_API_KEY: "codex-model-key",
     });
     expect(spawnMock.mock.calls[0]?.[2]?.env).not.toHaveProperty(
       "ANTHROPIC_AUTH_TOKEN",
     );
-    expect(spawnMock).toHaveBeenCalledTimes(4);
+    expect(spawnMock).toHaveBeenCalledTimes(6);
   });
 
   test("does not report an incomplete native Codex bundle as ready", async () => {
@@ -265,6 +299,9 @@ describe("native agent runtime probes", () => {
       )
       .mockImplementationOnce(() =>
         completedProcess({ stdout: "Logged in using ChatGPT" }),
+      )
+      .mockImplementationOnce(() =>
+        completedProcess({ stdout: "--json  Print events as JSONL" }),
       );
 
     const probe = await probeNativeCodexRuntime({
@@ -303,6 +340,9 @@ describe("native agent runtime probes", () => {
       )
       .mockImplementationOnce(() =>
         completedProcess({ stdout: "Logged in using ChatGPT" }),
+      )
+      .mockImplementationOnce(() =>
+        completedProcess({ stdout: "--json  Print events as JSONL" }),
       );
 
     const probe = await probeNativeCodexRuntime({
@@ -313,5 +353,154 @@ describe("native agent runtime probes", () => {
     expect(probe?.ready).toBe(true);
     expect(spawnMock.mock.calls[0]?.[0]).toBe(expectedCommand);
     expect(spawnMock.mock.calls[1]?.[0]).toBe(expectedCommand);
+    expect(spawnMock.mock.calls[2]?.[0]).toBe(expectedCommand);
+  });
+
+  test("checks OpenCode credentials and JSON output capability", async () => {
+    process.env.OPENLOOMI_AGENT_OPENCODE_COMMAND = "C:\\fake\\opencode.exe";
+    existingPaths.add(process.env.OPENLOOMI_AGENT_OPENCODE_COMMAND);
+    spawnMock
+      .mockImplementationOnce(() =>
+        completedProcess({ stdout: "opencode 1.0.12" }),
+      )
+      .mockImplementationOnce(() =>
+        completedProcess({ stdout: "anthropic\nopenai" }),
+      )
+      .mockImplementationOnce(() =>
+        completedProcess({ stdout: "--format <format>  default or json" }),
+      );
+
+    const probe = await probeNativeOpenCodeRuntime();
+
+    expect(probe).toMatchObject({
+      provider: "opencode",
+      ready: true,
+      authenticated: true,
+      version: "1.0.12",
+      reason: "OPENCODE_CLI_AUTHENTICATED",
+    });
+    expect(spawnMock.mock.calls[1]?.[1]).toEqual(["auth", "list"]);
+    expect(spawnMock.mock.calls[2]?.[1]).toEqual(["run", "--help"]);
+  });
+
+  test("reports OpenCode as needing sign-in when no credentials are listed", async () => {
+    process.env.OPENLOOMI_AGENT_OPENCODE_COMMAND = "C:\\fake\\opencode.exe";
+    existingPaths.add(process.env.OPENLOOMI_AGENT_OPENCODE_COMMAND);
+    spawnMock
+      .mockImplementationOnce(() => completedProcess({ stdout: "1.0.12" }))
+      .mockImplementationOnce(() =>
+        completedProcess({ stdout: "No credentials found" }),
+      )
+      .mockImplementationOnce(() =>
+        completedProcess({ stdout: "--format <format>  default or json" }),
+      );
+
+    const probe = await probeNativeOpenCodeRuntime();
+
+    expect(probe).toMatchObject({
+      available: true,
+      ready: false,
+      reason: "OPENCODE_CLI_AUTH_REQUIRED",
+    });
+  });
+
+  test("checks Hermes setup and ACP capability", async () => {
+    process.env.OPENLOOMI_AGENT_HERMES_COMMAND = "C:\\fake\\hermes.exe";
+    process.env.OPENLOOMI_AGENT_HERMES_PROFILE = "coding";
+    existingPaths.add(process.env.OPENLOOMI_AGENT_HERMES_COMMAND);
+    spawnMock
+      .mockImplementationOnce(() => completedProcess({ stdout: "0.9.0" }))
+      .mockImplementationOnce(() =>
+        completedProcess({
+          stdout:
+            "Provider: OpenRouter\nModel: test\nOpenRouter    ✓ configured",
+        }),
+      )
+      .mockImplementationOnce(() =>
+        completedProcess({ stdout: "Commands:\n  acp" }),
+      );
+
+    const probe = await probeNativeHermesRuntime();
+
+    expect(probe).toMatchObject({
+      provider: "hermes",
+      ready: true,
+      version: "0.9.0",
+      reason: "HERMES_CLI_AUTHENTICATED",
+    });
+    expect(spawnMock.mock.calls[1]?.[1]).toEqual([
+      "--profile",
+      "coding",
+      "status",
+    ]);
+    expect(spawnMock.mock.calls[2]?.[1]).toEqual(["--help"]);
+  });
+
+  test("does not report an unconfigured Hermes install as ready", async () => {
+    process.env.OPENLOOMI_AGENT_HERMES_COMMAND = "C:\\fake\\hermes.exe";
+    existingPaths.add(process.env.OPENLOOMI_AGENT_HERMES_COMMAND);
+    spawnMock
+      .mockImplementationOnce(() => completedProcess({ stdout: "0.9.0" }))
+      .mockImplementationOnce(() =>
+        completedProcess({
+          stdout:
+            "Provider: OpenRouter\nModel: (not set)\nOpenRouter    ✗ (not set)",
+        }),
+      )
+      .mockImplementationOnce(() =>
+        completedProcess({ stdout: "Commands:\n  acp" }),
+      );
+
+    const probe = await probeNativeHermesRuntime();
+
+    expect(probe).toMatchObject({
+      provider: "hermes",
+      ready: false,
+      reason: "HERMES_CLI_AUTH_REQUIRED",
+    });
+  });
+
+  test("checks OpenClaw Gateway readiness without starting a task", async () => {
+    process.env.OPENLOOMI_AGENT_OPENCLAW_COMMAND = "C:\\fake\\openclaw.cmd";
+    existingPaths.add(process.env.OPENLOOMI_AGENT_OPENCLAW_COMMAND);
+    spawnMock
+      .mockImplementationOnce(() => completedProcess({ stdout: "2026.7.1" }))
+      .mockImplementationOnce(() =>
+        completedProcess({ stdout: '{"rpc":{"ok":true}}' }),
+      );
+
+    const probe = await probeNativeOpenClawRuntime();
+
+    expect(probe).toMatchObject({
+      provider: "openclaw",
+      ready: true,
+      version: "2026.7.1",
+      reason: "OPENCLAW_CLI_AUTHENTICATED",
+    });
+    expect(spawnMock.mock.calls[1]?.[1]).toEqual([
+      "gateway",
+      "status",
+      "--require-rpc",
+      "--json",
+      "--timeout",
+      "4000",
+    ]);
+  });
+
+  test("bounds all checks for one runtime to a single timeout window", async () => {
+    vi.useFakeTimers();
+    process.env.OPENLOOMI_AGENT_OPENCODE_COMMAND = "C:\\fake\\opencode.exe";
+    existingPaths.add(process.env.OPENLOOMI_AGENT_OPENCODE_COMMAND);
+    spawnMock.mockImplementation(() => hangingProcess());
+
+    const pending = probeNativeOpenCodeRuntime();
+    await vi.advanceTimersByTimeAsync(10_000);
+    const probe = await pending;
+
+    expect(probe).toMatchObject({
+      ready: false,
+      reason: "OPENCODE_CLI_VERSION_TIMEOUT",
+    });
+    expect(spawnMock).toHaveBeenCalledTimes(3);
   });
 });

@@ -46,7 +46,7 @@ See the official [Claude Code installation guide](https://code.claude.com/docs/e
 
 ### Select it in the desktop app
 
-Open **Settings → Agent runtime** and choose **Claude**. Save a complete Anthropic-compatible configuration in **Conversation models**, or reuse supported Claude authentication already available to the same OS account, then select **Check again**. Once the status is **Ready**, use it for new tasks. If the built-in runtime is unavailable, update or repair OpenLoomi Desktop rather than installing a second copy of Claude Code.
+Open **Settings → Agent runtime** and choose **Claude**. Save a complete Anthropic-compatible configuration in **Conversation models**, or reuse supported Claude authentication already available to the same OS account, then select **Re-detect**. Once the status is **Ready**, use it for new tasks. If the built-in runtime is unavailable, update or repair OpenLoomi Desktop rather than installing a second copy of Claude Code.
 
 ## Authentication and model configuration
 
@@ -127,7 +127,7 @@ To verify a custom Anthropic-compatible provider, use the same endpoint, token, 
 
 ## Troubleshooting
 
-- **Built-in runtime unavailable in OpenLoomi Desktop:** update or repair the desktop installation, then select **Check again**. For a development/server build only, run `claude --version` as the service user, set `CLAUDE_CODE_PATH` to an absolute executable path, or build with the runtime bundle.
+- **Built-in runtime unavailable in OpenLoomi Desktop:** update or repair the desktop installation, then select **Re-detect**. For a development/server build only, run `claude --version` as the service user, set `CLAUDE_CODE_PATH` to an absolute executable path, or build with the runtime bundle.
 - **Authentication fails:** check the saved OpenLoomi API setting and environment for conflicting credentials. `ANTHROPIC_AUTH_TOKEN` takes precedence over `ANTHROPIC_API_KEY`; use `/status` inside Claude Code or the official authentication guide to confirm the active method.
 - **Model not found:** verify the saved model or `ANTHROPIC_MODEL` is valid for the selected endpoint. Custom gateways may use model identifiers that differ from Anthropic's public IDs.
 - **Compatible endpoint rejects a request:** confirm it implements the Anthropic Messages and tool-use behavior required by the Agent SDK. Some text-only compatibility layers cannot run the Claude agent loop.

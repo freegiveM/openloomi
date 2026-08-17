@@ -120,6 +120,7 @@ export class AcpStdioClient {
       cwd: string;
       signal?: AbortSignal;
       timeoutMs?: number;
+      env?: Record<string, string>;
       onRequest?: AcpStdioClientRequestHandler;
     },
   ) {}
@@ -133,7 +134,7 @@ export class AcpStdioClient {
     try {
       proc = spawn(this.command, this.args, {
         cwd: this.options.cwd,
-        env: buildCliEnvironment(),
+        env: buildCliEnvironment(this.options.env),
         detached: shouldDetachCliProcess(),
         windowsHide: true,
       }) as ChildProcessWithoutNullStreams;

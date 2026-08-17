@@ -1,6 +1,18 @@
-export const SELECTABLE_AGENT_RUNTIMES = ["claude", "codex"] as const;
+export const SELECTABLE_AGENT_RUNTIMES = [
+  "claude",
+  "codex",
+  "opencode",
+  "hermes",
+  "openclaw",
+] as const;
 
 export type SelectableAgentRuntime = (typeof SELECTABLE_AGENT_RUNTIMES)[number];
+
+export function isSelectableAgentRuntime(
+  value: string,
+): value is SelectableAgentRuntime {
+  return SELECTABLE_AGENT_RUNTIMES.includes(value as SelectableAgentRuntime);
+}
 
 export type AgentRuntimeSetupStatus =
   | "ready"
@@ -21,6 +33,8 @@ export type AgentRuntimePublicProbe = {
     | "CLI_UNAVAILABLE"
     | "VERSION_FAILED"
     | "VERSION_TIMEOUT"
+    | "CAPABILITY_FAILED"
+    | "CAPABILITY_TIMEOUT"
     | "AUTH_REQUIRED"
     | "AUTH_UNAVAILABLE"
     | "AUTH_TIMEOUT"

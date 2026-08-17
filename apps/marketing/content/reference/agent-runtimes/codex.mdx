@@ -30,7 +30,7 @@ See the official [Codex non-interactive mode documentation](https://learn.chatgp
 
 ### Select it in the desktop app
 
-Open **Settings → Agent runtime** and choose **Codex CLI**. The page checks `codex --version` and `codex login status` without starting a model request. Follow the installation or login guidance, select **Check again**, and switch once the status is **Ready**. The change applies to new tasks. **Ready** confirms discovery and authentication, not that a model override or network path can complete a request; use the verification command above for that stronger check. Select **Use environment/default** to remove the desktop override later.
+Open **Settings → Agent runtime** and choose **Codex CLI**. The page checks `codex --version`, `codex login status`, and `codex exec --help` without starting a model request. Follow the installation or login guidance, select **Re-detect**, and switch once the status is **Ready**. The change applies to new tasks. **Ready** confirms discovery, authentication, and JSON execution support, not that a model override or network path can complete a request; use the verification command above for that stronger check. Select **Use environment/default** to remove the desktop override later.
 
 ## Configure OpenLoomi
 

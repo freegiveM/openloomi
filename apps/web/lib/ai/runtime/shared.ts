@@ -6,6 +6,7 @@
 
 import type { AgentConfig, AgentOptions } from "@melandlabs/ai/agent";
 import { getAgentRegistry } from "@melandlabs/ai/agent";
+import { buildHermesApiProviderConfig } from "@openloomi/ai/agent/native-runner";
 import {
   getUserTypeForService,
   getUserInsightSettings,
@@ -214,7 +215,7 @@ export async function handleAgentRuntime(
         ...(options.workDir && { workDir: options.workDir }),
       };
       const userAnthropicConfig =
-        agentConfig.provider === "claude"
+        agentConfig.provider === "claude" || agentConfig.provider === "hermes"
           ? await getUserLlmProviderConfig({
               userId: options.userId,
               providerType: "anthropic_compatible",
@@ -224,14 +225,21 @@ export async function handleAgentRuntime(
       // User-saved Anthropic settings win over runtime defaults such as the
       // frontend's selectedModel fallback to claude-sonnet-4.6.
       const effectiveModelConfig =
-        agentConfig.provider === "claude"
+        agentConfig.provider === "claude" || agentConfig.provider === "hermes"
           ? { ...options.modelConfig, ...userAnthropicConfig }
           : (runtimeRequest.modelConfig ?? {});
 
-      if (effectiveModelConfig.apiKey) {
+      if (agentConfig.provider === "hermes") {
+        agentConfig.providerConfig = buildHermesApiProviderConfig(
+          agentConfig.providerConfig,
+          userAnthropicConfig,
+        );
+      }
+
+      if (agentConfig.provider === "claude" && effectiveModelConfig.apiKey) {
         agentConfig.apiKey = effectiveModelConfig.apiKey;
       }
-      if (effectiveModelConfig.baseUrl) {
+      if (agentConfig.provider === "claude" && effectiveModelConfig.baseUrl) {
         agentConfig.baseUrl = effectiveModelConfig.baseUrl;
       }
       if (effectiveModelConfig.model) {

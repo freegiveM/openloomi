@@ -6,6 +6,7 @@ import {
 } from "@/lib/ai/native-agent/runtime-contract";
 import type {
   CodexRuntimeProbe,
+  HermesRuntimeProbe,
   NativeRuntimeProbe,
 } from "@/lib/ai/native-agent/runtime-probe";
 import { toPublicProbe } from "@/lib/ai/native-agent/runtime-settings";
@@ -192,6 +193,32 @@ describe("agent runtime public probe", () => {
       status: "ready",
     });
   });
+
+  test("accepts saved API settings when Hermes ACP is available", () => {
+    const probe: HermesRuntimeProbe = {
+      checked: true,
+      provider: "hermes",
+      available: true,
+      authenticated: false,
+      active: false,
+      ready: false,
+      reason: "HERMES_CLI_AUTH_REQUIRED",
+      cliPathPresent: true,
+      cliPathSource: "PATH",
+      versionPresent: true,
+      version: "0.3.0",
+      probes: {},
+    };
+
+    expect(
+      toPublicProbe("hermes", probe, { hermesApiConfigured: true }),
+    ).toMatchObject({
+      installed: true,
+      ready: true,
+      readyVia: "api",
+      status: "ready",
+    });
+  });
 });
 
 describe("agent runtime selection", () => {
@@ -212,6 +239,9 @@ describe("agent runtime selection", () => {
             reason: "CODEX_CLI_AUTHENTICATED",
           }),
         ),
+        opencode: toPublicProbe("opencode", null),
+        hermes: toPublicProbe("hermes", null),
+        openclaw: toPublicProbe("openclaw", null),
       },
     };
 

@@ -28,6 +28,10 @@ opencode models
 
 Saved provider credentials are loaded from OpenCode's user data directory. OpenCode can also use supported provider environment variables and project `.env` files; review the official [provider documentation](https://opencode.ai/docs/providers/) before running it in a repository containing secrets.
 
+### Select it in the desktop app
+
+Open **Settings → Agent runtime** and choose **OpenCode**. OpenLoomi checks the CLI version, saved provider authentication, and JSON output capability without starting a model request. Complete `opencode auth login` if prompted, select **Re-detect**, then use OpenCode once it reports **Ready**.
+
 ## Configure OpenLoomi
 
 Set environment variables before starting OpenLoomi:

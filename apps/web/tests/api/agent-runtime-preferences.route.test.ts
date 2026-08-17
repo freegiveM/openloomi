@@ -15,6 +15,9 @@ const runtimeState = vi.hoisted(() => ({
     runtimes: {
       claude: { ready: true },
       codex: { ready: true },
+      opencode: { ready: true },
+      hermes: { ready: true },
+      openclaw: { ready: true },
     },
   },
   get: vi.fn(),
@@ -95,6 +98,7 @@ describe("agent runtime preferences route", () => {
     expect(runtimeState.get).toHaveBeenCalledWith({
       forceRefresh: true,
       claudeApiConfigured: false,
+      hermesApiConfigured: false,
     });
     expect(await response.json()).toEqual(runtimeState.response);
   });
@@ -108,15 +112,19 @@ describe("agent runtime preferences route", () => {
     expect(runtimeState.write).not.toHaveBeenCalled();
   });
 
-  test("strictly accepts only Claude or Codex", async () => {
-    const unsupported = await PUT(request("PUT", { provider: "opencode" }));
+  test("strictly accepts only the five supported runtimes", async () => {
+    for (const provider of ["opencode", "hermes", "openclaw"]) {
+      const response = await PUT(request("PUT", { provider }));
+      expect(response.status).toBe(200);
+    }
+    const unsupported = await PUT(request("PUT", { provider: "unknown" }));
     const extraField = await PUT(
       request("PUT", { provider: "codex", command: "custom" }),
     );
 
     expect(unsupported.status).toBe(400);
     expect(extraField.status).toBe(400);
-    expect(runtimeState.write).not.toHaveBeenCalled();
+    expect(runtimeState.write).toHaveBeenCalledTimes(3);
   });
 
   test("persists the choice and returns the selected effective state", async () => {
@@ -157,6 +165,7 @@ describe("agent runtime preferences route", () => {
     expect(response.status).toBe(409);
     expect(runtimeState.get).toHaveBeenNthCalledWith(2, {
       claudeApiConfigured: false,
+      hermesApiConfigured: false,
     });
     expect(runtimeState.write).not.toHaveBeenCalled();
   });
@@ -176,6 +185,7 @@ describe("agent runtime preferences route", () => {
     expect(runtimeState.get).toHaveBeenCalledWith({
       forceRefresh: true,
       claudeApiConfigured: false,
+      hermesApiConfigured: false,
     });
     expect(await response.json()).toEqual(restoredResponse);
   });
@@ -200,7 +210,7 @@ describe("agent runtime preferences route", () => {
     expect(runtimeState.write).toHaveBeenCalledWith("codex");
   });
 
-  test("passes a complete saved Claude API configuration into readiness", async () => {
+  test("passes a complete saved API configuration into runtime readiness", async () => {
     llmSettingsState.config = {
       apiKey: "decrypted-key",
       baseUrl: "https://api.example.test",
@@ -213,6 +223,7 @@ describe("agent runtime preferences route", () => {
     expect(runtimeState.get).toHaveBeenCalledWith({
       forceRefresh: false,
       claudeApiConfigured: true,
+      hermesApiConfigured: true,
     });
   });
 
