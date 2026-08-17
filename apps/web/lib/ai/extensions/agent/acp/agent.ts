@@ -40,7 +40,12 @@ export interface AcpRuntimeDefinition {
   };
   normalizeProviderConfig: (providerConfig?: Record<string, unknown>) => {
     timeoutMs?: number;
+    env?: Record<string, string>;
   };
+  formatModelId?: (
+    model: string,
+    providerConfig?: Record<string, unknown>,
+  ) => string;
   supportsSetModel?: boolean;
 }
 
@@ -253,6 +258,7 @@ export class AcpAgent extends BaseAgent {
         cwd,
         signal: this.getSession(sessionId)?.abortController.signal,
         timeoutMs: providerConfig.timeoutMs,
+        env: providerConfig.env,
         onRequest: async (request) => {
           if (request.method !== "session/request_permission") {
             return { outcome: { outcome: "cancelled" } };
@@ -298,7 +304,11 @@ export class AcpAgent extends BaseAgent {
     if (this.config.model && this.runtime.supportsSetModel) {
       await client.request("session/set_model", {
         sessionId: acpSessionId,
-        modelId: this.config.model,
+        modelId:
+          this.runtime.formatModelId?.(
+            this.config.model,
+            this.config.providerConfig,
+          ) ?? this.config.model,
       });
     }
 

@@ -28,6 +28,10 @@ openclaw gateway status
 
 Onboarding configures a model provider and normally creates token-authenticated Gateway settings. A remote Gateway must already be configured and reachable from the OpenLoomi host.
 
+### Select it in the desktop app
+
+Open **Settings → Agent runtime** and choose **OpenClaw**. OpenLoomi checks the CLI version and performs a read-only Gateway RPC status probe. Complete onboarding or start the configured Gateway if required, select **Re-detect**, then use OpenClaw once it reports **Ready**.
+
 ## Configure OpenLoomi
 
 A local Gateway configuration can use an explicit WebSocket URL and token file:

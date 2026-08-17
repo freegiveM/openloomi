@@ -5,6 +5,7 @@ import {
 import type { AgentProvider } from "@melandlabs/ai/agent";
 import {
   readAgentRuntimePreference,
+  SELECTABLE_AGENT_RUNTIMES,
   type SelectableAgentRuntime,
 } from "./runtime-preference";
 
@@ -32,13 +33,7 @@ const OPENCODE_PROVIDER = "opencode";
 const HERMES_PROVIDER = "hermes";
 const OPENCLAW_PROVIDER = "openclaw";
 const CODEX_PROVIDER = "codex";
-const SUPPORTED_ENV_PROVIDERS = new Set([
-  "claude",
-  OPENCODE_PROVIDER,
-  HERMES_PROVIDER,
-  OPENCLAW_PROVIDER,
-  CODEX_PROVIDER,
-]);
+const SUPPORTED_ENV_PROVIDERS = new Set<string>(SELECTABLE_AGENT_RUNTIMES);
 
 export function getConfiguredDefaultAgentProvider(
   env: EnvSource = process.env,

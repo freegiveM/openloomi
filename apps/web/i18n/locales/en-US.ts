@@ -376,24 +376,31 @@ const en = {
       "Loop is on — Loomi reads your mail, calendar, code, and chat through your connectors in the background and combines that with screen memory to fill your morning brief. Toggle off here if you'd rather not.",
     aiSettingsDescription:
       "Configure per-user API settings for compatible AI providers.",
-    agentRuntimeTitle: "Agent runtime",
+    agentRuntimeTitle: "Detected local agent runtimes",
     agentRuntimeDescription:
-      "Choose the agent runtime OpenLoomi uses for new tasks. Claude is built in; Codex uses its local CLI. Running tasks are not interrupted.",
+      "Choose the local agent runtime OpenLoomi uses for new tasks. Running tasks are not interrupted.",
     agentRuntimeClaudeDescription:
       "Powered by Claude Agent SDK with its runtime bundled in OpenLoomi—no separate Claude CLI installation required. Use a saved Anthropic-compatible API configuration or existing Claude authentication.",
     agentRuntimeCodexDescription:
       "Use your local Codex CLI installation and account.",
+    agentRuntimeOpenCodeDescription:
+      "Use your local OpenCode CLI and its configured model providers.",
+    agentRuntimeHermesDescription:
+      "Use your local Hermes ACP runtime and configured model provider.",
+    agentRuntimeOpenClawDescription:
+      "Use your local OpenClaw CLI with a reachable authenticated Gateway.",
     agentRuntimeChecking: "Checking local runtimes…",
     agentRuntimeBuiltIn: "Built in",
     agentRuntimeReady: "Ready",
     agentRuntimeAuthenticationRequired: "Authentication required",
     agentRuntimeLoginRequired: "Sign-in required",
+    agentRuntimeSetupRequired: "Setup required",
     agentRuntimeNotInstalled: "Not installed",
     agentRuntimeBuiltInUnavailable: "Built-in runtime unavailable",
     agentRuntimeUnverifiedShort: "Could not verify",
     agentRuntimeInUse: "In use",
     agentRuntimeReadyDescription:
-      "{{runtime}} is installed and signed in. This check does not start a model request.",
+      "{{runtime}} is installed and configured. This check does not start a model request.",
     agentRuntimeClaudeApiReadyDescription:
       "The built-in Claude runtime will use your saved Anthropic-compatible configuration. Test the connection below, then confirm it with a new task.",
     agentRuntimeClaudeAuthReadyDescription:
@@ -402,6 +409,8 @@ const en = {
       "Save an Anthropic-compatible API configuration below. If this OS account already has Claude authentication, check again to reuse it.",
     agentRuntimeLoginDescription:
       "Run this command in a terminal, finish signing in, then check again.",
+    agentRuntimeSetupDescription:
+      "Run this command in a terminal, complete setup, then check again.",
     agentRuntimeCodexInstallTitle: "Install and sign in to Codex CLI",
     agentRuntimeCodexInstallOpenTerminal: "Open {{terminal}}.",
     agentRuntimeCodexInstallRunInstaller:
@@ -417,13 +426,15 @@ const en = {
     agentRuntimeTerminal: "Terminal",
     agentRuntimeClaudeUnavailableDescription:
       "OpenLoomi could not load its built-in Claude runtime. Update or repair the desktop app, then check again.",
+    agentRuntimeCliUnavailableDescription:
+      "{{runtime}} was not found. Open the official instructions, install it for this OS account, then check again.",
     agentRuntimeUnverified: "OpenLoomi could not verify the local runtimes.",
     agentRuntimeUnverifiedDescription:
       "OpenLoomi could not verify this CLI. Confirm it runs in your terminal, then check again.",
     agentRuntimeClaudeUnverifiedDescription:
       "OpenLoomi could not verify the built-in Claude runtime. Open the troubleshooting guide, then check again.",
     agentRuntimeManagedByEnvironment:
-      "The current runtime is managed by the environment: {{provider}}. Choose Claude or Codex to create a desktop preference.",
+      "The current runtime is managed by the environment: {{provider}}. Choose a detected runtime to create a desktop preference.",
     agentRuntimePreferenceOverrideDescription:
       "This desktop preference overrides the environment/default runtime for new tasks.",
     agentRuntimeUseManagedSetting: "Use environment/default",
@@ -432,7 +443,7 @@ const en = {
     agentRuntimeOfficialInstructions: "Official instructions",
     agentRuntimeSetupGuide: "Setup guide",
     agentRuntimeTroubleshootingGuide: "Troubleshooting guide",
-    agentRuntimeCheckAgain: "Check again",
+    agentRuntimeCheckAgain: "Re-detect",
     agentRuntimeTryAgain: "Try again",
     agentRuntimeUse: "Use {{runtime}}",
     agentRuntimeCopy: "Copy",

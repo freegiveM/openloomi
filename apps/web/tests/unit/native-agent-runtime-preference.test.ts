@@ -33,14 +33,21 @@ describe("agent runtime preference", () => {
     expect(readAgentRuntimePreference(filePath)).toBeUndefined();
   });
 
-  it("writes and replaces a Claude or Codex preference", () => {
+  it("writes and replaces any selectable runtime preference", () => {
     writeAgentRuntimePreference("claude", filePath);
     expect(readAgentRuntimePreference(filePath)).toBe("claude");
 
-    writeAgentRuntimePreference("codex", filePath);
-    expect(readAgentRuntimePreference(filePath)).toBe("codex");
+    for (const provider of [
+      "codex",
+      "opencode",
+      "hermes",
+      "openclaw",
+    ] as const) {
+      writeAgentRuntimePreference(provider, filePath);
+      expect(readAgentRuntimePreference(filePath)).toBe(provider);
+    }
     expect(JSON.parse(readFileSync(filePath, "utf8"))).toEqual({
-      provider: "codex",
+      provider: "openclaw",
     });
     expect(readdirSync(directory)).toEqual(["agent-runtime.json"]);
   });
@@ -60,7 +67,7 @@ describe("agent runtime preference", () => {
     writeFileSync(filePath, "not-json", "utf8");
     expect(readAgentRuntimePreference(filePath)).toBeUndefined();
 
-    writeFileSync(filePath, JSON.stringify({ provider: "opencode" }), "utf8");
+    writeFileSync(filePath, JSON.stringify({ provider: "unknown" }), "utf8");
     expect(readAgentRuntimePreference(filePath)).toBeUndefined();
     expect(warn).toHaveBeenCalledTimes(2);
   });

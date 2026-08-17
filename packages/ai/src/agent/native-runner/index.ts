@@ -201,7 +201,7 @@ export interface NativeAgentHost {
   ) => Promise<NativeAgentInsightSettings | null>;
   getUserLlmProviderConfig?: (params: {
     userId: string;
-    providerType: "anthropic_compatible";
+    providerType: "openai_compatible" | "anthropic_compatible";
   }) => Promise<NativeAgentLlmProviderConfig | undefined>;
   getDocument?: (documentId: string) => Promise<NativeAgentDocument | null>;
   getDocumentChunks?: (
@@ -286,7 +286,8 @@ async function buildAgentConfig(
   recoveringRuntime: boolean,
 ): Promise<AgentConfig> {
   const provider = body.provider || "claude";
-  const useAnthropicCompatibleConfig = provider === "claude";
+  const useAnthropicCompatibleConfig =
+    provider === "claude" || provider === "hermes";
 
   const userAnthropicConfig = useAnthropicCompatibleConfig
     ? await host.getUserLlmProviderConfig?.({
@@ -313,10 +314,10 @@ async function buildAgentConfig(
   // model and runtime choices persisted with the provider session.
   return {
     provider,
-    apiKey: useAnthropicCompatibleConfig
+    apiKey: provider === "claude"
       ? effectiveModelConfig.apiKey
       : undefined,
-    baseUrl: useAnthropicCompatibleConfig
+    baseUrl: provider === "claude"
       ? effectiveModelConfig.baseUrl
       : undefined,
     model: effectiveModelConfig.model,
@@ -324,7 +325,42 @@ async function buildAgentConfig(
       ? body.modelConfig?.thinkingLevel
       : undefined,
     workDir: body.workDir,
-    providerConfig: body.providerConfig,
+    providerConfig:
+      provider === "hermes"
+        ? buildHermesApiProviderConfig(
+            body.providerConfig,
+            userAnthropicConfig,
+          )
+        : body.providerConfig,
+  };
+}
+
+/** Inject a saved OpenLoomi endpoint only into the Hermes child process. */
+export function buildHermesApiProviderConfig(
+  providerConfig: Record<string, unknown> | undefined,
+  apiConfig: NativeAgentLlmProviderConfig | undefined,
+): Record<string, unknown> | undefined {
+  if (!apiConfig?.apiKey || !apiConfig.baseUrl) return providerConfig;
+
+  const configuredEnv =
+    providerConfig?.env &&
+    typeof providerConfig.env === "object" &&
+    !Array.isArray(providerConfig.env)
+      ? Object.fromEntries(
+          Object.entries(providerConfig.env as Record<string, unknown>).filter(
+            (entry): entry is [string, string] => typeof entry[1] === "string",
+          ),
+        )
+      : {};
+
+  return {
+    ...providerConfig,
+    env: {
+      ...configuredEnv,
+      HERMES_INFERENCE_PROVIDER: "anthropic",
+      ANTHROPIC_API_KEY: apiConfig.apiKey,
+      ANTHROPIC_BASE_URL: apiConfig.baseUrl,
+    },
   };
 }
 

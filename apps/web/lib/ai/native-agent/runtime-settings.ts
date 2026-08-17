@@ -1,24 +1,26 @@
 import { isTauriMode } from "@/lib/env/constants";
 import { getConfiguredAgentProviderResolution } from "./provider-env";
-import type {
-  AgentRuntimePublicProbe,
-  AgentRuntimeSettingsResponse,
-  SelectableAgentRuntime,
+import {
+  SELECTABLE_AGENT_RUNTIMES,
+  type AgentRuntimePublicProbe,
+  type AgentRuntimeSettingsResponse,
+  type SelectableAgentRuntime,
 } from "./runtime-contract";
 import {
-  type CodexRuntimeProbe,
-  type NativeRuntimeProbe,
+  type AgentRuntimeProbe,
   getRuntimePlatform,
   probeNativeClaudeRuntime,
   probeNativeCodexRuntime,
+  probeNativeHermesRuntime,
+  probeNativeOpenClawRuntime,
+  probeNativeOpenCodeRuntime,
 } from "./runtime-probe";
-
-type RuntimeProbe = NativeRuntimeProbe | CodexRuntimeProbe;
 
 export async function getAgentRuntimeSettings(
   options: {
     forceRefresh?: boolean;
     claudeApiConfigured?: boolean;
+    hermesApiConfigured?: boolean;
   } = {},
 ): Promise<AgentRuntimeSettingsResponse> {
   const resolution = getConfiguredAgentProviderResolution();
@@ -36,10 +38,19 @@ export async function getAgentRuntimeSettings(
     };
   }
 
-  const [claude, codex] = await Promise.all([
-    safelyProbe("claude", options.forceRefresh, options.claudeApiConfigured),
-    safelyProbe("codex", options.forceRefresh),
-  ]);
+  const runtimes = Object.fromEntries(
+    await Promise.all(
+      SELECTABLE_AGENT_RUNTIMES.map(async (provider) => [
+        provider,
+        await safelyProbe(
+          provider,
+          options.forceRefresh,
+          options.claudeApiConfigured,
+          options.hermesApiConfigured,
+        ),
+      ]),
+    ),
+  ) as Record<SelectableAgentRuntime, AgentRuntimePublicProbe>;
 
   return {
     editable: true,
@@ -49,7 +60,7 @@ export async function getAgentRuntimeSettings(
       source: resolution.source,
     },
     platform: getRuntimePlatform(),
-    runtimes: { claude, codex },
+    runtimes,
   };
 }
 
@@ -57,23 +68,43 @@ async function safelyProbe(
   provider: SelectableAgentRuntime,
   forceRefresh = false,
   claudeApiConfigured = false,
+  hermesApiConfigured = false,
 ): Promise<AgentRuntimePublicProbe> {
   try {
-    const probe =
-      provider === "claude"
-        ? await probeNativeClaudeRuntime({ force: forceRefresh })
-        : await probeNativeCodexRuntime({ force: forceRefresh });
-    return toPublicProbe(provider, probe, { claudeApiConfigured });
+    const probe = await probeRuntime(provider, forceRefresh);
+    return toPublicProbe(provider, probe, {
+      claudeApiConfigured,
+      hermesApiConfigured,
+    });
   } catch (error) {
     console.warn(`[AgentRuntimeSettings] ${provider} probe failed`, error);
     return unverifiedProbe(provider);
   }
 }
 
+function probeRuntime(provider: SelectableAgentRuntime, force: boolean) {
+  const options = { force };
+  switch (provider) {
+    case "claude":
+      return probeNativeClaudeRuntime(options);
+    case "codex":
+      return probeNativeCodexRuntime(options);
+    case "opencode":
+      return probeNativeOpenCodeRuntime(options);
+    case "hermes":
+      return probeNativeHermesRuntime(options);
+    case "openclaw":
+      return probeNativeOpenClawRuntime(options);
+  }
+}
+
 export function toPublicProbe(
   provider: SelectableAgentRuntime,
-  probe: RuntimeProbe | null,
-  options: { claudeApiConfigured?: boolean } = {},
+  probe: AgentRuntimeProbe | null,
+  options: {
+    claudeApiConfigured?: boolean;
+    hermesApiConfigured?: boolean;
+  } = {},
 ): AgentRuntimePublicProbe {
   if (!probe) return unverifiedProbe(provider);
 
@@ -90,14 +121,14 @@ export function toPublicProbe(
     };
   }
 
-  // Claude Agent SDK needs its runtime executable, which packaged desktop
-  // builds bundle with OpenLoomi. A complete saved Anthropic-compatible
-  // configuration overrides existing Claude authentication during execution,
-  // so report it first when both credential sources exist.
+  // A complete saved Anthropic-compatible configuration is passed to Claude
+  // directly or injected into the Hermes ACP child process during execution.
   if (
-    provider === "claude" &&
-    options.claudeApiConfigured &&
-    probe.versionPresent
+    ((provider === "claude" && options.claudeApiConfigured) ||
+      (provider === "hermes" && options.hermesApiConfigured)) &&
+    probe.versionPresent &&
+    !probe.reason.endsWith("_CAPABILITY_FAILED") &&
+    !probe.reason.endsWith("_CAPABILITY_TIMEOUT")
   ) {
     return {
       provider,
@@ -141,11 +172,15 @@ export function toPublicProbe(
     ? "VERSION_TIMEOUT"
     : probe.reason.endsWith("_VERSION_FAILED")
       ? "VERSION_FAILED"
-      : probe.reason.endsWith("_AUTH_STATUS_TIMEOUT")
-        ? "AUTH_TIMEOUT"
-        : probe.reason.endsWith("_AUTH_STATUS_UNAVAILABLE")
-          ? "AUTH_UNAVAILABLE"
-          : "PROBE_FAILED";
+      : probe.reason.endsWith("_CAPABILITY_TIMEOUT")
+        ? "CAPABILITY_TIMEOUT"
+        : probe.reason.endsWith("_CAPABILITY_FAILED")
+          ? "CAPABILITY_FAILED"
+          : probe.reason.endsWith("_AUTH_STATUS_TIMEOUT")
+            ? "AUTH_TIMEOUT"
+            : probe.reason.endsWith("_AUTH_STATUS_UNAVAILABLE")
+              ? "AUTH_UNAVAILABLE"
+              : "PROBE_FAILED";
 
   return {
     provider,

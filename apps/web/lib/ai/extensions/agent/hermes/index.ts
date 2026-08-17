@@ -14,6 +14,13 @@ const HERMES_ACP_RUNTIME: AcpRuntimeDefinition = {
   displayName: "Hermes",
   buildCommand: buildHermesAcpCommand,
   normalizeProviderConfig: normalizeHermesProviderConfig,
+  formatModelId: (model, providerConfig) => {
+    const provider = normalizeHermesProviderConfig(providerConfig).env
+      ?.HERMES_INFERENCE_PROVIDER;
+    return provider && !model.startsWith(`${provider}:`)
+      ? `${provider}:${model}`
+      : model;
+  },
   supportsSetModel: true,
 };
 

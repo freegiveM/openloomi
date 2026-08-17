@@ -84,6 +84,18 @@ describe("desktop agent runtime selection", () => {
     expect(request.providerConfig).toBeUndefined();
   });
 
+  it("resolves the three optional CLI runtimes from desktop preferences", () => {
+    for (const provider of ["opencode", "hermes", "openclaw"] as const) {
+      writeAgentRuntimePreference(provider, preferencePath);
+      expect(
+        getConfiguredAgentProviderResolution(
+          { TAURI_MODE: "1", OPENLOOMI_AGENT_PROVIDER: "claude" },
+          { preferencePath },
+        ),
+      ).toEqual({ provider, preference: provider, source: "preference" });
+    }
+  });
+
   it("uses a trusted Runtime Session pin instead of a newer desktop preference", () => {
     writeAgentRuntimePreference("codex", preferencePath);
 

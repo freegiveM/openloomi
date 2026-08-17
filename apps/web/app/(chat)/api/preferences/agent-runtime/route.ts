@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
+import { SELECTABLE_AGENT_RUNTIMES } from "@/lib/ai/native-agent/runtime-contract";
 import {
   clearAgentRuntimePreference,
   readAgentRuntimePreference,
@@ -13,19 +14,23 @@ import { isTauriMode } from "@/lib/env/constants";
 
 const runtimePreferenceSchema = z
   .object({
-    provider: z.enum(["claude", "codex"]),
+    provider: z.enum(SELECTABLE_AGENT_RUNTIMES),
   })
   .strict();
 
 const noStoreHeaders = { "Cache-Control": "no-store" };
 
-async function hasUsableClaudeApiConfiguration(userId: string) {
-  return Boolean(
+async function getRuntimeApiConfiguration(userId: string) {
+  const anthropicApiConfigured = Boolean(
     await getUserLlmProviderConfig({
       userId,
       providerType: "anthropic_compatible",
     }),
   );
+  return {
+    claudeApiConfigured: anthropicApiConfigured,
+    hermesApiConfigured: anthropicApiConfigured,
+  };
 }
 
 export async function GET(request: Request) {
@@ -37,10 +42,10 @@ export async function GET(request: Request) {
   try {
     const url = new URL(request.url);
     const forceRefresh = url.searchParams.get("refresh") === "1";
-    const claudeApiConfigured = await hasUsableClaudeApiConfiguration(user.id);
+    const apiConfiguration = await getRuntimeApiConfiguration(user.id);
     const settings = await getAgentRuntimeSettings({
       forceRefresh,
-      claudeApiConfigured,
+      ...apiConfiguration,
     });
     return NextResponse.json(settings, { headers: noStoreHeaders });
   } catch (error) {
@@ -74,22 +79,23 @@ export async function PUT(request: Request) {
   }
 
   try {
-    let claudeApiConfigured = await hasUsableClaudeApiConfiguration(user.id);
+    let apiConfiguration = await getRuntimeApiConfiguration(user.id);
     let readiness = await getAgentRuntimeSettings({
       forceRefresh: true,
-      claudeApiConfigured,
+      ...apiConfiguration,
     });
 
     // The runtime probe can take several seconds. If the user saves or removes
-    // the Claude API configuration while it is running, remap readiness against
+    // the shared API configuration while it is running, remap readiness against
     // the latest setting before persisting the choice.
-    if (parsed.data.provider === "claude") {
-      const latestClaudeApiConfigured = await hasUsableClaudeApiConfiguration(
-        user.id,
-      );
-      if (latestClaudeApiConfigured !== claudeApiConfigured) {
-        claudeApiConfigured = latestClaudeApiConfigured;
-        readiness = await getAgentRuntimeSettings({ claudeApiConfigured });
+    if (parsed.data.provider === "claude" || parsed.data.provider === "hermes") {
+      const latestApiConfiguration = await getRuntimeApiConfiguration(user.id);
+      if (
+        latestApiConfiguration.claudeApiConfigured !==
+        apiConfiguration.claudeApiConfigured
+      ) {
+        apiConfiguration = latestApiConfiguration;
+        readiness = await getAgentRuntimeSettings(apiConfiguration);
       }
     }
 
@@ -135,12 +141,10 @@ export async function DELETE(request: Request) {
     const previousPreference = readAgentRuntimePreference();
     clearAgentRuntimePreference();
     try {
-      const claudeApiConfigured = await hasUsableClaudeApiConfiguration(
-        user.id,
-      );
+      const apiConfiguration = await getRuntimeApiConfiguration(user.id);
       const settings = await getAgentRuntimeSettings({
         forceRefresh: true,
-        claudeApiConfigured,
+        ...apiConfiguration,
       });
       return NextResponse.json(settings, { headers: noStoreHeaders });
     } catch (error) {

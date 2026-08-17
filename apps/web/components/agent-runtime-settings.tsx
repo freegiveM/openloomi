@@ -12,6 +12,7 @@ import {
   type AgentRuntimeSettingsResponse,
   type SelectableAgentRuntime,
   canSaveAgentRuntime,
+  isSelectableAgentRuntime,
 } from "@/lib/ai/native-agent/runtime-contract";
 import {
   CODEX_LOGIN_COMMAND,
@@ -29,6 +30,7 @@ const runtimeOptions: Array<{
   descriptionFallback: string;
   docsUrl: string;
   loginCommand?: string;
+  setupCommand?: string;
 }> = [
   {
     provider: "claude",
@@ -48,11 +50,37 @@ const runtimeOptions: Array<{
     docsUrl: "https://learn.chatgpt.com/docs/codex/cli",
     loginCommand: CODEX_LOGIN_COMMAND,
   },
+  {
+    provider: "opencode",
+    name: "OpenCode",
+    builtIn: false,
+    descriptionKey: "settings.agentRuntimeOpenCodeDescription",
+    descriptionFallback:
+      "Use your local OpenCode CLI and its configured model providers.",
+    docsUrl: "https://openloomi.ai/docs/reference/agent-runtimes/opencode",
+    loginCommand: "opencode auth login",
+  },
+  {
+    provider: "hermes",
+    name: "Hermes",
+    builtIn: false,
+    descriptionKey: "settings.agentRuntimeHermesDescription",
+    descriptionFallback:
+      "Use your local Hermes ACP runtime and configured model provider.",
+    docsUrl: "https://openloomi.ai/docs/reference/agent-runtimes/hermes",
+    setupCommand: "hermes setup",
+  },
+  {
+    provider: "openclaw",
+    name: "OpenClaw",
+    builtIn: false,
+    descriptionKey: "settings.agentRuntimeOpenClawDescription",
+    descriptionFallback:
+      "Use your local OpenClaw CLI with a reachable authenticated Gateway.",
+    docsUrl: "https://openloomi.ai/docs/reference/agent-runtimes/openclaw",
+    setupCommand: "openclaw onboard --install-daemon",
+  },
 ];
-
-function isSelectableRuntime(value: string): value is SelectableAgentRuntime {
-  return value === "claude" || value === "codex";
-}
 
 export function AgentRuntimeSettings() {
   const { t } = useTranslation();
@@ -97,7 +125,7 @@ export function AgentRuntimeSettings() {
         setDraft(
           (current) =>
             current ??
-            (isSelectableRuntime(nextState.effective.provider)
+            (isSelectableAgentRuntime(nextState.effective.provider)
               ? nextState.effective.provider
               : null),
         );
@@ -246,7 +274,7 @@ export function AgentRuntimeSettings() {
       const nextState = (await response.json()) as AgentRuntimeSettingsResponse;
       setState(nextState);
       setDraft(
-        isSelectableRuntime(nextState.effective.provider)
+        isSelectableAgentRuntime(nextState.effective.provider)
           ? nextState.effective.provider
           : null,
       );
@@ -294,12 +322,12 @@ export function AgentRuntimeSettings() {
             id="agent-runtime-title"
             className="text-base font-semibold text-foreground-secondary"
           >
-            {t("settings.agentRuntimeTitle", "Agent runtime")}
+            {t("settings.agentRuntimeTitle", "Detected local agent runtimes")}
           </p>
           <p className="max-w-3xl text-sm text-muted-foreground">
             {t(
               "settings.agentRuntimeDescription",
-              "Choose the agent runtime OpenLoomi uses for new tasks. Claude is built in; Codex uses its local CLI. Running tasks are not interrupted.",
+              "Choose the local agent runtime OpenLoomi uses for new tasks. Running tasks are not interrupted.",
             )}
           </p>
         </div>
@@ -329,11 +357,11 @@ export function AgentRuntimeSettings() {
         ) : state?.editable && state.runtimes ? (
           <>
             {state.effective.source === "environment" &&
-              !isSelectableRuntime(state.effective.provider) && (
+              !isSelectableAgentRuntime(state.effective.provider) && (
                 <p className="rounded-lg border border-border bg-muted/30 px-4 py-3 text-xs text-muted-foreground">
                   {t(
                     "settings.agentRuntimeManagedByEnvironment",
-                    "The current runtime is managed by the environment: {{provider}}. Choose Claude or Codex to create a desktop preference.",
+                    "The current runtime is managed by the environment: {{provider}}. Choose a detected runtime to create a desktop preference.",
                     { provider: state.effective.provider },
                   )}
                 </p>
@@ -457,24 +485,30 @@ export function AgentRuntimeSettings() {
 
 function RuntimeStatusLine({ probe }: { probe: AgentRuntimePublicProbe }) {
   const { t } = useTranslation();
-  const label =
-    probe.status === "ready"
-      ? t("settings.agentRuntimeReady", "Ready")
-      : probe.status === "login_required"
-        ? probe.provider === "claude"
-          ? t(
-              "settings.agentRuntimeAuthenticationRequired",
-              "Authentication required",
-            )
-          : t("settings.agentRuntimeLoginRequired", "Sign-in required")
-        : probe.status === "not_installed"
-          ? probe.provider === "claude"
-            ? t(
-                "settings.agentRuntimeBuiltInUnavailable",
-                "Built-in runtime unavailable",
-              )
-            : t("settings.agentRuntimeNotInstalled", "Not installed")
-          : t("settings.agentRuntimeUnverifiedShort", "Could not verify");
+  let label: string;
+  if (probe.status === "ready") {
+    label = t("settings.agentRuntimeReady", "Ready");
+  } else if (probe.status === "login_required") {
+    label =
+      probe.provider === "claude"
+        ? t(
+            "settings.agentRuntimeAuthenticationRequired",
+            "Authentication required",
+          )
+        : probe.provider === "hermes" || probe.provider === "openclaw"
+          ? t("settings.agentRuntimeSetupRequired", "Setup required")
+          : t("settings.agentRuntimeLoginRequired", "Sign-in required");
+  } else if (probe.status === "not_installed") {
+    label =
+      probe.provider === "claude"
+        ? t(
+            "settings.agentRuntimeBuiltInUnavailable",
+            "Built-in runtime unavailable",
+          )
+        : t("settings.agentRuntimeNotInstalled", "Not installed");
+  } else {
+    label = t("settings.agentRuntimeUnverifiedShort", "Could not verify");
+  }
   return (
     <span
       className={cn(
@@ -565,7 +599,7 @@ function RuntimeSetupPanel({
               size="size-4"
               className={refreshing ? "animate-spin" : undefined}
             />
-            {t("settings.agentRuntimeCheckAgain", "Check again")}
+            {t("settings.agentRuntimeCheckAgain", "Re-detect")}
           </Button>
           <Button
             type="button"
@@ -618,7 +652,7 @@ function RuntimeSetupSummary({
       <p className="text-sm text-muted-foreground">
         {t(
           "settings.agentRuntimeReadyDescription",
-          "{{runtime}} is installed and signed in. This check does not start a model request.",
+          "{{runtime}} is installed and configured. This check does not start a model request.",
           { runtime: option.name },
         )}
       </p>
@@ -637,29 +671,45 @@ function RuntimeSetupSummary({
       );
     }
 
+    const setupRequired =
+      option.provider === "hermes" || option.provider === "openclaw";
+    const command = option.loginCommand ?? option.setupCommand;
     return (
       <div className="space-y-2">
         <p className="text-sm text-muted-foreground">
-          {t(
-            "settings.agentRuntimeLoginDescription",
-            "Run this command in a terminal, finish signing in, then check again.",
-          )}
+          {setupRequired
+            ? t(
+                "settings.agentRuntimeSetupDescription",
+                "Run this command in a terminal, complete setup, then check again.",
+              )
+            : t(
+                "settings.agentRuntimeLoginDescription",
+                "Run this command in a terminal, finish signing in, then check again.",
+              )}
         </p>
-        {option.loginCommand && <CopyCommand command={option.loginCommand} />}
+        {command && <CopyCommand command={command} />}
       </div>
     );
   }
 
   if (probe.status === "not_installed") {
-    if (!isClaude) {
+    if (option.provider === "codex") {
       return <CodexInstallSteps platform={platform} />;
     }
 
-    return (
+    return isClaude ? (
       <p className="text-sm text-muted-foreground">
         {t(
           "settings.agentRuntimeClaudeUnavailableDescription",
           "OpenLoomi could not load its built-in Claude runtime. Update or repair the desktop app, then check again.",
+        )}
+      </p>
+    ) : (
+      <p className="text-sm text-muted-foreground">
+        {t(
+          "settings.agentRuntimeCliUnavailableDescription",
+          "{{runtime}} was not found. Open the official instructions, install it for this OS account, then check again.",
+          { runtime: option.name },
         )}
       </p>
     );
@@ -690,7 +740,7 @@ function CodexInstallSteps({
     platform === "windows"
       ? "PowerShell"
       : t("settings.agentRuntimeTerminal", "Terminal");
-  const checkAgain = t("settings.agentRuntimeCheckAgain", "Check again");
+  const checkAgain = t("settings.agentRuntimeCheckAgain", "Re-detect");
   const useCodex = t("settings.agentRuntimeUse", "Use {{runtime}}", {
     runtime: "Codex CLI",
   });

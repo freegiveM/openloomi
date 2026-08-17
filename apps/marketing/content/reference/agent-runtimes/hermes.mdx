@@ -5,7 +5,7 @@ description: "Run OpenLoomi native agent tasks through Hermes over Agent Client 
 
 # Hermes ACP Runtime
 
-The Hermes adapter launches `hermes acp` as a stdio Agent Client Protocol (ACP) server. OpenLoomi initializes the protocol, creates a session rooted at the task working directory, optionally selects a model with `session/set_model`, streams ACP updates, and relays permission requests. OpenLoomi does not install Hermes or create its profiles and provider credentials.
+The Hermes adapter launches `hermes acp` as a stdio Agent Client Protocol (ACP) server. OpenLoomi initializes the protocol, creates a session rooted at the task working directory, optionally selects a model with `session/set_model`, streams ACP updates, and relays permission requests. OpenLoomi does not install Hermes or create its profiles. When the current user has a complete Anthropic-compatible API setting in OpenLoomi, the adapter passes that endpoint, key, and model only to the Hermes child process; it does not copy the key into `~/.hermes`.
 
 ## Install and configure Hermes
 
@@ -35,6 +35,10 @@ hermes model
 The standard installer includes ACP support. A minimal source installation must include the `acp` extra; the official CLI reference documents `pip install -e '.[acp]'` for that case. See the Hermes [quickstart](https://github.com/NousResearch/hermes-agent/blob/main/website/docs/getting-started/quickstart.md) and [CLI command reference](https://github.com/NousResearch/hermes-agent/blob/main/website/docs/reference/cli-commands.md).
 
 Hermes normally stores secrets in `~/.hermes/.env` and non-secret configuration in `~/.hermes/config.yaml`. Profiles isolate configuration, sessions, skills, and memory. Confirm a profile exists with `hermes profile list` before naming it in OpenLoomi.
+
+### Select it in the desktop app
+
+Open **Settings → Agent runtime** and choose **Hermes**. OpenLoomi checks the CLI version, Hermes status, and ACP command availability without starting a model request. Hermes reports **Ready** when its own credentials are usable or the current user has a complete Anthropic-compatible API setting in OpenLoomi. Otherwise, run `hermes setup` and select **Re-detect**.
 
 ## Configure OpenLoomi
 
@@ -75,7 +79,7 @@ Hermes ACP `session/request_permission` calls are relayed to OpenLoomi's permiss
 
 OpenLoomi never launches Hermes with `--yolo`. This protects the ACP approval path, but Hermes remains a process running as the OpenLoomi operating-system user. Hermes tool configuration and terminal backend still determine the underlying filesystem and command isolation. The official Hermes configuration guide warns that the default local terminal backend has the user's filesystem access; use a containerized backend or another host sandbox where appropriate.
 
-The child process receives common provider keys, `HERMES_*` variables, and additional variable names explicitly allowed through `OPENLOOMI_AGENT_ENV_ALLOWLIST`. A selected profile can still load its own `.env` and configuration files.
+The child process receives common provider keys, `HERMES_*` variables, and additional variable names explicitly allowed through `OPENLOOMI_AGENT_ENV_ALLOWLIST`. For the OpenLoomi API fallback, the saved key and endpoint are injected into this process environment and the saved model is selected through ACP. A selected Hermes profile can still load its own `.env` and configuration files.
 
 ## Verify the integration
 

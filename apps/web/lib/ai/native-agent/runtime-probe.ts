@@ -1,5 +1,5 @@
 /**
- * Server-side readiness probes for the local Claude Code and Codex CLIs.
+ * Server-side readiness probes for OpenLoomi's supported local agent runtimes.
  *
  * Probes are deliberately read-only: they check the executable version and
  * the CLI's own authentication status without starting a model request. Raw
@@ -28,8 +28,9 @@ import {
 } from "@/lib/ai/extensions/agent/codex/command-resolver";
 import { createLogger } from "@/lib/utils/logger";
 import { APP_DIR_NAME } from "@/lib/env/config/constants";
+import type { SelectableAgentRuntime } from "./runtime-contract";
 
-const PROBE_TIMEOUT_MS = 5000;
+const PROBE_TIMEOUT_MS = 10_000;
 const CACHE_TTL_MS = 30_000;
 
 const logger = createLogger("NativeAgentRuntime");
@@ -61,9 +62,42 @@ export type CodexRuntimeStatus =
   | "CODEX_CLI_AUTH_REQUIRED"
   | "CODEX_CLI_AUTH_STATUS_TIMEOUT"
   | "CODEX_CLI_AUTH_STATUS_UNAVAILABLE"
+  | "CODEX_CLI_CAPABILITY_FAILED"
+  | "CODEX_CLI_CAPABILITY_TIMEOUT"
   | "CODEX_CLI_VERSION_FAILED"
   | "CODEX_CLI_VERSION_TIMEOUT"
   | "CODEX_CLI_UNAVAILABLE";
+
+export type OpenCodeRuntimeStatus =
+  | "OPENCODE_CLI_AUTHENTICATED"
+  | "OPENCODE_CLI_AUTH_REQUIRED"
+  | "OPENCODE_CLI_AUTH_STATUS_TIMEOUT"
+  | "OPENCODE_CLI_AUTH_STATUS_UNAVAILABLE"
+  | "OPENCODE_CLI_CAPABILITY_FAILED"
+  | "OPENCODE_CLI_CAPABILITY_TIMEOUT"
+  | "OPENCODE_CLI_VERSION_FAILED"
+  | "OPENCODE_CLI_VERSION_TIMEOUT"
+  | "OPENCODE_CLI_UNAVAILABLE";
+
+export type HermesRuntimeStatus =
+  | "HERMES_CLI_AUTHENTICATED"
+  | "HERMES_CLI_AUTH_REQUIRED"
+  | "HERMES_CLI_AUTH_STATUS_TIMEOUT"
+  | "HERMES_CLI_AUTH_STATUS_UNAVAILABLE"
+  | "HERMES_CLI_CAPABILITY_FAILED"
+  | "HERMES_CLI_CAPABILITY_TIMEOUT"
+  | "HERMES_CLI_VERSION_FAILED"
+  | "HERMES_CLI_VERSION_TIMEOUT"
+  | "HERMES_CLI_UNAVAILABLE";
+
+export type OpenClawRuntimeStatus =
+  | "OPENCLAW_CLI_AUTHENTICATED"
+  | "OPENCLAW_CLI_AUTH_REQUIRED"
+  | "OPENCLAW_CLI_AUTH_STATUS_TIMEOUT"
+  | "OPENCLAW_CLI_AUTH_STATUS_UNAVAILABLE"
+  | "OPENCLAW_CLI_VERSION_FAILED"
+  | "OPENCLAW_CLI_VERSION_TIMEOUT"
+  | "OPENCLAW_CLI_UNAVAILABLE";
 
 export type ProbeResult = {
   ok: boolean;
@@ -80,11 +114,14 @@ type CliPathSource =
   | "PATH"
   | "CLAUDE_CODE_PATH"
   | "OPENLOOMI_AGENT_CODEX_COMMAND"
+  | "OPENLOOMI_AGENT_OPENCODE_COMMAND"
+  | "OPENLOOMI_AGENT_HERMES_COMMAND"
+  | "OPENLOOMI_AGENT_OPENCLAW_COMMAND"
   | "FALLBACK"
   | null;
 
 type BaseRuntimeProbe<
-  Provider extends "claude" | "codex",
+  Provider extends SelectableAgentRuntime,
   Status extends string,
 > = {
   checked: true;
@@ -101,6 +138,7 @@ type BaseRuntimeProbe<
   probes: {
     version?: ProbeResult;
     auth?: ProbeResult;
+    capability?: ProbeResult;
   };
 };
 
@@ -114,20 +152,50 @@ export type NativeRuntimeProbe = BaseRuntimeProbe<
 
 export type CodexRuntimeProbe = BaseRuntimeProbe<"codex", CodexRuntimeStatus>;
 
+export type OpenCodeRuntimeProbe = BaseRuntimeProbe<
+  "opencode",
+  OpenCodeRuntimeStatus
+>;
+
+export type HermesRuntimeProbe = BaseRuntimeProbe<
+  "hermes",
+  HermesRuntimeStatus
+>;
+
+export type OpenClawRuntimeProbe = BaseRuntimeProbe<
+  "openclaw",
+  OpenClawRuntimeStatus
+>;
+
+export type AgentRuntimeProbe =
+  | NativeRuntimeProbe
+  | CodexRuntimeProbe
+  | OpenCodeRuntimeProbe
+  | HermesRuntimeProbe
+  | OpenClawRuntimeProbe;
+
 type RuntimeDefinition<
-  Provider extends "claude" | "codex",
+  Provider extends SelectableAgentRuntime,
   Status extends string,
 > = {
   provider: Provider;
-  binary: Provider;
+  binary: string;
   explicitCommand: string | undefined;
   explicitSource: Exclude<CliPathSource, null>;
   authArgs: readonly string[];
+  authResultReady?: (result: ProbeResult) => boolean;
+  authFailureIsRequired?: (result: ProbeResult) => boolean;
+  capability?: {
+    args: readonly string[];
+    resultReady: (result: ProbeResult) => boolean;
+  };
   status: {
     ready: Status;
     authRequired: Status;
     authTimeout: Status;
     authUnavailable: Status;
+    capabilityFailed?: Status;
+    capabilityTimeout?: Status;
     versionFailed: Status;
     versionTimeout: Status;
     unavailable: Status;
@@ -141,10 +209,14 @@ type ResolvedCliPath = {
   argsPrefix: string[];
 };
 
-let claudeCache: { at: number; value: NativeRuntimeProbe } | null = null;
-let codexCache: { at: number; value: CodexRuntimeProbe } | null = null;
-let claudeInFlight: Promise<NativeRuntimeProbe> | null = null;
-let codexInFlight: Promise<CodexRuntimeProbe> | null = null;
+const runtimeCaches = new Map<
+  SelectableAgentRuntime,
+  { at: number; value: AgentRuntimeProbe }
+>();
+const runtimeInFlight = new Map<
+  SelectableAgentRuntime,
+  Promise<AgentRuntimeProbe>
+>();
 
 function candidateBinaries(binary: string): string[] {
   if (platform() === "win32") {
@@ -192,7 +264,7 @@ function isBareCommand(command: string): boolean {
 }
 
 function resolveCliPath(
-  definition: RuntimeDefinition<"claude" | "codex", string>,
+  definition: RuntimeDefinition<SelectableAgentRuntime, string>,
 ): ResolvedCliPath {
   const searchPath = buildAgentCliSearchPath();
 
@@ -232,7 +304,7 @@ function resolveCliPath(
 }
 
 function runCli(
-  provider: "claude" | "codex",
+  provider: SelectableAgentRuntime,
   command: string,
   args: readonly string[],
   timeoutMs: number,
@@ -326,7 +398,7 @@ function runCli(
 }
 
 function buildRuntimeProbeEnvironment(
-  provider: "claude" | "codex",
+  provider: SelectableAgentRuntime,
   overrides: Record<string, string>,
 ): NodeJS.ProcessEnv {
   const providerOverrides: Record<string, string> = {};
@@ -350,12 +422,24 @@ function buildRuntimeProbeEnvironment(
       PROBE_RUNTIME_PREFIXES.some((prefix) => normalized.startsWith(prefix));
     if (!isRuntimeCredential) continue;
 
+    const isCommonModelCredential =
+      normalized === "OPENAI_API_KEY" ||
+      normalized === "ANTHROPIC_API_KEY" ||
+      normalized === "OPENROUTER_API_KEY" ||
+      normalized === "GEMINI_API_KEY" ||
+      normalized === "GOOGLE_GENERATIVE_AI_API_KEY";
     const isProviderCredential =
       provider === "claude"
         ? normalized.startsWith("ANTHROPIC_") ||
           normalized === "CLAUDE_CONFIG_DIR" ||
           normalized === "CLAUDE_CODE_OAUTH_TOKEN"
-        : normalized === "OPENAI_API_KEY" || normalized.startsWith("CODEX_");
+        : provider === "codex"
+          ? normalized === "OPENAI_API_KEY" || normalized.startsWith("CODEX_")
+          : provider === "opencode"
+            ? isCommonModelCredential || normalized.startsWith("OPENCODE_")
+            : provider === "hermes"
+              ? isCommonModelCredential || normalized.startsWith("HERMES_")
+              : normalized.startsWith("OPENCLAW_");
     if (!isProviderCredential) {
       delete env[key];
     }
@@ -386,15 +470,17 @@ function isAuthCommandUnavailable(result: ProbeResult): boolean {
 }
 
 async function probeCliRuntime<
-  Provider extends "claude" | "codex",
+  Provider extends SelectableAgentRuntime,
   Status extends string,
 >(
   definition: RuntimeDefinition<Provider, Status>,
   resolvedOverride?: ResolvedCliPath,
-) {
+): Promise<BaseRuntimeProbe<Provider, Status>> {
   const resolved =
     resolvedOverride ??
-    resolveCliPath(definition as RuntimeDefinition<"claude" | "codex", string>);
+    resolveCliPath(
+      definition as RuntimeDefinition<SelectableAgentRuntime, string>,
+    );
   const base = { checked: true as const, provider: definition.provider };
 
   if (!resolved.path) {
@@ -413,14 +499,37 @@ async function probeCliRuntime<
     };
   }
 
-  const versionProbe = await runCli(
-    definition.provider,
-    resolved.path,
-    ["--version"],
-    PROBE_TIMEOUT_MS,
-    resolved.searchPath,
-    resolved.argsPrefix,
-  );
+  // Keep the whole provider probe within one timeout window by running its
+  // independent read-only checks together. A broken CLI must not make the
+  // settings page wait 5 seconds for every subcommand in sequence.
+  const [versionProbe, authProbe, capabilityProbe] = await Promise.all([
+    runCli(
+      definition.provider,
+      resolved.path,
+      ["--version"],
+      PROBE_TIMEOUT_MS,
+      resolved.searchPath,
+      resolved.argsPrefix,
+    ),
+    runCli(
+      definition.provider,
+      resolved.path,
+      definition.authArgs,
+      PROBE_TIMEOUT_MS,
+      resolved.searchPath,
+      resolved.argsPrefix,
+    ),
+    definition.capability
+      ? runCli(
+          definition.provider,
+          resolved.path,
+          definition.capability.args,
+          PROBE_TIMEOUT_MS,
+          resolved.searchPath,
+          resolved.argsPrefix,
+        )
+      : Promise.resolve(undefined),
+  ]);
   if (!versionProbe.ok) {
     const result = {
       ...base,
@@ -443,20 +552,19 @@ async function probeCliRuntime<
     return result;
   }
 
-  const authProbe = await runCli(
-    definition.provider,
-    resolved.path,
-    definition.authArgs,
-    PROBE_TIMEOUT_MS,
-    resolved.searchPath,
-    resolved.argsPrefix,
-  );
-  if (!authProbe.ok) {
-    const reason = authProbe.timedOut
-      ? definition.status.authTimeout
-      : isAuthCommandUnavailable(authProbe)
-        ? definition.status.authUnavailable
-        : definition.status.authRequired;
+  if (
+    capabilityProbe &&
+    (!capabilityProbe.ok ||
+      !definition.capability?.resultReady(capabilityProbe))
+  ) {
+    const reason = capabilityProbe.timedOut
+      ? definition.status.capabilityTimeout
+      : definition.status.capabilityFailed;
+    if (!reason) {
+      throw new Error(
+        `Missing capability failure status for ${definition.provider}`,
+      );
+    }
     return {
       ...base,
       available: true,
@@ -468,7 +576,41 @@ async function probeCliRuntime<
       cliPathSource: resolved.source,
       versionPresent: true,
       version: cleanVersion(versionProbe),
-      probes: { version: versionProbe, auth: authProbe },
+      probes: {
+        version: versionProbe,
+        auth: authProbe,
+        capability: capabilityProbe,
+      },
+    };
+  }
+
+  const authReady =
+    authProbe.ok && (definition.authResultReady?.(authProbe) ?? true);
+  if (!authReady) {
+    const reason = authProbe.timedOut
+      ? definition.status.authTimeout
+      : !authProbe.ok && isAuthCommandUnavailable(authProbe)
+        ? definition.status.authUnavailable
+        : authProbe.ok ||
+            (definition.authFailureIsRequired?.(authProbe) ?? true)
+          ? definition.status.authRequired
+          : definition.status.authUnavailable;
+    return {
+      ...base,
+      available: true,
+      authenticated: false,
+      active: false,
+      ready: false,
+      reason,
+      cliPathPresent: true,
+      cliPathSource: resolved.source,
+      versionPresent: true,
+      version: cleanVersion(versionProbe),
+      probes: {
+        version: versionProbe,
+        auth: authProbe,
+        capability: capabilityProbe,
+      },
     };
   }
 
@@ -483,48 +625,101 @@ async function probeCliRuntime<
     cliPathSource: resolved.source,
     versionPresent: true,
     version: cleanVersion(versionProbe),
-    probes: { version: versionProbe, auth: authProbe },
+    probes: {
+      version: versionProbe,
+      auth: authProbe,
+      capability: capabilityProbe,
+    },
   };
+}
+
+function outputContains(result: ProbeResult, ...values: string[]): boolean {
+  const output = `${result.stdout}\n${result.stderr}`.toLowerCase();
+  return values.every((value) => output.includes(value.toLowerCase()));
+}
+
+function hasListedCredentials(result: ProbeResult): boolean {
+  const output = `${result.stdout}\n${result.stderr}`.trim();
+  if (!output) return false;
+  return !/(?:no|0)\s+(?:stored\s+)?(?:credentials?|authenticated providers?)|not (?:logged in|authenticated)/i.test(
+    output,
+  );
+}
+
+function isHermesStatusReady(result: ProbeResult): boolean {
+  const ansiEscape = String.fromCharCode(27);
+  const ansiPattern = new RegExp(`${ansiEscape}\\[[0-?]*[ -/]*[@-~]`, "g");
+  const output = `${result.stdout}\n${result.stderr}`.replace(ansiPattern, "");
+  const model = output.match(/^\s*Model:\s*(.+?)\s*$/im)?.[1];
+  if (!model || model.toLowerCase() === "(not set)") return false;
+
+  // `hermes status` exits successfully even on a fresh install. Only mark it
+  // ready when the configured model also has a model credential or login.
+  return (
+    /^\s*(?:OpenRouter|OpenAI|Anthropic|Google \/ Gemini|DeepSeek|xAI \/ Grok|NVIDIA NIM|Z\.AI \/ GLM|Kimi(?: \/ Moonshot)?|StepFun Step Plan|MiniMax(?:-CN| \(China\))?)\s+✓/im.test(
+      output,
+    ) ||
+    /^\s*(?:Nous Portal|OpenAI Codex|Qwen OAuth|MiniMax OAuth|xAI OAuth)\s+✓/im.test(
+      output,
+    ) ||
+    /Nous inference key configured/i.test(output) ||
+    /^\s*LM Studio\s+✓\s+reachable/im.test(output)
+  );
+}
+
+function outputMatches(result: ProbeResult, pattern: RegExp): boolean {
+  return pattern.test(`${result.stdout}\n${result.stderr}`);
+}
+
+async function withRuntimeCache<Probe extends AgentRuntimeProbe>(
+  provider: Probe["provider"],
+  force: boolean,
+  operation: () => Promise<Probe>,
+): Promise<Probe> {
+  const cached = runtimeCaches.get(provider);
+  if (!force && cached && Date.now() - cached.at < CACHE_TTL_MS) {
+    return cached.value as Probe;
+  }
+
+  const current = runtimeInFlight.get(provider);
+  if (current) return current as Promise<Probe>;
+
+  const pending = operation().then((value) => {
+    runtimeCaches.set(provider, { at: Date.now(), value });
+    return value;
+  });
+  runtimeInFlight.set(provider, pending);
+  try {
+    return await pending;
+  } finally {
+    if (runtimeInFlight.get(provider) === pending) {
+      runtimeInFlight.delete(provider);
+    }
+  }
 }
 
 export async function probeNativeClaudeRuntime(
   options: { force?: boolean } = {},
 ): Promise<NativeRuntimeProbe | null> {
-  if (
-    !options.force &&
-    claudeCache &&
-    Date.now() - claudeCache.at < CACHE_TTL_MS
-  ) {
-    return claudeCache.value;
-  }
-  if (claudeInFlight) return claudeInFlight;
-
-  const operation = probeCliRuntime({
-    provider: "claude",
-    binary: "claude",
-    explicitCommand: process.env.CLAUDE_CODE_PATH,
-    explicitSource: "CLAUDE_CODE_PATH",
-    authArgs: ["auth", "status"],
-    status: {
-      ready: "CLAUDE_CLI_AUTHENTICATED",
-      authRequired: "CLAUDE_CLI_AUTH_REQUIRED",
-      authTimeout: "CLAUDE_CLI_AUTH_STATUS_TIMEOUT",
-      authUnavailable: "CLAUDE_CLI_AUTH_STATUS_UNAVAILABLE",
-      versionFailed: "CLAUDE_CLI_VERSION_FAILED",
-      versionTimeout: "CLAUDE_CLI_VERSION_TIMEOUT",
-      unavailable: "CLAUDE_CLI_UNAVAILABLE",
-    },
-  }).then((result) => {
-    const probe: NativeRuntimeProbe = { ...result, defaultAgent: "claude" };
-    claudeCache = { at: Date.now(), value: probe };
-    return probe;
+  return withRuntimeCache("claude", options.force ?? false, async () => {
+    const result = await probeCliRuntime({
+      provider: "claude",
+      binary: "claude",
+      explicitCommand: process.env.CLAUDE_CODE_PATH,
+      explicitSource: "CLAUDE_CODE_PATH",
+      authArgs: ["auth", "status"],
+      status: {
+        ready: "CLAUDE_CLI_AUTHENTICATED",
+        authRequired: "CLAUDE_CLI_AUTH_REQUIRED",
+        authTimeout: "CLAUDE_CLI_AUTH_STATUS_TIMEOUT",
+        authUnavailable: "CLAUDE_CLI_AUTH_STATUS_UNAVAILABLE",
+        versionFailed: "CLAUDE_CLI_VERSION_FAILED",
+        versionTimeout: "CLAUDE_CLI_VERSION_TIMEOUT",
+        unavailable: "CLAUDE_CLI_UNAVAILABLE",
+      },
+    });
+    return { ...result, defaultAgent: "claude" };
   });
-  claudeInFlight = operation;
-  try {
-    return await operation;
-  } finally {
-    if (claudeInFlight === operation) claudeInFlight = null;
-  }
 }
 
 export async function probeNativeCodexRuntime(
@@ -533,32 +728,29 @@ export async function probeNativeCodexRuntime(
     resolverOptions?: Omit<ResolveCodexCommandOptions, "configuredCommand">;
   } = {},
 ): Promise<CodexRuntimeProbe | null> {
-  if (
-    !options.force &&
-    codexCache &&
-    Date.now() - codexCache.at < CACHE_TTL_MS
-  ) {
-    return codexCache.value;
-  }
-  if (codexInFlight) return codexInFlight;
-
   const definition: RuntimeDefinition<"codex", CodexRuntimeStatus> = {
     provider: "codex",
     binary: "codex",
     explicitCommand: process.env.OPENLOOMI_AGENT_CODEX_COMMAND,
     explicitSource: "OPENLOOMI_AGENT_CODEX_COMMAND",
     authArgs: ["login", "status"],
+    capability: {
+      args: ["exec", "--help"],
+      resultReady: (result) => outputContains(result, "--json"),
+    },
     status: {
       ready: "CODEX_CLI_AUTHENTICATED",
       authRequired: "CODEX_CLI_AUTH_REQUIRED",
       authTimeout: "CODEX_CLI_AUTH_STATUS_TIMEOUT",
       authUnavailable: "CODEX_CLI_AUTH_STATUS_UNAVAILABLE",
+      capabilityFailed: "CODEX_CLI_CAPABILITY_FAILED",
+      capabilityTimeout: "CODEX_CLI_CAPABILITY_TIMEOUT",
       versionFailed: "CODEX_CLI_VERSION_FAILED",
       versionTimeout: "CODEX_CLI_VERSION_TIMEOUT",
       unavailable: "CODEX_CLI_UNAVAILABLE",
     },
   };
-  const operation = (async () => {
+  return withRuntimeCache("codex", options.force ?? false, async () => {
     try {
       return await probeCliRuntime(
         definition,
@@ -577,16 +769,108 @@ export async function probeNativeCodexRuntime(
         argsPrefix: [],
       });
     }
-  })().then((result) => {
-    codexCache = { at: Date.now(), value: result };
-    return result;
   });
-  codexInFlight = operation;
-  try {
-    return await operation;
-  } finally {
-    if (codexInFlight === operation) codexInFlight = null;
-  }
+}
+
+export async function probeNativeOpenCodeRuntime(
+  options: { force?: boolean } = {},
+): Promise<OpenCodeRuntimeProbe | null> {
+  return withRuntimeCache("opencode", options.force ?? false, () =>
+    probeCliRuntime({
+      provider: "opencode",
+      binary: "opencode",
+      explicitCommand: process.env.OPENLOOMI_AGENT_OPENCODE_COMMAND,
+      explicitSource: "OPENLOOMI_AGENT_OPENCODE_COMMAND",
+      authArgs: ["auth", "list"],
+      authResultReady: hasListedCredentials,
+      capability: {
+        args: ["run", "--help"],
+        resultReady: (result) => outputContains(result, "--format", "json"),
+      },
+      status: {
+        ready: "OPENCODE_CLI_AUTHENTICATED",
+        authRequired: "OPENCODE_CLI_AUTH_REQUIRED",
+        authTimeout: "OPENCODE_CLI_AUTH_STATUS_TIMEOUT",
+        authUnavailable: "OPENCODE_CLI_AUTH_STATUS_UNAVAILABLE",
+        capabilityFailed: "OPENCODE_CLI_CAPABILITY_FAILED",
+        capabilityTimeout: "OPENCODE_CLI_CAPABILITY_TIMEOUT",
+        versionFailed: "OPENCODE_CLI_VERSION_FAILED",
+        versionTimeout: "OPENCODE_CLI_VERSION_TIMEOUT",
+        unavailable: "OPENCODE_CLI_UNAVAILABLE",
+      },
+    }),
+  );
+}
+
+export async function probeNativeHermesRuntime(
+  options: { force?: boolean } = {},
+): Promise<HermesRuntimeProbe | null> {
+  const profile = process.env.OPENLOOMI_AGENT_HERMES_PROFILE?.trim();
+  return withRuntimeCache("hermes", options.force ?? false, () =>
+    probeCliRuntime({
+      provider: "hermes",
+      binary: "hermes",
+      explicitCommand: process.env.OPENLOOMI_AGENT_HERMES_COMMAND,
+      explicitSource: "OPENLOOMI_AGENT_HERMES_COMMAND",
+      authArgs: profile ? ["--profile", profile, "status"] : ["status"],
+      authResultReady: isHermesStatusReady,
+      authFailureIsRequired: (result) =>
+        outputMatches(
+          result,
+          /(?:setup|required|not configured|missing).*(?:auth|credential|model|provider)|(?:auth|credential|model|provider).*(?:required|not configured|missing)/i,
+        ),
+      capability: {
+        args: ["--help"],
+        resultReady: (result) => outputContains(result, "acp"),
+      },
+      status: {
+        ready: "HERMES_CLI_AUTHENTICATED",
+        authRequired: "HERMES_CLI_AUTH_REQUIRED",
+        authTimeout: "HERMES_CLI_AUTH_STATUS_TIMEOUT",
+        authUnavailable: "HERMES_CLI_AUTH_STATUS_UNAVAILABLE",
+        capabilityFailed: "HERMES_CLI_CAPABILITY_FAILED",
+        capabilityTimeout: "HERMES_CLI_CAPABILITY_TIMEOUT",
+        versionFailed: "HERMES_CLI_VERSION_FAILED",
+        versionTimeout: "HERMES_CLI_VERSION_TIMEOUT",
+        unavailable: "HERMES_CLI_UNAVAILABLE",
+      },
+    }),
+  );
+}
+
+export async function probeNativeOpenClawRuntime(
+  options: { force?: boolean } = {},
+): Promise<OpenClawRuntimeProbe | null> {
+  return withRuntimeCache("openclaw", options.force ?? false, () =>
+    probeCliRuntime({
+      provider: "openclaw",
+      binary: "openclaw",
+      explicitCommand: process.env.OPENLOOMI_AGENT_OPENCLAW_COMMAND,
+      explicitSource: "OPENLOOMI_AGENT_OPENCLAW_COMMAND",
+      authArgs: [
+        "gateway",
+        "status",
+        "--require-rpc",
+        "--json",
+        "--timeout",
+        "4000",
+      ],
+      authFailureIsRequired: (result) =>
+        outputMatches(
+          result,
+          /(?:unauthorized|authentication|required|missing|invalid).*(?:token|password|credential)|(?:token|password|credential).*(?:required|missing|invalid)/i,
+        ),
+      status: {
+        ready: "OPENCLAW_CLI_AUTHENTICATED",
+        authRequired: "OPENCLAW_CLI_AUTH_REQUIRED",
+        authTimeout: "OPENCLAW_CLI_AUTH_STATUS_TIMEOUT",
+        authUnavailable: "OPENCLAW_CLI_AUTH_STATUS_UNAVAILABLE",
+        versionFailed: "OPENCLAW_CLI_VERSION_FAILED",
+        versionTimeout: "OPENCLAW_CLI_VERSION_TIMEOUT",
+        unavailable: "OPENCLAW_CLI_UNAVAILABLE",
+      },
+    }),
+  );
 }
 
 function resolveCodexProbePath(
@@ -613,16 +897,15 @@ function resolveCodexProbePath(
 }
 
 export function clearNativeClaudeRuntimeCache(): void {
-  claudeCache = null;
+  runtimeCaches.delete("claude");
 }
 
 export function clearNativeCodexRuntimeCache(): void {
-  codexCache = null;
+  runtimeCaches.delete("codex");
 }
 
 export function clearNativeRuntimeCaches(): void {
-  clearNativeClaudeRuntimeCache();
-  clearNativeCodexRuntimeCache();
+  runtimeCaches.clear();
 }
 
 export function getRuntimePlatform(): "windows" | "macos" | "linux" {
