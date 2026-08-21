@@ -178,6 +178,32 @@ export class InMemoryAgentGoalState
     return toCommit(stored, true);
   }
 
+  async findReplacementByIdempotency(input: {
+    ownerId: string;
+    runtimeSessionId: string;
+    command: GoalCommandIdentity;
+  }): Promise<GoalReplacementCommit | null> {
+    const scope = validatedScope(input.ownerId, input.runtimeSessionId);
+    const command = validateCommand(input.command);
+    const stored = this.sessions
+      .get(scope.key)
+      ?.replacementsByIdempotencyKey.get(command.idempotencyKey);
+    if (!stored) {
+      const snapshot = this.sessions.get(scope.key);
+      if (
+        snapshot?.commitsByIdempotencyKey.has(command.idempotencyKey) ||
+        snapshot?.lifecycleTransitionsByIdempotencyKey.has(
+          command.idempotencyKey,
+        )
+      ) {
+        throwIdempotencyNamespaceConflict(command);
+      }
+      return null;
+    }
+    assertMatchingReplacementFingerprint(stored, command);
+    return toReplacementCommit(stored, true);
+  }
+
   async findLifecycleTransitionByIdempotency(input: {
     ownerId: string;
     runtimeSessionId: string;

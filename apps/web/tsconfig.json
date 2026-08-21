@@ -25,8 +25,8 @@
 			"cookie": ["./lib/compat/cookie.ts"],
 			"@openloomi/ui": ["./components/ui/index.ts"],
 			"@openloomi/ui/*": ["./components/ui/*"],
-			"@openloomi/ai/agent": ["../../packages/ai/src/agent/index.ts"],
-			"@openloomi/ai/agent/*": ["../../packages/ai/src/agent/*"]
+			"@openloomi/ai/agent": ["./node_modules/@melandlabs/ai/dist/agent/index.d.ts"],
+			"@openloomi/ai/agent/*": ["./node_modules/@melandlabs/ai/dist/agent/*"]
 		},
 		"typeRoots": ["./node_modules/@types"]
 	},

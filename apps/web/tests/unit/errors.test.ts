@@ -14,6 +14,11 @@ describe("errors", () => {
   });
 
   it("maps database errors to generic message in response", async () => {
+    // Database surface uses visibility "log" — the caller is responsible for
+    // capturing the detailed error (e.g. via a logging wrapper) and the
+    // returned Response is always generic so we never leak schema/query
+    // details to the client. Assert the response shape and that no
+    // `console.error` happens from inside `toResponse()` itself.
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
     const error = new AppError("bad_request:database");
 
@@ -25,11 +30,7 @@ describe("errors", () => {
       message: "Something went wrong. Please try again later.",
     });
     expect(response.status).toBe(400);
-    expect(spy).toHaveBeenCalledWith({
-      code: "bad_request:database",
-      message: "An error occurred while executing a database query.",
-      cause: undefined,
-    });
+    expect(spy).not.toHaveBeenCalled();
     spy.mockRestore();
   });
 
@@ -47,25 +48,23 @@ describe("errors", () => {
     expect(getMessageByErrorCode("bad_request:feedback", "oops")).toBe("oops");
   });
 
-  // SE-01: AppError toResponse admin surface - database surface logs to console
-  it("SE-01: toResponse for database surface logs full error details", async () => {
+  // SE-01: AppError toResponse admin surface — database surface returns a
+  // generic response so it cannot leak schema/query details. Detailed error
+  // capture is the caller's responsibility (visibility "log" tells the host
+  // to log it itself; `toResponse()` does not).
+  it("SE-01: toResponse for database surface returns generic payload without logging", async () => {
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
     const error = new AppError("bad_request:database", "admin cause");
 
     const response = error.toResponse();
     const payload = await response.json();
 
-    // Database surface uses visibility "log", so it logs and returns generic message
     expect(payload.code).toBe("");
     expect(payload.message).toBe(
       "Something went wrong. Please try again later.",
     );
     expect(response.status).toBe(400);
-    expect(spy).toHaveBeenCalledWith({
-      code: "bad_request:database",
-      message: "An error occurred while executing a database query.",
-      cause: "admin cause",
-    });
+    expect(spy).not.toHaveBeenCalled();
     spy.mockRestore();
   });
 

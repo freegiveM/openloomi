@@ -241,7 +241,10 @@ describe("GoalController Claude Stop integration", () => {
         throw new Error("Expected a Goal continuation instruction");
       }
       expect(first.instruction.payload.missingCriteria).toHaveLength(1);
-      expect(first.instruction.payload).not.toHaveProperty("remainingBudget");
+      // The 0.8.0 RuntimeInstructionDraft schema requires a non-empty
+      // remainingBudget on goal.continue instructions, so the controller
+      // now mirrors the goal's execution limits into the payload.
+      expect(first.instruction.payload.remainingBudget).toBeDefined();
       expect(duplicate.outcome).toBe("continue");
       expect(duplicate.instruction.id).toBe(first.instruction.id);
       expect(duplicate.reason).toBe(first.reason);

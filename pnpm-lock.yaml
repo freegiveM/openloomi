@@ -6,12 +6,8 @@ settings:
 
 overrides:
   postcss: ^8.5.6
+  '@melandlabs/shared': 0.4.0
   '@whiskeysockets/libsignal-node': git+https://github.com/WhiskeySockets/libsignal-node.git#1c30d7d7e76a3b0aa120b04dc6a26f5a12dccf67
-
-patchedDependencies:
-  '@melandlabs/integrations-weixin@0.1.5':
-    hash: 381398d760c8f517be81967c3dd93bbeae1d6f84161c213fdc4e6b630902aea3
-    path: patches/@melandlabs__integrations-weixin@0.1.5.patch
 
 importers:
 
@@ -221,140 +217,140 @@ importers:
         specifier: ^1.24.0
         version: 1.61.1(bufferutil@4.1.0)(utf-8-validate@5.0.10)
       '@melandlabs/ai':
-        specifier: ^0.2.0
-        version: 0.2.0(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
+        specifier: ^0.8.0
+        version: 0.8.0(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
       '@melandlabs/ai-rag':
-        specifier: ^0.1.4
-        version: 0.1.4(488f6200eb226c41626c28343d9082da)
+        specifier: ^0.2.9
+        version: 0.2.9(488f6200eb226c41626c28343d9082da)
       '@melandlabs/api':
-        specifier: ^0.1.4
-        version: 0.1.4
+        specifier: ^0.3.0
+        version: 0.3.0
       '@melandlabs/audit':
-        specifier: ^0.1.4
-        version: 0.1.4
+        specifier: ^0.3.1
+        version: 0.3.1
       '@melandlabs/contracts':
-        specifier: ^0.1.4
-        version: 0.1.4(zod@4.3.6)
+        specifier: ^0.6.0
+        version: 0.6.0(zod@4.3.6)
       '@melandlabs/cron':
-        specifier: ^0.1.4
-        version: 0.1.4
+        specifier: ^0.3.0
+        version: 0.3.0
       '@melandlabs/db':
-        specifier: ^0.1.4
-        version: 0.1.4(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(react@19.2.5)(sswr@2.2.0(svelte@5.56.1(@typescript-eslint/types@8.59.3)))(svelte@5.56.1(@typescript-eslint/types@8.59.3))(vue@3.5.35(typescript@5.9.3))(zod@4.3.6)
+        specifier: ^0.3.0
+        version: 0.3.0(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(react@19.2.5)(sswr@2.2.0(svelte@5.56.1(@typescript-eslint/types@8.59.3)))(svelte@5.56.1(@typescript-eslint/types@8.59.3))(vue@3.5.35(typescript@5.9.3))(zod@4.3.6)
       '@melandlabs/env-config':
-        specifier: ^0.1.4
-        version: 0.1.4
+        specifier: ^0.4.0
+        version: 0.4.0
       '@melandlabs/hooks':
-        specifier: ^0.1.4
-        version: 0.1.4(react@19.2.5)(swr@2.4.1(react@19.2.5))
+        specifier: ^0.3.0
+        version: 0.3.0(react@19.2.5)(swr@2.4.1(react@19.2.5))
       '@melandlabs/i18n':
-        specifier: ^0.1.4
-        version: 0.1.4
+        specifier: ^0.3.1
+        version: 0.3.1
       '@melandlabs/indexeddb':
-        specifier: ^0.1.4
-        version: 0.1.4(react@19.2.5)
+        specifier: ^0.5.8
+        version: 0.5.8(react@19.2.5)(zod@4.3.6)
       '@melandlabs/insights':
-        specifier: ^0.1.4
-        version: 0.1.4(react@19.2.5)
+        specifier: ^0.3.0
+        version: 0.3.0(react@19.2.5)
       '@melandlabs/integrations':
-        specifier: ^0.1.4
-        version: 0.1.4
+        specifier: ^0.3.0
+        version: 0.3.0
       '@melandlabs/integrations-calendar':
-        specifier: ^0.1.4
-        version: 0.1.4(react@19.2.5)
+        specifier: ^0.3.0
+        version: 0.3.0(react@19.2.5)
       '@melandlabs/integrations-channels':
-        specifier: ^0.1.4
-        version: 0.1.4(react@19.2.5)
+        specifier: ^0.3.1
+        version: 0.3.1(react@19.2.5)
       '@melandlabs/integrations-composio':
-        specifier: ^0.1.4
-        version: 0.1.4
+        specifier: ^0.3.0
+        version: 0.3.0
       '@melandlabs/integrations-dingtalk':
-        specifier: ^0.1.5
-        version: 0.1.5(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
+        specifier: ^0.3.4
+        version: 0.3.4(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
       '@melandlabs/integrations-facebook-messenger':
-        specifier: ^0.1.4
-        version: 0.1.4(react@19.2.5)
+        specifier: ^0.3.1
+        version: 0.3.1(react@19.2.5)
       '@melandlabs/integrations-feishu':
-        specifier: ^0.1.4
-        version: 0.1.4(bufferutil@4.1.0)(react@19.2.5)(utf-8-validate@5.0.10)
+        specifier: ^0.3.2
+        version: 0.3.2(bufferutil@4.1.0)(react@19.2.5)(utf-8-validate@5.0.10)
       '@melandlabs/integrations-google-docs':
-        specifier: ^0.1.4
-        version: 0.1.4(react@19.2.5)
+        specifier: ^0.3.0
+        version: 0.3.0(react@19.2.5)
       '@melandlabs/integrations-hubspot':
-        specifier: ^0.1.4
-        version: 0.1.4(react@19.2.5)
+        specifier: ^0.3.1
+        version: 0.3.1(react@19.2.5)
       '@melandlabs/integrations-imessage':
-        specifier: ^0.1.5
-        version: 0.1.5(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
+        specifier: ^0.3.5
+        version: 0.3.5(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
       '@melandlabs/integrations-instagram':
-        specifier: ^0.1.4
-        version: 0.1.4(react@19.2.5)
+        specifier: ^0.3.1
+        version: 0.3.1(react@19.2.5)
       '@melandlabs/integrations-jira':
-        specifier: ^0.1.4
-        version: 0.1.4(react@19.2.5)
+        specifier: ^0.2.3
+        version: 0.2.3(react@19.2.5)
       '@melandlabs/integrations-linkedin':
-        specifier: ^0.1.4
-        version: 0.1.4(react@19.2.5)
+        specifier: ^0.3.1
+        version: 0.3.1(react@19.2.5)
       '@melandlabs/integrations-qqbot':
-        specifier: ^0.1.5
-        version: 0.1.5(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
+        specifier: ^0.3.4
+        version: 0.3.4(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
       '@melandlabs/integrations-runtime':
-        specifier: ^0.1.4
-        version: 0.1.4(typescript@5.9.3)(zod@4.3.6)
+        specifier: ^0.3.3
+        version: 0.3.3(typescript@5.9.3)(zod@4.3.6)
       '@melandlabs/integrations-telegram':
-        specifier: ^0.1.5
-        version: 0.1.5(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
+        specifier: ^0.3.4
+        version: 0.3.4(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
       '@melandlabs/integrations-weixin':
-        specifier: ^0.1.5
-        version: 0.1.5(patch_hash=381398d760c8f517be81967c3dd93bbeae1d6f84161c213fdc4e6b630902aea3)(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(openclaw@2026.7.1(@aws-sdk/credential-provider-node@3.972.44)(@cfworker/json-schema@4.1.1)(@opentelemetry/api@1.9.1)(@smithy/signature-v4@5.4.4)(bufferutil@4.1.0)(utf-8-validate@5.0.10))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
+        specifier: ^0.3.6
+        version: 0.3.6(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(openclaw@2026.7.1(@aws-sdk/credential-provider-node@3.972.44)(@cfworker/json-schema@4.1.1)(@opentelemetry/api@1.9.1)(@smithy/signature-v4@5.4.4)(bufferutil@4.1.0)(utf-8-validate@5.0.10))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
       '@melandlabs/integrations-whatsapp':
-        specifier: ^0.1.5
-        version: 0.1.5(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(bufferutil@4.1.0)(jimp@1.6.1)(link-preview-js@4.0.0)(react@19.2.5)(sharp@0.34.5)(utf-8-validate@5.0.10)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
+        specifier: ^0.3.4
+        version: 0.3.4(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(bufferutil@4.1.0)(jimp@1.6.1)(link-preview-js@4.0.0)(react@19.2.5)(sharp@0.34.5)(utf-8-validate@5.0.10)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
       '@melandlabs/integrations-x':
-        specifier: ^0.1.4
-        version: 0.1.4(node-fetch@3.3.2)(react@19.2.5)
+        specifier: ^0.3.1
+        version: 0.3.1(node-fetch@3.3.2)(react@19.2.5)
       '@melandlabs/loop':
-        specifier: ^0.1.4
-        version: 0.1.4
+        specifier: ^0.3.1
+        version: 0.3.1
       '@melandlabs/mcp':
-        specifier: ^0.1.4
-        version: 0.1.4(@cfworker/json-schema@4.1.1)
+        specifier: ^0.3.1
+        version: 0.3.1(@cfworker/json-schema@4.1.1)
       '@melandlabs/memory-consolidation':
-        specifier: ^0.1.4
-        version: 0.1.4
+        specifier: ^0.5.0
+        version: 0.5.0
       '@melandlabs/memory-store':
-        specifier: ^0.1.6
-        version: 0.1.6(d0086e41d8b84927648179e8984d5331)
+        specifier: 1.1.1
+        version: 1.1.1(65cb3c444a68a4e1a83c7371e1ebc120)
       '@melandlabs/rag':
-        specifier: ^0.1.5
-        version: 0.1.5(7e90db42c6ad99cc52e6ea96e43d13a0)
+        specifier: ^0.3.0
+        version: 0.3.0(7e90db42c6ad99cc52e6ea96e43d13a0)
       '@melandlabs/rss':
-        specifier: ^0.1.4
-        version: 0.1.4(react@19.2.5)
+        specifier: ^0.3.0
+        version: 0.3.0(react@19.2.5)
       '@melandlabs/search':
-        specifier: ^0.1.4
-        version: 0.1.4
+        specifier: ^0.3.1
+        version: 0.3.1
       '@melandlabs/security':
-        specifier: ^0.1.4
-        version: 0.1.4
+        specifier: ^0.3.0
+        version: 0.3.0
       '@melandlabs/shared':
-        specifier: ^0.1.4
-        version: 0.1.4(react@19.2.5)
+        specifier: 0.4.0
+        version: 0.4.0(react@19.2.5)
       '@melandlabs/sqlite':
-        specifier: ^0.1.4
-        version: 0.1.4(react@19.2.5)
+        specifier: ^0.5.1
+        version: 0.5.1(react@19.2.5)(zod@4.3.6)
       '@melandlabs/storage':
-        specifier: ^0.1.4
-        version: 0.1.4
+        specifier: ^0.3.0
+        version: 0.3.0
       '@melandlabs/ui-runtime':
-        specifier: ^0.1.4
-        version: 0.1.4
+        specifier: ^0.3.0
+        version: 0.3.0
       '@melandlabs/voice-kokoro':
-        specifier: ^0.1.4
-        version: 0.1.4
+        specifier: ^0.3.0
+        version: 0.3.0
       '@melandlabs/voice-whisper':
-        specifier: ^0.1.4
-        version: 0.1.4
+        specifier: ^0.3.0
+        version: 0.3.0
       '@modelcontextprotocol/sdk':
         specifier: ^1.25.3
         version: 1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6)
@@ -1275,8 +1271,8 @@ packages:
     cpu: [arm64]
     os: [darwin]
 
-  '@anthropic-ai/claude-agent-sdk-darwin-arm64@0.3.228':
-    resolution: {integrity: sha512-HuCsV3/5XuYYaWuCbksX+e0JkDDUG/AlFJ8wKhDL3PBW/3hHNd6xBYx88kEWk1Z6B1GLxwHht9624lcmscpsyw==}
+  '@anthropic-ai/claude-agent-sdk-darwin-arm64@0.3.238':
+    resolution: {integrity: sha512-7KctNItTzHRiDg+jFxTM46o+Y/YS52V6HSopaWPggO6BbR+3MV/rKMmq+zP93If7eVwadW9Yg9vHLjXDKIw9OQ==}
     cpu: [arm64]
     os: [darwin]
 
@@ -1285,8 +1281,8 @@ packages:
     cpu: [x64]
     os: [darwin]
 
-  '@anthropic-ai/claude-agent-sdk-darwin-x64@0.3.228':
-    resolution: {integrity: sha512-jSUYY5Nd3efvbLZPU+i0tRBaFXskHu8M+4LMGBEw6A0PaklZ3YfGvKlTOWtJGRw6vMc6LzfOFts024xPNm6OrQ==}
+  '@anthropic-ai/claude-agent-sdk-darwin-x64@0.3.238':
+    resolution: {integrity: sha512-aDt8LXjWISwLzqeCBHxJC5AR1iVYlY5UYIm2VLztjI1U0PCb1BiH/IfyyjjizqRhhEwyQp9YAJeZZq8n/2vQEA==}
     cpu: [x64]
     os: [darwin]
 
@@ -1294,57 +1290,49 @@ packages:
     resolution: {integrity: sha512-6H1AJ/AVaWNnV22kubUPkOTRzZFH0+qP9k7WlhriHMN9gtgZcVAsITMddDeGjQsQJMCAdhXFd6sgi7TM1LdeOQ==}
     cpu: [arm64]
     os: [linux]
-    libc: [musl]
 
-  '@anthropic-ai/claude-agent-sdk-linux-arm64-musl@0.3.228':
-    resolution: {integrity: sha512-4PgfisC3kHKlzJvy3rrm4Oh26g+D78h4ahHjni9fvSKHuJgrvHu9Qgo6aaYmzWdc7v9drL+pgiCk5Ge4Y2ANPA==}
+  '@anthropic-ai/claude-agent-sdk-linux-arm64-musl@0.3.238':
+    resolution: {integrity: sha512-ankSEMAMTVulKYg0NT8fZ7a5+q+aIzfiqhcrLe9zYPeuhE+lpNeq0JPMcHyOtUAENxVI0/2J2q5OXGl9O0qWcg==}
     cpu: [arm64]
     os: [linux]
-    libc: [musl]
 
   '@anthropic-ai/claude-agent-sdk-linux-arm64@0.2.141':
     resolution: {integrity: sha512-Jdf0ZEwJzOP8sE6rPqdJN+SxMb0/L8sxJg4twCv/7S+Qzk0hJtls+wxSi+0Tjh6EEMaNxJqEGc7S3fx99Wi99Q==}
     cpu: [arm64]
     os: [linux]
-    libc: [glibc]
 
-  '@anthropic-ai/claude-agent-sdk-linux-arm64@0.3.228':
-    resolution: {integrity: sha512-0Wjv6TiWwGlBZINAmNJX07jN359jKwB/4Sr/uWgQkdjuVIOhe/M8ydk7JL2EPqCsbiW1lc15NjE5MWpZiYqooA==}
+  '@anthropic-ai/claude-agent-sdk-linux-arm64@0.3.238':
+    resolution: {integrity: sha512-P7V9TFokcNRdIJPUzDQ0GLBfMuoewWEH4rh6U3e7RaEAxzdeUcdS9P0N4arXqK2YAOtK1o93QSEtiGUF1fTfWw==}
     cpu: [arm64]
     os: [linux]
-    libc: [glibc]
 
   '@anthropic-ai/claude-agent-sdk-linux-x64-musl@0.2.141':
     resolution: {integrity: sha512-fTI1YuM4cxOa4nSgsyMAdB5ELizkWp+w5Ispo4JnnYtcczMAL4D9GBNjWPW0sUzKvjsJOUVim68SmWLWhUOpXQ==}
     cpu: [x64]
     os: [linux]
-    libc: [musl]
 
-  '@anthropic-ai/claude-agent-sdk-linux-x64-musl@0.3.228':
-    resolution: {integrity: sha512-dnXxyiwGCZj27HVk6clYRqGMgrs3KVLVp0vvWYLjkPGBiKbI83qJiDpOfaekEXG2I4elX0M4XikggV1LGWjimg==}
+  '@anthropic-ai/claude-agent-sdk-linux-x64-musl@0.3.238':
+    resolution: {integrity: sha512-buo3IBSd7EmYcQsH+OKARgNNbSF1+l/+z1hDXSXGKzwD1LFioJZ/k9FWWWC166SoQ93jPmN+G/ksTzEUB3zRGQ==}
     cpu: [x64]
     os: [linux]
-    libc: [musl]
 
   '@anthropic-ai/claude-agent-sdk-linux-x64@0.2.141':
     resolution: {integrity: sha512-DVjp72f3HmrRYpbneWZZWIqkUht5kTZXS7wXGFiwzLz6eNYEgjjh+GcsnhIi8UOwZUtNiKUrjZnoP38ovFqV8A==}
     cpu: [x64]
     os: [linux]
-    libc: [glibc]
 
-  '@anthropic-ai/claude-agent-sdk-linux-x64@0.3.228':
-    resolution: {integrity: sha512-LmGplObceqMOu5mlrlhTZL/VSrEWdZagF0Bl8awglMu6WeQcNe7StORYkCznZ0BuzV4CwuC3ipV4q8Jrs66wSg==}
+  '@anthropic-ai/claude-agent-sdk-linux-x64@0.3.238':
+    resolution: {integrity: sha512-/arAOSqtIAWDu7Z4Uf2Un3n+/5Zg3NpxZKzMQEDnYNkbJRhr44sM59TFaEOiWq1FqlUJKi6wHjgm+TW5B8DWWg==}
     cpu: [x64]
     os: [linux]
-    libc: [glibc]
 
   '@anthropic-ai/claude-agent-sdk-win32-arm64@0.2.141':
     resolution: {integrity: sha512-Wm10J6kfbufbPGFELokiJ/7Y5Oqug4Uag3HXFsV8g7TWCpaItx/oqVaJoiGptuAtXQB7xGLQVTuk082wER+Y5w==}
     cpu: [arm64]
     os: [win32]
 
-  '@anthropic-ai/claude-agent-sdk-win32-arm64@0.3.228':
-    resolution: {integrity: sha512-mNS5yIMz/OXSQiDErb84jA8AKBFSlS9RSZ0qn2qyGkxplUx7kVmIDg/KnwOwHmygpzmH4UmR6OCaLXGohupqNA==}
+  '@anthropic-ai/claude-agent-sdk-win32-arm64@0.3.238':
+    resolution: {integrity: sha512-yW8lhV7QgYiNu3NatjgmkhUspgJsG2N2N6lmm/7B99sWFobKTbVLMLsXxj6A46R6qE2C4Zzm6PjxgGaMYOMn0g==}
     cpu: [arm64]
     os: [win32]
 
@@ -1353,8 +1341,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@anthropic-ai/claude-agent-sdk-win32-x64@0.3.228':
-    resolution: {integrity: sha512-DYT3HvdS64Pq0IRvgW3RDO31yjYp5yiUKoKaZolTpLKfALpG5LI/osfnKlya68PZ/bSST1FNAfW9I0EtCnaQ4w==}
+  '@anthropic-ai/claude-agent-sdk-win32-x64@0.3.238':
+    resolution: {integrity: sha512-6Fb2JRrBci282fBfhCGB0Tpq7N8V5HMMqsO3YGFkc9hhbn/y9G7glNKSNgRtxD5Ujjxj8rhiaYstXW2DJzanzw==}
     cpu: [x64]
     os: [win32]
 
@@ -1364,8 +1352,8 @@ packages:
     peerDependencies:
       zod: ^4.0.0
 
-  '@anthropic-ai/claude-agent-sdk@0.3.228':
-    resolution: {integrity: sha512-OOaME54VCoBLjKMqWqFmHkZGyL/x/FHUA0snhyolmyEhVoeBM0Ub5mrnV2Gx3d5/RcVlk2BnEVvPqu0SpZ9VFw==}
+  '@anthropic-ai/claude-agent-sdk@0.3.238':
+    resolution: {integrity: sha512-ppRfbAflZuV7HPqr8BkHPEk8c7gih3PK+GHnZq6zP0Uo7bJHXAJwc4Za8LJRm4hXMixBNMjK1cU/VWfQ9fE2sg==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
       '@anthropic-ai/sdk': '>=0.93.0'
@@ -1738,28 +1726,24 @@ packages:
     engines: {node: '>=14.21.3'}
     cpu: [arm64]
     os: [linux]
-    libc: [musl]
 
   '@biomejs/cli-linux-arm64@1.9.4':
     resolution: {integrity: sha512-fJIW0+LYujdjUgJJuwesP4EjIBl/N/TcOX3IvIHJQNsAqvV2CHIogsmA94BPG6jZATS4Hi+xv4SkBBQSt1N4/g==}
     engines: {node: '>=14.21.3'}
     cpu: [arm64]
     os: [linux]
-    libc: [glibc]
 
   '@biomejs/cli-linux-x64-musl@1.9.4':
     resolution: {integrity: sha512-gEhi/jSBhZ2m6wjV530Yy8+fNqG8PAinM3oV7CyO+6c3CEh16Eizm21uHVsyVBEB6RIM8JHIl6AGYCv6Q6Q9Tg==}
     engines: {node: '>=14.21.3'}
     cpu: [x64]
     os: [linux]
-    libc: [musl]
 
   '@biomejs/cli-linux-x64@1.9.4':
     resolution: {integrity: sha512-lRCJv/Vi3Vlwmbd6K+oQ0KhLHMAysN8lXoCI7XeHlxaajk06u7G+UsFSO01NAs5iYuWKmVZjmiOzJ0OJmGsMwg==}
     engines: {node: '>=14.21.3'}
     cpu: [x64]
     os: [linux]
-    libc: [glibc]
 
   '@biomejs/cli-win32-arm64@1.9.4':
     resolution: {integrity: sha512-tlbhLk+WXZmgwoIKwHIHEBZUwxml7bRJgk0X2sPyNR3S93cdRq6XulAZRQJ17FYGGzWne0fgrXBKpl7l4M87Hg==}
@@ -1949,11 +1933,11 @@ packages:
 
   '@esbuild-kit/core-utils@3.3.2':
     resolution: {integrity: sha512-sPRAnw9CdSsRmEtnsl2WXWdyquogVpB3yZ3dgwJfe8zrOzTsV7cJvmwrKVa+0ma5BoiGJ+BoqkMvawbayKUsqQ==}
-    deprecated: 'Merged into tsx: https://tsx.is'
+    deprecated: 'Merged into tsx: https://tsx.hirok.io'
 
   '@esbuild-kit/esm-loader@2.6.5':
     resolution: {integrity: sha512-FxEMIkJKnodyA1OaCUoEvbYRkoZlLZ4d/eXFu9Fh8CbBBgP5EmZxrfTRyN0qpXZ4vOvqnE5YdRdcrmUUXuU+dA==}
-    deprecated: 'Merged into tsx: https://tsx.is'
+    deprecated: 'Merged into tsx: https://tsx.hirok.io'
 
   '@esbuild/aix-ppc64@0.25.12':
     resolution: {integrity: sha512-Hhmwd6CInZ3dwpuGTF8fJG6yoWmsToE+vYgD4nytZVxcu1ulHpUQRAB1UJ8+N1Am3Mz4+xOByoQoSZf4D+CpkA==}
@@ -2782,105 +2766,89 @@ packages:
     resolution: {integrity: sha512-excjX8DfsIcJ10x1Kzr4RcWe1edC9PquDRRPx3YVCvQv+U5p7Yin2s32ftzikXojb1PIFc/9Mt28/y+iRklkrw==}
     cpu: [arm64]
     os: [linux]
-    libc: [glibc]
 
   '@img/sharp-libvips-linux-arm@1.2.4':
     resolution: {integrity: sha512-bFI7xcKFELdiNCVov8e44Ia4u2byA+l3XtsAj+Q8tfCwO6BQ8iDojYdvoPMqsKDkuoOo+X6HZA0s0q11ANMQ8A==}
     cpu: [arm]
     os: [linux]
-    libc: [glibc]
 
   '@img/sharp-libvips-linux-ppc64@1.2.4':
     resolution: {integrity: sha512-FMuvGijLDYG6lW+b/UvyilUWu5Ayu+3r2d1S8notiGCIyYU/76eig1UfMmkZ7vwgOrzKzlQbFSuQfgm7GYUPpA==}
     cpu: [ppc64]
     os: [linux]
-    libc: [glibc]
 
   '@img/sharp-libvips-linux-riscv64@1.2.4':
     resolution: {integrity: sha512-oVDbcR4zUC0ce82teubSm+x6ETixtKZBh/qbREIOcI3cULzDyb18Sr/Wcyx7NRQeQzOiHTNbZFF1UwPS2scyGA==}
     cpu: [riscv64]
     os: [linux]
-    libc: [glibc]
 
   '@img/sharp-libvips-linux-s390x@1.2.4':
     resolution: {integrity: sha512-qmp9VrzgPgMoGZyPvrQHqk02uyjA0/QrTO26Tqk6l4ZV0MPWIW6LTkqOIov+J1yEu7MbFQaDpwdwJKhbJvuRxQ==}
     cpu: [s390x]
     os: [linux]
-    libc: [glibc]
 
   '@img/sharp-libvips-linux-x64@1.2.4':
     resolution: {integrity: sha512-tJxiiLsmHc9Ax1bz3oaOYBURTXGIRDODBqhveVHonrHJ9/+k89qbLl0bcJns+e4t4rvaNBxaEZsFtSfAdquPrw==}
     cpu: [x64]
     os: [linux]
-    libc: [glibc]
 
   '@img/sharp-libvips-linuxmusl-arm64@1.2.4':
     resolution: {integrity: sha512-FVQHuwx1IIuNow9QAbYUzJ+En8KcVm9Lk5+uGUQJHaZmMECZmOlix9HnH7n1TRkXMS0pGxIJokIVB9SuqZGGXw==}
     cpu: [arm64]
     os: [linux]
-    libc: [musl]
 
   '@img/sharp-libvips-linuxmusl-x64@1.2.4':
     resolution: {integrity: sha512-+LpyBk7L44ZIXwz/VYfglaX/okxezESc6UxDSoyo2Ks6Jxc4Y7sGjpgU9s4PMgqgjj1gZCylTieNamqA1MF7Dg==}
     cpu: [x64]
     os: [linux]
-    libc: [musl]
 
   '@img/sharp-linux-arm64@0.34.5':
     resolution: {integrity: sha512-bKQzaJRY/bkPOXyKx5EVup7qkaojECG6NLYswgktOZjaXecSAeCWiZwwiFf3/Y+O1HrauiE3FVsGxFg8c24rZg==}
     engines: {node: ^18.17.0 || ^20.3.0 || >=21.0.0}
     cpu: [arm64]
     os: [linux]
-    libc: [glibc]
 
   '@img/sharp-linux-arm@0.34.5':
     resolution: {integrity: sha512-9dLqsvwtg1uuXBGZKsxem9595+ujv0sJ6Vi8wcTANSFpwV/GONat5eCkzQo/1O6zRIkh0m/8+5BjrRr7jDUSZw==}
     engines: {node: ^18.17.0 || ^20.3.0 || >=21.0.0}
     cpu: [arm]
     os: [linux]
-    libc: [glibc]
 
   '@img/sharp-linux-ppc64@0.34.5':
     resolution: {integrity: sha512-7zznwNaqW6YtsfrGGDA6BRkISKAAE1Jo0QdpNYXNMHu2+0dTrPflTLNkpc8l7MUP5M16ZJcUvysVWWrMefZquA==}
     engines: {node: ^18.17.0 || ^20.3.0 || >=21.0.0}
     cpu: [ppc64]
     os: [linux]
-    libc: [glibc]
 
   '@img/sharp-linux-riscv64@0.34.5':
     resolution: {integrity: sha512-51gJuLPTKa7piYPaVs8GmByo7/U7/7TZOq+cnXJIHZKavIRHAP77e3N2HEl3dgiqdD/w0yUfiJnII77PuDDFdw==}
     engines: {node: ^18.17.0 || ^20.3.0 || >=21.0.0}
     cpu: [riscv64]
     os: [linux]
-    libc: [glibc]
 
   '@img/sharp-linux-s390x@0.34.5':
     resolution: {integrity: sha512-nQtCk0PdKfho3eC5MrbQoigJ2gd1CgddUMkabUj+rBevs8tZ2cULOx46E7oyX+04WGfABgIwmMC0VqieTiR4jg==}
     engines: {node: ^18.17.0 || ^20.3.0 || >=21.0.0}
     cpu: [s390x]
     os: [linux]
-    libc: [glibc]
 
   '@img/sharp-linux-x64@0.34.5':
     resolution: {integrity: sha512-MEzd8HPKxVxVenwAa+JRPwEC7QFjoPWuS5NZnBt6B3pu7EG2Ge0id1oLHZpPJdn3OQK+BQDiw9zStiHBTJQQQQ==}
     engines: {node: ^18.17.0 || ^20.3.0 || >=21.0.0}
     cpu: [x64]
     os: [linux]
-    libc: [glibc]
 
   '@img/sharp-linuxmusl-arm64@0.34.5':
     resolution: {integrity: sha512-fprJR6GtRsMt6Kyfq44IsChVZeGN97gTD331weR1ex1c1rypDEABN6Tm2xa1wE6lYb5DdEnk03NZPqA7Id21yg==}
     engines: {node: ^18.17.0 || ^20.3.0 || >=21.0.0}
     cpu: [arm64]
     os: [linux]
-    libc: [musl]
 
   '@img/sharp-linuxmusl-x64@0.34.5':
     resolution: {integrity: sha512-Jg8wNT1MUzIvhBFxViqrEhWDGzqymo3sV7z7ZsaWbZNDLXRJZoRGrjulp60YYtV4wfY8VIKcWidjojlLcWrd8Q==}
     engines: {node: ^18.17.0 || ^20.3.0 || >=21.0.0}
     cpu: [x64]
     os: [linux]
-    libc: [musl]
 
   '@img/sharp-wasm32@0.34.5':
     resolution: {integrity: sha512-OdWTEiVkY2PHwqkbBI8frFxQQFekHaSSkUIJkwzclWZe64O1X4UlUjqqqLaPbUpMOQk6FBu/HtlGXNblIs0huw==}
@@ -3557,37 +3525,51 @@ packages:
   '@mdx-js/mdx@3.1.1':
     resolution: {integrity: sha512-f6ZO2ifpwAQIpzGWaBQT2TXxPv6z3RBzQKpVftEWN78Vl/YweF1uwussDx8ECAXVtr3Rs89fKyG9YlzUs9DyGQ==}
 
-  '@melandlabs/ai-rag@0.1.4':
-    resolution: {integrity: sha512-JT8DZzR7gX4qo8tqCEIpYdPB2Toip3MFZAk3mmkk3gDIWOsFhhGaaAmTrF74Zc/G/oo8XgAoHtQ32Nf5cghk4A==}
+  '@melandlabs/ai-rag@0.2.9':
+    resolution: {integrity: sha512-g8wLvr9fqYse+ZpNrHLwEp0wXnZpWnscrX9Ey0lam1lK/27aNt895kvMGBw5mE/Abu70ek23dNZOKemukFuatg==}
 
-  '@melandlabs/ai@0.2.0':
-    resolution: {integrity: sha512-gPssn6IX4lSJBG/OUud5vfVqHAZy956fbjSDrpgrUZ1k6tNDjpjL31a1O2qu1moMH/g0IF6C4v0ehSu4NPQgWw==}
+  '@melandlabs/ai@0.5.5':
+    resolution: {integrity: sha512-nFpAWLnlgNAVc2a1v7goaOtXSh6+oItloz6j2nLu/ZtQsrN5wev73UL/I11SFd0iqudAqTsOpaVvTsGrudIshA==}
 
-  '@melandlabs/api@0.1.4':
-    resolution: {integrity: sha512-WcWN9ugChz5Ry2Wwb51lOr05G+S6LXQtt9H4Dhxg04hR86JCgRQJcdup5fxia+iHfm8C5mAe05BVTnTygKQkAQ==}
+  '@melandlabs/ai@0.7.0':
+    resolution: {integrity: sha512-ZAUIDU2/TN3oNJNr+KklaIPKQsM+BBhW88lKq+K1j64MHfOEeSHbPe/IXblLkJYq10giy4JZ3+DCY7FRQVIGmw==}
 
-  '@melandlabs/audit@0.1.4':
-    resolution: {integrity: sha512-6P6nTKI7riEBQU3uO4c+upXSH/D9EF3uj2VtnFy6ea0vSPmxML7xS3zoE/OAH9pOyyQl/8lGl10yq4XzipUJNA==}
+  '@melandlabs/ai@0.8.0':
+    resolution: {integrity: sha512-i5RhdaXnerLkA1TFlxnBcNadq3psbWuX/BZgA+4QknVSMYmCtc8dohnbmt9l1T9AIfN76HfmC9xSRUktgKOnqQ==}
 
-  '@melandlabs/contracts@0.1.4':
-    resolution: {integrity: sha512-FQ1AeydhQGK9lbBcuStaHqZNHIBkNjplxgbsOK4fR164g3V0q5oLcti26zHANdzl8HypOt3mhUCRzzUiblhDjw==}
+  '@melandlabs/api@0.3.0':
+    resolution: {integrity: sha512-Q89pbZAOxm0mpynxEWp2bzoWPsla+W5S2QJINV53TaNvH1Y2VISP9pBr19xiULfO9cD5HGf30dwQGSsNZBkGuQ==}
+
+  '@melandlabs/audit@0.3.1':
+    resolution: {integrity: sha512-MbuRK7/R1EJjgqgbLtOjDOfKwwnKPwf05ZqXi/wzglrINWxApxTTsmchj603U4+7QmuoCKGEUV/anJVfg56GKA==}
+
+  '@melandlabs/contracts@0.5.0':
+    resolution: {integrity: sha512-x03QzrQ9Kyn63Jb6FSAdi8MHdv7J1L5Kh5bCYlfcnNFrjE+eW62MlJIsJagmWBCPpojNhaoTaZlNLpyqS7dPtQ==}
     peerDependencies:
       zod: ^4.3.6
     peerDependenciesMeta:
       zod:
         optional: true
 
-  '@melandlabs/cron@0.1.4':
-    resolution: {integrity: sha512-Jt5vTPNBiVU8mvLrrPYvDNuoPxrJhTUQ50gLqUI3bd2113bIty6Zk5mVOnZ6RrwN433kvEd+WJLjl6mB/WzZpQ==}
+  '@melandlabs/contracts@0.6.0':
+    resolution: {integrity: sha512-vlnvrikKMP2pOzj1HpsRGHIPu3wmsTFScK2WA34HAIPeoFIomoJrtoQNQ7seIYFnB5tFnjBsGLfaeGZidb/60g==}
+    peerDependencies:
+      zod: ^4.3.6
+    peerDependenciesMeta:
+      zod:
+        optional: true
 
-  '@melandlabs/db@0.1.4':
-    resolution: {integrity: sha512-l5ZoHIL2jF/mz4E2k1Ow5p4bvJhkqF+Y5RG2EaGMaLrPmGHTHx8y4pb4EID9PXS3a/lufMMiw+vyBzATK031tg==}
+  '@melandlabs/cron@0.3.0':
+    resolution: {integrity: sha512-za0Q8bmbAN4/USqJzLfbr53q/cUcZr8KvbqhPRlEotPV2hSrjnY4It7gpjW+MqNYezWroV2xwQdl86iDv4lM2g==}
 
-  '@melandlabs/env-config@0.1.4':
-    resolution: {integrity: sha512-3OQrkl43mjtXryFK7zad7cvuNDXz1QnHCCUdr3ZQpGF8OqF3uK1/82e5apME82idEkbfEyyxUkbya5xNGdV+Ew==}
+  '@melandlabs/db@0.3.0':
+    resolution: {integrity: sha512-EmzmNMKLmjFa7w1VCtWqsXhIRQQ4l3McYfXkHwVyouNmYxJ9X03Npd/JY7zKgpeLJ5tGuWBKEsr4YvVvU4RLhA==}
 
-  '@melandlabs/hooks@0.1.4':
-    resolution: {integrity: sha512-I66vGCJY6WxkyOZXkVzaCSL5hz7eqPPiki21izu742lt6J1WndAXFnrzjLKoq4b5QIGuky06qYaYHS+oVom1Wg==}
+  '@melandlabs/env-config@0.4.0':
+    resolution: {integrity: sha512-YRV1KpKvKupud2fXZ5x6Rbhdoojxh83p5fWIrMR93A7j9BxMOw6D7izVuzjG7JOyV1pw14H2cJovkddGthjvhA==}
+
+  '@melandlabs/hooks@0.3.0':
+    resolution: {integrity: sha512-YdPR2poaBwZNdTeyclSEU+Gt04L8cPzLCB+leDdthyaVUFhPqe2BBAzeg51GF+isDmxUJCvnt4vdEoFn4zo0og==}
     peerDependencies:
       react: '>=18.0.0'
       swr: '>=2.0.0'
@@ -3597,135 +3579,161 @@ packages:
       swr:
         optional: true
 
-  '@melandlabs/i18n@0.1.4':
-    resolution: {integrity: sha512-b1QTWdacdTlKuoe4La5V9rAYsbLARnkzd2EjF9JPH/MmFna448YDKLM5NFzqz5d+hTUxsAz7UAgErYlY6APflw==}
+  '@melandlabs/i18n@0.3.1':
+    resolution: {integrity: sha512-o52g1xn3/4gcyH9Ltru4FrnwjBFsMWHBvDy3kxsT5UyjcurfbR6gvt0CM/3cFVl6tTZJKLRTXrddrMm7NahFvA==}
 
-  '@melandlabs/indexeddb@0.1.4':
-    resolution: {integrity: sha512-XOjGz8I90AaHAdPsHdtN/UNhXUIG96Hv0hjr4ZUPdfqr/ndIDwEBT7NdMpJZoVDQP6tGEja2iLoSid/6vMJv3g==}
+  '@melandlabs/indexeddb@0.5.8':
+    resolution: {integrity: sha512-iF+JsWj0GTHdRHwQJGQ8L34xiSu+Q4MU2f9uC63Rt3IoC4w/MopGEswiYYVevsc6BfPhXUodYQ4kvw581lXnVw==}
     peerDependencies:
       react: '>=18.0.0'
 
-  '@melandlabs/insights@0.1.4':
-    resolution: {integrity: sha512-O3JynyZMeHVNAfrbWqySw/Lqp44vmi8ndKshFKdF0AdIASrMGegBaTqOUgYDfNM+3Q6X8mIQ8KZsEGJOS4qpuw==}
+  '@melandlabs/insights@0.3.0':
+    resolution: {integrity: sha512-09jN/wlzOPOfCniaLUSUvs1yIQh7Gw0TApifjI9SK7l9BIjX+K9XkxLQL82EGlT9C0WnTMwe2YNDXNBZQskRJg==}
     peerDependencies:
       react: '>=18.0.0'
 
-  '@melandlabs/integrations-calendar@0.1.4':
-    resolution: {integrity: sha512-hJu2juQOXkGUPzaTrtGMZ7XK0gxN65olHDNFKoaVz4jbEJkRhSag0kPGy6x5l2lETR7XlR/eOJLRhmZ7+npQyA==}
+  '@melandlabs/integrations-calendar@0.3.0':
+    resolution: {integrity: sha512-g0YuXQLuiNO+1YwNLeSupHxjjYv2GIr5ZfUX2HQbEzDGd7mtcpd/d2BseIycCcOOu2Ilo8l3vCrL4dHMgPop1w==}
     peerDependencies:
       react: '>=18.0.0'
 
-  '@melandlabs/integrations-channels@0.1.4':
-    resolution: {integrity: sha512-cD4SJA4ZGm2iOFONHl56q0d4z8ZEH1XBt0angIYR1h6smmHQ9MTMWeBZ+eQj3TNzbir3griQhAZwcOSy/zMDxQ==}
+  '@melandlabs/integrations-channels@0.3.1':
+    resolution: {integrity: sha512-bm6A0KUJe6rCgpO7TmfOc9RUSn0AeQ/IK1ULGJP+X/51TDfdyzcve0B9LZwjAVtg83x1IOYUdgM41ld7dBY/Sg==}
 
-  '@melandlabs/integrations-composio@0.1.4':
-    resolution: {integrity: sha512-0MR3XaQns9ELY8ZymFeplm/d/2rtw7G8IRdcrW0VozKPsxY5EZWBZnLSB6B8PjlzP4cNTyoQMufwQe/Tm9odzg==}
+  '@melandlabs/integrations-composio@0.3.0':
+    resolution: {integrity: sha512-ht4WjIYm35CeOY01awSXoNHvSJIxn1n0gc6DApYBFl7UR/IeiwB3WMD+U3QQYsqkzQy8XwwOzbsf7ogD9sYENQ==}
 
-  '@melandlabs/integrations-dingtalk@0.1.5':
-    resolution: {integrity: sha512-ODqGQvwN1lt3kBGz6CmoNOQADG76PqIfCQC3gZm9JV3xMObJ0hufhsspuiQw7plNVUuMGIrLK2QG1HF0OJw00w==}
+  '@melandlabs/integrations-dingtalk@0.3.4':
+    resolution: {integrity: sha512-JGj9oWqAcPqyJQXdKarj+U4lVVg5EiZgpEWiIGjKjbUYvTFDkHDh2Q94q/ZnYBSj9ZKlN5mTSz6/v9OgRLR4cw==}
 
-  '@melandlabs/integrations-facebook-messenger@0.1.4':
-    resolution: {integrity: sha512-PJaY4m7+LbDb8l8YKsUxpfssQn9qqG5fzTmZgVsPBEAWNHznShRtO9Zm2IIkc2DTxo6/8m/BYRlcN5kgKZBDUQ==}
+  '@melandlabs/integrations-facebook-messenger@0.3.1':
+    resolution: {integrity: sha512-TlJT7psKWEVx8XvMyr12864HEmvXAgi0PNH79Q/1p+Eajt58eJ1/JZ0q5VEut2e4aMW62ChXboc3iiUTP8kMTg==}
 
-  '@melandlabs/integrations-feishu@0.1.4':
-    resolution: {integrity: sha512-TIX5ihm7H0RTPJX7V2ZDlpcdIWBbtbp0welSF4xQ8Wb/Vjykv9v1ZvbHfQJhPeLc7mhXyilQzUHMnoNeSUEEKg==}
+  '@melandlabs/integrations-feishu@0.3.2':
+    resolution: {integrity: sha512-sWl98UcrLJO2a4xH0ko2bkaTheCLqjkDbEENNHnbr+j05VDmOtcH8foLs62mZLthn0qc1qoVCIA9cEb0nuCCnw==}
 
-  '@melandlabs/integrations-google-docs@0.1.4':
-    resolution: {integrity: sha512-SrSn0yjT22r92gW42dAVDZrAz+P3mpmzIdeja6qgMTbS3D3e71opx0Oq1/l4p/fog59ee20jCS/gCaVFwUOqaA==}
+  '@melandlabs/integrations-google-docs@0.3.0':
+    resolution: {integrity: sha512-bEBHzWlETG37t2wFYdBKF9U8ZK1wejq+TaSCvcowv7O0oTFc4xD+/N8a0DplJNLHIXNKA5dlFUdzRlVQ2xII0A==}
     peerDependencies:
       react: '>=18.0.0'
 
-  '@melandlabs/integrations-hubspot@0.1.4':
-    resolution: {integrity: sha512-UIa2l1ayMSE4Z4aHknzzDgyct0d9rt9GCCJoKhzF7fELsMBiqfsqhk2lEAG21XTV04LdOx2Wx0AsJsCilU7Cag==}
+  '@melandlabs/integrations-hubspot@0.3.1':
+    resolution: {integrity: sha512-4a/L2TZknFY+LSeCN1CGT36o4VlHyYCPGBjij/EwMMW2I6saXir8C14LQZfjvQ+a5i/LnGsUiJwgCAfI0JEgCw==}
 
-  '@melandlabs/integrations-imessage@0.1.5':
-    resolution: {integrity: sha512-a3Mhe1xnIBR7QsFUiLn02r9lk1gp4vXSv7kK2Mbi1cmN1W/TBQWu1RoiLzZfie6EWtht2ykCURgbrCgEF3Ve6g==}
+  '@melandlabs/integrations-imessage@0.3.5':
+    resolution: {integrity: sha512-PLAvZCSbGGlpQ6FzoUu5zTLANTyPPvALAk9barWufwiqIfHawBMQ2h7Wy0R2M3TprJfImHrkhr7/62+2KsLP0Q==}
 
-  '@melandlabs/integrations-instagram@0.1.4':
-    resolution: {integrity: sha512-mFyDPu+RQVuhq5E03inyDSXMqg+zxMbB5qom3McyLvZKelqny2VpkqOWENxi4BP5Fw2IbbJpM7ZkMdBXbq3C0w==}
+  '@melandlabs/integrations-instagram@0.3.1':
+    resolution: {integrity: sha512-/3qa/Mry0hak4E4ATw4eAAEia89HCIdHLKWxUJ/g1+/vFPEqST21/AmDK5TwMDo4MywhUVk7DN9FUTdQer1fFQ==}
 
-  '@melandlabs/integrations-jira@0.1.4':
-    resolution: {integrity: sha512-OVmyXghEbmXBG8Uavhm8+o6YwXpqrQNrj9N5PMqid21m0Uca4/MfyWR+5BUwS59ebwPPA4+n6EHPzdZinQDO5Q==}
+  '@melandlabs/integrations-jira@0.2.3':
+    resolution: {integrity: sha512-mDf1GoSkXVRZ2Rw9l5z02lcecikJaa43b5ckdFWwNu2RT7R/T5Rzgdwl6Ox7kOTQI64yASo6xneUTM4S7SO5Kg==}
 
-  '@melandlabs/integrations-linkedin@0.1.4':
-    resolution: {integrity: sha512-BDlKx8kOqq/D2BK9nXOYJXqfXyck1gPpTifAHy+8xeTQJCIkRwacuOrQwLO7WIRwxjZzQIRb4eJyOfqnf3aN+A==}
+  '@melandlabs/integrations-linkedin@0.3.1':
+    resolution: {integrity: sha512-4cKXmE4QATQciBU5+zEykie6kWBRbaKL8YFmUg3t2AaORlHQAsJMou8q5tKKrBGkSRZQmriindF9nHnXwv+zUA==}
 
-  '@melandlabs/integrations-qqbot@0.1.5':
-    resolution: {integrity: sha512-lx27DMfDJraJ5MqlgVb8WA5HxekQLOKMQV09KCQmMZgM4ZTWEQjnv0EslM0lAke/kj06vtG7YMyMugtj7+BOpA==}
+  '@melandlabs/integrations-qqbot@0.3.4':
+    resolution: {integrity: sha512-fUXn98Ub6yV3D51DiEiAPmLFvs194b7jBUPo8Qzsiyh3R8ktadixy9KMai+cTJ1ej/VDHb+qwtevBZwprOjctQ==}
 
-  '@melandlabs/integrations-runtime@0.1.4':
-    resolution: {integrity: sha512-tFcqzXwqeSkeKrZYbxM8i/NVyxNSuWgqfVKZFYN3MFd8F6EiOsQS0HEo3krtt5Uu5cPc5tZ01zsP9n4ZrYL5Zw==}
+  '@melandlabs/integrations-runtime@0.3.3':
+    resolution: {integrity: sha512-Xi3QzQiKQCiPc180DMIngPp8xcvcf07JyTfOts8VqjudVM1e/kJLzB+DaiAkdgOAMGt+fEaVzEG91v/QnKLXow==}
 
-  '@melandlabs/integrations-telegram@0.1.5':
-    resolution: {integrity: sha512-B62VifL3cvJ9qBRTesAhH4MCLb+IGJHW2kvrERjRs8csnmftUC6TGRtDu4F2BvnHYDLQ1HP7I4o889ajfWrrfA==}
+  '@melandlabs/integrations-telegram@0.3.4':
+    resolution: {integrity: sha512-Xx6TB4ZY4LrLSr0DYJwxz6UcZBJ1244bCgRyEgyiI7gvTySzOFlQrDwe2VP0M/lqvuANgL4YxWI5JfDtJdw14w==}
 
-  '@melandlabs/integrations-weixin@0.1.5':
-    resolution: {integrity: sha512-bkxPAOtM08nCv4PtGaZRd1LGnBr2xtBfQVczdtWiPOtio9eW8qxXryknMl69fFkX1iNGFJB6JEOG3C7zULBbcw==}
+  '@melandlabs/integrations-weixin@0.3.6':
+    resolution: {integrity: sha512-Xc5D6P6SnIOdX9X1iRvuH8n9XchMtqnnEpKO3+l1bhQHnOhNccB+w4J0AnUKdFBC6RpcX2pubROlCw76cErWvA==}
 
-  '@melandlabs/integrations-whatsapp@0.1.5':
-    resolution: {integrity: sha512-Atxq4ZUEWLClBTMfjBprJJ0SJdOzXjsddWys5ncaQRRFF3amI48bqXVddP//S/vFAkdHTiWsJliw8aSrYob/TQ==}
+  '@melandlabs/integrations-whatsapp@0.3.4':
+    resolution: {integrity: sha512-odw5DHJEdhSK5yKh7P4s3AtYTKR+rTCrzaKe+2S16ryqocPJY6Br0c7IKYnRTFbdFrMx/BR6kqRh0PwmtqPCZA==}
 
-  '@melandlabs/integrations-x@0.1.4':
-    resolution: {integrity: sha512-wLNMDElEKqonjJfv+DM0CiQoxRRLZz4w7FWBa5Gh458MBl5kmoV9apwsH7Swt3TkYq8gkD27/oqOfjXOFMiYXA==}
+  '@melandlabs/integrations-x@0.3.1':
+    resolution: {integrity: sha512-1PFlD/G3Ty8J4qHkqPV/fYTv66+cwaL2lrBGOJykFuwhLTlI06C+SqfpSWqTXVMol+z4uD2oxQeyQ84H1yzLfA==}
 
-  '@melandlabs/integrations@0.1.4':
-    resolution: {integrity: sha512-S0nMy/NCKGFsWcmZMSox2jwYshdv8K8HDKOWpVfs8yzpuFcmHvz8dNVSQFGSfKtl1fyLO/2nfs4VV7LQVTEwMQ==}
+  '@melandlabs/integrations@0.3.0':
+    resolution: {integrity: sha512-dCnAW0LoYk0gL3lyf4E/OKlsJQBqyYkSLASLZSODdpmcBAdRa85fzaCsdRPAEEHw2vrw0xH1l1j5jMS5NvPpAw==}
 
-  '@melandlabs/loop@0.1.4':
-    resolution: {integrity: sha512-lGg2/t0gD5Q/D2lgNi9AE7E0qqGLFKeU0fBw72R6dkJ7Qdp6tkR7llTtZnvNs1yjTgYNQYadZS0l09K6yK62Qg==}
+  '@melandlabs/loop@0.3.1':
+    resolution: {integrity: sha512-21NzV06C9LM+5pUDiws981dpH5++VqEHGzwas99WBqS1VUaTU6joYcg2EuoHqE+0O3BC0JoL71CjPI3YYg7GVQ==}
 
-  '@melandlabs/mcp@0.1.4':
-    resolution: {integrity: sha512-JaEW0up5C8W30BZUH+Ny8ve40f7ZHqPwM+zTHqT5VbCAKmFx/41bExDpGcx6MY56elnWBJwYer4fGZHgjk0Umg==}
+  '@melandlabs/mcp@0.3.1':
+    resolution: {integrity: sha512-sHrMKHcqaIYNof6JmHrzB+4XXroYJsfBdsoWJza5cZJ41Agsc7LCRcDSDXS/uqMFLL7BRPQ6XuwBG1CUlNHL8g==}
     hasBin: true
 
-  '@melandlabs/memory-consolidation@0.1.4':
-    resolution: {integrity: sha512-/y3TI8rDiEaXuTGVbDi+I8HKoKTjd5cvaTQC7fRb1MIaJbtx5P6tmzSjwTrszbXbSr9L4AL67rXkDGH8yPkKpg==}
+  '@melandlabs/memory-consolidation@0.5.0':
+    resolution: {integrity: sha512-ZDJaEaqNQsZ73lwhGf6lHpM4P+iPMhXDLu8/2ObgSnhWPzHgyPtocwfJuBZ3Be1udbcfO0LAzICSet0BUO0E+g==}
 
-  '@melandlabs/memory-store@0.1.6':
-    resolution: {integrity: sha512-6AcyFvUT7cinvhBq3ovQ9TksNWjUf7k0LeQatiskuk86ojfq+QnyEWJQhAEsFCxjufoS2WeyPsICe0+vGogliQ==}
+  '@melandlabs/memory-consolidation@0.5.2':
+    resolution: {integrity: sha512-pEWl/MniYeySJx5EbLHG/l1ecEtVUoVL2sFgqfT1IO/JFLDu8pTschmwlvcoeaiPCHN08UtFUg3fwbCZOgP98Q==}
+
+  '@melandlabs/memory-store@1.1.1':
+    resolution: {integrity: sha512-2dSiYjbIZjvcIunIe84RhQnzMmKKoLgn3bSZHutPoMuQUO6eTcuclUTUt2Lf1sBV1RG7rCxgBaGsb/4pXn2wPg==}
     hasBin: true
     peerDependencies:
-      '@melandlabs/ai-rag': 0.1.4
-      '@melandlabs/indexeddb': 0.1.4
+      '@melandlabs/ai-rag': 0.2.9
+      '@melandlabs/indexeddb': 0.5.8
     peerDependenciesMeta:
       '@melandlabs/ai-rag':
         optional: true
       '@melandlabs/indexeddb':
         optional: true
 
-  '@melandlabs/rag@0.1.5':
-    resolution: {integrity: sha512-SqSRb5vQtlaJyBETgCKTOy8M6xepxecmbvh0oZfpZLCxb1KFzuo4c6mC2/5uxTEnbpzfHYqx4Zc/bsJdnHJWGA==}
+  '@melandlabs/okf@0.2.0':
+    resolution: {integrity: sha512-Hku6gH0Dx4Lay3KJIhOm49GUENr73MlT39UcznukLhtlng11UjQWM4gePTPMualBeaqYHjI4I9nN8gmUUOuUzw==}
+    peerDependencies:
+      '@melandlabs/indexeddb': 0.5.8
+      hono: ^4.6.14
+      zod: ^4.3.6
+    peerDependenciesMeta:
+      '@melandlabs/indexeddb':
+        optional: true
+      hono:
+        optional: true
 
-  '@melandlabs/rss@0.1.4':
-    resolution: {integrity: sha512-O4kJY/0keDcAqWE3JS8yRFD/jbYce0OJbTkPeARVUP0gcD4TdgU984TvB8Fv6h603MCpnCp1SKHIcnHNpE+nZg==}
+  '@melandlabs/rag@0.3.0':
+    resolution: {integrity: sha512-Mdxl2/MHAqZRRsS9BAod39oPQLuDxygT7Pgv5HMPxEa72nnMXp8lI03coESQDGutCXOa5w8EOWTua2f4kNR6JA==}
+    peerDependencies:
+      '@lancedb/lancedb': ^0.37.1
+      '@zilliz/milvus2-sdk-node': ^2.5.13
+    peerDependenciesMeta:
+      '@lancedb/lancedb':
+        optional: true
+      '@zilliz/milvus2-sdk-node':
+        optional: true
+
+  '@melandlabs/rss@0.3.0':
+    resolution: {integrity: sha512-1g8SM+FNAs7WU6KecIqy+eG/y/EjX1w0CqIcaUpZT26B1DhB4PLtfl3di6NiTX0FQBHNBiYtquRjgD35XB2h9A==}
     peerDependencies:
       react: '>=18.0.0'
 
-  '@melandlabs/search@0.1.4':
-    resolution: {integrity: sha512-ulYTT+NyiNM4WyAz7tmbLe0HsnCXidGeflXM+08/PuH5yiGw1gaRM6V2O8Y9BeRh/mbxXjwv5XdZ9OppaqzQKA==}
+  '@melandlabs/search@0.3.1':
+    resolution: {integrity: sha512-uumwBvgS7qwKMiuIivUVDenTilA9kJUd28dvi4gAfSiJQTnKyQ0qjED3uXOxzZMGV7TUQRv7lPO0YbEBfk56Ew==}
 
-  '@melandlabs/security@0.1.4':
-    resolution: {integrity: sha512-pnplfix0cHwnXrtGVoiMXg6czz9B47UJbv8SLgL/IHIYMXe+Lgt2T9hMkKbQR6IXNLBTr3glWjtVdTjAJAxLAA==}
+  '@melandlabs/security@0.3.0':
+    resolution: {integrity: sha512-1A1RbcN05yoVuB93aCfxd74SL4UQO6WHirr/JbswrjUMcYNIrTqJ7fF7k4bx2da9/zFOQPDJFXL+cADgBX2P+Q==}
 
-  '@melandlabs/shared@0.1.4':
-    resolution: {integrity: sha512-ftR0ehM4ZGdgWhGS+IgJ1brHF4q2xjqCGnkFegsq2vtFvh8N3/urWEoG+6mnLio7qm4jzEB7Gx424xoXgGROKQ==}
+  '@melandlabs/shared@0.4.0':
+    resolution: {integrity: sha512-7GChzRVxTvtS9x/vg2poJlyVAZLDvjbaA878EXyJB2qhySQ9s7CH1HVwuoZBrzuqeU8JI57kiU+q4J/XKFgzzA==}
     peerDependencies:
       react: '>=18.0.0'
 
-  '@melandlabs/sqlite@0.1.4':
-    resolution: {integrity: sha512-a4kSmVh014B5WrTmNrjGQqDLFPYiR5PhJM5YGqJRe7CEZ2UzXAVt6AGyGG6CKrrBfKsAnFWGgezMgcMlKEGcdA==}
+  '@melandlabs/sqlite@0.5.1':
+    resolution: {integrity: sha512-WeoT/jzjkp2oK2DY5dSCNN16Pujh3ct7A8TGD9JURu9stwLiYwC0Yfc2nYQ/e8VZ6cWDHajF+sQeomj/zwQYPw==}
 
-  '@melandlabs/storage@0.1.4':
-    resolution: {integrity: sha512-eWbXN1ahiMExE/d5wgn4Q6tVe/Fa3YxlRS9erFZApF42WYzJ5EOYgt16Imel0z6VsTvTqMeK1K4CUz+Fg/isMg==}
+  '@melandlabs/storage@0.3.0':
+    resolution: {integrity: sha512-tRHrc7iMqjuieZ3aaIdVgoSS2QLDWgtKfogB93uuAi6HG8ZluPizhUkR4NKdCboyQQd+USpOPT5YzytFaWtL/Q==}
 
-  '@melandlabs/ui-runtime@0.1.4':
-    resolution: {integrity: sha512-SgHag3iLMKcS7phHaIO9YuMJvtz6CpGA4mxB+4Ni3LjbyaKQJiLwyl1kylCX4HVkoUobgGgJxi3+lfC4QvhnxA==}
+  '@melandlabs/ui-runtime@0.3.0':
+    resolution: {integrity: sha512-3BZQfvBKCgDqIFfLZqZTMSHVkGxslwTP4Tw7rUmiAckAnSuZSOlEUw3Aynw2Ft1L9fke8k6A5QesVjQw6XZVZg==}
 
-  '@melandlabs/voice-kokoro@0.1.4':
-    resolution: {integrity: sha512-f9W78N4Wj6K1l5MU1TP4i3Va2eZbuixm/JuDGCLbKflX6lbqgn2WzOfnLczdl5ivZDMOWVviv0s5Ho3/mydh/w==}
+  '@melandlabs/voice-kokoro@0.3.0':
+    resolution: {integrity: sha512-z/DSxhT+szzFBMz/PecvYzG8n82aaBRZhlbYezR3Aa3qezgI4PUY/UCnhHY8pfHQxJuwTU0jfUYJiZlodfmHZA==}
 
-  '@melandlabs/voice-whisper@0.1.4':
-    resolution: {integrity: sha512-QrNsQOVjpGmryWeqIxdkj3pPfjkCPLLThScYgmh1ruymMZHdvGQIT2Jpw5aqD8MCSUv9O+uR6bXgvKinIumkfg==}
+  '@melandlabs/voice-whisper@0.3.0':
+    resolution: {integrity: sha512-0S8nsfgLa+tQp3AElyXbADcDK01FjbT8jcTLjVrGblS7EDwifDac9uD2L5kWQYEq0PHjigtYSl2CzhLiJY0iZQ==}
+
+  '@melandlabs/vsa@0.3.0':
+    resolution: {integrity: sha512-ztexmVlIpsasASFGm9enzvTRpgxyIZCRYIY+nnqpd4u4eb0P1T999Yj2wMM/cN4Vcws3BwpxZDF7lQ6UnzbETw==}
 
   '@mistralai/mistralai@2.4.0':
     resolution: {integrity: sha512-t6hCx242MTGolB76CI+17jDtPIe/bzLsMdUTMMoMn9Qo1h02N2G5jQYHmKDGU3X//OgR2wvngTD7tO6tPp5poQ==}
@@ -3805,70 +3813,60 @@ packages:
     engines: {node: '>= 10'}
     cpu: [arm64]
     os: [linux]
-    libc: [glibc]
 
   '@napi-rs/canvas-linux-arm64-gnu@0.1.99':
     resolution: {integrity: sha512-8JvHeexKQ8c7g0q7YJ29NVQwnf1ePghP9ys9ZN0R0qzyqJQ9Uw6N9qnDINArlm3IYHexB7LjzArIfhQiqSDGvQ==}
     engines: {node: '>= 10'}
     cpu: [arm64]
     os: [linux]
-    libc: [glibc]
 
   '@napi-rs/canvas-linux-arm64-musl@0.1.100':
     resolution: {integrity: sha512-K3mDW66N+xT2/V439u1alFANiBUjdEx2gLiNYnCmUsva5jZMxWTjafBYwTzYK+EMFMHrUoabuU+T1BIP5CgbYQ==}
     engines: {node: '>= 10'}
     cpu: [arm64]
     os: [linux]
-    libc: [musl]
 
   '@napi-rs/canvas-linux-arm64-musl@0.1.99':
     resolution: {integrity: sha512-Z+6nyLdJXWzLPVxi4H6g9TJop4DwN3KSgHWto5JCbZV5/uKoVqcSynPs0tGlUHOoWI8S8tEvJspz51GQkvr07w==}
     engines: {node: '>= 10'}
     cpu: [arm64]
     os: [linux]
-    libc: [musl]
 
   '@napi-rs/canvas-linux-riscv64-gnu@0.1.100':
     resolution: {integrity: sha512-mooqUBTIsccZpnoQC4NgrC1v6C1vof39etLNMnBwCY+p0gajWJvAHLGQ6g/gGyS5YrpDW+GefSN4+Cvcr08UWw==}
     engines: {node: '>= 10'}
     cpu: [riscv64]
     os: [linux]
-    libc: [glibc]
 
   '@napi-rs/canvas-linux-riscv64-gnu@0.1.99':
     resolution: {integrity: sha512-jAnfOUv4IO1l8Levk5t85oVtEBOXLa07KnIUgWo1CDlPxiqpxS3uBfiE38Lvj/CQgHaNF6Nxk/SaemwLgsVJgw==}
     engines: {node: '>= 10'}
     cpu: [riscv64]
     os: [linux]
-    libc: [glibc]
 
   '@napi-rs/canvas-linux-x64-gnu@0.1.100':
     resolution: {integrity: sha512-1eCvkDCazm7FFhsT7DfGOdSaHgZVK3bt/dSBl5EWHOWmnz+I7j8tPseJqqD81NF+MH21jKUK4wQSDjN0mdhnTg==}
     engines: {node: '>= 10'}
     cpu: [x64]
     os: [linux]
-    libc: [glibc]
 
   '@napi-rs/canvas-linux-x64-gnu@0.1.99':
     resolution: {integrity: sha512-mIkXw3fGmbYyFjSmfWEvty4jN+rwEOmv0+Dy9bRvvTzLYWCgm3RMgUEQVfAKFw96nIRFnyNZiK83KNQaVVFjng==}
     engines: {node: '>= 10'}
     cpu: [x64]
     os: [linux]
-    libc: [glibc]
 
   '@napi-rs/canvas-linux-x64-musl@0.1.100':
     resolution: {integrity: sha512-20arT6lnI19S68qNlii73TSEDbECNgzMz2EpldC1V3mZFuRkeujXkcebRk0LRJe9SEUAooYiLokfMViY8IX7yA==}
     engines: {node: '>= 10'}
     cpu: [x64]
     os: [linux]
-    libc: [musl]
 
   '@napi-rs/canvas-linux-x64-musl@0.1.99':
     resolution: {integrity: sha512-f3Uz2P0RgrtBHISxZqr6yiYXJlTDyCVBumDacxo+4AmSg7z0HiqYZKGWC/gszq3fbPhyQUya1W2AEteKxT9Y6A==}
     engines: {node: '>= 10'}
     cpu: [x64]
     os: [linux]
-    libc: [musl]
 
   '@napi-rs/canvas-win32-arm64-msvc@0.1.100':
     resolution: {integrity: sha512-DZFFT1wIAg37LJw37yhMRFfjATd3vTQzjZ1Yki8u2vhO6Hi5VE6BVaGQ1aaDu7xb4iMErz+9EOwjpS7xcxFeBw==}
@@ -3934,28 +3932,24 @@ packages:
     engines: {node: '>= 10'}
     cpu: [arm64]
     os: [linux]
-    libc: [glibc]
 
   '@next/swc-linux-arm64-musl@16.2.1':
     resolution: {integrity: sha512-ssKq6iMRnHdnycGp9hCuGnXJZ0YPr4/wNwrfE5DbmvEcgl9+yv97/Kq3TPVDfYome1SW5geciLB9aiEqKXQjlQ==}
     engines: {node: '>= 10'}
     cpu: [arm64]
     os: [linux]
-    libc: [musl]
 
   '@next/swc-linux-x64-gnu@16.2.1':
     resolution: {integrity: sha512-HQm7SrHRELJ30T1TSmT706IWovFFSRGxfgUkyWJZF/RKBMdbdRWJuFrcpDdE5vy9UXjFOx6L3mRdqH04Mmx0hg==}
     engines: {node: '>= 10'}
     cpu: [x64]
     os: [linux]
-    libc: [glibc]
 
   '@next/swc-linux-x64-musl@16.2.1':
     resolution: {integrity: sha512-aV2iUaC/5HGEpbBkE+4B8aHIudoOy5DYekAKOMSHoIYQ66y/wIVeaRx8MS2ZMdxe/HIXlMho4ubdZs/J8441Tg==}
     engines: {node: '>= 10'}
     cpu: [x64]
     os: [linux]
-    libc: [musl]
 
   '@next/swc-win32-arm64-msvc@16.2.1':
     resolution: {integrity: sha512-IXdNgiDHaSk0ZUJ+xp0OQTdTgnpx1RCfRTalhn3cjOP+IddTMINwA7DXZrwTmGDO8SUr5q2hdP/du4DcrB1GxA==}
@@ -4844,79 +4838,66 @@ packages:
     resolution: {integrity: sha512-2QxQrM+KQ7DAW4o22j+XZ6RKdxjLD7BOWTP0Bv0tmjdyhXSsr2Ul1oJDQqh9Zf5qOwTuTc7Ek83mOFaKnodPjg==}
     cpu: [arm]
     os: [linux]
-    libc: [glibc]
 
   '@rollup/rollup-linux-arm-musleabihf@4.60.2':
     resolution: {integrity: sha512-TbziEu2DVsTEOPif2mKWkMeDMLoYjx95oESa9fkQQK7r/Orta0gnkcDpzwufEcAO2BLBsD7mZkXGFqEdMRRwfw==}
     cpu: [arm]
     os: [linux]
-    libc: [musl]
 
   '@rollup/rollup-linux-arm64-gnu@4.60.2':
     resolution: {integrity: sha512-bO/rVDiDUuM2YfuCUwZ1t1cP+/yqjqz+Xf2VtkdppefuOFS2OSeAfgafaHNkFn0t02hEyXngZkxtGqXcXwO8Rg==}
     cpu: [arm64]
     os: [linux]
-    libc: [glibc]
 
   '@rollup/rollup-linux-arm64-musl@4.60.2':
     resolution: {integrity: sha512-hr26p7e93Rl0Za+JwW7EAnwAvKkehh12BU1Llm9Ykiibg4uIr2rbpxG9WCf56GuvidlTG9KiiQT/TXT1yAWxTA==}
     cpu: [arm64]
     os: [linux]
-    libc: [musl]
 
   '@rollup/rollup-linux-loong64-gnu@4.60.2':
     resolution: {integrity: sha512-pOjB/uSIyDt+ow3k/RcLvUAOGpysT2phDn7TTUB3n75SlIgZzM6NKAqlErPhoFU+npgY3/n+2HYIQVbF70P9/A==}
     cpu: [loong64]
     os: [linux]
-    libc: [glibc]
 
   '@rollup/rollup-linux-loong64-musl@4.60.2':
     resolution: {integrity: sha512-2/w+q8jszv9Ww1c+6uJT3OwqhdmGP2/4T17cu8WuwyUuuaCDDJ2ojdyYwZzCxx0GcsZBhzi3HmH+J5pZNXnd+Q==}
     cpu: [loong64]
     os: [linux]
-    libc: [musl]
 
   '@rollup/rollup-linux-ppc64-gnu@4.60.2':
     resolution: {integrity: sha512-11+aL5vKheYgczxtPVVRhdptAM2H7fcDR5Gw4/bTcteuZBlH4oP9f5s9zYO9aGZvoGeBpqXI/9TZZihZ609wKw==}
     cpu: [ppc64]
     os: [linux]
-    libc: [glibc]
 
   '@rollup/rollup-linux-ppc64-musl@4.60.2':
     resolution: {integrity: sha512-i16fokAGK46IVZuV8LIIwMdtqhin9hfYkCh8pf8iC3QU3LpwL+1FSFGej+O7l3E/AoknL6Dclh2oTdnRMpTzFQ==}
     cpu: [ppc64]
     os: [linux]
-    libc: [musl]
 
   '@rollup/rollup-linux-riscv64-gnu@4.60.2':
     resolution: {integrity: sha512-49FkKS6RGQoriDSK/6E2GkAsAuU5kETFCh7pG4yD/ylj9rKhTmO3elsnmBvRD4PgJPds5W2PkhC82aVwmUcJ7A==}
     cpu: [riscv64]
     os: [linux]
-    libc: [glibc]
 
   '@rollup/rollup-linux-riscv64-musl@4.60.2':
     resolution: {integrity: sha512-mjYNkHPfGpUR00DuM1ZZIgs64Hpf4bWcz9Z41+4Q+pgDx73UwWdAYyf6EG/lRFldmdHHzgrYyge5akFUW0D3mQ==}
     cpu: [riscv64]
     os: [linux]
-    libc: [musl]
 
   '@rollup/rollup-linux-s390x-gnu@4.60.2':
     resolution: {integrity: sha512-ALyvJz965BQk8E9Al/JDKKDLH2kfKFLTGMlgkAbbYtZuJt9LU8DW3ZoDMCtQpXAltZxwBHevXz5u+gf0yA0YoA==}
     cpu: [s390x]
     os: [linux]
-    libc: [glibc]
 
   '@rollup/rollup-linux-x64-gnu@4.60.2':
     resolution: {integrity: sha512-UQjrkIdWrKI626Du8lCQ6MJp/6V1LAo2bOK9OTu4mSn8GGXIkPXk/Vsp4bLHCd9Z9Iz2OTEaokUE90VweJgIYQ==}
     cpu: [x64]
     os: [linux]
-    libc: [glibc]
 
   '@rollup/rollup-linux-x64-musl@4.60.2':
     resolution: {integrity: sha512-bTsRGj6VlSdn/XD4CGyzMnzaBs9bsRxy79eTqTCBsA8TMIEky7qg48aPkvJvFe1HyzQ5oMZdg7AnVlWQSKLTnw==}
     cpu: [x64]
     os: [linux]
-    libc: [musl]
 
   '@rollup/rollup-openbsd-x64@4.60.2':
     resolution: {integrity: sha512-6d4Z3534xitaA1FcMWP7mQPq5zGwBmGbhphh2DwaA1aNIXUu3KTOfwrWpbwI4/Gr0uANo7NTtaykFyO2hPuFLg==}
@@ -5310,28 +5291,24 @@ packages:
     engines: {node: '>= 20'}
     cpu: [arm64]
     os: [linux]
-    libc: [glibc]
 
   '@tailwindcss/oxide-linux-arm64-musl@4.3.0':
     resolution: {integrity: sha512-Z6sukiQsngnWO+l39X4pPbiWT81IC+PLKF+PHxIlyZbGNb9MODfYlXEVlFvej5BOZInWX01kVyzeLvHsXhfczQ==}
     engines: {node: '>= 20'}
     cpu: [arm64]
     os: [linux]
-    libc: [musl]
 
   '@tailwindcss/oxide-linux-x64-gnu@4.3.0':
     resolution: {integrity: sha512-DRNdQRpSGzRGfARVuVkxvM8Q12nh19l4BF/G7zGA1oe+9wcC6saFBHTISrpIcKzhiXtSrlSrluCfvMuledoCTQ==}
     engines: {node: '>= 20'}
     cpu: [x64]
     os: [linux]
-    libc: [glibc]
 
   '@tailwindcss/oxide-linux-x64-musl@4.3.0':
     resolution: {integrity: sha512-Z0IADbDo8bh6I7h2IQMx601AdXBLfFpEdUotft86evd/8ZPflZe9COPO8Q1vw+pfLWIUo9zN/JGZvwuAJqduqg==}
     engines: {node: '>= 20'}
     cpu: [x64]
     os: [linux]
-    libc: [musl]
 
   '@tailwindcss/oxide-wasm32-wasi@4.3.0':
     resolution: {integrity: sha512-HNZGOUxEmElksYR7S6sC5jTeNGpobAsy9u7Gu0AskJ8/20FR9GqebUyB+HBcU/ax6BHuiuJi+Oda4B+YX6H1yA==}
@@ -5404,35 +5381,30 @@ packages:
     engines: {node: '>= 10'}
     cpu: [arm64]
     os: [linux]
-    libc: [glibc]
 
   '@tauri-apps/cli-linux-arm64-musl@2.10.1':
     resolution: {integrity: sha512-MIj78PDDGjkg3NqGptDOGgfXks7SYJwhiMh8SBoZS+vfdz7yP5jN18bNaLnDhsVIPARcAhE1TlsZe/8Yxo2zqg==}
     engines: {node: '>= 10'}
     cpu: [arm64]
     os: [linux]
-    libc: [musl]
 
   '@tauri-apps/cli-linux-riscv64-gnu@2.10.1':
     resolution: {integrity: sha512-X0lvOVUg8PCVaoEtEAnpxmnkwlE1gcMDTqfhbefICKDnOTJ5Est3qL0SrWxizDackIOKBcvtpejrSiVpuJI1kw==}
     engines: {node: '>= 10'}
     cpu: [riscv64]
     os: [linux]
-    libc: [glibc]
 
   '@tauri-apps/cli-linux-x64-gnu@2.10.1':
     resolution: {integrity: sha512-2/12bEzsJS9fAKybxgicCDFxYD1WEI9kO+tlDwX5znWG2GwMBaiWcmhGlZ8fi+DMe9CXlcVarMTYc0L3REIRxw==}
     engines: {node: '>= 10'}
     cpu: [x64]
     os: [linux]
-    libc: [glibc]
 
   '@tauri-apps/cli-linux-x64-musl@2.10.1':
     resolution: {integrity: sha512-Y8J0ZzswPz50UcGOFuXGEMrxbjwKSPgXftx5qnkuMs2rmwQB5ssvLb6tn54wDSYxe7S6vlLob9vt0VKuNOaCIQ==}
     engines: {node: '>= 10'}
     cpu: [x64]
     os: [linux]
-    libc: [musl]
 
   '@tauri-apps/cli-win32-arm64-msvc@2.10.1':
     resolution: {integrity: sha512-iSt5B86jHYAPJa/IlYw++SXtFPGnWtFJriHn7X0NFBVunF6zu9+/zOn8OgqIWSl8RgzhLGXQEEtGBdR4wzpVgg==}
@@ -6023,49 +5995,41 @@ packages:
     resolution: {integrity: sha512-34gw7PjDGB9JgePJEmhEqBhWvCiiWCuXsL9hYphDF7crW7UgI05gyBAi6MF58uGcMOiOqSJ2ybEeCvHcq0BCmQ==}
     cpu: [arm64]
     os: [linux]
-    libc: [glibc]
 
   '@unrs/resolver-binding-linux-arm64-musl@1.11.1':
     resolution: {integrity: sha512-RyMIx6Uf53hhOtJDIamSbTskA99sPHS96wxVE/bJtePJJtpdKGXO1wY90oRdXuYOGOTuqjT8ACccMc4K6QmT3w==}
     cpu: [arm64]
     os: [linux]
-    libc: [musl]
 
   '@unrs/resolver-binding-linux-ppc64-gnu@1.11.1':
     resolution: {integrity: sha512-D8Vae74A4/a+mZH0FbOkFJL9DSK2R6TFPC9M+jCWYia/q2einCubX10pecpDiTmkJVUH+y8K3BZClycD8nCShA==}
     cpu: [ppc64]
     os: [linux]
-    libc: [glibc]
 
   '@unrs/resolver-binding-linux-riscv64-gnu@1.11.1':
     resolution: {integrity: sha512-frxL4OrzOWVVsOc96+V3aqTIQl1O2TjgExV4EKgRY09AJ9leZpEg8Ak9phadbuX0BA4k8U5qtvMSQQGGmaJqcQ==}
     cpu: [riscv64]
     os: [linux]
-    libc: [glibc]
 
   '@unrs/resolver-binding-linux-riscv64-musl@1.11.1':
     resolution: {integrity: sha512-mJ5vuDaIZ+l/acv01sHoXfpnyrNKOk/3aDoEdLO/Xtn9HuZlDD6jKxHlkN8ZhWyLJsRBxfv9GYM2utQ1SChKew==}
     cpu: [riscv64]
     os: [linux]
-    libc: [musl]
 
   '@unrs/resolver-binding-linux-s390x-gnu@1.11.1':
     resolution: {integrity: sha512-kELo8ebBVtb9sA7rMe1Cph4QHreByhaZ2QEADd9NzIQsYNQpt9UkM9iqr2lhGr5afh885d/cB5QeTXSbZHTYPg==}
     cpu: [s390x]
     os: [linux]
-    libc: [glibc]
 
   '@unrs/resolver-binding-linux-x64-gnu@1.11.1':
     resolution: {integrity: sha512-C3ZAHugKgovV5YvAMsxhq0gtXuwESUKc5MhEtjBpLoHPLYM+iuwSj3lflFwK3DPm68660rZ7G8BMcwSro7hD5w==}
     cpu: [x64]
     os: [linux]
-    libc: [glibc]
 
   '@unrs/resolver-binding-linux-x64-musl@1.11.1':
     resolution: {integrity: sha512-rV0YSoyhK2nZ4vEswT/QwqzqQXw5I6CjoaYMOX0TqBlWhojUf8P94mvI7nuJTeaCkkds3QE4+zS8Ko+GdXuZtA==}
     cpu: [x64]
     os: [linux]
-    libc: [musl]
 
   '@unrs/resolver-binding-wasm32-wasi@1.11.1':
     resolution: {integrity: sha512-5u4RkfxJm+Ng7IWgkzi3qrFOvLvQYnPBmjmZQ8+szTK/b31fQCnleNl1GgEt7nIsZRIf5PLhPwT0WM+q45x/UQ==}
@@ -6278,6 +6242,7 @@ packages:
   '@xmldom/xmldom@0.8.13':
     resolution: {integrity: sha512-KRYzxepc14G/CEpEGc3Yn+JKaAeT63smlDr+vjB8jRfgTBBI9wRj/nkQEO+ucV8p8I9bfKLWp37uHgFrbntPvw==}
     engines: {node: '>=10.0.0'}
+    deprecated: this version has critical issues, please update to the latest version
 
   '@zone-eu/mailsplit@5.4.8':
     resolution: {integrity: sha512-eEyACj4JZ7sjzRvy26QhLgKEMWwQbsw1+QZnlLX+/gihcNH07lVPOcnwf5U6UAL7gkc//J3jVd76o/WS+taUiA==}
@@ -6874,14 +6839,12 @@ packages:
     engines: {node: '>= 10'}
     cpu: [arm64]
     os: [linux]
-    libc: [glibc]
 
   chromadb-js-bindings-linux-x64-gnu@1.3.4:
     resolution: {integrity: sha512-HmTUe7PEIaBngCQ70Yyle81z2wYyg9OMgJYyRUNBYCBp4ED6zTmdaOro41Vs/c/h2UyQeBXFIKNmHDeD2Nr2fw==}
     engines: {node: '>= 10'}
     cpu: [x64]
     os: [linux]
-    libc: [glibc]
 
   chromadb-js-bindings-win32-x64-msvc@1.3.4:
     resolution: {integrity: sha512-punrofQRzKspNMxHmv24qoPeRycV2T3KfedekGV4lOuPPG14i6qggS4x/OWLSAK7ozPfBbrzCejvCa5wfvujhQ==}
@@ -7079,6 +7042,7 @@ packages:
 
   crypto-js@3.1.8:
     resolution: {integrity: sha512-4E+PJNbUbBrzQLB9Vw86eaF5xZ8MB6dw4aaZ67YhLNduTmqJ5AziuLrYikPWHJkC59DYZp+cyj+qg3vBE8OnOQ==}
+    deprecated: Active development of CryptoJS has been discontinued. This library is no longer maintained.
 
   crypto-js@4.2.0:
     resolution: {integrity: sha512-KALDyEYgpY+Rlob/iriUtjV6d5Eq+Y191A5g4UqLAi8CyGP9N1+FdVbkc1SxKc2r4YAYqG8JzO2KGL+AizD70Q==}
@@ -7976,6 +7940,7 @@ packages:
   eslint@9.39.4:
     resolution: {integrity: sha512-XoMjdBOwe/esVgEvLmNsD3IRHkm7fbKIUGvrleloJXUZgDHig2IPWNniv+GwjyJXzuNqVjlr5+4yVUZjycJwfQ==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
+    deprecated: This version is no longer supported. Please see https://eslint.org/version-support for other options.
     hasBin: true
     peerDependencies:
       jiti: '*'
@@ -8621,7 +8586,7 @@ packages:
 
   glob@7.2.3:
     resolution: {integrity: sha512-nFR0zLpU2YCaRxwoCJvL6UvCH2JFyFVIvwTLsIf21AuHlMskA1hhTdk+LlYJtOlYt9v6dvszD2BGRqBL+iQK9Q==}
-    deprecated: Glob versions prior to v9 are no longer supported
+    deprecated: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
 
   global-agent@3.0.0:
     resolution: {integrity: sha512-PT6XReJ+D07JvGoxQMkT6qji/jVNfX/h364XHZOWeRzy64sSFr+xJ5OX7LI3b4MPQzdL4H8Y8M0xzPpsVMwA8Q==}
@@ -9466,28 +9431,24 @@ packages:
     engines: {node: '>= 12.0.0'}
     cpu: [arm64]
     os: [linux]
-    libc: [glibc]
 
   lightningcss-linux-arm64-musl@1.32.0:
     resolution: {integrity: sha512-UpQkoenr4UJEzgVIYpI80lDFvRmPVg6oqboNHfoH4CQIfNA+HOrZ7Mo7KZP02dC6LjghPQJeBsvXhJod/wnIBg==}
     engines: {node: '>= 12.0.0'}
     cpu: [arm64]
     os: [linux]
-    libc: [musl]
 
   lightningcss-linux-x64-gnu@1.32.0:
     resolution: {integrity: sha512-V7Qr52IhZmdKPVr+Vtw8o+WLsQJYCTd8loIfpDaMRWGUZfBOYEJeyJIkqGIDMZPwPx24pUMfwSxxI8phr/MbOA==}
     engines: {node: '>= 12.0.0'}
     cpu: [x64]
     os: [linux]
-    libc: [glibc]
 
   lightningcss-linux-x64-musl@1.32.0:
     resolution: {integrity: sha512-bYcLp+Vb0awsiXg/80uCRezCYHNg1/l3mt0gzHnWV9XP1W5sKa5/TCdGWaR/zBM2PeF/HbsQv/j2URNOiVuxWg==}
     engines: {node: '>= 12.0.0'}
     cpu: [x64]
     os: [linux]
-    libc: [musl]
 
   lightningcss-win32-arm64-msvc@1.32.0:
     resolution: {integrity: sha512-8SbC8BR40pS6baCM8sbtYDSwEVQd4JlFTOlaD3gWGHfThTcABnNDBda6eTZeqbofalIJhFx0qKzgHJmcPTnGdw==}
@@ -10354,18 +10315,6 @@ packages:
 
   openai@6.34.0:
     resolution: {integrity: sha512-yEr2jdGf4tVFYG6ohmr3pF6VJuveP0EA/sS8TBx+4Eq5NT10alu5zg2dmxMXMgqpihRDQlFGpRt2XwsGj+Fyxw==}
-    hasBin: true
-    peerDependencies:
-      ws: ^8.18.0
-      zod: ^3.25 || ^4.0
-    peerDependenciesMeta:
-      ws:
-        optional: true
-      zod:
-        optional: true
-
-  openai@6.38.0:
-    resolution: {integrity: sha512-AoMplt2UalrpgUDMh3L09QWjNRlgJPipclQvA6sYAaeF6nHNBMgmikAZGmcYLn8on4d9sQY9Q8bOLfrBS7Lc8g==}
     hasBin: true
     peerDependencies:
       ws: ^8.18.0
@@ -11905,10 +11854,6 @@ packages:
   tar-stream@3.1.8:
     resolution: {integrity: sha512-U6QpVRyCGHva435KoNWy9PRoi2IFYCgtEhq9nmrPPpbRacPs9IH4aJ3gbrFC8dPcXvdSZ4XXfXT5Fshbp2MtlQ==}
 
-  tar@7.5.15:
-    resolution: {integrity: sha512-dzGK0boVlC4W5QFuQN1EFSl3bIDYsk7Tj40U6eIBnK2k/8ml7TZ5agbI5j5+qnoVcAA+rNtBml8SEiLxZpNqRQ==}
-    engines: {node: '>=18'}
-
   tar@7.5.19:
     resolution: {integrity: sha512-4LeEWl96twnS2Q7Bz4MGqgazLqO+hJN63GZxXoIqh1T3VweYD997gbU1ItNsQafqqXTXd5WFyFdReLtwvRBNiw==}
     engines: {node: '>=18'}
@@ -12358,7 +12303,7 @@ packages:
 
   uuid@3.4.0:
     resolution: {integrity: sha512-HjSDRw6gZE5JMggctHBcjVak08+KEVhSIiDzFnT9S9aegmp85S/bReBVTb4QTFaRNptJ9kuYaNhnbNEOkbKb/A==}
-    deprecated: Please upgrade  to version 7 or higher.  Older versions may use Math.random() in certain circumstances, which is known to be problematic.  See https://v8.dev/blog/math-random for details.
+    deprecated: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
     hasBin: true
 
   uuid@9.0.1:
@@ -12632,18 +12577,6 @@ packages:
 
   ws@8.20.0:
     resolution: {integrity: sha512-sAt8BhgNbzCtgGbt2OxmpuryO63ZoDk/sqaB/znQm94T4fCEsy/yV+7CdC1kJhOU9lboAEU7R3kquuycDoibVA==}
-    engines: {node: '>=10.0.0'}
-    peerDependencies:
-      bufferutil: ^4.0.1
-      utf-8-validate: '>=5.0.2'
-    peerDependenciesMeta:
-      bufferutil:
-        optional: true
-      utf-8-validate:
-        optional: true
-
-  ws@8.20.1:
-    resolution: {integrity: sha512-It4dO0K5v//JtTXuPkfEOaI3uUN87iYPnqo/ZzqCoG3g8uhA66QUMs/SrM0YK7/NAu+r4LMh/9dq2A7k+rHs+w==}
     engines: {node: '>=10.0.0'}
     peerDependencies:
       bufferutil: ^4.0.1
@@ -13049,49 +12982,49 @@ snapshots:
   '@anthropic-ai/claude-agent-sdk-darwin-arm64@0.2.141':
     optional: true
 
-  '@anthropic-ai/claude-agent-sdk-darwin-arm64@0.3.228':
+  '@anthropic-ai/claude-agent-sdk-darwin-arm64@0.3.238':
     optional: true
 
   '@anthropic-ai/claude-agent-sdk-darwin-x64@0.2.141':
     optional: true
 
-  '@anthropic-ai/claude-agent-sdk-darwin-x64@0.3.228':
+  '@anthropic-ai/claude-agent-sdk-darwin-x64@0.3.238':
     optional: true
 
   '@anthropic-ai/claude-agent-sdk-linux-arm64-musl@0.2.141':
     optional: true
 
-  '@anthropic-ai/claude-agent-sdk-linux-arm64-musl@0.3.228':
+  '@anthropic-ai/claude-agent-sdk-linux-arm64-musl@0.3.238':
     optional: true
 
   '@anthropic-ai/claude-agent-sdk-linux-arm64@0.2.141':
     optional: true
 
-  '@anthropic-ai/claude-agent-sdk-linux-arm64@0.3.228':
+  '@anthropic-ai/claude-agent-sdk-linux-arm64@0.3.238':
     optional: true
 
   '@anthropic-ai/claude-agent-sdk-linux-x64-musl@0.2.141':
     optional: true
 
-  '@anthropic-ai/claude-agent-sdk-linux-x64-musl@0.3.228':
+  '@anthropic-ai/claude-agent-sdk-linux-x64-musl@0.3.238':
     optional: true
 
   '@anthropic-ai/claude-agent-sdk-linux-x64@0.2.141':
     optional: true
 
-  '@anthropic-ai/claude-agent-sdk-linux-x64@0.3.228':
+  '@anthropic-ai/claude-agent-sdk-linux-x64@0.3.238':
     optional: true
 
   '@anthropic-ai/claude-agent-sdk-win32-arm64@0.2.141':
     optional: true
 
-  '@anthropic-ai/claude-agent-sdk-win32-arm64@0.3.228':
+  '@anthropic-ai/claude-agent-sdk-win32-arm64@0.3.238':
     optional: true
 
   '@anthropic-ai/claude-agent-sdk-win32-x64@0.2.141':
     optional: true
 
-  '@anthropic-ai/claude-agent-sdk-win32-x64@0.3.228':
+  '@anthropic-ai/claude-agent-sdk-win32-x64@0.3.238':
     optional: true
 
   '@anthropic-ai/claude-agent-sdk@0.2.141(@cfworker/json-schema@4.1.1)(zod@4.3.6)':
@@ -13112,20 +13045,20 @@ snapshots:
       - '@cfworker/json-schema'
       - supports-color
 
-  '@anthropic-ai/claude-agent-sdk@0.3.228(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(zod@4.4.3)':
+  '@anthropic-ai/claude-agent-sdk@0.3.238(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(zod@4.4.3)':
     dependencies:
       '@anthropic-ai/sdk': 0.72.1(zod@4.3.6)
       '@modelcontextprotocol/sdk': 1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6)
       zod: 4.4.3
     optionalDependencies:
-      '@anthropic-ai/claude-agent-sdk-darwin-arm64': 0.3.228
-      '@anthropic-ai/claude-agent-sdk-darwin-x64': 0.3.228
-      '@anthropic-ai/claude-agent-sdk-linux-arm64': 0.3.228
-      '@anthropic-ai/claude-agent-sdk-linux-arm64-musl': 0.3.228
-      '@anthropic-ai/claude-agent-sdk-linux-x64': 0.3.228
-      '@anthropic-ai/claude-agent-sdk-linux-x64-musl': 0.3.228
-      '@anthropic-ai/claude-agent-sdk-win32-arm64': 0.3.228
-      '@anthropic-ai/claude-agent-sdk-win32-x64': 0.3.228
+      '@anthropic-ai/claude-agent-sdk-darwin-arm64': 0.3.238
+      '@anthropic-ai/claude-agent-sdk-darwin-x64': 0.3.238
+      '@anthropic-ai/claude-agent-sdk-linux-arm64': 0.3.238
+      '@anthropic-ai/claude-agent-sdk-linux-arm64-musl': 0.3.238
+      '@anthropic-ai/claude-agent-sdk-linux-x64': 0.3.238
+      '@anthropic-ai/claude-agent-sdk-linux-x64-musl': 0.3.238
+      '@anthropic-ai/claude-agent-sdk-win32-arm64': 0.3.238
+      '@anthropic-ai/claude-agent-sdk-win32-x64': 0.3.238
 
   '@anthropic-ai/sandbox-runtime@0.0.32':
     dependencies:
@@ -13936,7 +13869,7 @@ snapshots:
       deepmerge: 4.3.1
       dotenv: 16.6.1
       openai: 6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6)
-      ws: 8.20.1(bufferutil@4.1.0)(utf-8-validate@5.0.10)
+      ws: 8.21.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)
       zod: 4.3.6
       zod-to-json-schema: 3.25.2(zod@4.3.6)
     transitivePeerDependencies:
@@ -15072,10 +15005,10 @@ snapshots:
 
   '@keyv/serialize@1.1.1': {}
 
-  '@langchain/classic@1.0.27(@langchain/core@1.1.40(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)))(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@4.104.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.4.3))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))':
+  '@langchain/classic@1.0.27(@aws-sdk/credential-provider-node@3.972.44)(@langchain/core@1.1.40(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)))(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(@smithy/signature-v4@5.4.4)(openai@4.104.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.4.3))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))':
     dependencies:
       '@langchain/core': 1.1.40(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
-      '@langchain/openai': 1.4.1(@langchain/core@1.1.40(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
+      '@langchain/openai': 1.4.1(@aws-sdk/credential-provider-node@3.972.44)(@langchain/core@1.1.40(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)))(@smithy/signature-v4@5.4.4)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
       '@langchain/textsplitters': 1.0.1(@langchain/core@1.1.40(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)))
       handlebars: 4.7.9
       js-yaml: 4.1.1
@@ -15087,16 +15020,19 @@ snapshots:
     optionalDependencies:
       langsmith: 0.5.21(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@4.104.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.4.3))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
     transitivePeerDependencies:
+      - '@aws-sdk/credential-provider-node'
       - '@opentelemetry/api'
       - '@opentelemetry/exporter-trace-otlp-proto'
       - '@opentelemetry/sdk-trace-base'
+      - '@smithy/hash-node'
+      - '@smithy/signature-v4'
       - openai
       - ws
 
-  '@langchain/classic@1.0.27(@langchain/core@1.1.40(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)))(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))':
+  '@langchain/classic@1.0.27(@aws-sdk/credential-provider-node@3.972.44)(@langchain/core@1.1.40(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)))(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(@smithy/signature-v4@5.4.4)(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))':
     dependencies:
       '@langchain/core': 1.1.40(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
-      '@langchain/openai': 1.4.1(@langchain/core@1.1.40(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
+      '@langchain/openai': 1.4.1(@aws-sdk/credential-provider-node@3.972.44)(@langchain/core@1.1.40(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)))(@smithy/signature-v4@5.4.4)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
       '@langchain/textsplitters': 1.0.1(@langchain/core@1.1.40(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)))
       handlebars: 4.7.9
       js-yaml: 4.1.1
@@ -15108,9 +15044,12 @@ snapshots:
     optionalDependencies:
       langsmith: 0.5.21(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
     transitivePeerDependencies:
+      - '@aws-sdk/credential-provider-node'
       - '@opentelemetry/api'
       - '@opentelemetry/exporter-trace-otlp-proto'
       - '@opentelemetry/sdk-trace-base'
+      - '@smithy/hash-node'
+      - '@smithy/signature-v4'
       - openai
       - ws
 
@@ -15118,9 +15057,9 @@ snapshots:
     dependencies:
       '@browserbasehq/stagehand': 1.14.0(@playwright/test@1.59.1)(bufferutil@4.1.0)(deepmerge@4.3.1)(dotenv@16.6.1)(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(utf-8-validate@5.0.10)(zod@4.3.6)
       '@ibm-cloud/watsonx-ai': 1.7.11(typescript@5.9.3)
-      '@langchain/classic': 1.0.27(@langchain/core@1.1.40(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)))(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
+      '@langchain/classic': 1.0.27(@aws-sdk/credential-provider-node@3.972.44)(@langchain/core@1.1.40(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)))(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(@smithy/signature-v4@5.4.4)(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
       '@langchain/core': 1.1.40(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
-      '@langchain/openai': 1.4.1(@langchain/core@1.1.40(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
+      '@langchain/openai': 1.4.1(@aws-sdk/credential-provider-node@3.972.44)(@langchain/core@1.1.40(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)))(@smithy/signature-v4@5.4.4)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
       binary-extensions: 2.3.0
       flat: 5.0.2
       ibm-cloud-sdk-core: 5.4.11
@@ -15167,15 +15106,16 @@ snapshots:
       - '@opentelemetry/api'
       - '@opentelemetry/exporter-trace-otlp-proto'
       - '@opentelemetry/sdk-trace-base'
+      - '@smithy/hash-node'
       - peggy
 
   '@langchain/community@1.1.27(ca1e9c9046dd3ba78971915c2f01f10e)':
     dependencies:
       '@browserbasehq/stagehand': 1.14.0(@playwright/test@1.59.1)(bufferutil@4.1.0)(deepmerge@4.3.1)(dotenv@16.6.1)(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(utf-8-validate@5.0.10)(zod@4.3.6)
       '@ibm-cloud/watsonx-ai': 1.7.11(typescript@5.9.3)
-      '@langchain/classic': 1.0.27(@langchain/core@1.1.40(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)))(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@4.104.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.4.3))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
+      '@langchain/classic': 1.0.27(@aws-sdk/credential-provider-node@3.972.44)(@langchain/core@1.1.40(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)))(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(@smithy/signature-v4@5.4.4)(openai@4.104.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.4.3))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
       '@langchain/core': 1.1.40(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
-      '@langchain/openai': 1.4.1(@langchain/core@1.1.40(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
+      '@langchain/openai': 1.4.1(@aws-sdk/credential-provider-node@3.972.44)(@langchain/core@1.1.40(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)))(@smithy/signature-v4@5.4.4)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
       binary-extensions: 2.3.0
       flat: 5.0.2
       ibm-cloud-sdk-core: 5.4.11
@@ -15222,6 +15162,7 @@ snapshots:
       - '@opentelemetry/api'
       - '@opentelemetry/exporter-trace-otlp-proto'
       - '@opentelemetry/sdk-trace-base'
+      - '@smithy/hash-node'
       - peggy
 
   '@langchain/core@1.1.40(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@4.104.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.4.3))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))':
@@ -15298,13 +15239,16 @@ snapshots:
       - svelte
       - vue
 
-  '@langchain/openai@1.4.1(@langchain/core@1.1.40(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))':
+  '@langchain/openai@1.4.1(@aws-sdk/credential-provider-node@3.972.44)(@langchain/core@1.1.40(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)))(@smithy/signature-v4@5.4.4)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))':
     dependencies:
       '@langchain/core': 1.1.40(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
       js-tiktoken: 1.0.21
-      openai: 6.38.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.4.3)
+      openai: 6.45.0(@aws-sdk/credential-provider-node@3.972.44)(@smithy/signature-v4@5.4.4)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.4.3)
       zod: 4.4.3
     transitivePeerDependencies:
+      - '@aws-sdk/credential-provider-node'
+      - '@smithy/hash-node'
+      - '@smithy/signature-v4'
       - ws
 
   '@langchain/textsplitters@1.0.1(@langchain/core@1.1.40(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)))':
@@ -15407,14 +15351,15 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@melandlabs/ai-rag@0.1.4(488f6200eb226c41626c28343d9082da)':
+  '@melandlabs/ai-rag@0.2.9(488f6200eb226c41626c28343d9082da)':
     dependencies:
       '@chroma-core/default-embed': 0.1.9
       '@huggingface/transformers': 3.8.1
       '@langchain/community': 1.1.27(ca1e9c9046dd3ba78971915c2f01f10e)
       '@langchain/core': 1.1.40(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@4.104.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.4.3))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
       '@langchain/textsplitters': 1.0.1(@langchain/core@1.1.40(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)))
-      '@melandlabs/shared': 0.1.4(react@19.2.5)
+      '@melandlabs/contracts': 0.6.0(zod@4.4.3)
+      '@melandlabs/shared': 0.4.0(react@19.2.5)
       better-sqlite3: 11.10.0
       chromadb: 3.4.3
       jszip: 3.10.1
@@ -15468,6 +15413,7 @@ snapshots:
       - '@raycast/api'
       - '@rockset/client'
       - '@smithy/eventstream-codec'
+      - '@smithy/hash-node'
       - '@smithy/protocol-http'
       - '@smithy/signature-v4'
       - '@smithy/util-utf8'
@@ -15554,14 +15500,16 @@ snapshots:
       - youtubei.js
       - zod-to-json-schema
 
-  '@melandlabs/ai@0.2.0(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))':
+  '@melandlabs/ai@0.5.5(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))':
     dependencies:
       '@agentclientprotocol/sdk': 0.22.1(zod@4.4.3)
       '@ai-sdk/anthropic': 4.0.0-beta.67(zod@4.4.3)
       '@ai-sdk/openai-compatible': 1.0.36(zod@4.4.3)
-      '@anthropic-ai/claude-agent-sdk': 0.3.228(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(zod@4.4.3)
-      '@melandlabs/memory-consolidation': 0.1.4
-      '@melandlabs/shared': 0.1.4(react@19.2.5)
+      '@anthropic-ai/claude-agent-sdk': 0.3.238(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(zod@4.4.3)
+      '@melandlabs/contracts': 0.5.0(zod@4.4.3)
+      '@melandlabs/env-config': 0.4.0
+      '@melandlabs/memory-consolidation': 0.5.0
+      '@melandlabs/shared': 0.4.0(react@19.2.5)
       '@vercel/sandbox': 1.10.0
       ai: 5.0.0-beta.6(zod@4.4.3)
       cross-spawn: 7.0.6
@@ -15577,19 +15525,79 @@ snapshots:
       - react-native-b4a
       - ws
 
-  '@melandlabs/api@0.1.4': {}
+  '@melandlabs/ai@0.7.0(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))':
+    dependencies:
+      '@agentclientprotocol/sdk': 0.22.1(zod@4.4.3)
+      '@ai-sdk/anthropic': 4.0.0-beta.67(zod@4.4.3)
+      '@ai-sdk/openai-compatible': 1.0.36(zod@4.4.3)
+      '@anthropic-ai/claude-agent-sdk': 0.3.238(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(zod@4.4.3)
+      '@melandlabs/contracts': 0.6.0(zod@4.4.3)
+      '@melandlabs/env-config': 0.4.0
+      '@melandlabs/memory-consolidation': 0.5.0
+      '@melandlabs/shared': 0.4.0(react@19.2.5)
+      '@vercel/sandbox': 1.10.0
+      ai: 5.0.0-beta.6(zod@4.4.3)
+      cross-spawn: 7.0.6
+      nanoid: 5.1.9
+      openai: 4.104.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.4.3)
+      zod: 4.4.3
+    transitivePeerDependencies:
+      - '@anthropic-ai/sdk'
+      - '@modelcontextprotocol/sdk'
+      - bare-abort-controller
+      - encoding
+      - react
+      - react-native-b4a
+      - ws
 
-  '@melandlabs/audit@0.1.4': {}
+  '@melandlabs/ai@0.8.0(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))':
+    dependencies:
+      '@agentclientprotocol/sdk': 0.22.1(zod@4.4.3)
+      '@ai-sdk/anthropic': 4.0.0-beta.67(zod@4.4.3)
+      '@ai-sdk/openai-compatible': 1.0.36(zod@4.4.3)
+      '@anthropic-ai/claude-agent-sdk': 0.3.238(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(zod@4.4.3)
+      '@melandlabs/contracts': 0.6.0(zod@4.4.3)
+      '@melandlabs/env-config': 0.4.0
+      '@melandlabs/memory-consolidation': 0.5.2
+      '@melandlabs/shared': 0.4.0(react@19.2.5)
+      '@vercel/sandbox': 1.10.0
+      ai: 5.0.0-beta.6(zod@4.4.3)
+      cross-spawn: 7.0.6
+      nanoid: 5.1.9
+      openai: 4.104.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.4.3)
+      zod: 4.4.3
+    transitivePeerDependencies:
+      - '@anthropic-ai/sdk'
+      - '@modelcontextprotocol/sdk'
+      - bare-abort-controller
+      - encoding
+      - react
+      - react-native-b4a
+      - ws
 
-  '@melandlabs/contracts@0.1.4(zod@4.3.6)':
+  '@melandlabs/api@0.3.0': {}
+
+  '@melandlabs/audit@0.3.1':
+    dependencies:
+      '@melandlabs/env-config': 0.4.0
+
+  '@melandlabs/contracts@0.5.0(zod@4.4.3)':
+    optionalDependencies:
+      zod: 4.4.3
+
+  '@melandlabs/contracts@0.6.0(zod@4.3.6)':
     optionalDependencies:
       zod: 4.3.6
 
-  '@melandlabs/cron@0.1.4':
+  '@melandlabs/contracts@0.6.0(zod@4.4.3)':
+    optionalDependencies:
+      zod: 4.4.3
+
+  '@melandlabs/cron@0.3.0':
     dependencies:
       croner: 8.1.2
 
-  '@melandlabs/db@0.1.4(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(react@19.2.5)(sswr@2.2.0(svelte@5.56.1(@typescript-eslint/types@8.59.3)))(svelte@5.56.1(@typescript-eslint/types@8.59.3))(vue@3.5.35(typescript@5.9.3))(zod@4.3.6)':
+  '@melandlabs/db@0.3.0(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(react@19.2.5)(sswr@2.2.0(svelte@5.56.1(@typescript-eslint/types@8.59.3)))(svelte@5.56.1(@typescript-eslint/types@8.59.3))(vue@3.5.35(typescript@5.9.3))(zod@4.3.6)':
     dependencies:
       ai: 3.4.33(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(react@19.2.5)(sswr@2.2.0(svelte@5.56.1(@typescript-eslint/types@8.59.3)))(svelte@5.56.1(@typescript-eslint/types@8.59.3))(vue@3.5.35(typescript@5.9.3))(zod@4.3.6)
       bcrypt-ts: 5.0.3
@@ -15602,28 +15610,38 @@ snapshots:
       - vue
       - zod
 
-  '@melandlabs/env-config@0.1.4': {}
+  '@melandlabs/env-config@0.4.0': {}
 
-  '@melandlabs/hooks@0.1.4(react@19.2.5)(swr@2.4.1(react@19.2.5))':
+  '@melandlabs/hooks@0.3.0(react@19.2.5)(swr@2.4.1(react@19.2.5))':
     optionalDependencies:
       react: 19.2.5
       swr: 2.4.1(react@19.2.5)
 
-  '@melandlabs/i18n@0.1.4': {}
+  '@melandlabs/i18n@0.3.1': {}
 
-  '@melandlabs/indexeddb@0.1.4(react@19.2.5)':
+  '@melandlabs/indexeddb@0.5.8(react@19.2.5)(zod@4.3.6)':
     dependencies:
+      '@melandlabs/contracts': 0.6.0(zod@4.3.6)
       react: 19.2.5
+    transitivePeerDependencies:
+      - zod
 
-  '@melandlabs/insights@0.1.4(react@19.2.5)':
+  '@melandlabs/indexeddb@0.5.8(react@19.2.5)(zod@4.4.3)':
+    dependencies:
+      '@melandlabs/contracts': 0.6.0(zod@4.4.3)
+      react: 19.2.5
+    transitivePeerDependencies:
+      - zod
+
+  '@melandlabs/insights@0.3.0(react@19.2.5)':
     dependencies:
       react: 19.2.5
       zod: 4.4.3
 
-  '@melandlabs/integrations-calendar@0.1.4(react@19.2.5)':
+  '@melandlabs/integrations-calendar@0.3.0(react@19.2.5)':
     dependencies:
-      '@melandlabs/integrations': 0.1.4
-      '@melandlabs/integrations-composio': 0.1.4
+      '@melandlabs/integrations': 0.3.0
+      '@melandlabs/integrations-composio': 0.3.0
       google-auth-library: 9.15.1
       googleapis: 140.0.1
       react: 19.2.5
@@ -15631,20 +15649,21 @@ snapshots:
       - encoding
       - supports-color
 
-  '@melandlabs/integrations-channels@0.1.4(react@19.2.5)':
+  '@melandlabs/integrations-channels@0.3.1(react@19.2.5)':
     dependencies:
-      '@melandlabs/shared': 0.1.4(react@19.2.5)
+      '@melandlabs/shared': 0.4.0(react@19.2.5)
       zod: 4.4.3
     transitivePeerDependencies:
       - react
 
-  '@melandlabs/integrations-composio@0.1.4': {}
+  '@melandlabs/integrations-composio@0.3.0': {}
 
-  '@melandlabs/integrations-dingtalk@0.1.5(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))':
+  '@melandlabs/integrations-dingtalk@0.3.4(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))':
     dependencies:
-      '@melandlabs/ai': 0.2.0(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
-      '@melandlabs/integrations': 0.1.4
-      '@melandlabs/integrations-channels': 0.1.4(react@19.2.5)
+      '@melandlabs/ai': 0.7.0(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
+      '@melandlabs/env-config': 0.4.0
+      '@melandlabs/integrations': 0.3.0
+      '@melandlabs/integrations-channels': 0.3.1(react@19.2.5)
     transitivePeerDependencies:
       - '@anthropic-ai/sdk'
       - '@modelcontextprotocol/sdk'
@@ -15654,25 +15673,26 @@ snapshots:
       - react-native-b4a
       - ws
 
-  '@melandlabs/integrations-facebook-messenger@0.1.4(react@19.2.5)':
+  '@melandlabs/integrations-facebook-messenger@0.3.1(react@19.2.5)':
     dependencies:
-      '@melandlabs/integrations': 0.1.4
-      '@melandlabs/integrations-channels': 0.1.4(react@19.2.5)
+      '@melandlabs/integrations': 0.3.0
+      '@melandlabs/integrations-channels': 0.3.1(react@19.2.5)
     transitivePeerDependencies:
       - react
 
-  '@melandlabs/integrations-feishu@0.1.4(bufferutil@4.1.0)(react@19.2.5)(utf-8-validate@5.0.10)':
+  '@melandlabs/integrations-feishu@0.3.2(bufferutil@4.1.0)(react@19.2.5)(utf-8-validate@5.0.10)':
     dependencies:
       '@larksuiteoapi/node-sdk': 1.61.1(bufferutil@4.1.0)(utf-8-validate@5.0.10)
-      '@melandlabs/integrations': 0.1.4
-      '@melandlabs/integrations-channels': 0.1.4(react@19.2.5)
+      '@melandlabs/env-config': 0.4.0
+      '@melandlabs/integrations': 0.3.0
+      '@melandlabs/integrations-channels': 0.3.1(react@19.2.5)
     transitivePeerDependencies:
       - bufferutil
       - debug
       - react
       - utf-8-validate
 
-  '@melandlabs/integrations-google-docs@0.1.4(react@19.2.5)':
+  '@melandlabs/integrations-google-docs@0.3.0(react@19.2.5)':
     dependencies:
       google-auth-library: 9.15.1
       googleapis: 140.0.1
@@ -15681,18 +15701,19 @@ snapshots:
       - encoding
       - supports-color
 
-  '@melandlabs/integrations-hubspot@0.1.4(react@19.2.5)':
+  '@melandlabs/integrations-hubspot@0.3.1(react@19.2.5)':
     dependencies:
-      '@melandlabs/shared': 0.1.4(react@19.2.5)
+      '@melandlabs/shared': 0.4.0(react@19.2.5)
     transitivePeerDependencies:
       - react
 
-  '@melandlabs/integrations-imessage@0.1.5(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))':
+  '@melandlabs/integrations-imessage@0.3.5(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))':
     dependencies:
-      '@melandlabs/ai': 0.2.0(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
-      '@melandlabs/integrations': 0.1.4
-      '@melandlabs/integrations-channels': 0.1.4(react@19.2.5)
-      '@melandlabs/shared': 0.1.4(react@19.2.5)
+      '@melandlabs/ai': 0.5.5(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
+      '@melandlabs/env-config': 0.4.0
+      '@melandlabs/integrations': 0.3.0
+      '@melandlabs/integrations-channels': 0.3.1(react@19.2.5)
+      '@melandlabs/shared': 0.4.0(react@19.2.5)
       '@photon-ai/imessage-kit': 2.1.2
     transitivePeerDependencies:
       - '@anthropic-ai/sdk'
@@ -15703,33 +15724,34 @@ snapshots:
       - react-native-b4a
       - ws
 
-  '@melandlabs/integrations-instagram@0.1.4(react@19.2.5)':
+  '@melandlabs/integrations-instagram@0.3.1(react@19.2.5)':
     dependencies:
-      '@melandlabs/integrations': 0.1.4
-      '@melandlabs/integrations-channels': 0.1.4(react@19.2.5)
-      '@melandlabs/shared': 0.1.4(react@19.2.5)
+      '@melandlabs/integrations': 0.3.0
+      '@melandlabs/integrations-channels': 0.3.1(react@19.2.5)
+      '@melandlabs/shared': 0.4.0(react@19.2.5)
     transitivePeerDependencies:
       - react
 
-  '@melandlabs/integrations-jira@0.1.4(react@19.2.5)':
+  '@melandlabs/integrations-jira@0.2.3(react@19.2.5)':
     dependencies:
-      '@melandlabs/shared': 0.1.4(react@19.2.5)
+      '@melandlabs/shared': 0.4.0(react@19.2.5)
     transitivePeerDependencies:
       - react
 
-  '@melandlabs/integrations-linkedin@0.1.4(react@19.2.5)':
+  '@melandlabs/integrations-linkedin@0.3.1(react@19.2.5)':
     dependencies:
-      '@melandlabs/integrations': 0.1.4
-      '@melandlabs/integrations-channels': 0.1.4(react@19.2.5)
-      '@melandlabs/shared': 0.1.4(react@19.2.5)
+      '@melandlabs/integrations': 0.3.0
+      '@melandlabs/integrations-channels': 0.3.1(react@19.2.5)
+      '@melandlabs/shared': 0.4.0(react@19.2.5)
     transitivePeerDependencies:
       - react
 
-  '@melandlabs/integrations-qqbot@0.1.5(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))':
+  '@melandlabs/integrations-qqbot@0.3.4(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))':
     dependencies:
-      '@melandlabs/ai': 0.2.0(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
-      '@melandlabs/integrations': 0.1.4
-      '@melandlabs/integrations-channels': 0.1.4(react@19.2.5)
+      '@melandlabs/ai': 0.7.0(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
+      '@melandlabs/env-config': 0.4.0
+      '@melandlabs/integrations': 0.3.0
+      '@melandlabs/integrations-channels': 0.3.1(react@19.2.5)
     transitivePeerDependencies:
       - '@anthropic-ai/sdk'
       - '@modelcontextprotocol/sdk'
@@ -15739,20 +15761,21 @@ snapshots:
       - react-native-b4a
       - ws
 
-  '@melandlabs/integrations-runtime@0.1.4(typescript@5.9.3)(zod@4.3.6)':
+  '@melandlabs/integrations-runtime@0.3.3(typescript@5.9.3)(zod@4.3.6)':
     dependencies:
-      '@melandlabs/contracts': 0.1.4(zod@4.3.6)
+      '@melandlabs/contracts': 0.6.0(zod@4.3.6)
       i18next: 26.3.6(typescript@5.9.3)
     transitivePeerDependencies:
       - typescript
       - zod
 
-  '@melandlabs/integrations-telegram@0.1.5(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))':
+  '@melandlabs/integrations-telegram@0.3.4(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))':
     dependencies:
-      '@melandlabs/ai': 0.2.0(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
-      '@melandlabs/integrations': 0.1.4
-      '@melandlabs/integrations-channels': 0.1.4(react@19.2.5)
-      '@melandlabs/shared': 0.1.4(react@19.2.5)
+      '@melandlabs/ai': 0.7.0(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
+      '@melandlabs/env-config': 0.4.0
+      '@melandlabs/integrations': 0.3.0
+      '@melandlabs/integrations-channels': 0.3.1(react@19.2.5)
+      '@melandlabs/shared': 0.4.0(react@19.2.5)
       big-integer: 1.6.52
       markdown-it: 14.1.1
       telegram: 2.26.22
@@ -15766,11 +15789,12 @@ snapshots:
       - supports-color
       - ws
 
-  '@melandlabs/integrations-weixin@0.1.5(patch_hash=381398d760c8f517be81967c3dd93bbeae1d6f84161c213fdc4e6b630902aea3)(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(openclaw@2026.7.1(@aws-sdk/credential-provider-node@3.972.44)(@cfworker/json-schema@4.1.1)(@opentelemetry/api@1.9.1)(@smithy/signature-v4@5.4.4)(bufferutil@4.1.0)(utf-8-validate@5.0.10))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))':
+  '@melandlabs/integrations-weixin@0.3.6(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(openclaw@2026.7.1(@aws-sdk/credential-provider-node@3.972.44)(@cfworker/json-schema@4.1.1)(@opentelemetry/api@1.9.1)(@smithy/signature-v4@5.4.4)(bufferutil@4.1.0)(utf-8-validate@5.0.10))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))':
     dependencies:
-      '@melandlabs/ai': 0.2.0(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
-      '@melandlabs/integrations': 0.1.4
-      '@melandlabs/integrations-channels': 0.1.4(react@19.2.5)
+      '@melandlabs/ai': 0.8.0(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
+      '@melandlabs/env-config': 0.4.0
+      '@melandlabs/integrations': 0.3.0
+      '@melandlabs/integrations-channels': 0.3.1(react@19.2.5)
       '@tencent-weixin/openclaw-weixin': 2.4.6(openclaw@2026.7.1(@aws-sdk/credential-provider-node@3.972.44)(@cfworker/json-schema@4.1.1)(@opentelemetry/api@1.9.1)(@smithy/signature-v4@5.4.4)(bufferutil@4.1.0)(utf-8-validate@5.0.10))
     transitivePeerDependencies:
       - '@anthropic-ai/sdk'
@@ -15782,11 +15806,12 @@ snapshots:
       - react-native-b4a
       - ws
 
-  '@melandlabs/integrations-whatsapp@0.1.5(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(bufferutil@4.1.0)(jimp@1.6.1)(link-preview-js@4.0.0)(react@19.2.5)(sharp@0.34.5)(utf-8-validate@5.0.10)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))':
+  '@melandlabs/integrations-whatsapp@0.3.4(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(bufferutil@4.1.0)(jimp@1.6.1)(link-preview-js@4.0.0)(react@19.2.5)(sharp@0.34.5)(utf-8-validate@5.0.10)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))':
     dependencies:
-      '@melandlabs/ai': 0.2.0(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
-      '@melandlabs/integrations': 0.1.4
-      '@melandlabs/integrations-channels': 0.1.4(react@19.2.5)
+      '@melandlabs/ai': 0.7.0(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
+      '@melandlabs/env-config': 0.4.0
+      '@melandlabs/integrations': 0.3.0
+      '@melandlabs/integrations-channels': 0.3.1(react@19.2.5)
       '@whiskeysockets/baileys': 7.0.0-rc.9(bufferutil@4.1.0)(jimp@1.6.1)(link-preview-js@4.0.0)(sharp@0.34.5)(utf-8-validate@5.0.10)
     transitivePeerDependencies:
       - '@anthropic-ai/sdk'
@@ -15804,46 +15829,56 @@ snapshots:
       - utf-8-validate
       - ws
 
-  '@melandlabs/integrations-x@0.1.4(node-fetch@3.3.2)(react@19.2.5)':
+  '@melandlabs/integrations-x@0.3.1(node-fetch@3.3.2)(react@19.2.5)':
     dependencies:
-      '@melandlabs/integrations': 0.1.4
-      '@melandlabs/integrations-channels': 0.1.4(react@19.2.5)
-      '@melandlabs/shared': 0.1.4(react@19.2.5)
+      '@melandlabs/integrations': 0.3.0
+      '@melandlabs/integrations-channels': 0.3.1(react@19.2.5)
+      '@melandlabs/shared': 0.4.0(react@19.2.5)
       '@xdevplatform/xdk': 0.5.0(node-fetch@3.3.2)
     transitivePeerDependencies:
       - node-fetch
       - react
 
-  '@melandlabs/integrations@0.1.4':
+  '@melandlabs/integrations@0.3.0':
     dependencies:
       sanitize-html: 2.17.6
       turndown: 7.2.4
 
-  '@melandlabs/loop@0.1.4': {}
-
-  '@melandlabs/mcp@0.1.4(@cfworker/json-schema@4.1.1)':
+  '@melandlabs/loop@0.3.1':
     dependencies:
+      '@melandlabs/env-config': 0.4.0
+
+  '@melandlabs/mcp@0.3.1(@cfworker/json-schema@4.1.1)':
+    dependencies:
+      '@melandlabs/env-config': 0.4.0
       '@modelcontextprotocol/sdk': 1.29.0(@cfworker/json-schema@4.1.1)(zod@4.4.3)
       zod: 4.4.3
     transitivePeerDependencies:
       - '@cfworker/json-schema'
       - supports-color
 
-  '@melandlabs/memory-consolidation@0.1.4': {}
+  '@melandlabs/memory-consolidation@0.5.0': {}
 
-  '@melandlabs/memory-store@0.1.6(d0086e41d8b84927648179e8984d5331)':
+  '@melandlabs/memory-consolidation@0.5.2': {}
+
+  '@melandlabs/memory-store@1.1.1(65cb3c444a68a4e1a83c7371e1ebc120)':
     dependencies:
       '@hono/node-server': 1.19.14(hono@4.12.14)
-      '@melandlabs/ai': 0.2.0(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
-      '@melandlabs/rag': 0.1.5(7e90db42c6ad99cc52e6ea96e43d13a0)
-      '@melandlabs/shared': 0.1.4(react@19.2.5)
-      '@melandlabs/sqlite': 0.1.4(react@19.2.5)
+      '@melandlabs/ai': 0.7.0(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
+      '@melandlabs/contracts': 0.6.0(zod@4.4.3)
+      '@melandlabs/env-config': 0.4.0
+      '@melandlabs/memory-consolidation': 0.5.0
+      '@melandlabs/okf': 0.2.0(@melandlabs/indexeddb@0.5.8(react@19.2.5)(zod@4.3.6))(hono@4.12.14)(zod@4.4.3)
+      '@melandlabs/rag': 0.3.0(7e90db42c6ad99cc52e6ea96e43d13a0)
+      '@melandlabs/shared': 0.4.0(react@19.2.5)
+      '@melandlabs/sqlite': 0.5.1(react@19.2.5)(zod@4.4.3)
+      '@melandlabs/vsa': 0.3.0
       '@modelcontextprotocol/sdk': 1.29.0(@cfworker/json-schema@4.1.1)(zod@4.4.3)
       hono: 4.12.14
       zod: 4.4.3
     optionalDependencies:
-      '@melandlabs/ai-rag': 0.1.4(488f6200eb226c41626c28343d9082da)
-      '@melandlabs/indexeddb': 0.1.4(react@19.2.5)
+      '@melandlabs/ai-rag': 0.2.9(488f6200eb226c41626c28343d9082da)
+      '@melandlabs/indexeddb': 0.5.8(react@19.2.5)(zod@4.3.6)
     transitivePeerDependencies:
       - '@anthropic-ai/sdk'
       - '@arcjet/redact'
@@ -15897,6 +15932,7 @@ snapshots:
       - '@raycast/api'
       - '@rockset/client'
       - '@smithy/eventstream-codec'
+      - '@smithy/hash-node'
       - '@smithy/protocol-http'
       - '@smithy/signature-v4'
       - '@smithy/util-utf8'
@@ -16000,12 +16036,21 @@ snapshots:
       - youtubei.js
       - zod-to-json-schema
 
-  '@melandlabs/rag@0.1.5(7e90db42c6ad99cc52e6ea96e43d13a0)':
+  '@melandlabs/okf@0.2.0(@melandlabs/indexeddb@0.5.8(react@19.2.5)(zod@4.3.6))(hono@4.12.14)(zod@4.4.3)':
+    dependencies:
+      '@melandlabs/contracts': 0.6.0(zod@4.4.3)
+      yaml: 2.9.0
+      zod: 4.4.3
+    optionalDependencies:
+      '@melandlabs/indexeddb': 0.5.8(react@19.2.5)(zod@4.3.6)
+      hono: 4.12.14
+
+  '@melandlabs/rag@0.3.0(7e90db42c6ad99cc52e6ea96e43d13a0)':
     dependencies:
       '@langchain/community': 1.1.27(ca1e9c9046dd3ba78971915c2f01f10e)
       '@langchain/core': 1.1.40(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@4.104.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.4.3))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
       '@langchain/textsplitters': 1.0.1(@langchain/core@1.1.40(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)))
-      '@melandlabs/shared': 0.1.4(react@19.2.5)
+      '@melandlabs/shared': 0.4.0(react@19.2.5)
       better-sqlite3: 11.10.0
       drizzle-orm: 0.44.7(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(@types/pg@8.20.0)(@vercel/postgres@0.10.0(utf-8-validate@5.0.10))(better-sqlite3@11.10.0)(kysely@0.29.2)(pg@8.20.0)(postgres@3.4.9)
       jszip: 3.10.1
@@ -16044,7 +16089,6 @@ snapshots:
       - '@huggingface/inference'
       - '@huggingface/transformers'
       - '@ibm-cloud/watsonx-ai'
-      - '@lancedb/lancedb'
       - '@layerup/layerup-security'
       - '@libsql/client'
       - '@libsql/client-wasm'
@@ -16066,6 +16110,7 @@ snapshots:
       - '@raycast/api'
       - '@rockset/client'
       - '@smithy/eventstream-codec'
+      - '@smithy/hash-node'
       - '@smithy/protocol-http'
       - '@smithy/signature-v4'
       - '@smithy/util-utf8'
@@ -16085,7 +16130,6 @@ snapshots:
       - '@writerai/writer-sdk'
       - '@xata.io/client'
       - '@xenova/transformers'
-      - '@zilliz/milvus2-sdk-node'
       - apify-client
       - assemblyai
       - azion
@@ -16166,48 +16210,62 @@ snapshots:
       - youtubei.js
       - zod-to-json-schema
 
-  '@melandlabs/rss@0.1.4(react@19.2.5)':
+  '@melandlabs/rss@0.3.0(react@19.2.5)':
     dependencies:
       fast-xml-parser: 4.5.6
       react: 19.2.5
       zod: 4.4.3
 
-  '@melandlabs/search@0.1.4': {}
+  '@melandlabs/search@0.3.1': {}
 
-  '@melandlabs/security@0.1.4':
+  '@melandlabs/security@0.3.0':
     dependencies:
       fernet: 0.4.0
 
-  '@melandlabs/shared@0.1.4(react@19.2.5)':
+  '@melandlabs/shared@0.4.0(react@19.2.5)':
     dependencies:
-      '@melandlabs/ui-runtime': 0.1.4
+      '@melandlabs/ui-runtime': 0.3.0
       clsx: 2.1.1
       date-fns: 4.1.0
       react: 19.2.5
       tailwind-merge: 2.6.1
       zod: 4.4.3
 
-  '@melandlabs/sqlite@0.1.4(react@19.2.5)':
+  '@melandlabs/sqlite@0.5.1(react@19.2.5)(zod@4.3.6)':
     dependencies:
-      '@melandlabs/indexeddb': 0.1.4(react@19.2.5)
+      '@melandlabs/contracts': 0.6.0(zod@4.3.6)
+      '@melandlabs/indexeddb': 0.5.8(react@19.2.5)(zod@4.3.6)
       better-sqlite3: 11.10.0
       sqlite-vec: 0.1.9
     transitivePeerDependencies:
       - react
+      - zod
 
-  '@melandlabs/storage@0.1.4':
+  '@melandlabs/sqlite@0.5.1(react@19.2.5)(zod@4.4.3)':
+    dependencies:
+      '@melandlabs/contracts': 0.6.0(zod@4.4.3)
+      '@melandlabs/indexeddb': 0.5.8(react@19.2.5)(zod@4.4.3)
+      better-sqlite3: 11.10.0
+      sqlite-vec: 0.1.9
+    transitivePeerDependencies:
+      - react
+      - zod
+
+  '@melandlabs/storage@0.3.0':
     dependencies:
       '@vercel/blob': 0.27.3
 
-  '@melandlabs/ui-runtime@0.1.4':
+  '@melandlabs/ui-runtime@0.3.0':
     dependencies:
       '@tauri-apps/api': 2.11.0
       '@tauri-apps/plugin-dialog': 2.7.1
       '@tauri-apps/plugin-fs': 2.5.1
 
-  '@melandlabs/voice-kokoro@0.1.4': {}
+  '@melandlabs/voice-kokoro@0.3.0': {}
 
-  '@melandlabs/voice-whisper@0.1.4': {}
+  '@melandlabs/voice-whisper@0.3.0': {}
+
+  '@melandlabs/vsa@0.3.0': {}
 
   '@mistralai/mistralai@2.4.0(@opentelemetry/api@1.9.1)(bufferutil@4.1.0)(utf-8-validate@5.0.10)':
     dependencies:
@@ -23714,7 +23772,7 @@ snapshots:
     dependencies:
       global-agent: 3.0.0
       onnxruntime-common: 1.21.0
-      tar: 7.5.15
+      tar: 7.5.19
 
   onnxruntime-web@1.22.0-dev.20250409-89f8206ba4:
     dependencies:
@@ -23766,8 +23824,10 @@ snapshots:
       ws: 8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)
       zod: 4.3.6
 
-  openai@6.38.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.4.3):
+  openai@6.45.0(@aws-sdk/credential-provider-node@3.972.44)(@smithy/signature-v4@5.4.4)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.4.3):
     optionalDependencies:
+      '@aws-sdk/credential-provider-node': 3.972.44
+      '@smithy/signature-v4': 5.4.4
       ws: 8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)
       zod: 4.4.3
 
@@ -25739,14 +25799,6 @@ snapshots:
       - bare-buffer
       - react-native-b4a
 
-  tar@7.5.15:
-    dependencies:
-      '@isaacs/fs-minipass': 4.0.1
-      chownr: 3.0.0
-      minipass: 7.1.3
-      minizlib: 3.1.0
-      yallist: 5.0.0
-
   tar@7.5.19:
     dependencies:
       '@isaacs/fs-minipass': 4.0.1
@@ -26527,11 +26579,6 @@ snapshots:
       utf-8-validate: 5.0.10
 
   ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10):
-    optionalDependencies:
-      bufferutil: 4.1.0
-      utf-8-validate: 5.0.10
-
-  ws@8.20.1(bufferutil@4.1.0)(utf-8-validate@5.0.10):
     optionalDependencies:
       bufferutil: 4.1.0
       utf-8-validate: 5.0.10

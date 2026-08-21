@@ -478,6 +478,26 @@ export class GoalController {
         },
       ],
       reason: input.evaluation.reason,
+      // Pass the goal's remaining execution budget through. Schema invariants
+      // require the goal to define at least one of these, so at least one
+      // value is always non-zero here. Drop the deadline if it has already
+      // passed (the runtime schema rejects a continuation whose deadline is
+      // earlier than its issuedAt).
+      remainingBudget: {
+        ...(input.goal.maxTurns !== undefined && {
+          turns: input.goal.maxTurns,
+        }),
+        ...(input.goal.maxTokens !== undefined && {
+          tokens: input.goal.maxTokens,
+        }),
+        ...(input.goal.maxDurationSeconds !== undefined && {
+          durationSeconds: input.goal.maxDurationSeconds,
+        }),
+        ...(input.goal.deadline !== undefined &&
+          Date.parse(input.goal.deadline) > input.now.getTime() && {
+            deadline: input.goal.deadline,
+          }),
+      },
     };
     const idempotencyKey = `goal-eval:${input.evaluationKey}`;
     const command: GoalCommandIdentity = {

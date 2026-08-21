@@ -16,14 +16,16 @@ export default defineConfig({
         find: "@openloomi/ui/*",
         replacement: alias("./components/ui/*"),
       },
-      // Goal Runtime extensions stay local until the published package catches up.
+      // Goal Runtime: route @openloomi/ai/agent through the published
+      // @melandlabs/ai package (matching tsconfig.json). Tests and
+      // typecheck now share the same resolved module path.
       {
         find: /^@openloomi\/ai\/agent\/(.+)$/,
-        replacement: `${alias("../../packages/ai/src/agent")}/$1`,
+        replacement: `${alias("./node_modules/@melandlabs/ai/dist/agent")}/$1`,
       },
       {
         find: "@openloomi/ai/agent",
-        replacement: alias("../../packages/ai/src/agent/index.ts"),
+        replacement: alias("./node_modules/@melandlabs/ai/dist/agent/index.js"),
       },
       { find: "@", replacement: alias(".") },
     ],
