@@ -286,6 +286,7 @@ async function analyzeScreenshotWithMessagesAPI(params: {
   const provider: LlmProvider | undefined = await resolveLlmProvider({
     userId,
     prefer: "anthropic_messages",
+    endpoint: "chronicle-analyze",
   });
   if (!provider) {
     throw classifyUpstreamError(

@@ -20,6 +20,12 @@ import {
   type InsightTaskItem,
 } from "@/lib/db/schema";
 import { extractJsonFromMarkdown } from "@melandlabs/ai";
+import {
+  getActiveLlmProviderConfig,
+  setActiveLlmProviderConfig,
+} from "@/lib/ai/provider-model";
+import { getActiveUserLlmProviderConfig } from "@/lib/ai/user-llm-api-settings";
+import { recordUsage } from "@/lib/llm-usage/recorder";
 import type { GeneratedInsightPayload } from "@/lib/insights/types";
 import {
   getInsightCompactionPlatform,
@@ -476,6 +482,17 @@ Return one JSON object only.`;
     ],
     maxRetries: 2,
   });
+  if (response.usage) {
+    const provider = getActiveLlmProviderConfig();
+    await recordUsage({
+      userId: input.userId,
+      providerType: provider?.providerId ?? "unknown",
+      model: provider?.model ?? null,
+      endpoint: "insight-compaction-score",
+      inputTokens: response.usage.inputTokens ?? 0,
+      outputTokens: response.usage.outputTokens ?? 0,
+    });
+  }
 
   const raw = extractJsonFromMarkdown(response.text) ?? response.text;
   const parsed = JSON.parse(jsonrepair(raw));
@@ -1022,6 +1039,17 @@ Return one JSON object only.`;
     messages,
     maxRetries: 2,
   });
+  if (response.usage) {
+    const provider = getActiveLlmProviderConfig();
+    await recordUsage({
+      userId: input.userId,
+      providerType: provider?.providerId ?? "unknown",
+      model: provider?.model ?? null,
+      endpoint: "insight-compaction-generate",
+      inputTokens: response.usage.inputTokens ?? 0,
+      outputTokens: response.usage.outputTokens ?? 0,
+    });
+  }
 
   const raw = extractJsonFromMarkdown(response.text) ?? response.text;
   const repaired = jsonrepair(raw);
@@ -1079,6 +1107,9 @@ export async function previewInsightCompaction(
 
   try {
     if (userContext) {
+      setActiveLlmProviderConfig(
+        (await getActiveUserLlmProviderConfig(input.userId)) ?? null,
+      );
       setAIUserContext({
         id: userContext.id,
         email: userContext.email,
@@ -1210,6 +1241,9 @@ export async function runInsightCompaction(
 
   try {
     if (userContext) {
+      setActiveLlmProviderConfig(
+        (await getActiveUserLlmProviderConfig(input.userId)) ?? null,
+      );
       setAIUserContext({
         id: userContext.id,
         email: userContext.email,

@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { hasUsableConversationApiConfiguration } from "@/lib/ai/conversation-api-configuration";
+import {
+  hasUsableConversationApiConfiguration,
+  type ConversationApiSettingsResponse,
+} from "@/lib/ai/conversation-api-configuration";
 
 function createResponse(
   overrides: {
@@ -12,7 +15,7 @@ function createResponse(
     defaultAgent?: string;
     nativeRuntimeAuthenticated?: boolean;
   } = {},
-) {
+): ConversationApiSettingsResponse {
   return {
     settings: [
       {
@@ -72,7 +75,7 @@ describe("conversation API configuration", () => {
     ).toBe(false);
   });
 
-  it("does not treat an OpenAI-compatible provider as chat configuration", () => {
+  it("accepts an OpenAI-compatible provider as chat configuration", () => {
     const response = createResponse();
     response.settings = [
       {
@@ -84,7 +87,35 @@ describe("conversation API configuration", () => {
       },
     ];
 
-    expect(hasUsableConversationApiConfiguration(response)).toBe(false);
+    expect(hasUsableConversationApiConfiguration(response)).toBe(true);
+  });
+
+  it("accepts keyless Ollama and AWS Bedrock configurations", () => {
+    const response = createResponse();
+    response.settings = [
+      {
+        providerId: "ollama",
+        providerType: "openai_compatible",
+        enabled: true,
+        hasApiKey: false,
+        baseUrl: "http://localhost:11434/v1",
+        model: "llama3.2",
+      },
+    ];
+    expect(hasUsableConversationApiConfiguration(response)).toBe(true);
+
+    response.settings = [
+      {
+        providerId: "bedrock",
+        providerType: "bedrock",
+        enabled: true,
+        hasApiKey: false,
+        baseUrl: null,
+        model: "us.amazon.nova-lite-v1:0",
+        region: "us-east-1",
+      },
+    ];
+    expect(hasUsableConversationApiConfiguration(response)).toBe(true);
   });
 
   it("accepts an authenticated native Claude CLI runtime", () => {
@@ -126,7 +157,7 @@ describe("conversation API configuration", () => {
     ).toBe(true);
   });
 
-  it("still requires an Anthropic key when defaultAgent is claude", () => {
+  it("still requires a configured provider when defaultAgent is claude", () => {
     expect(
       hasUsableConversationApiConfiguration(
         createResponse({ defaultAgent: "claude" }),

@@ -1,9 +1,6 @@
 import { auth } from "@/app/(auth)/auth";
 import { AppError } from "@melandlabs/shared/errors";
-import { generateText } from "ai";
-import { getModel } from "@/lib/ai";
-import { setAIUserContextFromRequest } from "@/lib/ai/request-context";
-import { isTauriMode } from "@/lib/env";
+import { resolveLlmProvider } from "@/lib/ai/provider-resolver";
 
 /**
  * POST /api/ai/translate
@@ -21,15 +18,6 @@ export async function POST(request: Request) {
     // Parse request body
     const body = await request.json();
 
-    // Set AI user context with cloud auth token for proper billing in proxy mode
-    await setAIUserContextFromRequest({
-      userId: session.user.id,
-      email: session.user.email || "",
-      name: session.user.name || null,
-      userType: session.user.type,
-      request,
-      body,
-    });
     const { draft, targetLanguage } = body as {
       draft?: string;
       targetLanguage?: string;
@@ -67,12 +55,13 @@ Provide only the translation without any explanations or preamble.`;
       targetLanguage,
     });
 
-    // Call AI to translate
-    const { text } = await generateText({
-      model: getModel(isTauriMode()),
-      prompt,
-      temperature: 0.3,
+    const provider = await resolveLlmProvider({
+      userId: session.user.id,
+      prefer: "chat_completions",
+      endpoint: "translate",
     });
+    if (!provider) throw new Error("No AI provider configured");
+    const { text } = await provider.complete({ userContent: prompt });
 
     console.log("[Translate API] Translated text length:", text.length);
 

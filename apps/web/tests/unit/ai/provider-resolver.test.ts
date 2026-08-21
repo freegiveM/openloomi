@@ -2,10 +2,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const ORIGINAL_ENV = { ...process.env };
 
-const getUserLlmProviderConfigMock = vi.fn();
+const getActiveUserLlmProviderConfigMock = vi.fn();
 
 vi.mock("@/lib/ai/user-llm-api-settings", () => ({
-  getUserLlmProviderConfig: getUserLlmProviderConfigMock,
+  getActiveUserLlmProviderConfig: getActiveUserLlmProviderConfigMock,
+}));
+
+const recordUsageMock = vi.fn();
+vi.mock("@/lib/llm-usage/recorder", () => ({
+  recordUsage: recordUsageMock,
 }));
 
 const registerProvidersMock = vi.fn();
@@ -42,6 +47,8 @@ describe("resolveLlmProvider", () => {
     vi.clearAllMocks();
     resolveNativeAgentProviderRequestMock.mockReset();
     createAgentMock.mockReset();
+    getActiveUserLlmProviderConfigMock.mockReset();
+    recordUsageMock.mockReset().mockResolvedValue(true);
     process.env = { ...ORIGINAL_ENV };
     process.env.OPENLOOMI_AGENT_PROVIDER = undefined;
   });
@@ -51,9 +58,11 @@ describe("resolveLlmProvider", () => {
   });
 
   it("returns the HTTP Anthropic provider when the user has an anthropic_compatible row", async () => {
-    getUserLlmProviderConfigMock.mockResolvedValueOnce({
+    getActiveUserLlmProviderConfigMock.mockResolvedValueOnce({
+      providerId: "anthropic_compatible",
+      providerType: "anthropic_compatible",
       apiKey: "sk-test",
-      baseUrl: "https://api.example.com",
+      baseUrl: "https://api.example.com/v1",
       model: "claude-sonnet-4-6",
     });
     const resolve = await loadResolver();
@@ -64,16 +73,15 @@ describe("resolveLlmProvider", () => {
     expect(provider).toBeDefined();
     expect(provider?.flavor).toBe("anthropic_http");
     expect(provider?.model).toBe("claude-sonnet-4-6");
-    expect(getUserLlmProviderConfigMock).toHaveBeenCalledWith({
-      userId: "user-1",
-      providerType: "anthropic_compatible",
-    });
+    expect(getActiveUserLlmProviderConfigMock).toHaveBeenCalledWith("user-1");
   });
 
   it("returns the HTTP OpenAI provider when the user has an openai_compatible row", async () => {
-    getUserLlmProviderConfigMock.mockResolvedValueOnce({
+    getActiveUserLlmProviderConfigMock.mockResolvedValueOnce({
+      providerId: "openai_compatible",
+      providerType: "openai_compatible",
       apiKey: "sk-test",
-      baseUrl: "https://api.openai.com",
+      baseUrl: "https://api.openai.com/v1",
       model: "gpt-4o",
     });
     const resolve = await loadResolver();
@@ -87,7 +95,7 @@ describe("resolveLlmProvider", () => {
   });
 
   it("falls back to the agent runtime when no HTTP provider is configured", async () => {
-    getUserLlmProviderConfigMock.mockResolvedValueOnce(undefined);
+    getActiveUserLlmProviderConfigMock.mockResolvedValueOnce(undefined);
     process.env.OPENLOOMI_AGENT_PROVIDER = "codex";
     resolveNativeAgentProviderRequestMock.mockReturnValue({
       provider: "codex",
@@ -126,7 +134,7 @@ describe("resolveLlmProvider", () => {
   });
 
   it("returns undefined when neither HTTP nor a non-claude agent runtime is configured", async () => {
-    getUserLlmProviderConfigMock.mockResolvedValueOnce(undefined);
+    getActiveUserLlmProviderConfigMock.mockResolvedValueOnce(undefined);
     process.env.OPENLOOMI_AGENT_PROVIDER = "claude";
     resolveNativeAgentProviderRequestMock.mockReturnValueOnce({
       provider: "claude",
@@ -147,6 +155,88 @@ describe("resolveLlmProvider", () => {
       prefer: "chat_completions",
     });
     expect(provider).toBeUndefined();
-    expect(getUserLlmProviderConfigMock).not.toHaveBeenCalled();
+    expect(getActiveUserLlmProviderConfigMock).toHaveBeenCalledWith(undefined);
+  });
+
+  it("routes Gemini through the OpenAI-compatible transport", async () => {
+    getActiveUserLlmProviderConfigMock.mockResolvedValueOnce({
+      providerId: "gemini",
+      providerType: "openai_compatible",
+      apiKey: "gemini-key",
+      baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
+      model: "gemini-2.5-flash",
+    });
+    const resolve = await loadResolver();
+    const provider = await resolve({
+      userId: "user-1",
+      prefer: "anthropic_messages",
+    });
+
+    expect(provider).toMatchObject({
+      providerId: "gemini",
+      flavor: "openai_http",
+      model: "gemini-2.5-flash",
+    });
+  });
+
+  it("records authoritative Gemini usage under the provider identity", async () => {
+    getActiveUserLlmProviderConfigMock.mockResolvedValueOnce({
+      providerId: "gemini",
+      providerType: "openai_compatible",
+      apiKey: "gemini-key",
+      baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
+      model: "gemini-2.5-flash",
+    });
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          choices: [{ message: { content: "hello" } }],
+          usage: { prompt_tokens: 11, completion_tokens: 7 },
+        }),
+        { status: 200 },
+      ),
+    );
+    const resolve = await loadResolver();
+    const provider = await resolve({
+      userId: "user-1",
+      prefer: "chat_completions",
+      endpoint: "translate",
+    });
+    const result = await provider?.complete({ userContent: "hi" });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+      expect.any(Object),
+    );
+    expect(result?.usage).toEqual({ inputTokens: 11, outputTokens: 7 });
+    expect(recordUsageMock).toHaveBeenCalledWith({
+      userId: "user-1",
+      providerType: "gemini",
+      model: "gemini-2.5-flash",
+      endpoint: "translate",
+      inputTokens: 11,
+      outputTokens: 7,
+    });
+    fetchMock.mockRestore();
+  });
+
+  it("routes AWS Bedrock through the Converse adapter", async () => {
+    getActiveUserLlmProviderConfigMock.mockResolvedValueOnce({
+      providerId: "bedrock",
+      providerType: "bedrock",
+      model: "us.amazon.nova-lite-v1:0",
+      region: "us-east-1",
+    });
+    const resolve = await loadResolver();
+    const provider = await resolve({
+      userId: "user-1",
+      prefer: "chat_completions",
+    });
+
+    expect(provider).toMatchObject({
+      providerId: "bedrock",
+      flavor: "bedrock",
+      model: "us.amazon.nova-lite-v1:0",
+    });
   });
 });

@@ -6,8 +6,8 @@
  * fetches `/api/ai/v1/messages` or `/api/ai/v1/chat/completions` directly.
  *
  * Resolution order (see {@link resolveLlmProvider}):
- *   1. User-configured `anthropic_compatible` / `openai_compatible` row
- *      that matches the call site's `prefer` — returns an HTTP provider.
+ *   1. The user's enabled provider, or the environment-selected provider.
+ *      Provider identity chooses its HTTP or Bedrock adapter.
  *   2. The configured agent runtime (`OPENLOOMI_AGENT_PROVIDER`) — returns
  *      an {@link AgentRuntimeProvider} that shells out to the matching CLI.
  *   3. `undefined` — caller surfaces a config error to the user.
@@ -26,8 +26,14 @@ import type {
   AgentOptions,
   AgentProvider,
 } from "@melandlabs/ai/agent";
+import { generateText, type UserContent } from "ai";
 
 import { nativeAgentHost } from "./native-agent/host";
+import {
+  buildAnthropicMessagesUrl,
+  buildOpenAiChatCompletionsUrl,
+} from "./llm-providers";
+import { createLlmLanguageModel } from "./provider-model";
 import { resolveNativeAgentProviderRequest } from "./native-agent/provider-env";
 import type {
   LlmCompleteRequest,
@@ -36,8 +42,9 @@ import type {
   LlmProvider,
   ProviderKind,
 } from "./provider";
+import { recordUsage } from "../llm-usage/recorder";
 import {
-  getUserLlmProviderConfig,
+  getActiveUserLlmProviderConfig,
   type UserLlmProviderConfig,
 } from "./user-llm-api-settings";
 
@@ -46,38 +53,32 @@ const DEFAULT_TIMEOUT_MS = 120_000;
 /**
  * Resolve the LLM provider for a call site.
  *
- * `prefer` controls which HTTP provider wins in step 1. Call sites that
- * primarily talk Anthropic Messages (`/api/ai/v1/messages`, Chronicle
- * analyze) pass `"anthropic_messages"`. Chat-style call sites that talk
- * OpenAI Chat Completions (`/api/ai/v1/chat/completions`) pass
- * `"chat_completions"`. Either way, step 2 falls back to the agent runtime
- * — so a user who only has `OPENLOOMI_AGENT_PROVIDER=codex` set still gets a
- * working provider for both call sites.
+ * `prefer` documents the caller's external API shape. The active provider is
+ * not changed by that shape; adapters normalize the request and response.
  */
 export async function resolveLlmProvider({
   userId,
-  prefer,
+  prefer: _prefer,
+  endpoint,
 }: {
   userId?: string;
   prefer: ProviderKind;
+  endpoint?: string;
 }): Promise<LlmProvider | undefined> {
-  // Step 1: user-configured HTTP provider.
-  if (userId) {
-    const providerType =
-      prefer === "anthropic_messages"
-        ? "anthropic_compatible"
-        : "openai_compatible";
-
-    const httpConfig = await getUserLlmProviderConfig({
-      userId,
-      providerType,
-    });
-
-    if (httpConfig) {
-      return prefer === "anthropic_messages"
-        ? new AnthropicMessagesHttpProvider(httpConfig)
-        : new OpenAIChatHttpProvider(httpConfig);
+  // Step 1: the user's single enabled provider, then environment config.
+  // Provider identity selects the adapter; the incoming API shape is mapped
+  // to the unified completion request and does not override that choice.
+  const config = await getActiveUserLlmProviderConfig(userId);
+  if (config) {
+    let provider: LlmProvider;
+    if (config.providerType === "bedrock") {
+      provider = new BedrockConverseProvider(config);
+    } else if (config.providerType === "anthropic_compatible") {
+      provider = new AnthropicMessagesHttpProvider(config);
+    } else {
+      provider = new OpenAIChatHttpProvider(config);
     }
+    return withUsageRecording(provider, userId, endpoint);
   }
 
   // Step 2: agent runtime. We use the same resolution function the Loop's
@@ -90,7 +91,11 @@ export async function resolveLlmProvider({
   if (runtime && runtime !== "claude") {
     // Non-Claude runtimes are almost certainly the user's deliberate choice
     // (codex, opencode, hermes, openclaw). Honor it.
-    return new AgentRuntimeProvider({ runtime });
+    return withUsageRecording(
+      new AgentRuntimeProvider({ runtime }),
+      userId,
+      endpoint,
+    );
   }
 
   // Claude runtime: the default. The user has not opted into anything
@@ -106,10 +111,12 @@ export async function resolveLlmProvider({
 // =============================================================================
 
 class AnthropicMessagesHttpProvider implements LlmProvider {
+  readonly providerId: string;
   readonly flavor = "anthropic_http" as const;
   readonly model: string;
 
   constructor(private readonly config: UserLlmProviderConfig) {
+    this.providerId = config.providerId;
     this.model = config.model;
   }
 
@@ -138,7 +145,12 @@ class AnthropicMessagesHttpProvider implements LlmProvider {
       messages: [{ role: "user", content: userContent }],
     };
 
-    const targetUrl = joinBaseUrl(this.config.baseUrl, "/v1/messages");
+    if (!this.config.baseUrl || !this.config.apiKey) {
+      throw new Error(
+        "Anthropic-compatible provider requires a base URL and API key",
+      );
+    }
+    const targetUrl = buildAnthropicMessagesUrl(this.config.baseUrl);
     const response = await fetch(targetUrl, {
       method: "POST",
       headers: {
@@ -185,10 +197,12 @@ class AnthropicMessagesHttpProvider implements LlmProvider {
 }
 
 class OpenAIChatHttpProvider implements LlmProvider {
+  readonly providerId: string;
   readonly flavor = "openai_http" as const;
   readonly model: string;
 
   constructor(private readonly config: UserLlmProviderConfig) {
+    this.providerId = config.providerId;
     this.model = config.model;
   }
 
@@ -218,13 +232,24 @@ class OpenAIChatHttpProvider implements LlmProvider {
       messages,
     };
 
-    const targetUrl = joinBaseUrl(this.config.baseUrl, "/v1/chat/completions");
+    if (!this.config.baseUrl) {
+      throw new Error("OpenAI-compatible provider requires a base URL");
+    }
+    const targetUrl = buildOpenAiChatCompletionsUrl(this.config.baseUrl);
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (this.config.apiKey) {
+      headers.Authorization = `Bearer ${this.config.apiKey}`;
+    }
+    if (this.config.providerId === "openrouter") {
+      headers["HTTP-Referer"] =
+        process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3515";
+      headers["X-Title"] = "OpenLoomi";
+    }
     const response = await fetch(targetUrl, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${this.config.apiKey}`,
-      },
+      headers,
       body: JSON.stringify(body),
       signal:
         request.signal ??
@@ -257,6 +282,49 @@ class OpenAIChatHttpProvider implements LlmProvider {
   }
 }
 
+class BedrockConverseProvider implements LlmProvider {
+  readonly providerId: string;
+  readonly flavor = "bedrock" as const;
+  readonly model: string;
+
+  constructor(private readonly config: UserLlmProviderConfig) {
+    this.providerId = config.providerId;
+    this.model = config.model;
+  }
+
+  async complete(request: LlmCompleteRequest): Promise<LlmCompleteResponse> {
+    const text = flattenUserText(request.userContent);
+    const content: UserContent = [
+      ...((request.images ?? []).map((image) => ({
+        type: "image" as const,
+        image: Buffer.from(image.base64, "base64"),
+        mediaType: image.mediaType,
+      })) as Exclude<UserContent, string>),
+      { type: "text", text },
+    ];
+    const result = await generateText({
+      model: createLlmLanguageModel(this.config, request.model ?? this.model),
+      system: request.system,
+      messages: [{ role: "user", content }],
+      maxOutputTokens: request.maxTokens ?? 4096,
+      abortSignal:
+        request.signal ??
+        AbortSignal.timeout(request.timeoutMs ?? DEFAULT_TIMEOUT_MS),
+    });
+
+    return {
+      text: result.text.trim(),
+      model: request.model ?? this.model,
+      usage: result.usage
+        ? {
+            inputTokens: result.usage.inputTokens ?? 0,
+            outputTokens: result.usage.outputTokens ?? 0,
+          }
+        : undefined,
+    };
+  }
+}
+
 // =============================================================================
 // Agent runtime provider — invoke the configured CLI
 // =============================================================================
@@ -273,10 +341,12 @@ class OpenAIChatHttpProvider implements LlmProvider {
  * via `options.images` and can short-circuit the file-read step.
  */
 class AgentRuntimeProvider implements LlmProvider {
+  readonly providerId: string;
   readonly flavor = "agent_runtime" as const;
   readonly model: string;
 
   constructor(private readonly options: { runtime: string }) {
+    this.providerId = options.runtime;
     this.model = "agent-runtime";
   }
 
@@ -428,14 +498,32 @@ function flattenUserText(
     .join("\n");
 }
 
-function joinBaseUrl(baseUrl: string, path: string): string {
-  const trimmed = baseUrl.replace(/\/+$/, "");
-  // If the user already provided a path that ends in /v1, just append the
-  // remaining segment. Otherwise, append the full path.
-  if (trimmed.endsWith("/v1")) {
-    return `${trimmed}${path.replace(/^\/v1/, "")}`;
-  }
-  return `${trimmed}${path}`;
+function withUsageRecording(
+  provider: LlmProvider,
+  userId: string | undefined,
+  endpoint: string | undefined,
+): LlmProvider {
+  if (!userId || !endpoint) return provider;
+
+  return {
+    providerId: provider.providerId,
+    flavor: provider.flavor,
+    model: provider.model,
+    async complete(request) {
+      const response = await provider.complete(request);
+      if (response.usage) {
+        await recordUsage({
+          userId,
+          providerType: provider.providerId,
+          model: response.model,
+          endpoint,
+          inputTokens: response.usage.inputTokens,
+          outputTokens: response.usage.outputTokens,
+        });
+      }
+      return response;
+    },
+  };
 }
 
 async function materializeImages(images: LlmImage[]): Promise<string[]> {
