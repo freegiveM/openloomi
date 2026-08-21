@@ -47,7 +47,7 @@ describe("Codex command resolver", () => {
         homeDirectory: root,
         searchPath: [dirname(configured), dirname(automatic)].join(delimiter),
       }),
-    ).toBe(resolve(configured));
+    ).toBe(realpathSync.native(configured));
   });
 
   it("skips an incomplete PATH bundle and keeps first-complete PATH order", () => {
@@ -63,7 +63,7 @@ describe("Codex command resolver", () => {
           delimiter,
         ),
       }),
-    ).toBe(resolve(older));
+    ).toBe(realpathSync.native(older));
   });
 
   it("does not automatically select a private VS Code bundle inherited through PATH", () => {
@@ -193,7 +193,7 @@ describe("Codex command resolver", () => {
         workingDirectory: root,
         searchPath: "",
       }),
-    ).toBe(resolve(command));
+    ).toBe(realpathSync.native(command));
   });
 
   it("returns an absolute default command on non-Windows platforms", () => {

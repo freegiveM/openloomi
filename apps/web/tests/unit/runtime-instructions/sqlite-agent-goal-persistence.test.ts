@@ -193,6 +193,9 @@ function count(database: Database.Database, table: string): number {
 
 describe("SqliteAgentGoalState", () => {
   it("persists an objective Goal without a deadline or usage limits", async () => {
+    // 0.8.0 CreateAgentGoalInputSchema defaults maxTurns to
+    // DEFAULT_GOAL_MAX_TURNS (12) when the caller does not specify one,
+    // so the previously-null column is now populated with that default.
     const { database, state } = createHarness();
     const unlimitedGoal = goal(
       uuid(2),
@@ -213,7 +216,7 @@ describe("SqliteAgentGoalState", () => {
         .get(unlimitedGoal.id),
     ).toEqual({
       deadline: null,
-      maxTurns: null,
+      maxTurns: 12,
       maxTokens: null,
       maxDurationSeconds: null,
     });

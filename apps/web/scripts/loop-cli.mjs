@@ -20,7 +20,6 @@ const __dirname = dirname(__filename);
 
 // apps/web/scripts/loop-cli.mjs → apps/web
 const WEB_DIR = resolve(__dirname, "..");
-// /Users/timi/codes/openloomi/apps/web → monorepo root
 const ROOT_DIR = resolve(WEB_DIR, "..", "..");
 
 function findTsxBin() {

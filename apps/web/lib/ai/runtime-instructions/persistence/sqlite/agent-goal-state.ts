@@ -167,6 +167,29 @@ export class SqliteAgentGoalState
     return goalInstructionCommitFromRoot(stored, scope, true);
   }
 
+  async findReplacementByIdempotency(input: {
+    ownerId: string;
+    runtimeSessionId: string;
+    command: GoalCommandIdentity;
+  }): Promise<GoalReplacementCommit | null> {
+    const scope = validateGoalStateScope(input.ownerId, input.runtimeSessionId);
+    const command = validateGoalCommandIdentity(input.command);
+    const stored = this.storage.findCommand(
+      scope.ownerId,
+      scope.runtimeSessionId,
+      command.idempotencyKey,
+    );
+    if (!stored) return null;
+    assertCommandFingerprint(stored, command);
+    if (stored.commandType !== "replacement") {
+      throwIdempotencyNamespaceConflict(command);
+    }
+    return {
+      replacement: replacementFromRoot(stored, scope),
+      deduplicated: true,
+    };
+  }
+
   async findLifecycleTransitionByIdempotency(input: {
     ownerId: string;
     runtimeSessionId: string;

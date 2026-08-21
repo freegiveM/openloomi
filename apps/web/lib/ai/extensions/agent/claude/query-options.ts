@@ -204,10 +204,17 @@ export function attachClaudeMcpServers({
 
   // Business tools need a logged-in user session because they can access
   // OpenLoomi data such as insights, contacts, memory, and scheduled jobs.
-  if (agentOptions.session) {
+  if (agentOptions.session?.user) {
     try {
       mcpServers["business-tools"] = createBusinessToolsMcpServer(
-        agentOptions.session,
+        // AgentAuthSession carries a rich openloomi session object at
+        // runtime even though its declared shape in @melandlabs/ai is the
+        // minimal auth-only subset. Tool implementations index next-auth
+        // Session.user fields directly (id, type, slackToken, ...), so we
+        // narrow + cast here rather than replicate next-auth's augment.
+        agentOptions.session as unknown as Parameters<
+          typeof createBusinessToolsMcpServer
+        >[0],
         agentOptions.authToken,
         agentOptions.onInsightChange,
         agentOptions.sessionId,

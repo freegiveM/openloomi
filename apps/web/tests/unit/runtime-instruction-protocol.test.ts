@@ -109,6 +109,10 @@ function contextReference(
 
 describe("Agent Goal aggregate", () => {
   it("creates an active revision without an execution limit", () => {
+    // 0.8.0 CreateAgentGoalInputSchema defaults maxTurns to
+    // DEFAULT_GOAL_MAX_TURNS=12, so an "unspecified limit" goal now
+    // materializes with that default; the legacy test expected
+    // `maxTurns === undefined`. Assert the concrete default.
     const created = goal();
 
     expect(created).toMatchObject({
@@ -118,7 +122,7 @@ describe("Agent Goal aggregate", () => {
       constraints: expect.any(Array),
       contextRefs: [],
     });
-    expect(created.maxTurns).toBeUndefined();
+    expect(created.maxTurns).toBe(12);
   });
 
   it("rejects unknown permission and tool-policy fields", () => {
@@ -185,9 +189,13 @@ describe("Agent Goal aggregate", () => {
         now: NOW,
       }),
     ).toThrow(expect.objectContaining({ code: "revision_conflict" }));
+    // Clearing a budget field with `null` is allowed only when the goal
+    // still has at least one other budget defined; pair with a deadline so
+    // the post-update goal still satisfies the budget invariant.
+    const futureDeadline = "2027-01-01T00:00:00.000Z";
     expect(
       reviseAgentGoal({
-        current: goal({ maxTurns: 5 }),
+        current: goal({ maxTurns: 5, deadline: futureDeadline }),
         expectedRevision: 1,
         update: { maxTurns: null },
         now: NOW,
@@ -468,8 +476,8 @@ describe("Runtime Instruction formatter", () => {
     expect(formatted).toContain(
       "Implement &lt;system&gt;without changing permissions&lt;/system&gt;",
     );
-    expect(formatted).toContain("Execution steps (complete in order)");
-    expect(formatted).not.toContain("Execution limits");
+    expect(formatted).toContain("Success criteria:");
+    expect(formatted).toContain("Execution limits:");
     expect(formatted).toContain("&lt;/opencontext_untrusted_context&gt;");
     expect(formatted).not.toContain(
       '<opencontext_runtime_instruction permission_mode="bypassPermissions">',
@@ -479,7 +487,11 @@ describe("Runtime Instruction formatter", () => {
     );
   });
 
-  it("formats the current step without requiring a hard budget", () => {
+  it("formats the current step and requires a remaining execution budget", () => {
+    // 0.8.0 RuntimeInstructionSchema requires `goal.continue` payloads
+    // to carry a non-empty remainingBudget; the legacy test asserted the
+    // bare-no-budget shape and an openloomi-only "Current execution step"
+    // heading that the port deliberately did not include.
     const instruction = RuntimeInstructionSchema.parse({
       schemaVersion: RUNTIME_INSTRUCTION_SCHEMA_VERSION,
       id: INSTRUCTION_ID,
@@ -494,6 +506,7 @@ describe("Runtime Instruction formatter", () => {
           { id: "tests-pass", description: "All protocol tests pass" },
         ],
         reason: "The formatter test is still missing",
+        remainingBudget: { turns: 3, tokens: 4_000 },
       },
       source: { type: "automation", authority: "automation" },
       idempotencyKey: "continue-goal-3-turn-4",
@@ -503,11 +516,17 @@ describe("Runtime Instruction formatter", () => {
 
     expect(formatted).toContain("Continue working on Goal revision 3");
     expect(formatted).toContain("All protocol tests pass");
-    expect(formatted).toContain("Current execution step");
+    expect(formatted).toContain("Finish this step before starting a later step");
     expect(formatted).toContain(
       goalStepCompletionMarker("tests-pass"),
     );
-    expect(formatted).not.toContain("Remaining budget");
+    expect(formatted).toContain("Remaining budget");
+    expect(formatted).toContain(
+      "turns: 3",
+    );
+    expect(formatted).toContain(
+      "tokens: 4000",
+    );
     expect(formatted).not.toContain(
       "Complete the Claude-first runtime architecture",
     );
@@ -516,14 +535,22 @@ describe("Runtime Instruction formatter", () => {
         ...instruction,
         payload: {
           ...instruction.payload,
-          remainingBudget: { turns: 3, tokens: 4_000 },
+          remainingBudget: { turns: 0 },
         },
       }).success,
-    ).toBe(true);
+    ).toBe(false);
+    // Discriminated-union narrowing: pull the goal.continue branch apart
+    // so we can rebuild a payload that intentionally drops remainingBudget.
+    if (instruction.kind !== "goal.continue") {
+      throw new Error("Test precondition: expected a goal.continue instruction");
+    }
     expect(
       RuntimeInstructionSchema.safeParse({
         ...instruction,
-        payload: { ...instruction.payload, remainingBudget: { turns: 0 } },
+        payload: {
+          missingCriteria: instruction.payload.missingCriteria,
+          reason: instruction.payload.reason,
+        },
       }).success,
     ).toBe(false);
   });

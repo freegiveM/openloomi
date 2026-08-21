@@ -184,6 +184,9 @@ function instruction(kind: "goal.activate" | "goal.continue" | "goal.pause") {
       payload: {
         missingCriteria: [{ id: "done", description: "Complete the work" }],
         reason: "Continue the active Goal",
+        // 0.8.0 schema requires a non-empty remainingBudget on every
+        // goal.continue instruction.
+        remainingBudget: { turns: 3 },
       },
       source: { type: "automation", authority: "automation" },
       idempotencyKey: "continue",

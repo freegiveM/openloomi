@@ -6,12 +6,8 @@ settings:
 
 overrides:
   postcss: ^8.5.6
+  '@melandlabs/shared': 0.4.0
   '@whiskeysockets/libsignal-node': git+https://github.com/WhiskeySockets/libsignal-node.git#1c30d7d7e76a3b0aa120b04dc6a26f5a12dccf67
-
-patchedDependencies:
-  '@melandlabs/integrations-weixin@0.1.5':
-    hash: 381398d760c8f517be81967c3dd93bbeae1d6f84161c213fdc4e6b630902aea3
-    path: patches/@melandlabs__integrations-weixin@0.1.5.patch
 
 importers:
 
@@ -230,140 +226,140 @@ importers:
         specifier: ^1.24.0
         version: 1.61.1(bufferutil@4.1.0)(utf-8-validate@5.0.10)
       '@melandlabs/ai':
-        specifier: ^0.2.0
-        version: 0.2.0(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
+        specifier: ^0.8.0
+        version: 0.8.0(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
       '@melandlabs/ai-rag':
-        specifier: ^0.1.4
-        version: 0.1.4(a78fda00450dcbd439e41a1bfb96d5cd)
+        specifier: ^0.2.9
+        version: 0.2.9(a78fda00450dcbd439e41a1bfb96d5cd)
       '@melandlabs/api':
-        specifier: ^0.1.4
-        version: 0.1.4
+        specifier: ^0.3.0
+        version: 0.3.0
       '@melandlabs/audit':
-        specifier: ^0.1.4
-        version: 0.1.4
+        specifier: ^0.3.1
+        version: 0.3.1
       '@melandlabs/contracts':
-        specifier: ^0.1.4
-        version: 0.1.4(zod@4.3.6)
+        specifier: ^0.6.0
+        version: 0.6.0(zod@4.3.6)
       '@melandlabs/cron':
-        specifier: ^0.1.4
-        version: 0.1.4
+        specifier: ^0.3.0
+        version: 0.3.0
       '@melandlabs/db':
-        specifier: ^0.1.4
-        version: 0.1.4(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(react@19.2.5)(sswr@2.2.0(svelte@5.56.1(@typescript-eslint/types@8.59.3)))(svelte@5.56.1(@typescript-eslint/types@8.59.3))(vue@3.5.35(typescript@5.9.3))(zod@4.3.6)
+        specifier: ^0.3.0
+        version: 0.3.0(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(react@19.2.5)(sswr@2.2.0(svelte@5.56.1(@typescript-eslint/types@8.59.3)))(svelte@5.56.1(@typescript-eslint/types@8.59.3))(vue@3.5.35(typescript@5.9.3))(zod@4.3.6)
       '@melandlabs/env-config':
-        specifier: ^0.1.4
-        version: 0.1.4
+        specifier: ^0.4.0
+        version: 0.4.0
       '@melandlabs/hooks':
-        specifier: ^0.1.4
-        version: 0.1.4(react@19.2.5)(swr@2.4.1(react@19.2.5))
+        specifier: ^0.3.0
+        version: 0.3.0(react@19.2.5)(swr@2.4.1(react@19.2.5))
       '@melandlabs/i18n':
-        specifier: ^0.1.4
-        version: 0.1.4
+        specifier: ^0.3.1
+        version: 0.3.1
       '@melandlabs/indexeddb':
-        specifier: ^0.1.4
-        version: 0.1.4(react@19.2.5)
+        specifier: ^0.5.8
+        version: 0.5.8(react@19.2.5)(zod@4.3.6)
       '@melandlabs/insights':
-        specifier: ^0.1.4
-        version: 0.1.4(react@19.2.5)
+        specifier: ^0.3.0
+        version: 0.3.0(react@19.2.5)
       '@melandlabs/integrations':
-        specifier: ^0.1.4
-        version: 0.1.4
+        specifier: ^0.3.0
+        version: 0.3.0
       '@melandlabs/integrations-calendar':
-        specifier: ^0.1.4
-        version: 0.1.4(react@19.2.5)
+        specifier: ^0.3.0
+        version: 0.3.0(react@19.2.5)
       '@melandlabs/integrations-channels':
-        specifier: ^0.1.4
-        version: 0.1.4(react@19.2.5)
+        specifier: ^0.3.1
+        version: 0.3.1(react@19.2.5)
       '@melandlabs/integrations-composio':
-        specifier: ^0.1.4
-        version: 0.1.4
+        specifier: ^0.3.0
+        version: 0.3.0
       '@melandlabs/integrations-dingtalk':
-        specifier: ^0.1.5
-        version: 0.1.5(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
+        specifier: ^0.3.4
+        version: 0.3.4(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
       '@melandlabs/integrations-facebook-messenger':
-        specifier: ^0.1.4
-        version: 0.1.4(react@19.2.5)
+        specifier: ^0.3.1
+        version: 0.3.1(react@19.2.5)
       '@melandlabs/integrations-feishu':
-        specifier: ^0.1.4
-        version: 0.1.4(bufferutil@4.1.0)(react@19.2.5)(utf-8-validate@5.0.10)
+        specifier: ^0.3.2
+        version: 0.3.2(bufferutil@4.1.0)(react@19.2.5)(utf-8-validate@5.0.10)
       '@melandlabs/integrations-google-docs':
-        specifier: ^0.1.4
-        version: 0.1.4(react@19.2.5)
+        specifier: ^0.3.0
+        version: 0.3.0(react@19.2.5)
       '@melandlabs/integrations-hubspot':
-        specifier: ^0.1.4
-        version: 0.1.4(react@19.2.5)
+        specifier: ^0.3.1
+        version: 0.3.1(react@19.2.5)
       '@melandlabs/integrations-imessage':
-        specifier: ^0.1.5
-        version: 0.1.5(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
+        specifier: ^0.3.5
+        version: 0.3.5(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
       '@melandlabs/integrations-instagram':
-        specifier: ^0.1.4
-        version: 0.1.4(react@19.2.5)
+        specifier: ^0.3.1
+        version: 0.3.1(react@19.2.5)
       '@melandlabs/integrations-jira':
-        specifier: ^0.1.4
-        version: 0.1.4(react@19.2.5)
+        specifier: ^0.2.3
+        version: 0.2.3(react@19.2.5)
       '@melandlabs/integrations-linkedin':
-        specifier: ^0.1.4
-        version: 0.1.4(react@19.2.5)
+        specifier: ^0.3.1
+        version: 0.3.1(react@19.2.5)
       '@melandlabs/integrations-qqbot':
-        specifier: ^0.1.5
-        version: 0.1.5(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
+        specifier: ^0.3.4
+        version: 0.3.4(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
       '@melandlabs/integrations-runtime':
-        specifier: ^0.1.4
-        version: 0.1.4(typescript@5.9.3)(zod@4.3.6)
+        specifier: ^0.3.3
+        version: 0.3.3(typescript@5.9.3)(zod@4.3.6)
       '@melandlabs/integrations-telegram':
-        specifier: ^0.1.5
-        version: 0.1.5(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
+        specifier: ^0.3.4
+        version: 0.3.4(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
       '@melandlabs/integrations-weixin':
-        specifier: ^0.1.5
-        version: 0.1.5(patch_hash=381398d760c8f517be81967c3dd93bbeae1d6f84161c213fdc4e6b630902aea3)(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(openclaw@2026.7.1(@aws-sdk/credential-provider-node@3.972.44)(@cfworker/json-schema@4.1.1)(@opentelemetry/api@1.9.1)(@smithy/signature-v4@5.4.4)(bufferutil@4.1.0)(utf-8-validate@5.0.10))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
+        specifier: ^0.3.6
+        version: 0.3.6(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(openclaw@2026.7.1(@aws-sdk/credential-provider-node@3.972.44)(@cfworker/json-schema@4.1.1)(@opentelemetry/api@1.9.1)(@smithy/signature-v4@5.4.4)(bufferutil@4.1.0)(utf-8-validate@5.0.10))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
       '@melandlabs/integrations-whatsapp':
-        specifier: ^0.1.5
-        version: 0.1.5(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(bufferutil@4.1.0)(jimp@1.6.1)(link-preview-js@4.0.0)(react@19.2.5)(sharp@0.34.5)(utf-8-validate@5.0.10)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
+        specifier: ^0.3.4
+        version: 0.3.4(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(bufferutil@4.1.0)(jimp@1.6.1)(link-preview-js@4.0.0)(react@19.2.5)(sharp@0.34.5)(utf-8-validate@5.0.10)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
       '@melandlabs/integrations-x':
-        specifier: ^0.1.4
-        version: 0.1.4(node-fetch@3.3.2)(react@19.2.5)
+        specifier: ^0.3.1
+        version: 0.3.1(node-fetch@3.3.2)(react@19.2.5)
       '@melandlabs/loop':
-        specifier: ^0.1.4
-        version: 0.1.4
+        specifier: ^0.3.1
+        version: 0.3.1
       '@melandlabs/mcp':
-        specifier: ^0.1.4
-        version: 0.1.4(@cfworker/json-schema@4.1.1)
+        specifier: ^0.3.1
+        version: 0.3.1(@cfworker/json-schema@4.1.1)
       '@melandlabs/memory-consolidation':
-        specifier: ^0.1.4
-        version: 0.1.4
+        specifier: ^0.5.0
+        version: 0.5.0
       '@melandlabs/memory-store':
-        specifier: ^0.1.6
-        version: 0.1.6(afdb52f6e252b7da45d7674487df8ff5)
+        specifier: 1.1.1
+        version: 1.1.1(23ad752dc28d5c7350a01fb74eff5723)
       '@melandlabs/rag':
-        specifier: ^0.1.5
-        version: 0.1.5(1362546d49d91a97cd4bee3d54e557ee)
+        specifier: ^0.3.0
+        version: 0.3.0(1362546d49d91a97cd4bee3d54e557ee)
       '@melandlabs/rss':
-        specifier: ^0.1.4
-        version: 0.1.4(react@19.2.5)
+        specifier: ^0.3.0
+        version: 0.3.0(react@19.2.5)
       '@melandlabs/search':
-        specifier: ^0.1.4
-        version: 0.1.4
+        specifier: ^0.3.1
+        version: 0.3.1
       '@melandlabs/security':
-        specifier: ^0.1.4
-        version: 0.1.4
+        specifier: ^0.3.0
+        version: 0.3.0
       '@melandlabs/shared':
-        specifier: ^0.1.4
-        version: 0.1.4(react@19.2.5)
+        specifier: 0.4.0
+        version: 0.4.0(react@19.2.5)
       '@melandlabs/sqlite':
-        specifier: ^0.1.4
-        version: 0.1.4(react@19.2.5)
+        specifier: ^0.5.1
+        version: 0.5.1(react@19.2.5)(zod@4.3.6)
       '@melandlabs/storage':
-        specifier: ^0.1.4
-        version: 0.1.4
+        specifier: ^0.3.0
+        version: 0.3.0
       '@melandlabs/ui-runtime':
-        specifier: ^0.1.4
-        version: 0.1.4
+        specifier: ^0.3.0
+        version: 0.3.0
       '@melandlabs/voice-kokoro':
-        specifier: ^0.1.4
-        version: 0.1.4
+        specifier: ^0.3.0
+        version: 0.3.0
       '@melandlabs/voice-whisper':
-        specifier: ^0.1.4
-        version: 0.1.4
+        specifier: ^0.3.0
+        version: 0.3.0
       '@modelcontextprotocol/sdk':
         specifier: ^1.25.3
         version: 1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6)
@@ -1306,8 +1302,8 @@ packages:
     cpu: [arm64]
     os: [darwin]
 
-  '@anthropic-ai/claude-agent-sdk-darwin-arm64@0.3.228':
-    resolution: {integrity: sha512-HuCsV3/5XuYYaWuCbksX+e0JkDDUG/AlFJ8wKhDL3PBW/3hHNd6xBYx88kEWk1Z6B1GLxwHht9624lcmscpsyw==}
+  '@anthropic-ai/claude-agent-sdk-darwin-arm64@0.3.238':
+    resolution: {integrity: sha512-7KctNItTzHRiDg+jFxTM46o+Y/YS52V6HSopaWPggO6BbR+3MV/rKMmq+zP93If7eVwadW9Yg9vHLjXDKIw9OQ==}
     cpu: [arm64]
     os: [darwin]
 
@@ -1316,8 +1312,8 @@ packages:
     cpu: [x64]
     os: [darwin]
 
-  '@anthropic-ai/claude-agent-sdk-darwin-x64@0.3.228':
-    resolution: {integrity: sha512-jSUYY5Nd3efvbLZPU+i0tRBaFXskHu8M+4LMGBEw6A0PaklZ3YfGvKlTOWtJGRw6vMc6LzfOFts024xPNm6OrQ==}
+  '@anthropic-ai/claude-agent-sdk-darwin-x64@0.3.238':
+    resolution: {integrity: sha512-aDt8LXjWISwLzqeCBHxJC5AR1iVYlY5UYIm2VLztjI1U0PCb1BiH/IfyyjjizqRhhEwyQp9YAJeZZq8n/2vQEA==}
     cpu: [x64]
     os: [darwin]
 
@@ -1326,8 +1322,8 @@ packages:
     cpu: [arm64]
     os: [linux]
 
-  '@anthropic-ai/claude-agent-sdk-linux-arm64-musl@0.3.228':
-    resolution: {integrity: sha512-4PgfisC3kHKlzJvy3rrm4Oh26g+D78h4ahHjni9fvSKHuJgrvHu9Qgo6aaYmzWdc7v9drL+pgiCk5Ge4Y2ANPA==}
+  '@anthropic-ai/claude-agent-sdk-linux-arm64-musl@0.3.238':
+    resolution: {integrity: sha512-ankSEMAMTVulKYg0NT8fZ7a5+q+aIzfiqhcrLe9zYPeuhE+lpNeq0JPMcHyOtUAENxVI0/2J2q5OXGl9O0qWcg==}
     cpu: [arm64]
     os: [linux]
 
@@ -1336,8 +1332,8 @@ packages:
     cpu: [arm64]
     os: [linux]
 
-  '@anthropic-ai/claude-agent-sdk-linux-arm64@0.3.228':
-    resolution: {integrity: sha512-0Wjv6TiWwGlBZINAmNJX07jN359jKwB/4Sr/uWgQkdjuVIOhe/M8ydk7JL2EPqCsbiW1lc15NjE5MWpZiYqooA==}
+  '@anthropic-ai/claude-agent-sdk-linux-arm64@0.3.238':
+    resolution: {integrity: sha512-P7V9TFokcNRdIJPUzDQ0GLBfMuoewWEH4rh6U3e7RaEAxzdeUcdS9P0N4arXqK2YAOtK1o93QSEtiGUF1fTfWw==}
     cpu: [arm64]
     os: [linux]
 
@@ -1346,8 +1342,8 @@ packages:
     cpu: [x64]
     os: [linux]
 
-  '@anthropic-ai/claude-agent-sdk-linux-x64-musl@0.3.228':
-    resolution: {integrity: sha512-dnXxyiwGCZj27HVk6clYRqGMgrs3KVLVp0vvWYLjkPGBiKbI83qJiDpOfaekEXG2I4elX0M4XikggV1LGWjimg==}
+  '@anthropic-ai/claude-agent-sdk-linux-x64-musl@0.3.238':
+    resolution: {integrity: sha512-buo3IBSd7EmYcQsH+OKARgNNbSF1+l/+z1hDXSXGKzwD1LFioJZ/k9FWWWC166SoQ93jPmN+G/ksTzEUB3zRGQ==}
     cpu: [x64]
     os: [linux]
 
@@ -1356,8 +1352,8 @@ packages:
     cpu: [x64]
     os: [linux]
 
-  '@anthropic-ai/claude-agent-sdk-linux-x64@0.3.228':
-    resolution: {integrity: sha512-LmGplObceqMOu5mlrlhTZL/VSrEWdZagF0Bl8awglMu6WeQcNe7StORYkCznZ0BuzV4CwuC3ipV4q8Jrs66wSg==}
+  '@anthropic-ai/claude-agent-sdk-linux-x64@0.3.238':
+    resolution: {integrity: sha512-/arAOSqtIAWDu7Z4Uf2Un3n+/5Zg3NpxZKzMQEDnYNkbJRhr44sM59TFaEOiWq1FqlUJKi6wHjgm+TW5B8DWWg==}
     cpu: [x64]
     os: [linux]
 
@@ -1366,8 +1362,8 @@ packages:
     cpu: [arm64]
     os: [win32]
 
-  '@anthropic-ai/claude-agent-sdk-win32-arm64@0.3.228':
-    resolution: {integrity: sha512-mNS5yIMz/OXSQiDErb84jA8AKBFSlS9RSZ0qn2qyGkxplUx7kVmIDg/KnwOwHmygpzmH4UmR6OCaLXGohupqNA==}
+  '@anthropic-ai/claude-agent-sdk-win32-arm64@0.3.238':
+    resolution: {integrity: sha512-yW8lhV7QgYiNu3NatjgmkhUspgJsG2N2N6lmm/7B99sWFobKTbVLMLsXxj6A46R6qE2C4Zzm6PjxgGaMYOMn0g==}
     cpu: [arm64]
     os: [win32]
 
@@ -1376,8 +1372,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@anthropic-ai/claude-agent-sdk-win32-x64@0.3.228':
-    resolution: {integrity: sha512-DYT3HvdS64Pq0IRvgW3RDO31yjYp5yiUKoKaZolTpLKfALpG5LI/osfnKlya68PZ/bSST1FNAfW9I0EtCnaQ4w==}
+  '@anthropic-ai/claude-agent-sdk-win32-x64@0.3.238':
+    resolution: {integrity: sha512-6Fb2JRrBci282fBfhCGB0Tpq7N8V5HMMqsO3YGFkc9hhbn/y9G7glNKSNgRtxD5Ujjxj8rhiaYstXW2DJzanzw==}
     cpu: [x64]
     os: [win32]
 
@@ -1387,8 +1383,8 @@ packages:
     peerDependencies:
       zod: ^4.0.0
 
-  '@anthropic-ai/claude-agent-sdk@0.3.228':
-    resolution: {integrity: sha512-OOaME54VCoBLjKMqWqFmHkZGyL/x/FHUA0snhyolmyEhVoeBM0Ub5mrnV2Gx3d5/RcVlk2BnEVvPqu0SpZ9VFw==}
+  '@anthropic-ai/claude-agent-sdk@0.3.238':
+    resolution: {integrity: sha512-ppRfbAflZuV7HPqr8BkHPEk8c7gih3PK+GHnZq6zP0Uo7bJHXAJwc4Za8LJRm4hXMixBNMjK1cU/VWfQ9fE2sg==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
       '@anthropic-ai/sdk': '>=0.93.0'
@@ -3520,37 +3516,51 @@ packages:
   '@mdx-js/mdx@3.1.1':
     resolution: {integrity: sha512-f6ZO2ifpwAQIpzGWaBQT2TXxPv6z3RBzQKpVftEWN78Vl/YweF1uwussDx8ECAXVtr3Rs89fKyG9YlzUs9DyGQ==}
 
-  '@melandlabs/ai-rag@0.1.4':
-    resolution: {integrity: sha512-JT8DZzR7gX4qo8tqCEIpYdPB2Toip3MFZAk3mmkk3gDIWOsFhhGaaAmTrF74Zc/G/oo8XgAoHtQ32Nf5cghk4A==}
+  '@melandlabs/ai-rag@0.2.9':
+    resolution: {integrity: sha512-g8wLvr9fqYse+ZpNrHLwEp0wXnZpWnscrX9Ey0lam1lK/27aNt895kvMGBw5mE/Abu70ek23dNZOKemukFuatg==}
 
-  '@melandlabs/ai@0.2.0':
-    resolution: {integrity: sha512-gPssn6IX4lSJBG/OUud5vfVqHAZy956fbjSDrpgrUZ1k6tNDjpjL31a1O2qu1moMH/g0IF6C4v0ehSu4NPQgWw==}
+  '@melandlabs/ai@0.5.5':
+    resolution: {integrity: sha512-nFpAWLnlgNAVc2a1v7goaOtXSh6+oItloz6j2nLu/ZtQsrN5wev73UL/I11SFd0iqudAqTsOpaVvTsGrudIshA==}
 
-  '@melandlabs/api@0.1.4':
-    resolution: {integrity: sha512-WcWN9ugChz5Ry2Wwb51lOr05G+S6LXQtt9H4Dhxg04hR86JCgRQJcdup5fxia+iHfm8C5mAe05BVTnTygKQkAQ==}
+  '@melandlabs/ai@0.7.0':
+    resolution: {integrity: sha512-ZAUIDU2/TN3oNJNr+KklaIPKQsM+BBhW88lKq+K1j64MHfOEeSHbPe/IXblLkJYq10giy4JZ3+DCY7FRQVIGmw==}
 
-  '@melandlabs/audit@0.1.4':
-    resolution: {integrity: sha512-6P6nTKI7riEBQU3uO4c+upXSH/D9EF3uj2VtnFy6ea0vSPmxML7xS3zoE/OAH9pOyyQl/8lGl10yq4XzipUJNA==}
+  '@melandlabs/ai@0.8.0':
+    resolution: {integrity: sha512-i5RhdaXnerLkA1TFlxnBcNadq3psbWuX/BZgA+4QknVSMYmCtc8dohnbmt9l1T9AIfN76HfmC9xSRUktgKOnqQ==}
 
-  '@melandlabs/contracts@0.1.4':
-    resolution: {integrity: sha512-FQ1AeydhQGK9lbBcuStaHqZNHIBkNjplxgbsOK4fR164g3V0q5oLcti26zHANdzl8HypOt3mhUCRzzUiblhDjw==}
+  '@melandlabs/api@0.3.0':
+    resolution: {integrity: sha512-Q89pbZAOxm0mpynxEWp2bzoWPsla+W5S2QJINV53TaNvH1Y2VISP9pBr19xiULfO9cD5HGf30dwQGSsNZBkGuQ==}
+
+  '@melandlabs/audit@0.3.1':
+    resolution: {integrity: sha512-MbuRK7/R1EJjgqgbLtOjDOfKwwnKPwf05ZqXi/wzglrINWxApxTTsmchj603U4+7QmuoCKGEUV/anJVfg56GKA==}
+
+  '@melandlabs/contracts@0.5.0':
+    resolution: {integrity: sha512-x03QzrQ9Kyn63Jb6FSAdi8MHdv7J1L5Kh5bCYlfcnNFrjE+eW62MlJIsJagmWBCPpojNhaoTaZlNLpyqS7dPtQ==}
     peerDependencies:
       zod: ^4.3.6
     peerDependenciesMeta:
       zod:
         optional: true
 
-  '@melandlabs/cron@0.1.4':
-    resolution: {integrity: sha512-Jt5vTPNBiVU8mvLrrPYvDNuoPxrJhTUQ50gLqUI3bd2113bIty6Zk5mVOnZ6RrwN433kvEd+WJLjl6mB/WzZpQ==}
+  '@melandlabs/contracts@0.6.0':
+    resolution: {integrity: sha512-vlnvrikKMP2pOzj1HpsRGHIPu3wmsTFScK2WA34HAIPeoFIomoJrtoQNQ7seIYFnB5tFnjBsGLfaeGZidb/60g==}
+    peerDependencies:
+      zod: ^4.3.6
+    peerDependenciesMeta:
+      zod:
+        optional: true
 
-  '@melandlabs/db@0.1.4':
-    resolution: {integrity: sha512-l5ZoHIL2jF/mz4E2k1Ow5p4bvJhkqF+Y5RG2EaGMaLrPmGHTHx8y4pb4EID9PXS3a/lufMMiw+vyBzATK031tg==}
+  '@melandlabs/cron@0.3.0':
+    resolution: {integrity: sha512-za0Q8bmbAN4/USqJzLfbr53q/cUcZr8KvbqhPRlEotPV2hSrjnY4It7gpjW+MqNYezWroV2xwQdl86iDv4lM2g==}
 
-  '@melandlabs/env-config@0.1.4':
-    resolution: {integrity: sha512-3OQrkl43mjtXryFK7zad7cvuNDXz1QnHCCUdr3ZQpGF8OqF3uK1/82e5apME82idEkbfEyyxUkbya5xNGdV+Ew==}
+  '@melandlabs/db@0.3.0':
+    resolution: {integrity: sha512-EmzmNMKLmjFa7w1VCtWqsXhIRQQ4l3McYfXkHwVyouNmYxJ9X03Npd/JY7zKgpeLJ5tGuWBKEsr4YvVvU4RLhA==}
 
-  '@melandlabs/hooks@0.1.4':
-    resolution: {integrity: sha512-I66vGCJY6WxkyOZXkVzaCSL5hz7eqPPiki21izu742lt6J1WndAXFnrzjLKoq4b5QIGuky06qYaYHS+oVom1Wg==}
+  '@melandlabs/env-config@0.4.0':
+    resolution: {integrity: sha512-YRV1KpKvKupud2fXZ5x6Rbhdoojxh83p5fWIrMR93A7j9BxMOw6D7izVuzjG7JOyV1pw14H2cJovkddGthjvhA==}
+
+  '@melandlabs/hooks@0.3.0':
+    resolution: {integrity: sha512-YdPR2poaBwZNdTeyclSEU+Gt04L8cPzLCB+leDdthyaVUFhPqe2BBAzeg51GF+isDmxUJCvnt4vdEoFn4zo0og==}
     peerDependencies:
       react: '>=18.0.0'
       swr: '>=2.0.0'
@@ -3560,135 +3570,161 @@ packages:
       swr:
         optional: true
 
-  '@melandlabs/i18n@0.1.4':
-    resolution: {integrity: sha512-b1QTWdacdTlKuoe4La5V9rAYsbLARnkzd2EjF9JPH/MmFna448YDKLM5NFzqz5d+hTUxsAz7UAgErYlY6APflw==}
+  '@melandlabs/i18n@0.3.1':
+    resolution: {integrity: sha512-o52g1xn3/4gcyH9Ltru4FrnwjBFsMWHBvDy3kxsT5UyjcurfbR6gvt0CM/3cFVl6tTZJKLRTXrddrMm7NahFvA==}
 
-  '@melandlabs/indexeddb@0.1.4':
-    resolution: {integrity: sha512-XOjGz8I90AaHAdPsHdtN/UNhXUIG96Hv0hjr4ZUPdfqr/ndIDwEBT7NdMpJZoVDQP6tGEja2iLoSid/6vMJv3g==}
+  '@melandlabs/indexeddb@0.5.8':
+    resolution: {integrity: sha512-iF+JsWj0GTHdRHwQJGQ8L34xiSu+Q4MU2f9uC63Rt3IoC4w/MopGEswiYYVevsc6BfPhXUodYQ4kvw581lXnVw==}
     peerDependencies:
       react: '>=18.0.0'
 
-  '@melandlabs/insights@0.1.4':
-    resolution: {integrity: sha512-O3JynyZMeHVNAfrbWqySw/Lqp44vmi8ndKshFKdF0AdIASrMGegBaTqOUgYDfNM+3Q6X8mIQ8KZsEGJOS4qpuw==}
+  '@melandlabs/insights@0.3.0':
+    resolution: {integrity: sha512-09jN/wlzOPOfCniaLUSUvs1yIQh7Gw0TApifjI9SK7l9BIjX+K9XkxLQL82EGlT9C0WnTMwe2YNDXNBZQskRJg==}
     peerDependencies:
       react: '>=18.0.0'
 
-  '@melandlabs/integrations-calendar@0.1.4':
-    resolution: {integrity: sha512-hJu2juQOXkGUPzaTrtGMZ7XK0gxN65olHDNFKoaVz4jbEJkRhSag0kPGy6x5l2lETR7XlR/eOJLRhmZ7+npQyA==}
+  '@melandlabs/integrations-calendar@0.3.0':
+    resolution: {integrity: sha512-g0YuXQLuiNO+1YwNLeSupHxjjYv2GIr5ZfUX2HQbEzDGd7mtcpd/d2BseIycCcOOu2Ilo8l3vCrL4dHMgPop1w==}
     peerDependencies:
       react: '>=18.0.0'
 
-  '@melandlabs/integrations-channels@0.1.4':
-    resolution: {integrity: sha512-cD4SJA4ZGm2iOFONHl56q0d4z8ZEH1XBt0angIYR1h6smmHQ9MTMWeBZ+eQj3TNzbir3griQhAZwcOSy/zMDxQ==}
+  '@melandlabs/integrations-channels@0.3.1':
+    resolution: {integrity: sha512-bm6A0KUJe6rCgpO7TmfOc9RUSn0AeQ/IK1ULGJP+X/51TDfdyzcve0B9LZwjAVtg83x1IOYUdgM41ld7dBY/Sg==}
 
-  '@melandlabs/integrations-composio@0.1.4':
-    resolution: {integrity: sha512-0MR3XaQns9ELY8ZymFeplm/d/2rtw7G8IRdcrW0VozKPsxY5EZWBZnLSB6B8PjlzP4cNTyoQMufwQe/Tm9odzg==}
+  '@melandlabs/integrations-composio@0.3.0':
+    resolution: {integrity: sha512-ht4WjIYm35CeOY01awSXoNHvSJIxn1n0gc6DApYBFl7UR/IeiwB3WMD+U3QQYsqkzQy8XwwOzbsf7ogD9sYENQ==}
 
-  '@melandlabs/integrations-dingtalk@0.1.5':
-    resolution: {integrity: sha512-ODqGQvwN1lt3kBGz6CmoNOQADG76PqIfCQC3gZm9JV3xMObJ0hufhsspuiQw7plNVUuMGIrLK2QG1HF0OJw00w==}
+  '@melandlabs/integrations-dingtalk@0.3.4':
+    resolution: {integrity: sha512-JGj9oWqAcPqyJQXdKarj+U4lVVg5EiZgpEWiIGjKjbUYvTFDkHDh2Q94q/ZnYBSj9ZKlN5mTSz6/v9OgRLR4cw==}
 
-  '@melandlabs/integrations-facebook-messenger@0.1.4':
-    resolution: {integrity: sha512-PJaY4m7+LbDb8l8YKsUxpfssQn9qqG5fzTmZgVsPBEAWNHznShRtO9Zm2IIkc2DTxo6/8m/BYRlcN5kgKZBDUQ==}
+  '@melandlabs/integrations-facebook-messenger@0.3.1':
+    resolution: {integrity: sha512-TlJT7psKWEVx8XvMyr12864HEmvXAgi0PNH79Q/1p+Eajt58eJ1/JZ0q5VEut2e4aMW62ChXboc3iiUTP8kMTg==}
 
-  '@melandlabs/integrations-feishu@0.1.4':
-    resolution: {integrity: sha512-TIX5ihm7H0RTPJX7V2ZDlpcdIWBbtbp0welSF4xQ8Wb/Vjykv9v1ZvbHfQJhPeLc7mhXyilQzUHMnoNeSUEEKg==}
+  '@melandlabs/integrations-feishu@0.3.2':
+    resolution: {integrity: sha512-sWl98UcrLJO2a4xH0ko2bkaTheCLqjkDbEENNHnbr+j05VDmOtcH8foLs62mZLthn0qc1qoVCIA9cEb0nuCCnw==}
 
-  '@melandlabs/integrations-google-docs@0.1.4':
-    resolution: {integrity: sha512-SrSn0yjT22r92gW42dAVDZrAz+P3mpmzIdeja6qgMTbS3D3e71opx0Oq1/l4p/fog59ee20jCS/gCaVFwUOqaA==}
+  '@melandlabs/integrations-google-docs@0.3.0':
+    resolution: {integrity: sha512-bEBHzWlETG37t2wFYdBKF9U8ZK1wejq+TaSCvcowv7O0oTFc4xD+/N8a0DplJNLHIXNKA5dlFUdzRlVQ2xII0A==}
     peerDependencies:
       react: '>=18.0.0'
 
-  '@melandlabs/integrations-hubspot@0.1.4':
-    resolution: {integrity: sha512-UIa2l1ayMSE4Z4aHknzzDgyct0d9rt9GCCJoKhzF7fELsMBiqfsqhk2lEAG21XTV04LdOx2Wx0AsJsCilU7Cag==}
+  '@melandlabs/integrations-hubspot@0.3.1':
+    resolution: {integrity: sha512-4a/L2TZknFY+LSeCN1CGT36o4VlHyYCPGBjij/EwMMW2I6saXir8C14LQZfjvQ+a5i/LnGsUiJwgCAfI0JEgCw==}
 
-  '@melandlabs/integrations-imessage@0.1.5':
-    resolution: {integrity: sha512-a3Mhe1xnIBR7QsFUiLn02r9lk1gp4vXSv7kK2Mbi1cmN1W/TBQWu1RoiLzZfie6EWtht2ykCURgbrCgEF3Ve6g==}
+  '@melandlabs/integrations-imessage@0.3.5':
+    resolution: {integrity: sha512-PLAvZCSbGGlpQ6FzoUu5zTLANTyPPvALAk9barWufwiqIfHawBMQ2h7Wy0R2M3TprJfImHrkhr7/62+2KsLP0Q==}
 
-  '@melandlabs/integrations-instagram@0.1.4':
-    resolution: {integrity: sha512-mFyDPu+RQVuhq5E03inyDSXMqg+zxMbB5qom3McyLvZKelqny2VpkqOWENxi4BP5Fw2IbbJpM7ZkMdBXbq3C0w==}
+  '@melandlabs/integrations-instagram@0.3.1':
+    resolution: {integrity: sha512-/3qa/Mry0hak4E4ATw4eAAEia89HCIdHLKWxUJ/g1+/vFPEqST21/AmDK5TwMDo4MywhUVk7DN9FUTdQer1fFQ==}
 
-  '@melandlabs/integrations-jira@0.1.4':
-    resolution: {integrity: sha512-OVmyXghEbmXBG8Uavhm8+o6YwXpqrQNrj9N5PMqid21m0Uca4/MfyWR+5BUwS59ebwPPA4+n6EHPzdZinQDO5Q==}
+  '@melandlabs/integrations-jira@0.2.3':
+    resolution: {integrity: sha512-mDf1GoSkXVRZ2Rw9l5z02lcecikJaa43b5ckdFWwNu2RT7R/T5Rzgdwl6Ox7kOTQI64yASo6xneUTM4S7SO5Kg==}
 
-  '@melandlabs/integrations-linkedin@0.1.4':
-    resolution: {integrity: sha512-BDlKx8kOqq/D2BK9nXOYJXqfXyck1gPpTifAHy+8xeTQJCIkRwacuOrQwLO7WIRwxjZzQIRb4eJyOfqnf3aN+A==}
+  '@melandlabs/integrations-linkedin@0.3.1':
+    resolution: {integrity: sha512-4cKXmE4QATQciBU5+zEykie6kWBRbaKL8YFmUg3t2AaORlHQAsJMou8q5tKKrBGkSRZQmriindF9nHnXwv+zUA==}
 
-  '@melandlabs/integrations-qqbot@0.1.5':
-    resolution: {integrity: sha512-lx27DMfDJraJ5MqlgVb8WA5HxekQLOKMQV09KCQmMZgM4ZTWEQjnv0EslM0lAke/kj06vtG7YMyMugtj7+BOpA==}
+  '@melandlabs/integrations-qqbot@0.3.4':
+    resolution: {integrity: sha512-fUXn98Ub6yV3D51DiEiAPmLFvs194b7jBUPo8Qzsiyh3R8ktadixy9KMai+cTJ1ej/VDHb+qwtevBZwprOjctQ==}
 
-  '@melandlabs/integrations-runtime@0.1.4':
-    resolution: {integrity: sha512-tFcqzXwqeSkeKrZYbxM8i/NVyxNSuWgqfVKZFYN3MFd8F6EiOsQS0HEo3krtt5Uu5cPc5tZ01zsP9n4ZrYL5Zw==}
+  '@melandlabs/integrations-runtime@0.3.3':
+    resolution: {integrity: sha512-Xi3QzQiKQCiPc180DMIngPp8xcvcf07JyTfOts8VqjudVM1e/kJLzB+DaiAkdgOAMGt+fEaVzEG91v/QnKLXow==}
 
-  '@melandlabs/integrations-telegram@0.1.5':
-    resolution: {integrity: sha512-B62VifL3cvJ9qBRTesAhH4MCLb+IGJHW2kvrERjRs8csnmftUC6TGRtDu4F2BvnHYDLQ1HP7I4o889ajfWrrfA==}
+  '@melandlabs/integrations-telegram@0.3.4':
+    resolution: {integrity: sha512-Xx6TB4ZY4LrLSr0DYJwxz6UcZBJ1244bCgRyEgyiI7gvTySzOFlQrDwe2VP0M/lqvuANgL4YxWI5JfDtJdw14w==}
 
-  '@melandlabs/integrations-weixin@0.1.5':
-    resolution: {integrity: sha512-bkxPAOtM08nCv4PtGaZRd1LGnBr2xtBfQVczdtWiPOtio9eW8qxXryknMl69fFkX1iNGFJB6JEOG3C7zULBbcw==}
+  '@melandlabs/integrations-weixin@0.3.6':
+    resolution: {integrity: sha512-Xc5D6P6SnIOdX9X1iRvuH8n9XchMtqnnEpKO3+l1bhQHnOhNccB+w4J0AnUKdFBC6RpcX2pubROlCw76cErWvA==}
 
-  '@melandlabs/integrations-whatsapp@0.1.5':
-    resolution: {integrity: sha512-Atxq4ZUEWLClBTMfjBprJJ0SJdOzXjsddWys5ncaQRRFF3amI48bqXVddP//S/vFAkdHTiWsJliw8aSrYob/TQ==}
+  '@melandlabs/integrations-whatsapp@0.3.4':
+    resolution: {integrity: sha512-odw5DHJEdhSK5yKh7P4s3AtYTKR+rTCrzaKe+2S16ryqocPJY6Br0c7IKYnRTFbdFrMx/BR6kqRh0PwmtqPCZA==}
 
-  '@melandlabs/integrations-x@0.1.4':
-    resolution: {integrity: sha512-wLNMDElEKqonjJfv+DM0CiQoxRRLZz4w7FWBa5Gh458MBl5kmoV9apwsH7Swt3TkYq8gkD27/oqOfjXOFMiYXA==}
+  '@melandlabs/integrations-x@0.3.1':
+    resolution: {integrity: sha512-1PFlD/G3Ty8J4qHkqPV/fYTv66+cwaL2lrBGOJykFuwhLTlI06C+SqfpSWqTXVMol+z4uD2oxQeyQ84H1yzLfA==}
 
-  '@melandlabs/integrations@0.1.4':
-    resolution: {integrity: sha512-S0nMy/NCKGFsWcmZMSox2jwYshdv8K8HDKOWpVfs8yzpuFcmHvz8dNVSQFGSfKtl1fyLO/2nfs4VV7LQVTEwMQ==}
+  '@melandlabs/integrations@0.3.0':
+    resolution: {integrity: sha512-dCnAW0LoYk0gL3lyf4E/OKlsJQBqyYkSLASLZSODdpmcBAdRa85fzaCsdRPAEEHw2vrw0xH1l1j5jMS5NvPpAw==}
 
-  '@melandlabs/loop@0.1.4':
-    resolution: {integrity: sha512-lGg2/t0gD5Q/D2lgNi9AE7E0qqGLFKeU0fBw72R6dkJ7Qdp6tkR7llTtZnvNs1yjTgYNQYadZS0l09K6yK62Qg==}
+  '@melandlabs/loop@0.3.1':
+    resolution: {integrity: sha512-21NzV06C9LM+5pUDiws981dpH5++VqEHGzwas99WBqS1VUaTU6joYcg2EuoHqE+0O3BC0JoL71CjPI3YYg7GVQ==}
 
-  '@melandlabs/mcp@0.1.4':
-    resolution: {integrity: sha512-JaEW0up5C8W30BZUH+Ny8ve40f7ZHqPwM+zTHqT5VbCAKmFx/41bExDpGcx6MY56elnWBJwYer4fGZHgjk0Umg==}
+  '@melandlabs/mcp@0.3.1':
+    resolution: {integrity: sha512-sHrMKHcqaIYNof6JmHrzB+4XXroYJsfBdsoWJza5cZJ41Agsc7LCRcDSDXS/uqMFLL7BRPQ6XuwBG1CUlNHL8g==}
     hasBin: true
 
-  '@melandlabs/memory-consolidation@0.1.4':
-    resolution: {integrity: sha512-/y3TI8rDiEaXuTGVbDi+I8HKoKTjd5cvaTQC7fRb1MIaJbtx5P6tmzSjwTrszbXbSr9L4AL67rXkDGH8yPkKpg==}
+  '@melandlabs/memory-consolidation@0.5.0':
+    resolution: {integrity: sha512-ZDJaEaqNQsZ73lwhGf6lHpM4P+iPMhXDLu8/2ObgSnhWPzHgyPtocwfJuBZ3Be1udbcfO0LAzICSet0BUO0E+g==}
 
-  '@melandlabs/memory-store@0.1.6':
-    resolution: {integrity: sha512-6AcyFvUT7cinvhBq3ovQ9TksNWjUf7k0LeQatiskuk86ojfq+QnyEWJQhAEsFCxjufoS2WeyPsICe0+vGogliQ==}
+  '@melandlabs/memory-consolidation@0.5.2':
+    resolution: {integrity: sha512-pEWl/MniYeySJx5EbLHG/l1ecEtVUoVL2sFgqfT1IO/JFLDu8pTschmwlvcoeaiPCHN08UtFUg3fwbCZOgP98Q==}
+
+  '@melandlabs/memory-store@1.1.1':
+    resolution: {integrity: sha512-2dSiYjbIZjvcIunIe84RhQnzMmKKoLgn3bSZHutPoMuQUO6eTcuclUTUt2Lf1sBV1RG7rCxgBaGsb/4pXn2wPg==}
     hasBin: true
     peerDependencies:
-      '@melandlabs/ai-rag': 0.1.4
-      '@melandlabs/indexeddb': 0.1.4
+      '@melandlabs/ai-rag': 0.2.9
+      '@melandlabs/indexeddb': 0.5.8
     peerDependenciesMeta:
       '@melandlabs/ai-rag':
         optional: true
       '@melandlabs/indexeddb':
         optional: true
 
-  '@melandlabs/rag@0.1.5':
-    resolution: {integrity: sha512-SqSRb5vQtlaJyBETgCKTOy8M6xepxecmbvh0oZfpZLCxb1KFzuo4c6mC2/5uxTEnbpzfHYqx4Zc/bsJdnHJWGA==}
+  '@melandlabs/okf@0.2.0':
+    resolution: {integrity: sha512-Hku6gH0Dx4Lay3KJIhOm49GUENr73MlT39UcznukLhtlng11UjQWM4gePTPMualBeaqYHjI4I9nN8gmUUOuUzw==}
+    peerDependencies:
+      '@melandlabs/indexeddb': 0.5.8
+      hono: ^4.6.14
+      zod: ^4.3.6
+    peerDependenciesMeta:
+      '@melandlabs/indexeddb':
+        optional: true
+      hono:
+        optional: true
 
-  '@melandlabs/rss@0.1.4':
-    resolution: {integrity: sha512-O4kJY/0keDcAqWE3JS8yRFD/jbYce0OJbTkPeARVUP0gcD4TdgU984TvB8Fv6h603MCpnCp1SKHIcnHNpE+nZg==}
+  '@melandlabs/rag@0.3.0':
+    resolution: {integrity: sha512-Mdxl2/MHAqZRRsS9BAod39oPQLuDxygT7Pgv5HMPxEa72nnMXp8lI03coESQDGutCXOa5w8EOWTua2f4kNR6JA==}
+    peerDependencies:
+      '@lancedb/lancedb': ^0.37.1
+      '@zilliz/milvus2-sdk-node': ^2.5.13
+    peerDependenciesMeta:
+      '@lancedb/lancedb':
+        optional: true
+      '@zilliz/milvus2-sdk-node':
+        optional: true
+
+  '@melandlabs/rss@0.3.0':
+    resolution: {integrity: sha512-1g8SM+FNAs7WU6KecIqy+eG/y/EjX1w0CqIcaUpZT26B1DhB4PLtfl3di6NiTX0FQBHNBiYtquRjgD35XB2h9A==}
     peerDependencies:
       react: '>=18.0.0'
 
-  '@melandlabs/search@0.1.4':
-    resolution: {integrity: sha512-ulYTT+NyiNM4WyAz7tmbLe0HsnCXidGeflXM+08/PuH5yiGw1gaRM6V2O8Y9BeRh/mbxXjwv5XdZ9OppaqzQKA==}
+  '@melandlabs/search@0.3.1':
+    resolution: {integrity: sha512-uumwBvgS7qwKMiuIivUVDenTilA9kJUd28dvi4gAfSiJQTnKyQ0qjED3uXOxzZMGV7TUQRv7lPO0YbEBfk56Ew==}
 
-  '@melandlabs/security@0.1.4':
-    resolution: {integrity: sha512-pnplfix0cHwnXrtGVoiMXg6czz9B47UJbv8SLgL/IHIYMXe+Lgt2T9hMkKbQR6IXNLBTr3glWjtVdTjAJAxLAA==}
+  '@melandlabs/security@0.3.0':
+    resolution: {integrity: sha512-1A1RbcN05yoVuB93aCfxd74SL4UQO6WHirr/JbswrjUMcYNIrTqJ7fF7k4bx2da9/zFOQPDJFXL+cADgBX2P+Q==}
 
-  '@melandlabs/shared@0.1.4':
-    resolution: {integrity: sha512-ftR0ehM4ZGdgWhGS+IgJ1brHF4q2xjqCGnkFegsq2vtFvh8N3/urWEoG+6mnLio7qm4jzEB7Gx424xoXgGROKQ==}
+  '@melandlabs/shared@0.4.0':
+    resolution: {integrity: sha512-7GChzRVxTvtS9x/vg2poJlyVAZLDvjbaA878EXyJB2qhySQ9s7CH1HVwuoZBrzuqeU8JI57kiU+q4J/XKFgzzA==}
     peerDependencies:
       react: '>=18.0.0'
 
-  '@melandlabs/sqlite@0.1.4':
-    resolution: {integrity: sha512-a4kSmVh014B5WrTmNrjGQqDLFPYiR5PhJM5YGqJRe7CEZ2UzXAVt6AGyGG6CKrrBfKsAnFWGgezMgcMlKEGcdA==}
+  '@melandlabs/sqlite@0.5.1':
+    resolution: {integrity: sha512-WeoT/jzjkp2oK2DY5dSCNN16Pujh3ct7A8TGD9JURu9stwLiYwC0Yfc2nYQ/e8VZ6cWDHajF+sQeomj/zwQYPw==}
 
-  '@melandlabs/storage@0.1.4':
-    resolution: {integrity: sha512-eWbXN1ahiMExE/d5wgn4Q6tVe/Fa3YxlRS9erFZApF42WYzJ5EOYgt16Imel0z6VsTvTqMeK1K4CUz+Fg/isMg==}
+  '@melandlabs/storage@0.3.0':
+    resolution: {integrity: sha512-tRHrc7iMqjuieZ3aaIdVgoSS2QLDWgtKfogB93uuAi6HG8ZluPizhUkR4NKdCboyQQd+USpOPT5YzytFaWtL/Q==}
 
-  '@melandlabs/ui-runtime@0.1.4':
-    resolution: {integrity: sha512-SgHag3iLMKcS7phHaIO9YuMJvtz6CpGA4mxB+4Ni3LjbyaKQJiLwyl1kylCX4HVkoUobgGgJxi3+lfC4QvhnxA==}
+  '@melandlabs/ui-runtime@0.3.0':
+    resolution: {integrity: sha512-3BZQfvBKCgDqIFfLZqZTMSHVkGxslwTP4Tw7rUmiAckAnSuZSOlEUw3Aynw2Ft1L9fke8k6A5QesVjQw6XZVZg==}
 
-  '@melandlabs/voice-kokoro@0.1.4':
-    resolution: {integrity: sha512-f9W78N4Wj6K1l5MU1TP4i3Va2eZbuixm/JuDGCLbKflX6lbqgn2WzOfnLczdl5ivZDMOWVviv0s5Ho3/mydh/w==}
+  '@melandlabs/voice-kokoro@0.3.0':
+    resolution: {integrity: sha512-z/DSxhT+szzFBMz/PecvYzG8n82aaBRZhlbYezR3Aa3qezgI4PUY/UCnhHY8pfHQxJuwTU0jfUYJiZlodfmHZA==}
 
-  '@melandlabs/voice-whisper@0.1.4':
-    resolution: {integrity: sha512-QrNsQOVjpGmryWeqIxdkj3pPfjkCPLLThScYgmh1ruymMZHdvGQIT2Jpw5aqD8MCSUv9O+uR6bXgvKinIumkfg==}
+  '@melandlabs/voice-whisper@0.3.0':
+    resolution: {integrity: sha512-0S8nsfgLa+tQp3AElyXbADcDK01FjbT8jcTLjVrGblS7EDwifDac9uD2L5kWQYEq0PHjigtYSl2CzhLiJY0iZQ==}
+
+  '@melandlabs/vsa@0.3.0':
+    resolution: {integrity: sha512-ztexmVlIpsasASFGm9enzvTRpgxyIZCRYIY+nnqpd4u4eb0P1T999Yj2wMM/cN4Vcws3BwpxZDF7lQ6UnzbETw==}
 
   '@mistralai/mistralai@2.4.0':
     resolution: {integrity: sha512-t6hCx242MTGolB76CI+17jDtPIe/bzLsMdUTMMoMn9Qo1h02N2G5jQYHmKDGU3X//OgR2wvngTD7tO6tPp5poQ==}
@@ -5013,6 +5049,10 @@ packages:
 
   '@smithy/core@3.33.3':
     resolution: {integrity: sha512-CsOeKq/9kA3y6VJHt+/+VTCtBaxJ4OTFpgrjIUhPpDIKxBci1k2bJaQASF2h/ELWrulGp+t97DZ0mevfAD8idg==}
+    engines: {node: '>=18.0.0'}
+
+  '@smithy/credential-provider-imds@4.2.14':
+    resolution: {integrity: sha512-Au28zBN48ZAoXdooGUHemuVBrkE+Ie6RPmGNIAJsFqj33Vhb6xAgRifUydZ2aY+M+KaMAETAlKk5NC5h1G7wpg==}
     engines: {node: '>=18.0.0'}
 
   '@smithy/credential-provider-imds@4.3.4':
@@ -10291,18 +10331,6 @@ packages:
       zod:
         optional: true
 
-  openai@6.38.0:
-    resolution: {integrity: sha512-AoMplt2UalrpgUDMh3L09QWjNRlgJPipclQvA6sYAaeF6nHNBMgmikAZGmcYLn8on4d9sQY9Q8bOLfrBS7Lc8g==}
-    hasBin: true
-    peerDependencies:
-      ws: ^8.18.0
-      zod: ^3.25 || ^4.0
-    peerDependenciesMeta:
-      ws:
-        optional: true
-      zod:
-        optional: true
-
   openai@6.45.0:
     resolution: {integrity: sha512-5DQVNErssk0afNpTTHUm/qZPU4iKR9OYdNid8Ib4puq4gHNNvGWZht2zY4h9a8JMF949Ik6m8gQutllVPbjdnw==}
     peerDependencies:
@@ -11832,10 +11860,6 @@ packages:
   tar-stream@3.1.8:
     resolution: {integrity: sha512-U6QpVRyCGHva435KoNWy9PRoi2IFYCgtEhq9nmrPPpbRacPs9IH4aJ3gbrFC8dPcXvdSZ4XXfXT5Fshbp2MtlQ==}
 
-  tar@7.5.15:
-    resolution: {integrity: sha512-dzGK0boVlC4W5QFuQN1EFSl3bIDYsk7Tj40U6eIBnK2k/8ml7TZ5agbI5j5+qnoVcAA+rNtBml8SEiLxZpNqRQ==}
-    engines: {node: '>=18'}
-
   tar@7.5.19:
     resolution: {integrity: sha512-4LeEWl96twnS2Q7Bz4MGqgazLqO+hJN63GZxXoIqh1T3VweYD997gbU1ItNsQafqqXTXd5WFyFdReLtwvRBNiw==}
     engines: {node: '>=18'}
@@ -12992,49 +13016,49 @@ snapshots:
   '@anthropic-ai/claude-agent-sdk-darwin-arm64@0.2.141':
     optional: true
 
-  '@anthropic-ai/claude-agent-sdk-darwin-arm64@0.3.228':
+  '@anthropic-ai/claude-agent-sdk-darwin-arm64@0.3.238':
     optional: true
 
   '@anthropic-ai/claude-agent-sdk-darwin-x64@0.2.141':
     optional: true
 
-  '@anthropic-ai/claude-agent-sdk-darwin-x64@0.3.228':
+  '@anthropic-ai/claude-agent-sdk-darwin-x64@0.3.238':
     optional: true
 
   '@anthropic-ai/claude-agent-sdk-linux-arm64-musl@0.2.141':
     optional: true
 
-  '@anthropic-ai/claude-agent-sdk-linux-arm64-musl@0.3.228':
+  '@anthropic-ai/claude-agent-sdk-linux-arm64-musl@0.3.238':
     optional: true
 
   '@anthropic-ai/claude-agent-sdk-linux-arm64@0.2.141':
     optional: true
 
-  '@anthropic-ai/claude-agent-sdk-linux-arm64@0.3.228':
+  '@anthropic-ai/claude-agent-sdk-linux-arm64@0.3.238':
     optional: true
 
   '@anthropic-ai/claude-agent-sdk-linux-x64-musl@0.2.141':
     optional: true
 
-  '@anthropic-ai/claude-agent-sdk-linux-x64-musl@0.3.228':
+  '@anthropic-ai/claude-agent-sdk-linux-x64-musl@0.3.238':
     optional: true
 
   '@anthropic-ai/claude-agent-sdk-linux-x64@0.2.141':
     optional: true
 
-  '@anthropic-ai/claude-agent-sdk-linux-x64@0.3.228':
+  '@anthropic-ai/claude-agent-sdk-linux-x64@0.3.238':
     optional: true
 
   '@anthropic-ai/claude-agent-sdk-win32-arm64@0.2.141':
     optional: true
 
-  '@anthropic-ai/claude-agent-sdk-win32-arm64@0.3.228':
+  '@anthropic-ai/claude-agent-sdk-win32-arm64@0.3.238':
     optional: true
 
   '@anthropic-ai/claude-agent-sdk-win32-x64@0.2.141':
     optional: true
 
-  '@anthropic-ai/claude-agent-sdk-win32-x64@0.3.228':
+  '@anthropic-ai/claude-agent-sdk-win32-x64@0.3.238':
     optional: true
 
   '@anthropic-ai/claude-agent-sdk@0.2.141(@cfworker/json-schema@4.1.1)(zod@4.3.6)':
@@ -13055,20 +13079,20 @@ snapshots:
       - '@cfworker/json-schema'
       - supports-color
 
-  '@anthropic-ai/claude-agent-sdk@0.3.228(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(zod@4.4.3)':
+  '@anthropic-ai/claude-agent-sdk@0.3.238(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(zod@4.4.3)':
     dependencies:
       '@anthropic-ai/sdk': 0.72.1(zod@4.3.6)
       '@modelcontextprotocol/sdk': 1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6)
       zod: 4.4.3
     optionalDependencies:
-      '@anthropic-ai/claude-agent-sdk-darwin-arm64': 0.3.228
-      '@anthropic-ai/claude-agent-sdk-darwin-x64': 0.3.228
-      '@anthropic-ai/claude-agent-sdk-linux-arm64': 0.3.228
-      '@anthropic-ai/claude-agent-sdk-linux-arm64-musl': 0.3.228
-      '@anthropic-ai/claude-agent-sdk-linux-x64': 0.3.228
-      '@anthropic-ai/claude-agent-sdk-linux-x64-musl': 0.3.228
-      '@anthropic-ai/claude-agent-sdk-win32-arm64': 0.3.228
-      '@anthropic-ai/claude-agent-sdk-win32-x64': 0.3.228
+      '@anthropic-ai/claude-agent-sdk-darwin-arm64': 0.3.238
+      '@anthropic-ai/claude-agent-sdk-darwin-x64': 0.3.238
+      '@anthropic-ai/claude-agent-sdk-linux-arm64': 0.3.238
+      '@anthropic-ai/claude-agent-sdk-linux-arm64-musl': 0.3.238
+      '@anthropic-ai/claude-agent-sdk-linux-x64': 0.3.238
+      '@anthropic-ai/claude-agent-sdk-linux-x64-musl': 0.3.238
+      '@anthropic-ai/claude-agent-sdk-win32-arm64': 0.3.238
+      '@anthropic-ai/claude-agent-sdk-win32-x64': 0.3.238
 
   '@anthropic-ai/sandbox-runtime@0.0.32':
     dependencies:
@@ -13151,7 +13175,7 @@ snapshots:
       '@aws-crypto/sha256-js': 5.2.0
       '@aws-crypto/supports-web-crypto': 5.2.0
       '@aws-crypto/util': 5.2.0
-      '@aws-sdk/types': 3.973.9
+      '@aws-sdk/types': 3.973.8
       '@aws-sdk/util-locate-window': 3.965.5
       '@smithy/util-utf8': 2.3.0
       tslib: 2.8.1
@@ -13159,7 +13183,7 @@ snapshots:
   '@aws-crypto/sha256-js@5.2.0':
     dependencies:
       '@aws-crypto/util': 5.2.0
-      '@aws-sdk/types': 3.973.9
+      '@aws-sdk/types': 3.973.8
       tslib: 2.8.1
 
   '@aws-crypto/supports-web-crypto@5.2.0':
@@ -13168,7 +13192,7 @@ snapshots:
 
   '@aws-crypto/util@5.2.0':
     dependencies:
-      '@aws-sdk/types': 3.973.9
+      '@aws-sdk/types': 3.973.8
       '@smithy/util-utf8': 2.3.0
       tslib: 2.8.1
 
@@ -13274,15 +13298,15 @@ snapshots:
 
   '@aws-sdk/core@3.974.3':
     dependencies:
-      '@aws-sdk/types': 3.973.9
+      '@aws-sdk/types': 3.973.8
       '@aws-sdk/xml-builder': 3.972.18
-      '@smithy/core': 3.24.4
+      '@smithy/core': 3.23.16
       '@smithy/node-config-provider': 4.3.14
       '@smithy/property-provider': 4.2.14
       '@smithy/protocol-http': 5.3.14
       '@smithy/signature-v4': 5.3.14
       '@smithy/smithy-client': 4.12.12
-      '@smithy/types': 4.14.2
+      '@smithy/types': 4.14.1
       '@smithy/util-base64': 4.3.2
       '@smithy/util-middleware': 4.2.14
       '@smithy/util-retry': 4.3.3
@@ -13375,36 +13399,36 @@ snapshots:
 
   '@aws-sdk/middleware-host-header@3.972.10':
     dependencies:
-      '@aws-sdk/types': 3.973.9
+      '@aws-sdk/types': 3.973.8
       '@smithy/protocol-http': 5.3.14
-      '@smithy/types': 4.14.2
+      '@smithy/types': 4.14.1
       tslib: 2.8.1
 
   '@aws-sdk/middleware-logger@3.972.10':
     dependencies:
-      '@aws-sdk/types': 3.973.9
-      '@smithy/types': 4.14.2
+      '@aws-sdk/types': 3.973.8
+      '@smithy/types': 4.14.1
       tslib: 2.8.1
 
   '@aws-sdk/middleware-recursion-detection@3.972.11':
     dependencies:
-      '@aws-sdk/types': 3.973.9
+      '@aws-sdk/types': 3.973.8
       '@aws/lambda-invoke-store': 0.2.4
       '@smithy/protocol-http': 5.3.14
-      '@smithy/types': 4.14.2
+      '@smithy/types': 4.14.1
       tslib: 2.8.1
 
   '@aws-sdk/middleware-sdk-s3@3.972.32':
     dependencies:
-      '@aws-sdk/core': 3.974.13
-      '@aws-sdk/types': 3.973.9
+      '@aws-sdk/core': 3.974.3
+      '@aws-sdk/types': 3.973.8
       '@aws-sdk/util-arn-parser': 3.972.3
-      '@smithy/core': 3.24.4
+      '@smithy/core': 3.23.16
       '@smithy/node-config-provider': 4.3.14
       '@smithy/protocol-http': 5.3.14
       '@smithy/signature-v4': 5.3.14
       '@smithy/smithy-client': 4.12.12
-      '@smithy/types': 4.14.2
+      '@smithy/types': 4.14.1
       '@smithy/util-config-provider': 4.2.2
       '@smithy/util-middleware': 4.2.14
       '@smithy/util-stream': 4.5.24
@@ -13414,11 +13438,11 @@ snapshots:
   '@aws-sdk/middleware-user-agent@3.972.33':
     dependencies:
       '@aws-sdk/core': 3.974.3
-      '@aws-sdk/types': 3.973.9
+      '@aws-sdk/types': 3.973.8
       '@aws-sdk/util-endpoints': 3.996.8
-      '@smithy/core': 3.24.4
+      '@smithy/core': 3.23.16
       '@smithy/protocol-http': 5.3.14
-      '@smithy/types': 4.14.2
+      '@smithy/types': 4.14.1
       '@smithy/util-retry': 4.3.3
       tslib: 2.8.1
 
@@ -13437,19 +13461,19 @@ snapshots:
 
   '@aws-sdk/region-config-resolver@3.972.13':
     dependencies:
-      '@aws-sdk/types': 3.973.9
+      '@aws-sdk/types': 3.973.8
       '@smithy/config-resolver': 4.4.17
       '@smithy/node-config-provider': 4.3.14
-      '@smithy/types': 4.14.2
+      '@smithy/types': 4.14.1
       tslib: 2.8.1
 
   '@aws-sdk/signature-v4-multi-region@3.996.20':
     dependencies:
       '@aws-sdk/middleware-sdk-s3': 3.972.32
-      '@aws-sdk/types': 3.973.9
+      '@aws-sdk/types': 3.973.8
       '@smithy/protocol-http': 5.3.14
       '@smithy/signature-v4': 5.3.14
-      '@smithy/types': 4.14.2
+      '@smithy/types': 4.14.1
       tslib: 2.8.1
 
   '@aws-sdk/signature-v4-multi-region@3.996.28':
@@ -13485,8 +13509,8 @@ snapshots:
 
   '@aws-sdk/util-endpoints@3.996.8':
     dependencies:
-      '@aws-sdk/types': 3.973.9
-      '@smithy/types': 4.14.2
+      '@aws-sdk/types': 3.973.8
+      '@smithy/types': 4.14.1
       '@smithy/url-parser': 4.2.14
       '@smithy/util-endpoints': 3.4.2
       tslib: 2.8.1
@@ -13497,23 +13521,23 @@ snapshots:
 
   '@aws-sdk/util-user-agent-browser@3.972.10':
     dependencies:
-      '@aws-sdk/types': 3.973.9
-      '@smithy/types': 4.14.2
+      '@aws-sdk/types': 3.973.8
+      '@smithy/types': 4.14.1
       bowser: 2.14.1
       tslib: 2.8.1
 
   '@aws-sdk/util-user-agent-node@3.973.19':
     dependencies:
       '@aws-sdk/middleware-user-agent': 3.972.33
-      '@aws-sdk/types': 3.973.9
+      '@aws-sdk/types': 3.973.8
       '@smithy/node-config-provider': 4.3.14
-      '@smithy/types': 4.14.2
+      '@smithy/types': 4.14.1
       '@smithy/util-config-provider': 4.2.2
       tslib: 2.8.1
 
   '@aws-sdk/xml-builder@3.972.18':
     dependencies:
-      '@smithy/types': 4.14.2
+      '@smithy/types': 4.14.1
       fast-xml-parser: 5.5.8
       tslib: 2.8.1
 
@@ -14840,10 +14864,10 @@ snapshots:
 
   '@keyv/serialize@1.1.1': {}
 
-  '@langchain/classic@1.0.27(@langchain/core@1.1.40(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)))(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@4.104.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.4.3))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))':
+  '@langchain/classic@1.0.27(@aws-sdk/credential-provider-node@3.972.44)(@langchain/core@1.1.40(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)))(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(@smithy/signature-v4@5.4.4)(openai@4.104.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.4.3))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))':
     dependencies:
       '@langchain/core': 1.1.40(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
-      '@langchain/openai': 1.4.1(@langchain/core@1.1.40(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
+      '@langchain/openai': 1.4.1(@aws-sdk/credential-provider-node@3.972.44)(@langchain/core@1.1.40(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)))(@smithy/signature-v4@5.4.4)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
       '@langchain/textsplitters': 1.0.1(@langchain/core@1.1.40(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)))
       handlebars: 4.7.9
       js-yaml: 4.1.1
@@ -14855,16 +14879,19 @@ snapshots:
     optionalDependencies:
       langsmith: 0.5.21(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@4.104.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.4.3))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
     transitivePeerDependencies:
+      - '@aws-sdk/credential-provider-node'
       - '@opentelemetry/api'
       - '@opentelemetry/exporter-trace-otlp-proto'
       - '@opentelemetry/sdk-trace-base'
+      - '@smithy/hash-node'
+      - '@smithy/signature-v4'
       - openai
       - ws
 
-  '@langchain/classic@1.0.27(@langchain/core@1.1.40(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)))(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))':
+  '@langchain/classic@1.0.27(@aws-sdk/credential-provider-node@3.972.44)(@langchain/core@1.1.40(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)))(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(@smithy/signature-v4@5.4.4)(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))':
     dependencies:
       '@langchain/core': 1.1.40(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
-      '@langchain/openai': 1.4.1(@langchain/core@1.1.40(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
+      '@langchain/openai': 1.4.1(@aws-sdk/credential-provider-node@3.972.44)(@langchain/core@1.1.40(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)))(@smithy/signature-v4@5.4.4)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
       '@langchain/textsplitters': 1.0.1(@langchain/core@1.1.40(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)))
       handlebars: 4.7.9
       js-yaml: 4.1.1
@@ -14876,9 +14903,12 @@ snapshots:
     optionalDependencies:
       langsmith: 0.5.21(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
     transitivePeerDependencies:
+      - '@aws-sdk/credential-provider-node'
       - '@opentelemetry/api'
       - '@opentelemetry/exporter-trace-otlp-proto'
       - '@opentelemetry/sdk-trace-base'
+      - '@smithy/hash-node'
+      - '@smithy/signature-v4'
       - openai
       - ws
 
@@ -14886,9 +14916,9 @@ snapshots:
     dependencies:
       '@browserbasehq/stagehand': 1.14.0(@playwright/test@1.59.1)(bufferutil@4.1.0)(deepmerge@4.3.1)(dotenv@16.6.1)(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(utf-8-validate@5.0.10)(zod@4.3.6)
       '@ibm-cloud/watsonx-ai': 1.7.11(typescript@5.9.3)
-      '@langchain/classic': 1.0.27(@langchain/core@1.1.40(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)))(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@4.104.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.4.3))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
+      '@langchain/classic': 1.0.27(@aws-sdk/credential-provider-node@3.972.44)(@langchain/core@1.1.40(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)))(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(@smithy/signature-v4@5.4.4)(openai@4.104.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.4.3))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
       '@langchain/core': 1.1.40(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
-      '@langchain/openai': 1.4.1(@langchain/core@1.1.40(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
+      '@langchain/openai': 1.4.1(@aws-sdk/credential-provider-node@3.972.44)(@langchain/core@1.1.40(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)))(@smithy/signature-v4@5.4.4)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
       binary-extensions: 2.3.0
       flat: 5.0.2
       ibm-cloud-sdk-core: 5.4.11
@@ -14936,15 +14966,16 @@ snapshots:
       - '@opentelemetry/api'
       - '@opentelemetry/exporter-trace-otlp-proto'
       - '@opentelemetry/sdk-trace-base'
+      - '@smithy/hash-node'
       - peggy
 
   '@langchain/community@1.1.27(ee1a3e7d94f325bd2f9dd0915268efa4)':
     dependencies:
       '@browserbasehq/stagehand': 1.14.0(@playwright/test@1.59.1)(bufferutil@4.1.0)(deepmerge@4.3.1)(dotenv@16.6.1)(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(utf-8-validate@5.0.10)(zod@4.3.6)
       '@ibm-cloud/watsonx-ai': 1.7.11(typescript@5.9.3)
-      '@langchain/classic': 1.0.27(@langchain/core@1.1.40(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)))(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
+      '@langchain/classic': 1.0.27(@aws-sdk/credential-provider-node@3.972.44)(@langchain/core@1.1.40(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)))(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(@smithy/signature-v4@5.4.4)(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
       '@langchain/core': 1.1.40(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
-      '@langchain/openai': 1.4.1(@langchain/core@1.1.40(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
+      '@langchain/openai': 1.4.1(@aws-sdk/credential-provider-node@3.972.44)(@langchain/core@1.1.40(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)))(@smithy/signature-v4@5.4.4)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
       binary-extensions: 2.3.0
       flat: 5.0.2
       ibm-cloud-sdk-core: 5.4.11
@@ -14992,6 +15023,7 @@ snapshots:
       - '@opentelemetry/api'
       - '@opentelemetry/exporter-trace-otlp-proto'
       - '@opentelemetry/sdk-trace-base'
+      - '@smithy/hash-node'
       - peggy
 
   '@langchain/core@1.1.40(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@4.104.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.4.3))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))':
@@ -15068,13 +15100,16 @@ snapshots:
       - svelte
       - vue
 
-  '@langchain/openai@1.4.1(@langchain/core@1.1.40(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))':
+  '@langchain/openai@1.4.1(@aws-sdk/credential-provider-node@3.972.44)(@langchain/core@1.1.40(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)))(@smithy/signature-v4@5.4.4)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))':
     dependencies:
       '@langchain/core': 1.1.40(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
       js-tiktoken: 1.0.21
-      openai: 6.38.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.4.3)
+      openai: 6.45.0(@aws-sdk/credential-provider-node@3.972.44)(@smithy/signature-v4@5.4.4)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.4.3)
       zod: 4.4.3
     transitivePeerDependencies:
+      - '@aws-sdk/credential-provider-node'
+      - '@smithy/hash-node'
+      - '@smithy/signature-v4'
       - ws
 
   '@langchain/textsplitters@1.0.1(@langchain/core@1.1.40(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)))':
@@ -15177,14 +15212,15 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@melandlabs/ai-rag@0.1.4(a78fda00450dcbd439e41a1bfb96d5cd)':
+  '@melandlabs/ai-rag@0.2.9(a78fda00450dcbd439e41a1bfb96d5cd)':
     dependencies:
       '@chroma-core/default-embed': 0.1.9
       '@huggingface/transformers': 3.8.1
       '@langchain/community': 1.1.27(09c38e46cafe446936dcd0c6e1776565)
       '@langchain/core': 1.1.40(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@4.104.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.4.3))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
       '@langchain/textsplitters': 1.0.1(@langchain/core@1.1.40(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)))
-      '@melandlabs/shared': 0.1.4(react@19.2.5)
+      '@melandlabs/contracts': 0.6.0(zod@4.4.3)
+      '@melandlabs/shared': 0.4.0(react@19.2.5)
       better-sqlite3: 11.10.0
       chromadb: 3.4.3
       jszip: 3.10.1
@@ -15238,6 +15274,7 @@ snapshots:
       - '@raycast/api'
       - '@rockset/client'
       - '@smithy/eventstream-codec'
+      - '@smithy/hash-node'
       - '@smithy/protocol-http'
       - '@smithy/signature-v4'
       - '@smithy/util-utf8'
@@ -15324,14 +15361,16 @@ snapshots:
       - youtubei.js
       - zod-to-json-schema
 
-  '@melandlabs/ai@0.2.0(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))':
+  '@melandlabs/ai@0.5.5(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))':
     dependencies:
       '@agentclientprotocol/sdk': 0.22.1(zod@4.4.3)
       '@ai-sdk/anthropic': 4.0.0-beta.67(zod@4.4.3)
       '@ai-sdk/openai-compatible': 1.0.36(zod@4.4.3)
-      '@anthropic-ai/claude-agent-sdk': 0.3.228(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(zod@4.4.3)
-      '@melandlabs/memory-consolidation': 0.1.4
-      '@melandlabs/shared': 0.1.4(react@19.2.5)
+      '@anthropic-ai/claude-agent-sdk': 0.3.238(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(zod@4.4.3)
+      '@melandlabs/contracts': 0.5.0(zod@4.4.3)
+      '@melandlabs/env-config': 0.4.0
+      '@melandlabs/memory-consolidation': 0.5.0
+      '@melandlabs/shared': 0.4.0(react@19.2.5)
       '@vercel/sandbox': 1.10.0
       ai: 5.0.0-beta.6(zod@4.4.3)
       cross-spawn: 7.0.6
@@ -15347,19 +15386,79 @@ snapshots:
       - react-native-b4a
       - ws
 
-  '@melandlabs/api@0.1.4': {}
+  '@melandlabs/ai@0.7.0(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))':
+    dependencies:
+      '@agentclientprotocol/sdk': 0.22.1(zod@4.4.3)
+      '@ai-sdk/anthropic': 4.0.0-beta.67(zod@4.4.3)
+      '@ai-sdk/openai-compatible': 1.0.36(zod@4.4.3)
+      '@anthropic-ai/claude-agent-sdk': 0.3.238(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(zod@4.4.3)
+      '@melandlabs/contracts': 0.6.0(zod@4.4.3)
+      '@melandlabs/env-config': 0.4.0
+      '@melandlabs/memory-consolidation': 0.5.0
+      '@melandlabs/shared': 0.4.0(react@19.2.5)
+      '@vercel/sandbox': 1.10.0
+      ai: 5.0.0-beta.6(zod@4.4.3)
+      cross-spawn: 7.0.6
+      nanoid: 5.1.9
+      openai: 4.104.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.4.3)
+      zod: 4.4.3
+    transitivePeerDependencies:
+      - '@anthropic-ai/sdk'
+      - '@modelcontextprotocol/sdk'
+      - bare-abort-controller
+      - encoding
+      - react
+      - react-native-b4a
+      - ws
 
-  '@melandlabs/audit@0.1.4': {}
+  '@melandlabs/ai@0.8.0(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))':
+    dependencies:
+      '@agentclientprotocol/sdk': 0.22.1(zod@4.4.3)
+      '@ai-sdk/anthropic': 4.0.0-beta.67(zod@4.4.3)
+      '@ai-sdk/openai-compatible': 1.0.36(zod@4.4.3)
+      '@anthropic-ai/claude-agent-sdk': 0.3.238(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(zod@4.4.3)
+      '@melandlabs/contracts': 0.6.0(zod@4.4.3)
+      '@melandlabs/env-config': 0.4.0
+      '@melandlabs/memory-consolidation': 0.5.2
+      '@melandlabs/shared': 0.4.0(react@19.2.5)
+      '@vercel/sandbox': 1.10.0
+      ai: 5.0.0-beta.6(zod@4.4.3)
+      cross-spawn: 7.0.6
+      nanoid: 5.1.9
+      openai: 4.104.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.4.3)
+      zod: 4.4.3
+    transitivePeerDependencies:
+      - '@anthropic-ai/sdk'
+      - '@modelcontextprotocol/sdk'
+      - bare-abort-controller
+      - encoding
+      - react
+      - react-native-b4a
+      - ws
 
-  '@melandlabs/contracts@0.1.4(zod@4.3.6)':
+  '@melandlabs/api@0.3.0': {}
+
+  '@melandlabs/audit@0.3.1':
+    dependencies:
+      '@melandlabs/env-config': 0.4.0
+
+  '@melandlabs/contracts@0.5.0(zod@4.4.3)':
+    optionalDependencies:
+      zod: 4.4.3
+
+  '@melandlabs/contracts@0.6.0(zod@4.3.6)':
     optionalDependencies:
       zod: 4.3.6
 
-  '@melandlabs/cron@0.1.4':
+  '@melandlabs/contracts@0.6.0(zod@4.4.3)':
+    optionalDependencies:
+      zod: 4.4.3
+
+  '@melandlabs/cron@0.3.0':
     dependencies:
       croner: 8.1.2
 
-  '@melandlabs/db@0.1.4(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(react@19.2.5)(sswr@2.2.0(svelte@5.56.1(@typescript-eslint/types@8.59.3)))(svelte@5.56.1(@typescript-eslint/types@8.59.3))(vue@3.5.35(typescript@5.9.3))(zod@4.3.6)':
+  '@melandlabs/db@0.3.0(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(react@19.2.5)(sswr@2.2.0(svelte@5.56.1(@typescript-eslint/types@8.59.3)))(svelte@5.56.1(@typescript-eslint/types@8.59.3))(vue@3.5.35(typescript@5.9.3))(zod@4.3.6)':
     dependencies:
       ai: 3.4.33(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(react@19.2.5)(sswr@2.2.0(svelte@5.56.1(@typescript-eslint/types@8.59.3)))(svelte@5.56.1(@typescript-eslint/types@8.59.3))(vue@3.5.35(typescript@5.9.3))(zod@4.3.6)
       bcrypt-ts: 5.0.3
@@ -15372,28 +15471,38 @@ snapshots:
       - vue
       - zod
 
-  '@melandlabs/env-config@0.1.4': {}
+  '@melandlabs/env-config@0.4.0': {}
 
-  '@melandlabs/hooks@0.1.4(react@19.2.5)(swr@2.4.1(react@19.2.5))':
+  '@melandlabs/hooks@0.3.0(react@19.2.5)(swr@2.4.1(react@19.2.5))':
     optionalDependencies:
       react: 19.2.5
       swr: 2.4.1(react@19.2.5)
 
-  '@melandlabs/i18n@0.1.4': {}
+  '@melandlabs/i18n@0.3.1': {}
 
-  '@melandlabs/indexeddb@0.1.4(react@19.2.5)':
+  '@melandlabs/indexeddb@0.5.8(react@19.2.5)(zod@4.3.6)':
     dependencies:
+      '@melandlabs/contracts': 0.6.0(zod@4.3.6)
       react: 19.2.5
+    transitivePeerDependencies:
+      - zod
 
-  '@melandlabs/insights@0.1.4(react@19.2.5)':
+  '@melandlabs/indexeddb@0.5.8(react@19.2.5)(zod@4.4.3)':
+    dependencies:
+      '@melandlabs/contracts': 0.6.0(zod@4.4.3)
+      react: 19.2.5
+    transitivePeerDependencies:
+      - zod
+
+  '@melandlabs/insights@0.3.0(react@19.2.5)':
     dependencies:
       react: 19.2.5
       zod: 4.4.3
 
-  '@melandlabs/integrations-calendar@0.1.4(react@19.2.5)':
+  '@melandlabs/integrations-calendar@0.3.0(react@19.2.5)':
     dependencies:
-      '@melandlabs/integrations': 0.1.4
-      '@melandlabs/integrations-composio': 0.1.4
+      '@melandlabs/integrations': 0.3.0
+      '@melandlabs/integrations-composio': 0.3.0
       google-auth-library: 9.15.1
       googleapis: 140.0.1
       react: 19.2.5
@@ -15401,20 +15510,21 @@ snapshots:
       - encoding
       - supports-color
 
-  '@melandlabs/integrations-channels@0.1.4(react@19.2.5)':
+  '@melandlabs/integrations-channels@0.3.1(react@19.2.5)':
     dependencies:
-      '@melandlabs/shared': 0.1.4(react@19.2.5)
+      '@melandlabs/shared': 0.4.0(react@19.2.5)
       zod: 4.4.3
     transitivePeerDependencies:
       - react
 
-  '@melandlabs/integrations-composio@0.1.4': {}
+  '@melandlabs/integrations-composio@0.3.0': {}
 
-  '@melandlabs/integrations-dingtalk@0.1.5(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))':
+  '@melandlabs/integrations-dingtalk@0.3.4(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))':
     dependencies:
-      '@melandlabs/ai': 0.2.0(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
-      '@melandlabs/integrations': 0.1.4
-      '@melandlabs/integrations-channels': 0.1.4(react@19.2.5)
+      '@melandlabs/ai': 0.7.0(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
+      '@melandlabs/env-config': 0.4.0
+      '@melandlabs/integrations': 0.3.0
+      '@melandlabs/integrations-channels': 0.3.1(react@19.2.5)
     transitivePeerDependencies:
       - '@anthropic-ai/sdk'
       - '@modelcontextprotocol/sdk'
@@ -15424,25 +15534,26 @@ snapshots:
       - react-native-b4a
       - ws
 
-  '@melandlabs/integrations-facebook-messenger@0.1.4(react@19.2.5)':
+  '@melandlabs/integrations-facebook-messenger@0.3.1(react@19.2.5)':
     dependencies:
-      '@melandlabs/integrations': 0.1.4
-      '@melandlabs/integrations-channels': 0.1.4(react@19.2.5)
+      '@melandlabs/integrations': 0.3.0
+      '@melandlabs/integrations-channels': 0.3.1(react@19.2.5)
     transitivePeerDependencies:
       - react
 
-  '@melandlabs/integrations-feishu@0.1.4(bufferutil@4.1.0)(react@19.2.5)(utf-8-validate@5.0.10)':
+  '@melandlabs/integrations-feishu@0.3.2(bufferutil@4.1.0)(react@19.2.5)(utf-8-validate@5.0.10)':
     dependencies:
       '@larksuiteoapi/node-sdk': 1.61.1(bufferutil@4.1.0)(utf-8-validate@5.0.10)
-      '@melandlabs/integrations': 0.1.4
-      '@melandlabs/integrations-channels': 0.1.4(react@19.2.5)
+      '@melandlabs/env-config': 0.4.0
+      '@melandlabs/integrations': 0.3.0
+      '@melandlabs/integrations-channels': 0.3.1(react@19.2.5)
     transitivePeerDependencies:
       - bufferutil
       - debug
       - react
       - utf-8-validate
 
-  '@melandlabs/integrations-google-docs@0.1.4(react@19.2.5)':
+  '@melandlabs/integrations-google-docs@0.3.0(react@19.2.5)':
     dependencies:
       google-auth-library: 9.15.1
       googleapis: 140.0.1
@@ -15451,18 +15562,19 @@ snapshots:
       - encoding
       - supports-color
 
-  '@melandlabs/integrations-hubspot@0.1.4(react@19.2.5)':
+  '@melandlabs/integrations-hubspot@0.3.1(react@19.2.5)':
     dependencies:
-      '@melandlabs/shared': 0.1.4(react@19.2.5)
+      '@melandlabs/shared': 0.4.0(react@19.2.5)
     transitivePeerDependencies:
       - react
 
-  '@melandlabs/integrations-imessage@0.1.5(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))':
+  '@melandlabs/integrations-imessage@0.3.5(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))':
     dependencies:
-      '@melandlabs/ai': 0.2.0(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
-      '@melandlabs/integrations': 0.1.4
-      '@melandlabs/integrations-channels': 0.1.4(react@19.2.5)
-      '@melandlabs/shared': 0.1.4(react@19.2.5)
+      '@melandlabs/ai': 0.5.5(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
+      '@melandlabs/env-config': 0.4.0
+      '@melandlabs/integrations': 0.3.0
+      '@melandlabs/integrations-channels': 0.3.1(react@19.2.5)
+      '@melandlabs/shared': 0.4.0(react@19.2.5)
       '@photon-ai/imessage-kit': 2.1.2
     transitivePeerDependencies:
       - '@anthropic-ai/sdk'
@@ -15473,33 +15585,34 @@ snapshots:
       - react-native-b4a
       - ws
 
-  '@melandlabs/integrations-instagram@0.1.4(react@19.2.5)':
+  '@melandlabs/integrations-instagram@0.3.1(react@19.2.5)':
     dependencies:
-      '@melandlabs/integrations': 0.1.4
-      '@melandlabs/integrations-channels': 0.1.4(react@19.2.5)
-      '@melandlabs/shared': 0.1.4(react@19.2.5)
+      '@melandlabs/integrations': 0.3.0
+      '@melandlabs/integrations-channels': 0.3.1(react@19.2.5)
+      '@melandlabs/shared': 0.4.0(react@19.2.5)
     transitivePeerDependencies:
       - react
 
-  '@melandlabs/integrations-jira@0.1.4(react@19.2.5)':
+  '@melandlabs/integrations-jira@0.2.3(react@19.2.5)':
     dependencies:
-      '@melandlabs/shared': 0.1.4(react@19.2.5)
+      '@melandlabs/shared': 0.4.0(react@19.2.5)
     transitivePeerDependencies:
       - react
 
-  '@melandlabs/integrations-linkedin@0.1.4(react@19.2.5)':
+  '@melandlabs/integrations-linkedin@0.3.1(react@19.2.5)':
     dependencies:
-      '@melandlabs/integrations': 0.1.4
-      '@melandlabs/integrations-channels': 0.1.4(react@19.2.5)
-      '@melandlabs/shared': 0.1.4(react@19.2.5)
+      '@melandlabs/integrations': 0.3.0
+      '@melandlabs/integrations-channels': 0.3.1(react@19.2.5)
+      '@melandlabs/shared': 0.4.0(react@19.2.5)
     transitivePeerDependencies:
       - react
 
-  '@melandlabs/integrations-qqbot@0.1.5(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))':
+  '@melandlabs/integrations-qqbot@0.3.4(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))':
     dependencies:
-      '@melandlabs/ai': 0.2.0(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
-      '@melandlabs/integrations': 0.1.4
-      '@melandlabs/integrations-channels': 0.1.4(react@19.2.5)
+      '@melandlabs/ai': 0.7.0(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
+      '@melandlabs/env-config': 0.4.0
+      '@melandlabs/integrations': 0.3.0
+      '@melandlabs/integrations-channels': 0.3.1(react@19.2.5)
     transitivePeerDependencies:
       - '@anthropic-ai/sdk'
       - '@modelcontextprotocol/sdk'
@@ -15509,20 +15622,21 @@ snapshots:
       - react-native-b4a
       - ws
 
-  '@melandlabs/integrations-runtime@0.1.4(typescript@5.9.3)(zod@4.3.6)':
+  '@melandlabs/integrations-runtime@0.3.3(typescript@5.9.3)(zod@4.3.6)':
     dependencies:
-      '@melandlabs/contracts': 0.1.4(zod@4.3.6)
+      '@melandlabs/contracts': 0.6.0(zod@4.3.6)
       i18next: 26.3.6(typescript@5.9.3)
     transitivePeerDependencies:
       - typescript
       - zod
 
-  '@melandlabs/integrations-telegram@0.1.5(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))':
+  '@melandlabs/integrations-telegram@0.3.4(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))':
     dependencies:
-      '@melandlabs/ai': 0.2.0(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
-      '@melandlabs/integrations': 0.1.4
-      '@melandlabs/integrations-channels': 0.1.4(react@19.2.5)
-      '@melandlabs/shared': 0.1.4(react@19.2.5)
+      '@melandlabs/ai': 0.7.0(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
+      '@melandlabs/env-config': 0.4.0
+      '@melandlabs/integrations': 0.3.0
+      '@melandlabs/integrations-channels': 0.3.1(react@19.2.5)
+      '@melandlabs/shared': 0.4.0(react@19.2.5)
       big-integer: 1.6.52
       markdown-it: 14.1.1
       telegram: 2.26.22
@@ -15536,11 +15650,12 @@ snapshots:
       - supports-color
       - ws
 
-  '@melandlabs/integrations-weixin@0.1.5(patch_hash=381398d760c8f517be81967c3dd93bbeae1d6f84161c213fdc4e6b630902aea3)(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(openclaw@2026.7.1(@aws-sdk/credential-provider-node@3.972.44)(@cfworker/json-schema@4.1.1)(@opentelemetry/api@1.9.1)(@smithy/signature-v4@5.4.4)(bufferutil@4.1.0)(utf-8-validate@5.0.10))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))':
+  '@melandlabs/integrations-weixin@0.3.6(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(openclaw@2026.7.1(@aws-sdk/credential-provider-node@3.972.44)(@cfworker/json-schema@4.1.1)(@opentelemetry/api@1.9.1)(@smithy/signature-v4@5.4.4)(bufferutil@4.1.0)(utf-8-validate@5.0.10))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))':
     dependencies:
-      '@melandlabs/ai': 0.2.0(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
-      '@melandlabs/integrations': 0.1.4
-      '@melandlabs/integrations-channels': 0.1.4(react@19.2.5)
+      '@melandlabs/ai': 0.8.0(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
+      '@melandlabs/env-config': 0.4.0
+      '@melandlabs/integrations': 0.3.0
+      '@melandlabs/integrations-channels': 0.3.1(react@19.2.5)
       '@tencent-weixin/openclaw-weixin': 2.4.6(openclaw@2026.7.1(@aws-sdk/credential-provider-node@3.972.44)(@cfworker/json-schema@4.1.1)(@opentelemetry/api@1.9.1)(@smithy/signature-v4@5.4.4)(bufferutil@4.1.0)(utf-8-validate@5.0.10))
     transitivePeerDependencies:
       - '@anthropic-ai/sdk'
@@ -15552,11 +15667,12 @@ snapshots:
       - react-native-b4a
       - ws
 
-  '@melandlabs/integrations-whatsapp@0.1.5(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(bufferutil@4.1.0)(jimp@1.6.1)(link-preview-js@4.0.0)(react@19.2.5)(sharp@0.34.5)(utf-8-validate@5.0.10)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))':
+  '@melandlabs/integrations-whatsapp@0.3.4(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(bufferutil@4.1.0)(jimp@1.6.1)(link-preview-js@4.0.0)(react@19.2.5)(sharp@0.34.5)(utf-8-validate@5.0.10)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))':
     dependencies:
-      '@melandlabs/ai': 0.2.0(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
-      '@melandlabs/integrations': 0.1.4
-      '@melandlabs/integrations-channels': 0.1.4(react@19.2.5)
+      '@melandlabs/ai': 0.7.0(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
+      '@melandlabs/env-config': 0.4.0
+      '@melandlabs/integrations': 0.3.0
+      '@melandlabs/integrations-channels': 0.3.1(react@19.2.5)
       '@whiskeysockets/baileys': 7.0.0-rc.9(bufferutil@4.1.0)(jimp@1.6.1)(link-preview-js@4.0.0)(sharp@0.34.5)(utf-8-validate@5.0.10)
     transitivePeerDependencies:
       - '@anthropic-ai/sdk'
@@ -15574,46 +15690,56 @@ snapshots:
       - utf-8-validate
       - ws
 
-  '@melandlabs/integrations-x@0.1.4(node-fetch@3.3.2)(react@19.2.5)':
+  '@melandlabs/integrations-x@0.3.1(node-fetch@3.3.2)(react@19.2.5)':
     dependencies:
-      '@melandlabs/integrations': 0.1.4
-      '@melandlabs/integrations-channels': 0.1.4(react@19.2.5)
-      '@melandlabs/shared': 0.1.4(react@19.2.5)
+      '@melandlabs/integrations': 0.3.0
+      '@melandlabs/integrations-channels': 0.3.1(react@19.2.5)
+      '@melandlabs/shared': 0.4.0(react@19.2.5)
       '@xdevplatform/xdk': 0.5.0(node-fetch@3.3.2)
     transitivePeerDependencies:
       - node-fetch
       - react
 
-  '@melandlabs/integrations@0.1.4':
+  '@melandlabs/integrations@0.3.0':
     dependencies:
       sanitize-html: 2.17.6
       turndown: 7.2.4
 
-  '@melandlabs/loop@0.1.4': {}
-
-  '@melandlabs/mcp@0.1.4(@cfworker/json-schema@4.1.1)':
+  '@melandlabs/loop@0.3.1':
     dependencies:
+      '@melandlabs/env-config': 0.4.0
+
+  '@melandlabs/mcp@0.3.1(@cfworker/json-schema@4.1.1)':
+    dependencies:
+      '@melandlabs/env-config': 0.4.0
       '@modelcontextprotocol/sdk': 1.29.0(@cfworker/json-schema@4.1.1)(zod@4.4.3)
       zod: 4.4.3
     transitivePeerDependencies:
       - '@cfworker/json-schema'
       - supports-color
 
-  '@melandlabs/memory-consolidation@0.1.4': {}
+  '@melandlabs/memory-consolidation@0.5.0': {}
 
-  '@melandlabs/memory-store@0.1.6(afdb52f6e252b7da45d7674487df8ff5)':
+  '@melandlabs/memory-consolidation@0.5.2': {}
+
+  '@melandlabs/memory-store@1.1.1(23ad752dc28d5c7350a01fb74eff5723)':
     dependencies:
       '@hono/node-server': 1.19.14(hono@4.12.14)
-      '@melandlabs/ai': 0.2.0(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
-      '@melandlabs/rag': 0.1.5(1362546d49d91a97cd4bee3d54e557ee)
-      '@melandlabs/shared': 0.1.4(react@19.2.5)
-      '@melandlabs/sqlite': 0.1.4(react@19.2.5)
+      '@melandlabs/ai': 0.7.0(@anthropic-ai/sdk@0.72.1(zod@4.3.6))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6))(react@19.2.5)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
+      '@melandlabs/contracts': 0.6.0(zod@4.4.3)
+      '@melandlabs/env-config': 0.4.0
+      '@melandlabs/memory-consolidation': 0.5.0
+      '@melandlabs/okf': 0.2.0(@melandlabs/indexeddb@0.5.8(react@19.2.5)(zod@4.3.6))(hono@4.12.14)(zod@4.4.3)
+      '@melandlabs/rag': 0.3.0(1362546d49d91a97cd4bee3d54e557ee)
+      '@melandlabs/shared': 0.4.0(react@19.2.5)
+      '@melandlabs/sqlite': 0.5.1(react@19.2.5)(zod@4.4.3)
+      '@melandlabs/vsa': 0.3.0
       '@modelcontextprotocol/sdk': 1.29.0(@cfworker/json-schema@4.1.1)(zod@4.4.3)
       hono: 4.12.14
       zod: 4.4.3
     optionalDependencies:
-      '@melandlabs/ai-rag': 0.1.4(a78fda00450dcbd439e41a1bfb96d5cd)
-      '@melandlabs/indexeddb': 0.1.4(react@19.2.5)
+      '@melandlabs/ai-rag': 0.2.9(a78fda00450dcbd439e41a1bfb96d5cd)
+      '@melandlabs/indexeddb': 0.5.8(react@19.2.5)(zod@4.3.6)
     transitivePeerDependencies:
       - '@anthropic-ai/sdk'
       - '@arcjet/redact'
@@ -15667,6 +15793,7 @@ snapshots:
       - '@raycast/api'
       - '@rockset/client'
       - '@smithy/eventstream-codec'
+      - '@smithy/hash-node'
       - '@smithy/protocol-http'
       - '@smithy/signature-v4'
       - '@smithy/util-utf8'
@@ -15770,12 +15897,21 @@ snapshots:
       - youtubei.js
       - zod-to-json-schema
 
-  '@melandlabs/rag@0.1.5(1362546d49d91a97cd4bee3d54e557ee)':
+  '@melandlabs/okf@0.2.0(@melandlabs/indexeddb@0.5.8(react@19.2.5)(zod@4.3.6))(hono@4.12.14)(zod@4.4.3)':
+    dependencies:
+      '@melandlabs/contracts': 0.6.0(zod@4.4.3)
+      yaml: 2.9.0
+      zod: 4.4.3
+    optionalDependencies:
+      '@melandlabs/indexeddb': 0.5.8(react@19.2.5)(zod@4.3.6)
+      hono: 4.12.14
+
+  '@melandlabs/rag@0.3.0(1362546d49d91a97cd4bee3d54e557ee)':
     dependencies:
       '@langchain/community': 1.1.27(09c38e46cafe446936dcd0c6e1776565)
       '@langchain/core': 1.1.40(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@4.104.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.4.3))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
       '@langchain/textsplitters': 1.0.1(@langchain/core@1.1.40(@opentelemetry/api@1.9.1)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.1))(openai@6.34.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.3.6))(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)))
-      '@melandlabs/shared': 0.1.4(react@19.2.5)
+      '@melandlabs/shared': 0.4.0(react@19.2.5)
       better-sqlite3: 11.10.0
       drizzle-orm: 0.44.7(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(@types/pg@8.20.0)(@vercel/postgres@0.10.0(utf-8-validate@5.0.10))(better-sqlite3@11.10.0)(kysely@0.29.2)(pg@8.20.0)(postgres@3.4.9)
       jszip: 3.10.1
@@ -15814,7 +15950,6 @@ snapshots:
       - '@huggingface/inference'
       - '@huggingface/transformers'
       - '@ibm-cloud/watsonx-ai'
-      - '@lancedb/lancedb'
       - '@layerup/layerup-security'
       - '@libsql/client'
       - '@libsql/client-wasm'
@@ -15836,6 +15971,7 @@ snapshots:
       - '@raycast/api'
       - '@rockset/client'
       - '@smithy/eventstream-codec'
+      - '@smithy/hash-node'
       - '@smithy/protocol-http'
       - '@smithy/signature-v4'
       - '@smithy/util-utf8'
@@ -15855,7 +15991,6 @@ snapshots:
       - '@writerai/writer-sdk'
       - '@xata.io/client'
       - '@xenova/transformers'
-      - '@zilliz/milvus2-sdk-node'
       - apify-client
       - assemblyai
       - azion
@@ -15936,48 +16071,62 @@ snapshots:
       - youtubei.js
       - zod-to-json-schema
 
-  '@melandlabs/rss@0.1.4(react@19.2.5)':
+  '@melandlabs/rss@0.3.0(react@19.2.5)':
     dependencies:
       fast-xml-parser: 4.5.6
       react: 19.2.5
       zod: 4.4.3
 
-  '@melandlabs/search@0.1.4': {}
+  '@melandlabs/search@0.3.1': {}
 
-  '@melandlabs/security@0.1.4':
+  '@melandlabs/security@0.3.0':
     dependencies:
       fernet: 0.4.0
 
-  '@melandlabs/shared@0.1.4(react@19.2.5)':
+  '@melandlabs/shared@0.4.0(react@19.2.5)':
     dependencies:
-      '@melandlabs/ui-runtime': 0.1.4
+      '@melandlabs/ui-runtime': 0.3.0
       clsx: 2.1.1
       date-fns: 4.1.0
       react: 19.2.5
       tailwind-merge: 2.6.1
       zod: 4.4.3
 
-  '@melandlabs/sqlite@0.1.4(react@19.2.5)':
+  '@melandlabs/sqlite@0.5.1(react@19.2.5)(zod@4.3.6)':
     dependencies:
-      '@melandlabs/indexeddb': 0.1.4(react@19.2.5)
+      '@melandlabs/contracts': 0.6.0(zod@4.3.6)
+      '@melandlabs/indexeddb': 0.5.8(react@19.2.5)(zod@4.3.6)
       better-sqlite3: 11.10.0
       sqlite-vec: 0.1.9
     transitivePeerDependencies:
       - react
+      - zod
 
-  '@melandlabs/storage@0.1.4':
+  '@melandlabs/sqlite@0.5.1(react@19.2.5)(zod@4.4.3)':
+    dependencies:
+      '@melandlabs/contracts': 0.6.0(zod@4.4.3)
+      '@melandlabs/indexeddb': 0.5.8(react@19.2.5)(zod@4.4.3)
+      better-sqlite3: 11.10.0
+      sqlite-vec: 0.1.9
+    transitivePeerDependencies:
+      - react
+      - zod
+
+  '@melandlabs/storage@0.3.0':
     dependencies:
       '@vercel/blob': 0.27.3
 
-  '@melandlabs/ui-runtime@0.1.4':
+  '@melandlabs/ui-runtime@0.3.0':
     dependencies:
       '@tauri-apps/api': 2.11.0
       '@tauri-apps/plugin-dialog': 2.7.1
       '@tauri-apps/plugin-fs': 2.5.1
 
-  '@melandlabs/voice-kokoro@0.1.4': {}
+  '@melandlabs/voice-kokoro@0.3.0': {}
 
-  '@melandlabs/voice-whisper@0.1.4': {}
+  '@melandlabs/voice-whisper@0.3.0': {}
+
+  '@melandlabs/vsa@0.3.0': {}
 
   '@mistralai/mistralai@2.4.0(@opentelemetry/api@1.9.1)(bufferutil@4.1.0)(utf-8-validate@5.0.10)':
     dependencies:
@@ -17291,7 +17440,7 @@ snapshots:
   '@smithy/config-resolver@4.4.17':
     dependencies:
       '@smithy/node-config-provider': 4.3.14
-      '@smithy/types': 4.14.2
+      '@smithy/types': 4.14.1
       '@smithy/util-config-provider': 4.2.2
       '@smithy/util-endpoints': 3.4.2
       '@smithy/util-middleware': 4.2.14
@@ -17300,7 +17449,7 @@ snapshots:
   '@smithy/core@3.23.16':
     dependencies:
       '@smithy/protocol-http': 5.3.14
-      '@smithy/types': 4.14.2
+      '@smithy/types': 4.14.1
       '@smithy/url-parser': 4.2.14
       '@smithy/util-base64': 4.3.2
       '@smithy/util-body-length-browser': 4.2.2
@@ -17321,6 +17470,14 @@ snapshots:
       '@smithy/types': 4.17.2
       tslib: 2.8.1
 
+  '@smithy/credential-provider-imds@4.2.14':
+    dependencies:
+      '@smithy/node-config-provider': 4.3.14
+      '@smithy/property-provider': 4.2.14
+      '@smithy/types': 4.14.1
+      '@smithy/url-parser': 4.2.14
+      tslib: 2.8.1
+
   '@smithy/credential-provider-imds@4.3.4':
     dependencies:
       '@smithy/core': 3.24.4
@@ -17336,7 +17493,7 @@ snapshots:
     dependencies:
       '@smithy/protocol-http': 5.3.14
       '@smithy/querystring-builder': 4.2.14
-      '@smithy/types': 4.14.2
+      '@smithy/types': 4.14.1
       '@smithy/util-base64': 4.3.2
       tslib: 2.8.1
 
@@ -17348,14 +17505,14 @@ snapshots:
 
   '@smithy/hash-node@4.2.14':
     dependencies:
-      '@smithy/types': 4.14.2
+      '@smithy/types': 4.14.1
       '@smithy/util-buffer-from': 4.2.2
       '@smithy/util-utf8': 4.2.2
       tslib: 2.8.1
 
   '@smithy/invalid-dependency@4.2.14':
     dependencies:
-      '@smithy/types': 4.14.2
+      '@smithy/types': 4.14.1
       tslib: 2.8.1
 
   '@smithy/is-array-buffer@2.2.0':
@@ -17369,28 +17526,28 @@ snapshots:
   '@smithy/middleware-content-length@4.2.14':
     dependencies:
       '@smithy/protocol-http': 5.3.14
-      '@smithy/types': 4.14.2
+      '@smithy/types': 4.14.1
       tslib: 2.8.1
 
   '@smithy/middleware-endpoint@4.4.31':
     dependencies:
-      '@smithy/core': 3.24.4
+      '@smithy/core': 3.23.16
       '@smithy/middleware-serde': 4.2.19
       '@smithy/node-config-provider': 4.3.14
       '@smithy/shared-ini-file-loader': 4.4.9
-      '@smithy/types': 4.14.2
+      '@smithy/types': 4.14.1
       '@smithy/url-parser': 4.2.14
       '@smithy/util-middleware': 4.2.14
       tslib: 2.8.1
 
   '@smithy/middleware-retry@4.5.4':
     dependencies:
-      '@smithy/core': 3.24.4
+      '@smithy/core': 3.23.16
       '@smithy/node-config-provider': 4.3.14
       '@smithy/protocol-http': 5.3.14
       '@smithy/service-error-classification': 4.3.0
       '@smithy/smithy-client': 4.12.12
-      '@smithy/types': 4.14.2
+      '@smithy/types': 4.14.1
       '@smithy/util-middleware': 4.2.14
       '@smithy/util-retry': 4.3.3
       '@smithy/uuid': 1.1.2
@@ -17398,28 +17555,28 @@ snapshots:
 
   '@smithy/middleware-serde@4.2.19':
     dependencies:
-      '@smithy/core': 3.24.4
+      '@smithy/core': 3.23.16
       '@smithy/protocol-http': 5.3.14
-      '@smithy/types': 4.14.2
+      '@smithy/types': 4.14.1
       tslib: 2.8.1
 
   '@smithy/middleware-stack@4.2.14':
     dependencies:
-      '@smithy/types': 4.14.2
+      '@smithy/types': 4.14.1
       tslib: 2.8.1
 
   '@smithy/node-config-provider@4.3.14':
     dependencies:
       '@smithy/property-provider': 4.2.14
       '@smithy/shared-ini-file-loader': 4.4.9
-      '@smithy/types': 4.14.2
+      '@smithy/types': 4.14.1
       tslib: 2.8.1
 
   '@smithy/node-http-handler@4.6.0':
     dependencies:
       '@smithy/protocol-http': 5.3.14
       '@smithy/querystring-builder': 4.2.14
-      '@smithy/types': 4.14.2
+      '@smithy/types': 4.14.1
       tslib: 2.8.1
 
   '@smithy/node-http-handler@4.7.4':
@@ -17430,39 +17587,39 @@ snapshots:
 
   '@smithy/property-provider@4.2.14':
     dependencies:
-      '@smithy/types': 4.14.2
+      '@smithy/types': 4.14.1
       tslib: 2.8.1
 
   '@smithy/protocol-http@5.3.14':
     dependencies:
-      '@smithy/types': 4.14.2
+      '@smithy/types': 4.14.1
       tslib: 2.8.1
 
   '@smithy/querystring-builder@4.2.14':
     dependencies:
-      '@smithy/types': 4.14.2
+      '@smithy/types': 4.14.1
       '@smithy/util-uri-escape': 4.2.2
       tslib: 2.8.1
 
   '@smithy/querystring-parser@4.2.14':
     dependencies:
-      '@smithy/types': 4.14.2
+      '@smithy/types': 4.14.1
       tslib: 2.8.1
 
   '@smithy/service-error-classification@4.3.0':
     dependencies:
-      '@smithy/types': 4.14.2
+      '@smithy/types': 4.14.1
 
   '@smithy/shared-ini-file-loader@4.4.9':
     dependencies:
-      '@smithy/types': 4.14.2
+      '@smithy/types': 4.14.1
       tslib: 2.8.1
 
   '@smithy/signature-v4@5.3.14':
     dependencies:
       '@smithy/is-array-buffer': 4.2.2
       '@smithy/protocol-http': 5.3.14
-      '@smithy/types': 4.14.2
+      '@smithy/types': 4.14.1
       '@smithy/util-hex-encoding': 4.2.2
       '@smithy/util-middleware': 4.2.14
       '@smithy/util-uri-escape': 4.2.2
@@ -17477,11 +17634,11 @@ snapshots:
 
   '@smithy/smithy-client@4.12.12':
     dependencies:
-      '@smithy/core': 3.24.4
+      '@smithy/core': 3.23.16
       '@smithy/middleware-endpoint': 4.4.31
       '@smithy/middleware-stack': 4.2.14
       '@smithy/protocol-http': 5.3.14
-      '@smithy/types': 4.14.2
+      '@smithy/types': 4.14.1
       '@smithy/util-stream': 4.5.24
       tslib: 2.8.1
 
@@ -17500,7 +17657,7 @@ snapshots:
   '@smithy/url-parser@4.2.14':
     dependencies:
       '@smithy/querystring-parser': 4.2.14
-      '@smithy/types': 4.14.2
+      '@smithy/types': 4.14.1
       tslib: 2.8.1
 
   '@smithy/util-base64@4.3.2':
@@ -17535,23 +17692,23 @@ snapshots:
     dependencies:
       '@smithy/property-provider': 4.2.14
       '@smithy/smithy-client': 4.12.12
-      '@smithy/types': 4.14.2
+      '@smithy/types': 4.14.1
       tslib: 2.8.1
 
   '@smithy/util-defaults-mode-node@4.2.53':
     dependencies:
       '@smithy/config-resolver': 4.4.17
-      '@smithy/credential-provider-imds': 4.3.4
+      '@smithy/credential-provider-imds': 4.2.14
       '@smithy/node-config-provider': 4.3.14
       '@smithy/property-provider': 4.2.14
       '@smithy/smithy-client': 4.12.12
-      '@smithy/types': 4.14.2
+      '@smithy/types': 4.14.1
       tslib: 2.8.1
 
   '@smithy/util-endpoints@3.4.2':
     dependencies:
       '@smithy/node-config-provider': 4.3.14
-      '@smithy/types': 4.14.2
+      '@smithy/types': 4.14.1
       tslib: 2.8.1
 
   '@smithy/util-hex-encoding@4.2.2':
@@ -17560,20 +17717,20 @@ snapshots:
 
   '@smithy/util-middleware@4.2.14':
     dependencies:
-      '@smithy/types': 4.14.2
+      '@smithy/types': 4.14.1
       tslib: 2.8.1
 
   '@smithy/util-retry@4.3.3':
     dependencies:
       '@smithy/service-error-classification': 4.3.0
-      '@smithy/types': 4.14.2
+      '@smithy/types': 4.14.1
       tslib: 2.8.1
 
   '@smithy/util-stream@4.5.24':
     dependencies:
-      '@smithy/fetch-http-handler': 5.4.4
-      '@smithy/node-http-handler': 4.7.4
-      '@smithy/types': 4.14.2
+      '@smithy/fetch-http-handler': 5.3.17
+      '@smithy/node-http-handler': 4.6.0
+      '@smithy/types': 4.14.1
       '@smithy/util-base64': 4.3.2
       '@smithy/util-buffer-from': 4.2.2
       '@smithy/util-hex-encoding': 4.2.2
@@ -20296,7 +20453,7 @@ snapshots:
       '@next/eslint-plugin-next': 16.0.7
       eslint: 9.39.4(jiti@2.7.0)
       eslint-import-resolver-node: 0.3.10
-      eslint-import-resolver-typescript: 3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.59.3(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3))(eslint@9.39.4(jiti@2.7.0)))(eslint@9.39.4(jiti@2.7.0))
+      eslint-import-resolver-typescript: 3.10.1(eslint-plugin-import@2.32.0)(eslint@9.39.4(jiti@2.7.0))
       eslint-plugin-import: 2.32.0(@typescript-eslint/parser@8.59.3(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3))(eslint-import-resolver-typescript@3.10.1)(eslint@9.39.4(jiti@2.7.0))
       eslint-plugin-jsx-a11y: 6.10.2(eslint@9.39.4(jiti@2.7.0))
       eslint-plugin-react: 7.37.5(eslint@9.39.4(jiti@2.7.0))
@@ -20323,21 +20480,6 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.59.3(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3))(eslint@9.39.4(jiti@2.7.0)))(eslint@9.39.4(jiti@2.7.0)):
-    dependencies:
-      '@nolyfill/is-core-module': 1.0.39
-      debug: 4.4.3
-      eslint: 9.39.4(jiti@2.7.0)
-      get-tsconfig: 4.14.0
-      is-bun-module: 2.0.0
-      stable-hash: 0.0.5
-      tinyglobby: 0.2.16
-      unrs-resolver: 1.11.1
-    optionalDependencies:
-      eslint-plugin-import: 2.32.0(@typescript-eslint/parser@8.59.3(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3))(eslint-import-resolver-typescript@3.10.1)(eslint@9.39.4(jiti@2.7.0))
-    transitivePeerDependencies:
-      - supports-color
-
   eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0)(eslint@8.57.1):
     dependencies:
       '@nolyfill/is-core-module': 1.0.39
@@ -20353,6 +20495,21 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0)(eslint@9.39.4(jiti@2.7.0)):
+    dependencies:
+      '@nolyfill/is-core-module': 1.0.39
+      debug: 4.4.3
+      eslint: 9.39.4(jiti@2.7.0)
+      get-tsconfig: 4.14.0
+      is-bun-module: 2.0.0
+      stable-hash: 0.0.5
+      tinyglobby: 0.2.16
+      unrs-resolver: 1.11.1
+    optionalDependencies:
+      eslint-plugin-import: 2.32.0(@typescript-eslint/parser@8.59.3(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3))(eslint-import-resolver-typescript@3.10.1)(eslint@9.39.4(jiti@2.7.0))
+    transitivePeerDependencies:
+      - supports-color
+
   eslint-module-utils@2.12.1(@typescript-eslint/parser@7.2.0(eslint@8.57.1)(typescript@5.9.3))(eslint-import-resolver-node@0.3.10)(eslint-import-resolver-typescript@3.10.1)(eslint@8.57.1):
     dependencies:
       debug: 3.2.7
@@ -20364,14 +20521,14 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  eslint-module-utils@2.12.1(@typescript-eslint/parser@8.59.3(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3))(eslint-import-resolver-node@0.3.10)(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.59.3(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3))(eslint@9.39.4(jiti@2.7.0)))(eslint@9.39.4(jiti@2.7.0)))(eslint@9.39.4(jiti@2.7.0)):
+  eslint-module-utils@2.12.1(@typescript-eslint/parser@8.59.3(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3))(eslint-import-resolver-node@0.3.10)(eslint-import-resolver-typescript@3.10.1)(eslint@9.39.4(jiti@2.7.0)):
     dependencies:
       debug: 3.2.7
     optionalDependencies:
       '@typescript-eslint/parser': 8.59.3(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3)
       eslint: 9.39.4(jiti@2.7.0)
       eslint-import-resolver-node: 0.3.10
-      eslint-import-resolver-typescript: 3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.59.3(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3))(eslint@9.39.4(jiti@2.7.0)))(eslint@9.39.4(jiti@2.7.0))
+      eslint-import-resolver-typescript: 3.10.1(eslint-plugin-import@2.32.0)(eslint@9.39.4(jiti@2.7.0))
     transitivePeerDependencies:
       - supports-color
 
@@ -20415,7 +20572,7 @@ snapshots:
       doctrine: 2.1.0
       eslint: 9.39.4(jiti@2.7.0)
       eslint-import-resolver-node: 0.3.10
-      eslint-module-utils: 2.12.1(@typescript-eslint/parser@8.59.3(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3))(eslint-import-resolver-node@0.3.10)(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.59.3(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3))(eslint@9.39.4(jiti@2.7.0)))(eslint@9.39.4(jiti@2.7.0)))(eslint@9.39.4(jiti@2.7.0))
+      eslint-module-utils: 2.12.1(@typescript-eslint/parser@8.59.3(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3))(eslint-import-resolver-node@0.3.10)(eslint-import-resolver-typescript@3.10.1)(eslint@9.39.4(jiti@2.7.0))
       hasown: 2.0.3
       is-core-module: 2.16.1
       is-glob: 4.0.3
@@ -23484,7 +23641,7 @@ snapshots:
     dependencies:
       global-agent: 3.0.0
       onnxruntime-common: 1.21.0
-      tar: 7.5.15
+      tar: 7.5.19
 
   onnxruntime-web@1.22.0-dev.20250409-89f8206ba4:
     dependencies:
@@ -23536,8 +23693,10 @@ snapshots:
       ws: 8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)
       zod: 4.3.6
 
-  openai@6.38.0(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.4.3):
+  openai@6.45.0(@aws-sdk/credential-provider-node@3.972.44)(@smithy/signature-v4@5.4.4)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.4.3):
     optionalDependencies:
+      '@aws-sdk/credential-provider-node': 3.972.44
+      '@smithy/signature-v4': 5.4.4
       ws: 8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)
       zod: 4.4.3
 
@@ -25508,14 +25667,6 @@ snapshots:
       - bare-abort-controller
       - bare-buffer
       - react-native-b4a
-
-  tar@7.5.15:
-    dependencies:
-      '@isaacs/fs-minipass': 4.0.1
-      chownr: 3.0.0
-      minipass: 7.1.3
-      minizlib: 3.1.0
-      yallist: 5.0.0
 
   tar@7.5.19:
     dependencies:
