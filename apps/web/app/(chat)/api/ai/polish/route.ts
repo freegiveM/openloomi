@@ -1,9 +1,6 @@
 import { auth } from "@/app/(auth)/auth";
 import { AppError } from "@melandlabs/shared/errors";
-import { generateText } from "ai";
-import { getModel } from "@/lib/ai";
-import { setAIUserContextFromRequest } from "@/lib/ai/request-context";
-import { isTauriMode } from "@/lib/env";
+import { resolveLlmProvider } from "@/lib/ai/provider-resolver";
 
 /**
  * POST /api/ai/polish
@@ -21,15 +18,6 @@ export async function POST(request: Request) {
     // Parse request body
     const body = await request.json();
 
-    // Set AI user context with cloud auth token for proper billing in proxy mode
-    await setAIUserContextFromRequest({
-      userId: session.user.id,
-      email: session.user.email || "",
-      name: session.user.name || null,
-      userType: session.user.type,
-      request,
-      body,
-    });
     const { draft, tone, language, insightContext } = body as {
       draft?: string;
       tone?: string;
@@ -95,12 +83,13 @@ Provide only the polished version without any explanations or preamble. Keep the
       hasContext: !!insightContext,
     });
 
-    // Call AI to polish
-    const { text } = await generateText({
-      model: getModel(isTauriMode()),
-      prompt,
-      temperature: 0.3,
+    const provider = await resolveLlmProvider({
+      userId: session.user.id,
+      prefer: "chat_completions",
+      endpoint: "polish",
     });
+    if (!provider) throw new Error("No AI provider configured");
+    const { text } = await provider.complete({ userContent: prompt });
 
     console.log("[Polish API] Polished text length:", text.length);
 

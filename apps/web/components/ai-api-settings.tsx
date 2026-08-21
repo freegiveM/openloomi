@@ -3,24 +3,41 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTranslation } from "react-i18next";
-import { Badge, Button, Input, Label, Separator } from "@openloomi/ui";
+import {
+  Badge,
+  Button,
+  Input,
+  Label,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Separator,
+} from "@openloomi/ui";
+import { AgentRuntimeSettings } from "@/components/agent-runtime-settings";
+import { EmbeddingApiSettings } from "@/components/embedding-api-settings";
 import { RemixIcon } from "@/components/remix-icon";
 import { toast } from "@/components/toast";
-import { fetchWithAuth } from "@/lib/utils";
-import { cn } from "@/lib/utils";
 import { MISSING_API_KEY_REASON } from "@/lib/ai/conversation-api-configuration";
-import { EmbeddingApiSettings } from "@/components/embedding-api-settings";
-import { AgentRuntimeSettings } from "@/components/agent-runtime-settings";
+import {
+  getLlmProviderDefinition,
+  LLM_PROVIDER_CATALOG,
+  LLM_PROVIDER_IDS,
+  type LlmProviderId,
+  type LlmProviderTransport,
+} from "@/lib/ai/llm-providers";
 import { notifyAiSettingsChanged } from "@/lib/ai/notify-ai-settings-changed";
-
-type ProviderType = "openai_compatible" | "anthropic_compatible";
+import { cn, fetchWithAuth } from "@/lib/utils";
 
 type AiSetting = {
   id: string;
   userId: string;
-  providerType: ProviderType;
+  providerId: LlmProviderId;
+  providerType: LlmProviderTransport;
   baseUrl: string | null;
   model: string | null;
+  region: string | null;
   enabled: boolean;
   hasApiKey: boolean;
   createdAt: string;
@@ -30,86 +47,40 @@ type AiSetting = {
 type SystemDefault = {
   baseUrl: string | null;
   model: string | null;
+  region: string | null;
   hasApiKey: boolean;
 };
 
 type AiSettingsResponse = {
   settings: AiSetting[];
-  systemDefaults: Record<ProviderType, SystemDefault>;
+  systemDefaults: Record<LlmProviderId, SystemDefault>;
 };
 
 type ProviderDraft = {
   apiKey: string;
   baseUrl: string;
   model: string;
-};
-
-const providers: Array<{
-  type: ProviderType;
-  titleKey: string;
-  titleFallback: string;
-  descriptionKey: string;
-  descriptionFallback: string;
-  apiKeyPlaceholderKey: string;
-  apiKeyPlaceholderFallback: string;
-  baseUrlPlaceholder: string;
-  modelPlaceholder: string;
-}> = [
-  // {
-  //   type: "openai_compatible",
-  //   titleKey: "settings.aiSettingsOpenAiTitle",
-  //   titleFallback: "OpenAI compatible",
-  //   descriptionKey: "settings.aiSettingsOpenAiDescription",
-  //   descriptionFallback:
-  //     "OpenAI, OpenRouter, Groq, Perplexity, or custom endpoints",
-  //   apiKeyPlaceholderKey: "settings.aiSettingsOpenAiApiKeyPlaceholder",
-  //   apiKeyPlaceholderFallback: "sk-...",
-  //   baseUrlPlaceholder: "https://openrouter.ai/api/v1",
-  //   modelPlaceholder: "openai/gpt-4o-mini",
-  // },
-  {
-    type: "anthropic_compatible",
-    titleKey: "settings.aiSettingsAnthropicTitle",
-    titleFallback: "Anthropic compatible",
-    descriptionKey: "settings.aiSettingsAnthropicDescription",
-    descriptionFallback: "Anthropic Claude or compatible provider endpoints",
-    apiKeyPlaceholderKey: "settings.aiSettingsAnthropicApiKeyPlaceholder",
-    apiKeyPlaceholderFallback: "sk-ant-...",
-    baseUrlPlaceholder: "https://api.anthropic.com",
-    modelPlaceholder: "claude-sonnet-4-6",
-  },
-];
-
-const emptyDraft: ProviderDraft = {
-  apiKey: "",
-  baseUrl: "",
-  model: "",
+  region: string;
 };
 
 const MASKED_API_KEY_CHAR = "•";
 const DEFAULT_MASKED_API_KEY_VALUE = MASKED_API_KEY_CHAR.repeat(52);
 
-function createApiKeyMasks(settings: AiSetting[] = []) {
-  return {
-    openai_compatible: settings.find(
-      (setting) => setting.providerType === "openai_compatible",
-    )?.hasApiKey
-      ? DEFAULT_MASKED_API_KEY_VALUE
-      : "",
-    anthropic_compatible: settings.find(
-      (setting) => setting.providerType === "anthropic_compatible",
-    )?.hasApiKey
-      ? DEFAULT_MASKED_API_KEY_VALUE
-      : "",
-  };
-}
-
-function maskApiKey(apiKey: string) {
-  return MASKED_API_KEY_CHAR.repeat(apiKey.length);
-}
-
-function removeApiKeyMask(value: string) {
-  return value.replaceAll(MASKED_API_KEY_CHAR, "");
+function createSystemDefaults(): Record<LlmProviderId, SystemDefault> {
+  return Object.fromEntries(
+    LLM_PROVIDER_IDS.map((providerId) => {
+      const provider = LLM_PROVIDER_CATALOG[providerId];
+      return [
+        providerId,
+        {
+          baseUrl: provider.defaultBaseUrl,
+          model: provider.defaultModel,
+          region: provider.defaultRegion,
+          hasApiKey: false,
+        },
+      ];
+    }),
+  ) as Record<LlmProviderId, SystemDefault>;
 }
 
 function createDraft(setting?: AiSetting): ProviderDraft {
@@ -117,7 +88,42 @@ function createDraft(setting?: AiSetting): ProviderDraft {
     apiKey: "",
     baseUrl: setting?.baseUrl ?? "",
     model: setting?.model ?? "",
+    region: setting?.region ?? "",
   };
+}
+
+function createDrafts(
+  settings: AiSetting[] = [],
+): Record<LlmProviderId, ProviderDraft> {
+  return Object.fromEntries(
+    LLM_PROVIDER_IDS.map((providerId) => [
+      providerId,
+      createDraft(
+        settings.find((setting) => setting.providerId === providerId),
+      ),
+    ]),
+  ) as Record<LlmProviderId, ProviderDraft>;
+}
+
+function createApiKeyMasks(
+  settings: AiSetting[] = [],
+): Record<LlmProviderId, string> {
+  return Object.fromEntries(
+    LLM_PROVIDER_IDS.map((providerId) => [
+      providerId,
+      settings.find((setting) => setting.providerId === providerId)?.hasApiKey
+        ? DEFAULT_MASKED_API_KEY_VALUE
+        : "",
+    ]),
+  ) as Record<LlmProviderId, string>;
+}
+
+function maskApiKey(apiKey: string): string {
+  return MASKED_API_KEY_CHAR.repeat(apiKey.length);
+}
+
+function removeApiKeyMask(value: string): string {
+  return value.replaceAll(MASKED_API_KEY_CHAR, "");
 }
 
 export function AiApiSettings() {
@@ -126,51 +132,36 @@ export function AiApiSettings() {
   const searchParams = useSearchParams();
   const showMissingApiKeyNotice =
     searchParams.get("reason") === MISSING_API_KEY_REASON;
+  const initialDefaults = useMemo(() => createSystemDefaults(), []);
   const [settings, setSettings] = useState<AiSetting[]>([]);
-  const [systemDefaults, setSystemDefaults] = useState<
-    Record<ProviderType, SystemDefault>
-  >({
-    openai_compatible: { baseUrl: null, model: null, hasApiKey: false },
-    anthropic_compatible: { baseUrl: null, model: null, hasApiKey: false },
-  });
-  const [drafts, setDrafts] = useState<Record<ProviderType, ProviderDraft>>({
-    openai_compatible: emptyDraft,
-    anthropic_compatible: emptyDraft,
-  });
+  const [systemDefaults, setSystemDefaults] =
+    useState<Record<LlmProviderId, SystemDefault>>(initialDefaults);
+  const [drafts, setDrafts] =
+    useState<Record<LlmProviderId, ProviderDraft>>(createDrafts());
   const [apiKeyMasks, setApiKeyMasks] =
-    useState<Record<ProviderType, string>>(createApiKeyMasks());
+    useState<Record<LlmProviderId, string>>(createApiKeyMasks());
+  const [selectedProviderId, setSelectedProviderId] =
+    useState<LlmProviderId>("openai_compatible");
   const [loading, setLoading] = useState(true);
-  const [savingProvider, setSavingProvider] = useState<ProviderType | null>(
+  const [savingProvider, setSavingProvider] = useState<LlmProviderId | null>(
     null,
   );
-  const [testingProvider, setTestingProvider] = useState<ProviderType | null>(
+  const [testingProvider, setTestingProvider] = useState<LlmProviderId | null>(
     null,
   );
   const [resettingProvider, setResettingProvider] =
-    useState<ProviderType | null>(null);
+    useState<LlmProviderId | null>(null);
 
   const settingsByProvider = useMemo(() => {
-    const map = new Map<ProviderType, AiSetting>();
-    for (const setting of settings) {
-      map.set(setting.providerType, setting);
-    }
+    const map = new Map<LlmProviderId, AiSetting>();
+    for (const setting of settings) map.set(setting.providerId, setting);
     return map;
   }, [settings]);
-  const displayedProviders = useMemo(
-    () =>
-      showMissingApiKeyNotice
-        ? [...providers].sort((provider) =>
-            provider.type === "anthropic_compatible" ? -1 : 1,
-          )
-        : providers,
-    [showMissingApiKeyNotice],
-  );
 
   const loadSettings = useCallback(async () => {
     setLoading(true);
     try {
       const response = await fetchWithAuth("/api/preferences/ai");
-
       if (!response.ok) {
         const body = await response.text().catch(() => "");
         throw new Error(
@@ -179,31 +170,21 @@ export function AiApiSettings() {
       }
 
       const data = (await response.json()) as AiSettingsResponse;
-
       setSettings(data.settings);
       setSystemDefaults(data.systemDefaults);
       setApiKeyMasks(createApiKeyMasks(data.settings));
-      setDrafts({
-        openai_compatible: createDraft(
-          data.settings.find(
-            (setting) => setting.providerType === "openai_compatible",
-          ),
-        ),
-        anthropic_compatible: createDraft(
-          data.settings.find(
-            (setting) => setting.providerType === "anthropic_compatible",
-          ),
-        ),
-      });
+      setDrafts(createDrafts(data.settings));
+      setSelectedProviderId(
+        data.settings.find((setting) => setting.enabled)?.providerId ??
+          data.settings[0]?.providerId ??
+          "openai_compatible",
+      );
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
       console.error("[AI Settings] Failed to load settings", detail);
       toast({
         type: "error",
-        description: `${t(
-          "settings.aiSettingsLoadError",
-          "Failed to load AI settings.",
-        )} (${detail})`,
+        description: `${t("settings.aiSettingsLoadError", "Failed to load AI settings.")} (${detail})`,
       });
     } finally {
       setLoading(false);
@@ -215,52 +196,63 @@ export function AiApiSettings() {
   }, [loadSettings]);
 
   const updateDraft = (
-    providerType: ProviderType,
+    providerId: LlmProviderId,
     updates: Partial<ProviderDraft>,
   ) => {
     setDrafts((current) => ({
       ...current,
-      [providerType]: {
-        ...current[providerType],
-        ...updates,
-      },
+      [providerId]: { ...current[providerId], ...updates },
     }));
   };
 
-  const saveProvider = async (providerType: ProviderType) => {
-    const draft = drafts[providerType];
-    // Issue #286: there is no Enabled toggle in the UI — Save is the
-    // single commit point. `enabled` is derived from draft completeness:
-    // a complete config (api key + base URL + model) becomes active,
-    // missing any field disables it. That makes first-time setup
-    // friction-free (paste key + URL + model, click Save, done) without
-    // needing a separate "I want this provider to run" gesture.
+  const isComplete = (providerId: LlmProviderId): boolean => {
+    const definition = getLlmProviderDefinition(providerId);
+    const setting = settingsByProvider.get(providerId);
+    const defaults = systemDefaults[providerId];
+    const draft = drafts[providerId];
+    const hasApiKey = Boolean(
+      draft.apiKey.trim() || setting?.hasApiKey || defaults.hasApiKey,
+    );
+    const credentialsComplete = !definition.apiKeyRequired || hasApiKey;
+    const endpointComplete =
+      definition.transport === "bedrock" ||
+      Boolean(
+        draft.baseUrl.trim() || defaults.baseUrl || definition.defaultBaseUrl,
+      );
+    const regionComplete =
+      definition.transport !== "bedrock" ||
+      Boolean(
+        draft.region.trim() || defaults.region || definition.defaultRegion,
+      );
+    return (
+      credentialsComplete &&
+      endpointComplete &&
+      regionComplete &&
+      Boolean(draft.model.trim() || defaults.model || definition.defaultModel)
+    );
+  };
+
+  const saveProvider = async (providerId: LlmProviderId) => {
+    const draft = drafts[providerId];
     const nextApiKey = draft.apiKey.trim();
-    const existingSetting = settingsByProvider.get(providerType);
-    const hasSavedApiKey = existingSetting?.hasApiKey ?? false;
-    const hasDraftApiKey = nextApiKey.length > 0 || hasSavedApiKey;
-    const hasDraftBaseUrl = draft.baseUrl.trim().length > 0;
-    const hasDraftModel = draft.model.trim().length > 0;
-    const isCompleteDraft = hasDraftApiKey && hasDraftBaseUrl && hasDraftModel;
-    const nextEnabled = isCompleteDraft;
-    setSavingProvider(providerType);
+    const nextEnabled = isComplete(providerId);
+    setSavingProvider(providerId);
     try {
       const payload: {
-        providerType: ProviderType;
+        providerId: LlmProviderId;
         apiKey?: string;
         baseUrl: string | null;
         model: string | null;
+        region: string | null;
         enabled: boolean;
       } = {
-        providerType,
+        providerId,
         baseUrl: draft.baseUrl.trim() || null,
         model: draft.model.trim() || null,
+        region: draft.region.trim() || null,
         enabled: nextEnabled,
       };
-
-      if (nextApiKey) {
-        payload.apiKey = nextApiKey;
-      }
+      if (nextApiKey) payload.apiKey = nextApiKey;
 
       const response = await fetchWithAuth("/api/preferences/ai", {
         method: "PUT",
@@ -272,13 +264,7 @@ export function AiApiSettings() {
         message?: string;
         cause?: string;
       };
-
       if (!response.ok || !data.setting) {
-        // Surface the server-side cause when available so DevTools shows the
-        // real failure instead of an opaque "save_failed". For database
-        // surface errors the body only carries a generic message (cause is
-        // logged to stderr on the server) — we still prefix the HTTP status
-        // to make the failure class obvious.
         const reason = data.cause || data.message || data.code || "save_failed";
         throw new Error(`HTTP ${response.status}: ${reason}`);
       }
@@ -286,34 +272,29 @@ export function AiApiSettings() {
       const savedSetting = data.setting;
       setApiKeyMasks((current) => ({
         ...current,
-        [providerType]: nextApiKey
+        [providerId]: nextApiKey
           ? maskApiKey(nextApiKey)
           : savedSetting.hasApiKey
-            ? current[providerType] || DEFAULT_MASKED_API_KEY_VALUE
+            ? current[providerId] || DEFAULT_MASKED_API_KEY_VALUE
             : "",
       }));
       setSettings((current) => [
-        ...current.filter((setting) => setting.providerType !== providerType),
+        ...current
+          .filter((setting) => setting.providerId !== providerId)
+          .map((setting) => ({
+            ...setting,
+            enabled: nextEnabled ? false : setting.enabled,
+          })),
         savedSetting,
       ]);
-      updateDraft(providerType, {
-        apiKey: "",
-      });
-      // Notify listeners in the same webview (kept for backwards compat).
+      updateDraft(providerId, { apiKey: "" });
       notifyAiSettingsChanged();
-      if (
-        showMissingApiKeyNotice &&
-        providerType === "anthropic_compatible" &&
-        savedSetting.enabled &&
-        savedSetting.hasApiKey &&
-        savedSetting.baseUrl?.trim() &&
-        savedSetting.model?.trim()
-      ) {
+      if (showMissingApiKeyNotice && savedSetting.enabled) {
         router.replace("/?page=chat", { scroll: false });
       }
       toast({
         type: "success",
-        description: isCompleteDraft
+        description: nextEnabled
           ? t(
               "settings.aiSettingsSavedAndEnabled",
               "API settings saved and provider enabled.",
@@ -334,29 +315,20 @@ export function AiApiSettings() {
     }
   };
 
-  const resetProvider = async (providerType: ProviderType) => {
-    setResettingProvider(providerType);
+  const resetProvider = async (providerId: LlmProviderId) => {
+    setResettingProvider(providerId);
     try {
       const response = await fetchWithAuth(
-        `/api/preferences/ai?providerType=${providerType}`,
+        `/api/preferences/ai?providerId=${providerId}`,
         { method: "DELETE" },
       );
-
-      if (!response.ok) {
-        throw new Error("reset_failed");
-      }
+      if (!response.ok) throw new Error("reset_failed");
 
       setSettings((current) =>
-        current.filter((setting) => setting.providerType !== providerType),
+        current.filter((setting) => setting.providerId !== providerId),
       );
-      setApiKeyMasks((current) => ({
-        ...current,
-        [providerType]: "",
-      }));
-      updateDraft(providerType, createDraft());
-      // Same rationale as the save path above — fire both the DOM event
-      // (legacy listeners in the same webview) and the Tauri event
-      // (pet card webview + Rust watcher).
+      setApiKeyMasks((current) => ({ ...current, [providerId]: "" }));
+      updateDraft(providerId, createDraft());
       notifyAiSettingsChanged();
       toast({
         type: "success",
@@ -379,24 +351,23 @@ export function AiApiSettings() {
     }
   };
 
-  const testProvider = async (providerType: ProviderType) => {
-    const draft = drafts[providerType];
-    setTestingProvider(providerType);
+  const testProvider = async (providerId: LlmProviderId) => {
+    const draft = drafts[providerId];
+    setTestingProvider(providerId);
     try {
       const payload: {
-        providerType: ProviderType;
+        providerId: LlmProviderId;
         apiKey?: string;
         baseUrl: string | null;
         model: string | null;
+        region: string | null;
       } = {
-        providerType,
+        providerId,
         baseUrl: draft.baseUrl.trim() || null,
         model: draft.model.trim() || null,
+        region: draft.region.trim() || null,
       };
-
-      if (draft.apiKey.trim()) {
-        payload.apiKey = draft.apiKey.trim();
-      }
+      if (draft.apiKey.trim()) payload.apiKey = draft.apiKey.trim();
 
       const response = await fetchWithAuth("/api/preferences/ai", {
         method: "POST",
@@ -406,7 +377,6 @@ export function AiApiSettings() {
         ok?: boolean;
         error?: string;
       } | null;
-
       if (!response.ok || !data?.ok) {
         throw new Error(data?.error ?? "test_failed");
       }
@@ -424,7 +394,7 @@ export function AiApiSettings() {
         type: "error",
         description: t(
           "settings.aiSettingsTestError",
-          "Provider test failed. Check the API key, base URL, and model.",
+          "Provider test failed. Check its credentials and model settings.",
         ),
       });
     } finally {
@@ -434,10 +404,9 @@ export function AiApiSettings() {
 
   return (
     <div className="w-full max-w-none space-y-8">
-      <div className="w-full px-1 sm:px-0 space-y-8">
+      <div className="w-full space-y-8 px-1 sm:px-0">
         {showMissingApiKeyNotice && (
-          <div
-            role="status"
+          <output
             aria-live="polite"
             aria-atomic="true"
             className="flex gap-3 rounded-lg border border-primary/25 bg-primary/5 p-4 text-sm"
@@ -451,18 +420,19 @@ export function AiApiSettings() {
               <p className="font-medium text-foreground">
                 {t(
                   "settings.aiSettingsRequiredTitle",
-                  "Configure an API key to start chatting",
+                  "Configure a model provider to start chatting",
                 )}
               </p>
               <p className="text-muted-foreground">
                 {t(
                   "settings.aiSettingsRequiredDescription",
-                  "Enable an Anthropic-compatible provider and save its API key, base URL, and model before starting a conversation.",
+                  "Configure and save any supported provider below.",
                 )}
               </p>
             </div>
-          </div>
+          </output>
         )}
+
         <AgentRuntimeSettings />
         <div className="flex flex-col gap-2">
           <p className="text-base font-semibold text-foreground-secondary">
@@ -471,92 +441,159 @@ export function AiApiSettings() {
           <p className="max-w-3xl text-sm text-muted-foreground">
             {t(
               "settings.aiSettingsDescription",
-              "Configure per-user API settings for compatible AI providers.",
+              "Save one active provider. API keys remain encrypted at rest; Ollama and AWS IAM credentials do not require a stored key.",
             )}
           </p>
         </div>
 
         <div className="flex flex-col gap-6">
-          {displayedProviders.map((provider) => {
-            const setting = settingsByProvider.get(provider.type);
-            const draft = drafts[provider.type];
-            const defaults = systemDefaults[provider.type];
-            const hasSavedSetting = Boolean(setting);
-            const hasOverride = hasSavedSetting;
-            const isSaving = savingProvider === provider.type;
-            const isTesting = testingProvider === provider.type;
-            const isResetting = resettingProvider === provider.type;
-            const disabled = loading || isSaving || isTesting || isResetting;
-            const canTest =
-              Boolean(draft.baseUrl.trim()) &&
-              Boolean(draft.model.trim()) &&
-              Boolean(draft.apiKey.trim() || setting?.hasApiKey);
+          <div className="max-w-xl space-y-2">
+            <Label htmlFor="conversation-model-provider">
+              {t("settings.aiSettingsProvider", "Model provider")}
+            </Label>
+            <Select
+              value={selectedProviderId}
+              disabled={loading}
+              onValueChange={(providerId) =>
+                setSelectedProviderId(providerId as LlmProviderId)
+              }
+            >
+              <SelectTrigger
+                id="conversation-model-provider"
+                className="w-full"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="min-w-[var(--radix-select-trigger-width)]">
+                {LLM_PROVIDER_IDS.map((providerId) => {
+                  const provider = getLlmProviderDefinition(providerId);
+                  const setting = settingsByProvider.get(providerId);
+                  return (
+                    <SelectItem key={providerId} value={providerId}>
+                      <span>
+                        {t(
+                          `settings.aiSettingsProviderNames.${providerId}`,
+                          provider.displayName,
+                        )}
+                      </span>
+                      {setting?.enabled ? (
+                        <span className="text-xs text-primary">
+                          {t("settings.aiSettingsActive", "Active")}
+                        </span>
+                      ) : setting ? (
+                        <span className="text-xs text-muted-foreground">
+                          {t("settings.aiSettingsConfigured", "Configured")}
+                        </span>
+                      ) : null}
+                    </SelectItem>
+                  );
+                })}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              {t(
+                "settings.aiSettingsProviderHint",
+                "Choose and configure one provider. Saving a complete configuration makes it the active conversation model provider.",
+              )}
+            </p>
+          </div>
+
+          {LLM_PROVIDER_IDS.filter(
+            (providerId) => providerId === selectedProviderId,
+          ).map((providerId) => {
+            const provider = getLlmProviderDefinition(providerId);
+            const setting = settingsByProvider.get(providerId);
+            const draft = drafts[providerId];
+            const defaults = systemDefaults[providerId];
+            const disabled =
+              loading ||
+              savingProvider === providerId ||
+              testingProvider === providerId ||
+              resettingProvider === providerId;
             const savedApiKeyMask =
-              apiKeyMasks[provider.type] || DEFAULT_MASKED_API_KEY_VALUE;
+              apiKeyMasks[providerId] || DEFAULT_MASKED_API_KEY_VALUE;
             const apiKeyValue =
               draft.apiKey || (setting?.hasApiKey ? savedApiKeyMask : "");
-            const isRequiredConversationProvider =
-              showMissingApiKeyNotice &&
-              provider.type === "anthropic_compatible";
+            const showBaseUrl = provider.transport !== "bedrock";
+            const showRegion = provider.transport === "bedrock";
 
             return (
               <section
-                key={provider.type}
+                key={providerId}
                 className={cn(
                   "rounded-lg border border-border bg-background p-4 sm:p-5",
-                  isRequiredConversationProvider &&
+                  setting?.enabled &&
                     "border-primary/40 ring-1 ring-primary/15",
                 )}
               >
                 <div className="flex flex-col gap-4">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="text-sm font-semibold text-foreground">
-                          {t(provider.titleKey, provider.titleFallback)}
-                        </p>
-                        <Badge
-                          variant={hasOverride ? "default" : "secondary"}
-                          className="h-5 rounded-md px-2 text-[11px] font-medium"
-                        >
-                          {hasOverride
-                            ? t("settings.aiSettingsOverride", "User override")
-                            : t("settings.aiSettingsSystem", "System default")}
-                        </Badge>
-                        {isRequiredConversationProvider && (
-                          <Badge
-                            variant="secondary"
-                            className="h-5 rounded-md bg-primary/10 px-2 text-[11px] font-medium text-primary"
-                          >
-                            {t(
-                              "settings.aiSettingsRequiredForChat",
-                              "Required for chat",
-                            )}
-                          </Badge>
-                        )}
-                      </div>
-                      <p className="mt-1 text-sm text-muted-foreground">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-sm font-semibold text-foreground">
                         {t(
-                          provider.descriptionKey,
-                          provider.descriptionFallback,
+                          `settings.aiSettingsProviderNames.${providerId}`,
+                          provider.displayName,
                         )}
                       </p>
+                      <Badge
+                        variant={setting?.enabled ? "default" : "secondary"}
+                        className="h-5 rounded-md px-2 text-[11px] font-medium"
+                      >
+                        {setting?.enabled
+                          ? t("settings.aiSettingsActive", "Active")
+                          : setting
+                            ? t("settings.aiSettingsConfigured", "Configured")
+                            : t(
+                                "settings.aiSettingsNotConfigured",
+                                "Not configured",
+                              )}
+                      </Badge>
+                      <Badge
+                        variant="secondary"
+                        className="h-5 rounded-md px-2 text-[11px] font-medium"
+                      >
+                        {provider.transport === "bedrock"
+                          ? t(
+                              "settings.aiSettingsTransportConverse",
+                              "Converse",
+                            )
+                          : provider.transport === "anthropic_compatible"
+                            ? t(
+                                "settings.aiSettingsTransportMessages",
+                                "Messages",
+                              )
+                            : t(
+                                "settings.aiSettingsTransportChatCompletions",
+                                "Chat Completions",
+                              )}
+                      </Badge>
                     </div>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {t(
+                        `settings.aiSettingsProviderDescriptions.${providerId}`,
+                        provider.description,
+                      )}
+                    </p>
                   </div>
 
-                  <div className="grid gap-4 lg:grid-cols-3">
+                  <div className={cn("grid gap-4", "lg:grid-cols-3")}>
                     <div className="space-y-2">
-                      <Label htmlFor={`${provider.type}-api-key`}>
-                        {t("settings.aiSettingsApiKey", "API Key")}
+                      <Label htmlFor={`${providerId}-api-key`}>
+                        {provider.apiKeyRequired
+                          ? t("settings.aiSettingsApiKey", "API Key")
+                          : t(
+                              "settings.aiSettingsOptionalApiKey",
+                              "API Key (optional)",
+                            )}
                       </Label>
                       <Input
-                        id={`${provider.type}-api-key`}
+                        id={`${providerId}-api-key`}
                         type="password"
                         value={apiKeyValue}
                         disabled={disabled}
                         placeholder={t(
-                          provider.apiKeyPlaceholderKey,
-                          provider.apiKeyPlaceholderFallback,
+                          `settings.aiSettingsProviderApiKeyPlaceholders.${providerId}`,
+                          provider.apiKeyPlaceholder,
                         )}
                         onFocus={(event) => {
                           if (!draft.apiKey && setting?.hasApiKey) {
@@ -565,13 +602,11 @@ export function AiApiSettings() {
                         }}
                         onChange={(event) => {
                           const nextValue = event.target.value;
-                          const isEditingSavedApiKeyMask =
-                            !draft.apiKey && Boolean(setting?.hasApiKey);
-
-                          updateDraft(provider.type, {
-                            apiKey: isEditingSavedApiKeyMask
-                              ? removeApiKeyMask(nextValue)
-                              : nextValue,
+                          updateDraft(providerId, {
+                            apiKey:
+                              !draft.apiKey && setting?.hasApiKey
+                                ? removeApiKeyMask(nextValue)
+                                : nextValue,
                           });
                         }}
                       />
@@ -584,76 +619,115 @@ export function AiApiSettings() {
                           : defaults.hasApiKey
                             ? t(
                                 "settings.aiSettingsSystemApiKeyConfigured",
-                                "Using system API key",
+                                "Using environment credentials",
                               )
-                            : t(
-                                "settings.aiSettingsApiKeyNotConfigured",
-                                "No API key configured",
-                              )}
+                            : provider.apiKeyRequired
+                              ? t(
+                                  "settings.aiSettingsApiKeyNotConfigured",
+                                  "No API key configured",
+                                )
+                              : providerId === "bedrock"
+                                ? t(
+                                    "settings.aiSettingsBedrockCredentialChain",
+                                    "Uses the AWS credential chain when blank",
+                                  )
+                                : t(
+                                    "settings.aiSettingsApiKeyNotRequired",
+                                    "This provider does not require a key",
+                                  )}
                       </p>
                     </div>
 
-                    <div className="space-y-2">
-                      <Label htmlFor={`${provider.type}-base-url`}>
-                        {t("settings.aiSettingsBaseUrl", "Base URL")}
-                      </Label>
-                      <Input
-                        id={`${provider.type}-base-url`}
-                        value={draft.baseUrl}
-                        disabled={disabled}
-                        placeholder={provider.baseUrlPlaceholder}
-                        onChange={(event) =>
-                          updateDraft(provider.type, {
-                            baseUrl: event.target.value,
-                          })
-                        }
-                      />
-                    </div>
+                    {showBaseUrl && (
+                      <div className="space-y-2">
+                        <Label htmlFor={`${providerId}-base-url`}>
+                          {t("settings.aiSettingsBaseUrl", "Base URL")}
+                        </Label>
+                        <Input
+                          id={`${providerId}-base-url`}
+                          value={draft.baseUrl}
+                          disabled={disabled}
+                          placeholder={
+                            defaults.baseUrl ?? provider.defaultBaseUrl ?? ""
+                          }
+                          onChange={(event) =>
+                            updateDraft(providerId, {
+                              baseUrl: event.target.value,
+                            })
+                          }
+                        />
+                      </div>
+                    )}
+
+                    {showRegion && (
+                      <div className="space-y-2">
+                        <Label htmlFor={`${providerId}-region`}>
+                          {t("settings.aiSettingsAwsRegion", "AWS Region")}
+                        </Label>
+                        <Input
+                          id={`${providerId}-region`}
+                          value={draft.region}
+                          disabled={disabled}
+                          placeholder={
+                            defaults.region ??
+                            provider.defaultRegion ??
+                            "us-east-1"
+                          }
+                          onChange={(event) =>
+                            updateDraft(providerId, {
+                              region: event.target.value,
+                            })
+                          }
+                        />
+                      </div>
+                    )}
 
                     <div className="space-y-2">
-                      <Label htmlFor={`${provider.type}-model`}>
+                      <Label htmlFor={`${providerId}-model`}>
                         {t("settings.aiSettingsModel", "Model")}
                       </Label>
                       <Input
-                        id={`${provider.type}-model`}
+                        id={`${providerId}-model`}
                         value={draft.model}
                         disabled={disabled}
-                        placeholder={provider.modelPlaceholder}
+                        placeholder={defaults.model ?? provider.defaultModel}
                         onChange={(event) =>
-                          updateDraft(provider.type, {
-                            model: event.target.value,
-                          })
+                          updateDraft(providerId, { model: event.target.value })
                         }
                       />
                     </div>
                   </div>
 
                   <div className="flex flex-col gap-3 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-                      <span>
-                        {t("settings.aiSettingsDefaultBaseUrl", "Default URL")}
-                        {": "}
-                        <span className="text-foreground">
-                          {defaults.baseUrl ?? "—"}
-                        </span>
+                    <span>
+                      {showRegion
+                        ? t(
+                            "settings.aiSettingsDefaultRegion",
+                            "Default region",
+                          )
+                        : t("settings.aiSettingsDefaultBaseUrl", "Default URL")}
+                      {": "}
+                      <span className="text-foreground">
+                        {showRegion
+                          ? (defaults.region ?? "—")
+                          : (defaults.baseUrl ?? "—")}
                       </span>
-                      <span>
-                        {t("settings.aiSettingsDefaultModel", "Default model")}
-                        {": "}
-                        <span className="text-foreground">
-                          {defaults.model ?? "—"}
-                        </span>
+                      {" · "}
+                      {t("settings.aiSettingsDefaultModel", "Default model")}
+                      {": "}
+                      <span className="text-foreground">
+                        {defaults.model ?? "—"}
                       </span>
-                    </div>
+                    </span>
                     <div className="flex gap-2">
                       <Button
                         type="button"
                         variant="outline"
                         size="sm"
-                        disabled={disabled || !canTest}
-                        onClick={() => testProvider(provider.type)}
+                        disabled={disabled || !isComplete(providerId)}
+                        onClick={() => testProvider(providerId)}
                       >
-                        {isTesting && (
+                        {testingProvider === providerId && (
                           <RemixIcon
                             name="loader_2"
                             size="size-4"
@@ -666,10 +740,10 @@ export function AiApiSettings() {
                         type="button"
                         variant="outline"
                         size="sm"
-                        disabled={!hasSavedSetting || disabled}
-                        onClick={() => resetProvider(provider.type)}
+                        disabled={!setting || disabled}
+                        onClick={() => resetProvider(providerId)}
                       >
-                        {isResetting && (
+                        {resettingProvider === providerId && (
                           <RemixIcon
                             name="loader_2"
                             size="size-4"
@@ -682,10 +756,13 @@ export function AiApiSettings() {
                         type="button"
                         size="sm"
                         disabled={disabled}
-                        onClick={() => saveProvider(provider.type)}
-                        className={cn("min-w-20", isSaving && "gap-2")}
+                        onClick={() => saveProvider(providerId)}
+                        className={cn(
+                          "min-w-20",
+                          savingProvider === providerId && "gap-2",
+                        )}
                       >
-                        {isSaving && (
+                        {savingProvider === providerId && (
                           <RemixIcon
                             name="loader_2"
                             size="size-4"

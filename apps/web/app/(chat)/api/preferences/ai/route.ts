@@ -15,63 +15,69 @@ import {
   type NativeRuntimeProbe,
 } from "@/lib/ai/native-agent/runtime-probe";
 import { AppError } from "@melandlabs/shared/errors";
+import { generateText } from "ai";
+import {
+  buildAnthropicMessagesUrl,
+  buildOpenAiChatCompletionsUrl,
+  getLlmProviderDefinition,
+  LLM_PROVIDER_CATALOG,
+  LLM_PROVIDER_IDS,
+  resolveEnvironmentLlmProviderConfig,
+} from "@/lib/ai/llm-providers";
+import { createLlmLanguageModel } from "@/lib/ai/provider-model";
 
-const providerTypeSchema = z.enum([
-  "openai_compatible",
-  "anthropic_compatible",
-]);
+const providerIdSchema = z.enum(LLM_PROVIDER_IDS);
 
 const llmApiSettingSchema = z.object({
-  providerType: providerTypeSchema,
+  providerId: providerIdSchema,
   apiKey: z.string().max(4096).nullable().optional(),
   baseUrl: z.string().max(2048).nullable().optional(),
   model: z.string().max(256).nullable().optional(),
+  region: z.string().max(128).nullable().optional(),
   enabled: z.boolean().optional(),
 });
 
 const llmApiTestSchema = llmApiSettingSchema.pick({
-  providerType: true,
+  providerId: true,
   apiKey: true,
   baseUrl: true,
   model: true,
+  region: true,
 });
 
-// `systemDefaults` is no longer read from `process.env.ANTHROPIC_*`. Whether
-// the user has a usable Anthropic-compatible provider is now derived from the
-// native Claude runtime probe (`nativeRuntime` in the GET response, see
-// below) and the per-user `settings` array. Keeping a static stub here
-// preserves the response shape for older clients that still gate on
-// `systemDefaults.anthropic_compatible.hasApiKey` — the new
-// `nativeRuntime.ready` flag is the authoritative signal.
-const systemDefaults = {
-  openai_compatible: {
-    baseUrl: null,
-    model: null,
-    hasApiKey: false,
-  },
-  anthropic_compatible: {
-    baseUrl: null,
-    model: null,
-    hasApiKey: false,
-  },
-} as const;
+// Settings are primary, while provider-specific environment variables remain
+// available for headless deployments and can fill fields omitted by a saved
+// row. Native agent runtime readiness is reported separately below.
+const environmentProvider = (() => {
+  try {
+    return resolveEnvironmentLlmProviderConfig();
+  } catch {
+    return undefined;
+  }
+})();
+
+const systemDefaults = Object.fromEntries(
+  LLM_PROVIDER_IDS.map((providerId) => {
+    const definition = LLM_PROVIDER_CATALOG[providerId];
+    return [
+      providerId,
+      {
+        baseUrl: definition.defaultBaseUrl,
+        model: definition.defaultModel,
+        region: definition.defaultRegion,
+        hasApiKey: Boolean(
+          definition.apiKeyEnv && process.env[definition.apiKeyEnv],
+        ),
+        configured: environmentProvider?.providerId === providerId,
+      },
+    ];
+  }),
+);
 
 function normalizeOptionalString(value: string | null | undefined) {
   if (!value) return null;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
-}
-
-function buildVersionedUrl(baseUrl: string, pathAfterV1: string) {
-  const normalized = baseUrl.replace(/\/+$/, "");
-  if (normalized.endsWith("/v1")) {
-    return `${normalized}${pathAfterV1}`;
-  }
-  return `${normalized}/v1${pathAfterV1}`;
-}
-
-function buildAnthropicRuntimeUrl(baseUrl: string) {
-  return `${baseUrl.replace(/\/+$/, "")}/v1/messages`;
 }
 
 async function readProviderError(response: Response) {
@@ -85,26 +91,24 @@ async function testOpenAiCompatibleProvider({
   model,
 }: {
   baseUrl: string;
-  apiKey: string;
+  apiKey?: string;
   model: string;
 }) {
-  const response = await fetch(
-    buildVersionedUrl(baseUrl, "/chat/completions"),
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model,
-        messages: [{ role: "user", content: "ping" }],
-        max_tokens: 1,
-        stream: false,
-      }),
-      signal: AbortSignal.timeout(15_000),
-    },
-  );
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
+  const response = await fetch(buildOpenAiChatCompletionsUrl(baseUrl), {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      model,
+      messages: [{ role: "user", content: "ping" }],
+      max_tokens: 1,
+      stream: false,
+    }),
+    signal: AbortSignal.timeout(15_000),
+  });
 
   if (!response.ok) {
     const detail = await readProviderError(response);
@@ -123,7 +127,7 @@ async function testAnthropicCompatibleProvider({
   apiKey: string;
   model: string;
 }) {
-  const response = await fetch(buildAnthropicRuntimeUrl(baseUrl), {
+  const response = await fetch(buildAnthropicMessagesUrl(baseUrl), {
     method: "POST",
     headers: {
       "x-api-key": apiKey,
@@ -144,6 +148,31 @@ async function testAnthropicCompatibleProvider({
       detail || `Provider returned HTTP ${response.status.toString()}`,
     );
   }
+}
+
+async function testBedrockProvider({
+  providerId,
+  apiKey,
+  model,
+  region,
+}: {
+  providerId: "bedrock";
+  apiKey?: string;
+  model: string;
+  region: string;
+}) {
+  await generateText({
+    model: createLlmLanguageModel({
+      providerId,
+      providerType: "bedrock",
+      apiKey,
+      model,
+      region,
+    }),
+    prompt: "ping",
+    maxOutputTokens: 1,
+    abortSignal: AbortSignal.timeout(15_000),
+  });
 }
 
 function invalidPayloadResponse() {
@@ -241,6 +270,7 @@ export async function PUT(request: Request) {
   try {
     const setting = await upsertUserLlmApiSetting({
       userId: session.user.id,
+      providerType: getLlmProviderDefinition(parsed.data.providerId).transport,
       ...parsed.data,
     });
 
@@ -321,30 +351,75 @@ export async function POST(request: Request) {
   }
 
   try {
-    const { providerType } = parsed.data;
+    const { providerId } = parsed.data;
+    const definition = getLlmProviderDefinition(providerId);
     const saved = await getUserLlmApiSettingWithApiKey({
       userId: session.user.id,
-      providerType,
+      providerId,
     });
-    const apiKey = normalizeOptionalString(parsed.data.apiKey) ?? saved?.apiKey;
+    const apiKey =
+      normalizeOptionalString(parsed.data.apiKey) ??
+      saved?.apiKey ??
+      (definition.apiKeyEnv
+        ? process.env[definition.apiKeyEnv]?.trim()
+        : undefined);
     const baseUrl =
-      normalizeOptionalString(parsed.data.baseUrl) ?? saved?.baseUrl;
-    const model = normalizeOptionalString(parsed.data.model) ?? saved?.model;
+      normalizeOptionalString(parsed.data.baseUrl) ??
+      saved?.baseUrl ??
+      (definition.baseUrlEnv
+        ? process.env[definition.baseUrlEnv]?.trim()
+        : undefined) ??
+      definition.defaultBaseUrl;
+    const model =
+      normalizeOptionalString(parsed.data.model) ??
+      saved?.model ??
+      process.env[definition.modelEnv]?.trim() ??
+      definition.defaultModel;
+    const region =
+      normalizeOptionalString(parsed.data.region) ??
+      saved?.region ??
+      (definition.regionEnv
+        ? process.env[definition.regionEnv]?.trim()
+        : undefined) ??
+      (providerId === "bedrock"
+        ? process.env.AWS_DEFAULT_REGION?.trim()
+        : undefined) ??
+      definition.defaultRegion;
 
-    if (!apiKey || !baseUrl || !model) {
+    if (
+      !model ||
+      (definition.apiKeyRequired && !apiKey) ||
+      (definition.transport !== "bedrock" && !baseUrl) ||
+      (definition.transport === "bedrock" && !region)
+    ) {
       return NextResponse.json(
         {
           ok: false,
-          error: "Missing API key, base URL, or model.",
+          error: "Missing required provider configuration.",
         },
         { status: 400 },
       );
     }
 
-    if (providerType === "anthropic_compatible") {
-      await testAnthropicCompatibleProvider({ baseUrl, apiKey, model });
+    if (definition.transport === "bedrock") {
+      await testBedrockProvider({
+        providerId: "bedrock",
+        apiKey: apiKey ?? undefined,
+        model,
+        region: region as string,
+      });
+    } else if (definition.transport === "anthropic_compatible") {
+      await testAnthropicCompatibleProvider({
+        baseUrl: baseUrl as string,
+        apiKey: apiKey as string,
+        model,
+      });
     } else {
-      await testOpenAiCompatibleProvider({ baseUrl, apiKey, model });
+      await testOpenAiCompatibleProvider({
+        baseUrl: baseUrl as string,
+        apiKey: apiKey ?? undefined,
+        model,
+      });
     }
 
     return NextResponse.json({ ok: true });
@@ -367,18 +442,18 @@ export async function DELETE(request: Request) {
   }
 
   const { searchParams } = new URL(request.url);
-  const parsedProviderType = providerTypeSchema.safeParse(
-    searchParams.get("providerType"),
+  const parsedProviderId = providerIdSchema.safeParse(
+    searchParams.get("providerId") ?? searchParams.get("providerType"),
   );
 
-  if (!parsedProviderType.success) {
+  if (!parsedProviderId.success) {
     return invalidPayloadResponse();
   }
 
   try {
     await deleteUserLlmApiSetting({
       userId: session.user.id,
-      providerType: parsedProviderType.data,
+      providerId: parsedProviderId.data,
     });
 
     return NextResponse.json({ ok: true });

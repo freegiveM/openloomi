@@ -1,27 +1,24 @@
 /**
  * Unified LLM provider abstraction.
  *
- * The web app historically routed every "AI" call through one of two HTTP
- * proxies (apps/web/app/api/ai/v1/messages and apps/web/app/api/ai/v1/chat/
- * completions), each resolving a single per-user provider row of type
- * `anthropic_compatible` or `openai_compatible`. There was no third option.
+ * The web app historically routed AI calls through separate Anthropic and
+ * OpenAI-compatible paths. This interface gives those HTTP transports, AWS
+ * Bedrock Converse, and the optional agent-runtime fallback one completion
+ * contract. Provider identity and wire protocol remain separate.
  *
- * This module adds a third option: the **agent runtime**. The same Codex /
- * Claude / OpenCode / Hermes / Openclaw CLI the Loop's tick prompt uses can
- * now serve any call site that was previously tied to a static HTTP provider.
- * Callers stop depending on "did the user save an `anthropic_compatible`
- * row?" — when no HTTP config is saved, the resolver falls back to whatever
- * the agent runtime is configured to (`OPENLOOMI_AGENT_PROVIDER`).
- *
- * Resolution lives in {@link resolveLlmProvider}. The three implementations
- * (HTTP Anthropic, HTTP OpenAI, agent runtime CLI) all satisfy
+ * Resolution lives in {@link resolveLlmProvider}. Every implementation
+ * satisfies
  * {@link LlmProvider}, so a call site that talks to one of them is
  * structurally the same as a call site that talks to any other.
  */
 
 export type ProviderKind = "anthropic_messages" | "chat_completions";
 
-export type ProviderFlavor = "anthropic_http" | "openai_http" | "agent_runtime";
+export type ProviderFlavor =
+  | "anthropic_http"
+  | "openai_http"
+  | "bedrock"
+  | "agent_runtime";
 
 /** A single image input. Mirrors the shape Anthropic / OpenAI take. */
 export interface LlmImage {
@@ -67,6 +64,8 @@ export interface LlmCompleteResponse {
 }
 
 export interface LlmProvider {
+  /** Stable provider identity used for routing and usage records. */
+  providerId: string;
   /** Which transport / protocol this provider speaks. */
   flavor: ProviderFlavor;
   /** Default model id (or `"agent-runtime"` if the runtime decides per call). */

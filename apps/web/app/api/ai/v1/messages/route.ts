@@ -5,11 +5,7 @@
  * proxy) but for the Anthropic Messages shape.
  *
  * Resolution uses {@link resolveLlmProvider}, so the call site automatically
- * falls back to the configured agent runtime (Codex / OpenCode / Hermes /
- * Openclaw) when the user has no `anthropic_compatible` row saved. For
- * HTTP transports we still forward the upstream body as-is so SSE
- * streaming is preserved; for the agent runtime we buffer the CLI output
- * and wrap it in Anthropic Messages shape.
+ * maps the selected provider back to the Anthropic Messages response shape.
  *
  * Used by:
  *  - `app/api/chronicle/analyze/route.ts`           (vision analysis)
@@ -21,7 +17,6 @@ import { auth } from "@/app/(auth)/auth";
 import { isTauriMode } from "@/lib/env/constants";
 import { resolveLlmProvider } from "@/lib/ai/provider-resolver";
 import type { LlmImage, LlmUsage } from "@/lib/ai/provider";
-import { getUserLlmProviderConfig } from "@/lib/ai/user-llm-api-settings";
 import { AppError } from "@melandlabs/shared/errors";
 
 export const runtime = "nodejs";
@@ -31,90 +26,9 @@ type MessagesBody = {
   system?: unknown;
   messages?: unknown;
   max_tokens?: unknown;
+  stream?: unknown;
   [key: string]: unknown;
 };
-
-type ProviderConfig = {
-  apiKey: string;
-  baseUrl: string;
-  model: string;
-};
-
-function normalizeOptionalString(value: string | null | undefined) {
-  if (!value) return undefined;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
-}
-
-function buildAnthropicMessagesUrl(baseUrl: string) {
-  return `${baseUrl.replace(/\/+$/, "")}/v1/messages`;
-}
-
-function resolveEnvProviderConfig(): ProviderConfig | undefined {
-  const apiKey = normalizeOptionalString(
-    process.env.ANTHROPIC_AUTH_TOKEN || process.env.ANTHROPIC_API_KEY,
-  );
-  const baseUrl = normalizeOptionalString(
-    process.env.ANTHROPIC_BASE_URL || process.env.ANTHROPIC_DEFAULT_BASE_URL,
-  );
-  const model = normalizeOptionalString(process.env.ANTHROPIC_MODEL);
-
-  if (!apiKey || !baseUrl || !model) return undefined;
-  return { apiKey, baseUrl, model };
-}
-
-/**
- * Returns an HTTP-only config (user DB → env). The agent runtime fallback
- * is handled separately via {@link resolveLlmProvider} so HTTP transports
- * keep their passthrough / streaming semantics.
- */
-async function resolveHttpProviderConfig(
-  userId?: string,
-): Promise<ProviderConfig | undefined> {
-  if (userId) {
-    const userConfig = await getUserLlmProviderConfig({
-      userId,
-      providerType: "anthropic_compatible",
-    });
-    if (userConfig) return userConfig;
-  }
-  return resolveEnvProviderConfig();
-}
-
-function resolveModel(body: MessagesBody, fallbackModel: string) {
-  return typeof body.model === "string" && body.model.trim()
-    ? body.model
-    : fallbackModel;
-}
-
-function buildProviderHeaders(config: ProviderConfig) {
-  return {
-    "Content-Type": "application/json",
-    // Anthropic-native auth. Some compatible proxies (LiteLLM, OpenRouter's
-    // anthropic adapter, etc.) also accept `Authorization: Bearer` — we set
-    // both so we work with either, and so users don't have to choose.
-    "x-api-key": config.apiKey,
-    Authorization: `Bearer ${config.apiKey}`,
-    "anthropic-version": "2023-06-01",
-  };
-}
-
-function copyResponseHeaders(response: Response) {
-  const headers = new Headers();
-  for (const [key, value] of response.headers.entries()) {
-    const lowerKey = key.toLowerCase();
-    if (
-      lowerKey === "content-type" ||
-      lowerKey === "cache-control" ||
-      lowerKey === "x-request-id" ||
-      lowerKey === "anthropic-request-id" ||
-      lowerKey === "retry-after"
-    ) {
-      headers.set(key, value);
-    }
-  }
-  return headers;
-}
 
 // =============================================================================
 // Agent runtime → Anthropic Messages translation
@@ -144,22 +58,33 @@ function flattenSystem(system: unknown): string | undefined {
   return undefined;
 }
 
-function extractLastUserContent(messages: unknown): {
+function extractConversation(messages: unknown): {
   text: string;
   images: LlmImage[];
 } {
   if (!Array.isArray(messages) || messages.length === 0) {
     return { text: "", images: [] };
   }
-  // Walk back to the last user message. Agent CLIs only support single-shot
-  // prompts so we cannot preserve multi-turn turn structure; we collapse the
-  // history into a single string with role tags.
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const m = messages[i] as AnthropicMessage | undefined;
-    if (!m || m.role !== "user") continue;
-    return flattenMessageContent(m.content);
+  const turns: Array<{ role: string; text: string }> = [];
+  const images: LlmImage[] = [];
+  for (const item of messages) {
+    const message = item as AnthropicMessage | undefined;
+    if (!message || !["user", "assistant"].includes(message.role ?? "")) {
+      continue;
+    }
+    const content = flattenMessageContent(message.content);
+    images.push(...content.images);
+    if (content.text) {
+      turns.push({ role: message.role as string, text: content.text });
+    }
   }
-  return { text: "", images: [] };
+  const text =
+    turns.length === 1 && turns[0].role === "user"
+      ? turns[0].text
+      : turns
+          .map(({ role, text: turnText }) => `${role}:\n${turnText}`)
+          .join("\n\n");
+  return { text, images };
 }
 
 function flattenMessageContent(content: unknown): {
@@ -219,6 +144,73 @@ function buildAnthropicMessagesResponse(
   };
 }
 
+function buildAnthropicMessagesStream(
+  text: string,
+  model: string,
+  usage: LlmUsage | undefined,
+): Response {
+  const id = `msg_${randomUUID()}`;
+  const events = [
+    {
+      event: "message_start",
+      data: {
+        type: "message_start",
+        message: {
+          id,
+          type: "message",
+          role: "assistant",
+          content: [],
+          model,
+          stop_reason: null,
+          stop_sequence: null,
+          usage: { input_tokens: usage?.inputTokens ?? 0, output_tokens: 0 },
+        },
+      },
+    },
+    {
+      event: "content_block_start",
+      data: {
+        type: "content_block_start",
+        index: 0,
+        content_block: { type: "text", text: "" },
+      },
+    },
+    {
+      event: "content_block_delta",
+      data: {
+        type: "content_block_delta",
+        index: 0,
+        delta: { type: "text_delta", text },
+      },
+    },
+    {
+      event: "content_block_stop",
+      data: { type: "content_block_stop", index: 0 },
+    },
+    {
+      event: "message_delta",
+      data: {
+        type: "message_delta",
+        delta: { stop_reason: "end_turn", stop_sequence: null },
+        usage: { output_tokens: usage?.outputTokens ?? 0 },
+      },
+    },
+    { event: "message_stop", data: { type: "message_stop" } },
+  ];
+  const payload = events
+    .map(
+      ({ event, data }) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`,
+    )
+    .join("");
+  return new Response(payload, {
+    status: 200,
+    headers: {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache",
+    },
+  });
+}
+
 // =============================================================================
 // POST handler
 // =============================================================================
@@ -241,76 +233,29 @@ export async function POST(request: Request) {
     ).toResponse();
   }
 
-  // Step 1: try the HTTP anthropic-compatible provider. Preserve the
-  // passthrough / streaming semantics for chat-style callers.
-  const httpConfig = await resolveHttpProviderConfig(session?.user?.id);
-
-  if (httpConfig) {
-    const providerBody = {
-      ...body,
-      model: resolveModel(body, httpConfig.model),
-    };
-    try {
-      const response = await fetch(
-        buildAnthropicMessagesUrl(httpConfig.baseUrl),
-        {
-          method: "POST",
-          headers: buildProviderHeaders(httpConfig),
-          body: JSON.stringify(providerBody),
-          signal: AbortSignal.timeout(120_000),
-        },
-      );
-      return new Response(response.body, {
-        status: response.status,
-        statusText: response.statusText,
-        headers: copyResponseHeaders(response),
-      });
-    } catch (error) {
-      console.error("[AI Proxy] Anthropic messages request failed", error);
-      return new AppError(
-        "bad_request:api",
-        error instanceof Error
-          ? error.message
-          : "Anthropic messages request failed",
-      ).toResponse();
-    }
-  }
-
-  // Step 2: fall back to the agent runtime. Buffer the CLI output and wrap
-  // it in Anthropic Messages shape so the existing Chronicle / meeting
-  // parsers keep working.
   const provider = await resolveLlmProvider({
     userId: session?.user?.id,
     prefer: "anthropic_messages",
+    endpoint: "messages",
   });
 
   if (!provider) {
     return new AppError(
       "bad_request:api",
-      "Anthropic-compatible provider is not configured and no agent runtime is available. Save one in Preferences → API Settings, or set OPENLOOMI_AGENT_PROVIDER.",
-    ).toResponse();
-  }
-
-  if (provider.flavor === "openai_http") {
-    // Should not happen for `prefer: "anthropic_messages"`, but guard anyway.
-    return new AppError(
-      "bad_request:api",
-      "Resolved an OpenAI provider when an Anthropic-shaped request was expected.",
+      "No LLM provider or agent runtime is configured. Save one in Preferences → API Settings, or set LLM_PROVIDER.",
     ).toResponse();
   }
 
   const system = flattenSystem(body.system);
-  const { text, images } = extractLastUserContent(body.messages);
-  // The caller's body.model is an Anthropic-shaped identifier; only forward
-  // it when we're actually using the Anthropic HTTP transport. For the
-  // agent runtime, the model lives in `OPENLOOMI_AGENT_<RUNTIME>_MODEL` and
-  // a mismatched name (e.g. `claude-sonnet-5` against Codex) is fatal.
+  const { text, images } = extractConversation(body.messages);
+  // Only an Anthropic transport can safely interpret an Anthropic-shaped model
+  // override. Cross-protocol adapters use the provider's configured model.
   const model =
-    provider.flavor === "agent_runtime"
-      ? undefined
-      : typeof body.model === "string" && body.model.trim()
-        ? body.model
-        : provider.model;
+    provider.flavor === "anthropic_http" &&
+    typeof body.model === "string" &&
+    body.model.trim()
+      ? body.model
+      : provider.model;
   const maxTokens =
     typeof body.max_tokens === "number" ? body.max_tokens : undefined;
 
@@ -323,6 +268,14 @@ export async function POST(request: Request) {
       maxTokens,
       timeoutMs: 120_000,
     });
+
+    if (body.stream === true) {
+      return buildAnthropicMessagesStream(
+        response.text,
+        response.model,
+        response.usage,
+      );
+    }
 
     return new Response(
       JSON.stringify(
@@ -338,12 +291,10 @@ export async function POST(request: Request) {
       },
     );
   } catch (error) {
-    console.error("[AI Proxy] Agent runtime messages request failed", error);
+    console.error("[AI Proxy] Messages request failed", error);
     return new AppError(
       "bad_request:api",
-      error instanceof Error
-        ? error.message
-        : "Agent runtime messages request failed",
+      error instanceof Error ? error.message : "Messages request failed",
     ).toResponse();
   }
 }

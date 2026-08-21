@@ -35,16 +35,16 @@ export {
   estimateConversationTokens,
   getConversationBucket,
   DEFAULT_CONVERSATION_WINDOW_CONFIG,
-  getModel,
-  getVLMModel,
-  createDynamicModel,
-  getModelProvider,
-  setAIUserContext,
-  clearAIUserContext,
-  getAIUserContext,
   routeModelCall,
   getRecommendedMode,
 } from "@melandlabs/ai";
+
+export {
+  createDynamicModel,
+  getModel,
+  getModelProvider,
+  getVLMModel,
+} from "./provider-model";
 
 export {
   extractCloudAuthToken,
@@ -52,22 +52,36 @@ export {
 } from "./request-context";
 
 import { isTauriMode } from "@/lib/env/constants";
-import { getModelProvider, getModel, getVLMModel } from "@melandlabs/ai";
+import {
+  clearAIUserContext as clearPackageAIUserContext,
+  getAIUserContext,
+  setAIUserContext as setPackageAIUserContext,
+  type AIUserContext,
+} from "@melandlabs/ai";
+import {
+  clearActiveLlmProviderConfig,
+  getModelProvider,
+  getModel,
+  getVLMModel,
+} from "./provider-model";
 
-// Lazy singletons — user LLM settings are read only when first accessed.
-let _modelProvider: ReturnType<typeof getModelProvider> | undefined;
-let _model: ReturnType<typeof getModel> | undefined;
-let _vlmModel: ReturnType<typeof getVLMModel> | undefined;
+export function setAIUserContext(context: AIUserContext | null): void {
+  setPackageAIUserContext(context);
+}
+
+export function clearAIUserContext(): void {
+  clearPackageAIUserContext();
+  clearActiveLlmProviderConfig();
+}
+
+export { getAIUserContext };
 
 export const modelProvider = () => {
-  if (!_modelProvider) _modelProvider = getModelProvider(isTauriMode());
-  return _modelProvider;
+  return getModelProvider(isTauriMode());
 };
 export const model = () => {
-  if (!_model) _model = getModel(isTauriMode());
-  return _model;
+  return getModel(isTauriMode());
 };
 export const vlmModel = () => {
-  if (!_vlmModel) _vlmModel = getVLMModel(isTauriMode());
-  return _vlmModel;
+  return getVLMModel(isTauriMode());
 };

@@ -1137,13 +1137,26 @@ export const userLlmApiSettings = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
+    providerId: varchar("provider_id", { length: 32 })
+      .$type<
+        | "openai_compatible"
+        | "anthropic_compatible"
+        | "openrouter"
+        | "bedrock"
+        | "gemini"
+        | "ollama"
+        | "deepseek"
+        | "xai"
+      >()
+      .notNull(),
     providerType: varchar("provider_type", { length: 32 })
-      .$type<"openai_compatible" | "anthropic_compatible">()
+      .$type<"openai_compatible" | "anthropic_compatible" | "bedrock">()
       .notNull(),
     apiKeyEncrypted: text("api_key_encrypted"),
     encryptionKeyId: text("encryption_key_id"),
     baseUrl: text("base_url"),
     model: text("model"),
+    region: text("region"),
     enabled: boolean("enabled").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
@@ -1155,7 +1168,10 @@ export const userLlmApiSettings = pgTable(
   (table) => ({
     uniqueUserProvider: uniqueIndex(
       "user_llm_api_settings_user_provider_idx",
-    ).on(table.userId, table.providerType),
+    ).on(table.userId, table.providerId),
+    uniqueEnabledProvider: uniqueIndex("user_llm_api_settings_user_enabled_idx")
+      .on(table.userId)
+      .where(sql`${table.enabled} = true`),
     userIdx: index("user_llm_api_settings_user_idx").on(table.userId),
   }),
 );

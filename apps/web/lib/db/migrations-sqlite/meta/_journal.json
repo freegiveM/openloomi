@@ -288,6 +288,13 @@
                         "when": 1786694400000,
                         "tag": "0112_agent_goal_optional_limits",
                         "breakpoints": true
+                    },
+                    {
+                        "idx": 41,
+                        "version": "7",
+                        "when": 1787270400000,
+                        "tag": "0113_expand_llm_providers",
+                        "breakpoints": true
                     }
                 ]
 }

@@ -1,12 +1,10 @@
 /**
- * Recorder for native-agent (and other tracked LLM endpoint) token usage.
+ * Recorder for tracked LLM endpoint token usage.
  *
  * Writes a single row to the `llm_usage` table per usage-bearing message
- * emitted by an LLM endpoint. The SSE loop in `/api/native/agent` calls
- * {@link recordUsage} for every `result` message that carries a `usage`
- * field; future endpoints (AI API, generate-reply, insights processor)
- * can call the same recorder with a different `endpoint` value and the
- * data lands in the same table.
+ * emitted by an LLM endpoint. Native-agent events, provider-resolver calls,
+ * and Insight generation all use this recorder, with distinct `endpoint`
+ * values landing in the same table.
  *
  * Storage design (replaces the prior per-user JSONL files):
  *   - PostgreSQL in server mode, SQLite in Tauri mode. Selection is
