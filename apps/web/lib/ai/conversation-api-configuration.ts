@@ -2,22 +2,23 @@ export const AI_SETTINGS_CHANGED_EVENT = "openloomi:ai-settings-changed";
 export const MISSING_API_KEY_REASON = "missing-api-key";
 
 type ConversationProviderSetting = {
+  providerId?: string;
   providerType: string;
   baseUrl: string | null;
   model: string | null;
+  region?: string | null;
   enabled: boolean;
   hasApiKey: boolean;
 };
 
 type ConversationSystemDefault = {
   hasApiKey: boolean;
+  configured?: boolean;
 };
 
 export type ConversationApiSettingsResponse = {
   settings: ConversationProviderSetting[];
-  systemDefaults: {
-    anthropic_compatible: ConversationSystemDefault;
-  };
+  systemDefaults: Record<string, ConversationSystemDefault>;
   /**
    * The agent runtime selected via `OPENLOOMI_AGENT_PROVIDER`. Defaults
    * to `claude`. Non-claude runtimes (codex / opencode / hermes /
@@ -70,15 +71,19 @@ export function hasUsableConversationApiConfiguration(
     return true;
   }
 
-  const userSetting = response.settings.find(
-    (setting) => setting.providerType === "anthropic_compatible",
-  );
-  const hasUserConfiguration = Boolean(
-    userSetting?.enabled &&
-    userSetting.hasApiKey &&
-    hasText(userSetting.baseUrl) &&
-    hasText(userSetting.model),
-  );
+  const hasUserConfiguration = response.settings.some((setting) => {
+    if (!setting.enabled || !hasText(setting.model)) return false;
+    if (setting.providerType === "bedrock") {
+      return hasText(setting.region ?? null);
+    }
+    const keyOptional = setting.providerId === "ollama";
+    return hasText(setting.baseUrl) && (keyOptional || setting.hasApiKey);
+  });
 
-  return hasUserConfiguration;
+  return (
+    hasUserConfiguration ||
+    Object.values(response.systemDefaults).some(
+      (defaults) => defaults.configured,
+    )
+  );
 }

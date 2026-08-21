@@ -5,11 +5,7 @@
  * for the OpenAI Chat Completions shape.
  *
  * Resolution uses {@link resolveLlmProvider}, so the call site automatically
- * falls back to the configured agent runtime (Codex / OpenCode / Hermes /
- * Openclaw) when the user has no `openai_compatible` row saved. For HTTP
- * transports we still forward the upstream body as-is so SSE streaming is
- * preserved; for the agent runtime we buffer the CLI output and wrap it in
- * Chat Completions shape.
+ * maps the selected provider back to the Chat Completions response shape.
  */
 import { randomUUID } from "node:crypto";
 
@@ -17,7 +13,6 @@ import { auth } from "@/app/(auth)/auth";
 import { isTauriMode } from "@/lib/env/constants";
 import { resolveLlmProvider } from "@/lib/ai/provider-resolver";
 import type { LlmImage, LlmUsage } from "@/lib/ai/provider";
-import { getUserLlmProviderConfig } from "@/lib/ai/user-llm-api-settings";
 import { AppError } from "@melandlabs/shared/errors";
 
 export const runtime = "nodejs";
@@ -25,71 +20,9 @@ export const runtime = "nodejs";
 type ChatCompletionsBody = {
   model?: unknown;
   messages?: unknown;
+  stream?: unknown;
   [key: string]: unknown;
 };
-
-type ProviderConfig = {
-  apiKey: string;
-  baseUrl: string;
-  model: string;
-};
-
-function buildChatCompletionsUrl(baseUrl: string) {
-  const normalized = baseUrl.replace(/\/+$/, "");
-  if (normalized.endsWith("/v1")) {
-    return `${normalized}/chat/completions`;
-  }
-  return `${normalized}/v1/chat/completions`;
-}
-
-async function resolveHttpProviderConfig(
-  userId?: string,
-): Promise<ProviderConfig | undefined> {
-  if (!userId) return undefined;
-  return getUserLlmProviderConfig({
-    userId,
-    providerType: "openai_compatible",
-  });
-}
-
-function resolveModel(body: ChatCompletionsBody, fallbackModel: string) {
-  return typeof body.model === "string" &&
-    body.model.trim() &&
-    body.model !== "default" &&
-    body.model !== "chat-model"
-    ? body.model
-    : fallbackModel;
-}
-
-function buildProviderHeaders(config: ProviderConfig) {
-  const headers: Record<string, string> = {
-    Authorization: `Bearer ${config.apiKey}`,
-    "Content-Type": "application/json",
-  };
-
-  if (config.baseUrl.includes("openrouter.ai")) {
-    headers["HTTP-Referer"] =
-      process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3515";
-    headers["X-Title"] = "OpenLoomi";
-  }
-
-  return headers;
-}
-
-function copyResponseHeaders(response: Response) {
-  const headers = new Headers();
-  for (const [key, value] of response.headers.entries()) {
-    const lowerKey = key.toLowerCase();
-    if (
-      lowerKey === "content-type" ||
-      lowerKey === "cache-control" ||
-      lowerKey === "x-request-id"
-    ) {
-      headers.set(key, value);
-    }
-  }
-  return headers;
-}
 
 // =============================================================================
 // Agent runtime → Chat Completions translation
@@ -119,15 +52,26 @@ function extractMessages(messages: unknown): {
   }
   const system = systemParts.length > 0 ? systemParts.join("\n") : undefined;
 
-  // Walk back to the last user message. We collapse prior history into a
-  // single transcript string so the agent CLI can read it.
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const m = messages[i] as ChatMessage | undefined;
-    if (!m || m.role !== "user") continue;
-    const { text, images } = flattenContentWithImages(m.content);
-    return { system, text, images };
+  const turns: Array<{ role: string; text: string }> = [];
+  const images: LlmImage[] = [];
+  for (const item of messages) {
+    const message = item as ChatMessage | undefined;
+    if (!message || !["user", "assistant"].includes(message.role ?? "")) {
+      continue;
+    }
+    const content = flattenContentWithImages(message.content);
+    images.push(...content.images);
+    if (content.text) {
+      turns.push({ role: message.role as string, text: content.text });
+    }
   }
-  return { system, text: "", images: [] };
+  const text =
+    turns.length === 1 && turns[0].role === "user"
+      ? turns[0].text
+      : turns
+          .map(({ role, text: turnText }) => `${role}:\n${turnText}`)
+          .join("\n\n");
+  return { system, text, images };
 }
 
 function flattenContentText(content: unknown): string {
@@ -216,6 +160,47 @@ function buildChatCompletionResponse(
   };
 }
 
+function buildChatCompletionStream(
+  text: string,
+  model: string,
+  usage: LlmUsage | undefined,
+): Response {
+  const id = `chatcmpl-${randomUUID()}`;
+  const created = Math.floor(Date.now() / 1000);
+  const base = { id, object: "chat.completion.chunk", created, model };
+  const events = [
+    {
+      ...base,
+      choices: [
+        { index: 0, delta: { role: "assistant" }, finish_reason: null },
+      ],
+    },
+    {
+      ...base,
+      choices: [{ index: 0, delta: { content: text }, finish_reason: null }],
+    },
+    {
+      ...base,
+      choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+      usage: usage
+        ? {
+            prompt_tokens: usage.inputTokens,
+            completion_tokens: usage.outputTokens,
+            total_tokens: usage.inputTokens + usage.outputTokens,
+          }
+        : undefined,
+    },
+  ];
+  const payload = `${events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join("")}data: [DONE]\n\n`;
+  return new Response(payload, {
+    status: 200,
+    headers: {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache",
+    },
+  });
+}
+
 // =============================================================================
 // POST handler
 // =============================================================================
@@ -238,77 +223,30 @@ export async function POST(request: Request) {
     ).toResponse();
   }
 
-  // Step 1: try the HTTP openai-compatible provider. Preserve the
-  // passthrough / streaming semantics.
-  const httpConfig = await resolveHttpProviderConfig(session?.user?.id);
-
-  if (httpConfig) {
-    const providerBody = {
-      ...body,
-      model: resolveModel(body, httpConfig.model),
-    };
-    try {
-      const response = await fetch(
-        buildChatCompletionsUrl(httpConfig.baseUrl),
-        {
-          method: "POST",
-          headers: buildProviderHeaders(httpConfig),
-          body: JSON.stringify(providerBody),
-          signal: AbortSignal.timeout(120_000),
-        },
-      );
-      return new Response(response.body, {
-        status: response.status,
-        statusText: response.statusText,
-        headers: copyResponseHeaders(response),
-      });
-    } catch (error) {
-      console.error("[AI Proxy] Chat completions request failed", error);
-      return new AppError(
-        "bad_request:api",
-        error instanceof Error
-          ? error.message
-          : "Chat completions request failed",
-      ).toResponse();
-    }
-  }
-
-  // Step 2: fall back to the agent runtime. Buffer the CLI output and wrap
-  // it in Chat Completions shape.
   const provider = await resolveLlmProvider({
     userId: session?.user?.id,
     prefer: "chat_completions",
+    endpoint: "chat-completions",
   });
 
   if (!provider) {
     return new AppError(
       "bad_request:api",
-      "OpenAI-compatible provider is not configured and no agent runtime is available. Save one in /api/preferences/ai, or set OPENLOOMI_AGENT_PROVIDER.",
-    ).toResponse();
-  }
-
-  if (provider.flavor === "anthropic_http") {
-    return new AppError(
-      "bad_request:api",
-      "Resolved an Anthropic provider when a Chat-Completions-shaped request was expected.",
+      "No LLM provider or agent runtime is configured. Save one in /api/preferences/ai, or set LLM_PROVIDER.",
     ).toResponse();
   }
 
   const { system, text, images } = extractMessages(body.messages);
-  // The caller's body.model is an OpenAI-shaped identifier; only forward it
-  // when we're actually using the OpenAI HTTP transport. For the agent
-  // runtime, the model lives in `OPENLOOMI_AGENT_<RUNTIME>_MODEL` and a
-  // mismatched name (e.g. `gpt-5` against Codex CLI's own model catalog)
-  // is fatal.
+  // Only an OpenAI transport can safely interpret an OpenAI-shaped model
+  // override. Cross-protocol adapters use the provider's configured model.
   const model =
-    provider.flavor === "agent_runtime"
-      ? undefined
-      : typeof body.model === "string" &&
-          body.model.trim() &&
-          body.model !== "default" &&
-          body.model !== "chat-model"
-        ? body.model
-        : provider.model;
+    provider.flavor === "openai_http" &&
+    typeof body.model === "string" &&
+    body.model.trim() &&
+    body.model !== "default" &&
+    body.model !== "chat-model"
+      ? body.model
+      : provider.model;
 
   try {
     const response = await provider.complete({
@@ -318,6 +256,14 @@ export async function POST(request: Request) {
       model,
       timeoutMs: 120_000,
     });
+
+    if (body.stream === true) {
+      return buildChatCompletionStream(
+        response.text,
+        response.model,
+        response.usage,
+      );
+    }
 
     return new Response(
       JSON.stringify(
@@ -333,15 +279,12 @@ export async function POST(request: Request) {
       },
     );
   } catch (error) {
-    console.error(
-      "[AI Proxy] Agent runtime chat completions request failed",
-      error,
-    );
+    console.error("[AI Proxy] Chat completions request failed", error);
     return new AppError(
       "bad_request:api",
       error instanceof Error
         ? error.message
-        : "Agent runtime chat completions request failed",
+        : "Chat completions request failed",
     ).toResponse();
   }
 }

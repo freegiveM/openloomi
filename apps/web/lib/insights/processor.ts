@@ -83,13 +83,11 @@ import {
   listRecentDocuments,
   type GoogleDocSummary,
 } from "@melandlabs/integrations-google-docs";
-import {
-  extractRawMessages,
-  type RawMessageData,
-} from "@melandlabs/indexeddb";
+import { extractRawMessages, type RawMessageData } from "@melandlabs/indexeddb";
 import { shouldSkipGmailEmail } from "../integrations/email/classifier";
 import { FeishuAdapter } from "@melandlabs/integrations-feishu";
-import { getUserLlmProviderConfig } from "@/lib/ai/user-llm-api-settings";
+import { setActiveLlmProviderConfig } from "@/lib/ai/provider-model";
+import { getActiveUserLlmProviderConfig } from "@/lib/ai/user-llm-api-settings";
 
 import {
   DEFAULT_CATEGORIES,
@@ -135,16 +133,28 @@ async function setInsightAIUserContext({
   user: SummaryUserContext;
   userType: SummaryUserContext["type"];
 }) {
-  const [openaiCompatible, anthropicCompatible] = await Promise.all([
-    getUserLlmProviderConfig({
-      userId,
-      providerType: "openai_compatible",
-    }),
-    getUserLlmProviderConfig({
-      userId,
-      providerType: "anthropic_compatible",
-    }),
-  ]);
+  const activeProvider = await getActiveUserLlmProviderConfig(userId);
+  setActiveLlmProviderConfig(activeProvider ?? null);
+  const openaiCompatible =
+    activeProvider?.providerType === "openai_compatible" &&
+    activeProvider.apiKey &&
+    activeProvider.baseUrl
+      ? {
+          apiKey: activeProvider.apiKey,
+          baseUrl: activeProvider.baseUrl,
+          model: activeProvider.model,
+        }
+      : undefined;
+  const anthropicCompatible =
+    activeProvider?.providerType === "anthropic_compatible" &&
+    activeProvider.apiKey &&
+    activeProvider.baseUrl
+      ? {
+          apiKey: activeProvider.apiKey,
+          baseUrl: activeProvider.baseUrl,
+          model: activeProvider.model,
+        }
+      : undefined;
 
   setAIUserContext({
     id: userId,

@@ -2,9 +2,9 @@
  * Token usage record + summary types.
  *
  * The recorder writes one row to the `llm_usage` table per usage-bearing
- * message emitted by an LLM endpoint (`/api/native/agent` today; future
- * endpoints like the AI API will reuse the same table and pick their
- * own `endpoint` value). The summary module aggregates those rows into
+ * message emitted by an LLM endpoint. Native-agent, AI API, and Insight
+ * call sites reuse the same table and select their own `endpoint` value.
+ * The summary module aggregates those rows into
  * a stable shape consumed by the LOOMI Online card and the
  * `/api/llm/usage/summary` endpoint.
  *
@@ -58,5 +58,19 @@ export interface LlmUsageSummary {
   error?: string;
 }
 
-export const LLM_USAGE_TRACKED_ENDPOINTS = ["native-agent"] as const;
+export const LLM_USAGE_TRACKED_ENDPOINTS = [
+  "native-agent",
+  "chat-completions",
+  "messages",
+  "generate-reply",
+  "translate",
+  "polish",
+  "lifestyle-intent",
+  "chronicle-analyze",
+  "chat-title",
+  "goal-semantic-evaluator",
+  "insights-generation",
+  "insight-compaction-score",
+  "insight-compaction-generate",
+] as const;
 export const LLM_USAGE_SUMMARY_TTL_MS = 30_000;

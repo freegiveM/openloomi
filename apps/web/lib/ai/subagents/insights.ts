@@ -7,6 +7,8 @@ import { writeFileSync } from "node:fs";
 import { isDevelopmentEnvironment } from "@/lib/env/constants";
 import { extractJsonFromMarkdown } from "@melandlabs/ai";
 import { isTauriMode } from "@/lib/env";
+import { getActiveLlmProviderConfig } from "@/lib/ai/provider-model";
+import { recordUsage } from "@/lib/llm-usage/recorder";
 
 // Re-export InsightTaskItem for backward compatibility with existing imports
 export type { InsightTaskItem } from "@melandlabs/insights";
@@ -1278,6 +1280,7 @@ const multiRoundCompletion = async (
   retries: number;
   inputTokens: number;
   outputTokens: number;
+  hasProviderUsage: boolean;
 }> => {
   let finalSystemPrompt = insightSystemPrompt;
 
@@ -1332,6 +1335,7 @@ const multiRoundCompletion = async (
   // Accumulate initial round tokens
   inputTokens += response.usage?.inputTokens || 0;
   outputTokens += response.usage?.outputTokens || 0;
+  let hasProviderUsage = Boolean(response.usage);
 
   // Add model response to conversation history
   conversation.push({ role: "assistant", content: response.text });
@@ -1351,6 +1355,7 @@ const multiRoundCompletion = async (
       retries: 0,
       inputTokens,
       outputTokens,
+      hasProviderUsage,
     };
   }
 
@@ -1429,6 +1434,7 @@ When connected together, they form a JSON output that meets the requirements, do
     // Accumulate fix round tokens
     inputTokens += repairResponse.usage?.inputTokens || 0;
     outputTokens += repairResponse.usage?.outputTokens || 0;
+    hasProviderUsage ||= Boolean(repairResponse.usage);
 
     // Add new model response to conversation history
     conversation.push({ role: "assistant", content: repairResponse.text });
@@ -1453,6 +1459,7 @@ When connected together, they form a JSON output that meets the requirements, do
         retries,
         inputTokens,
         outputTokens,
+        hasProviderUsage,
       };
     }
   }
@@ -1466,6 +1473,7 @@ When connected together, they form a JSON output that meets the requirements, do
       retries: maxConversationRounds,
       inputTokens,
       outputTokens,
+      hasProviderUsage,
     };
   } catch (error) {
     console.error("[Insight] Final json repair failed", error);
@@ -1526,7 +1534,7 @@ type InsightsGenerationOptions =
     };
 
 export const generateProjectInsights = async (
-  _userId: string,
+  userId: string,
   messages: string,
   historyInsights: string | InsightData[],
   _platform: Platform,
@@ -1557,6 +1565,7 @@ export const generateProjectInsights = async (
   let totalRetries = 0;
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
+  let hasProviderUsage = false;
   const MAX_CHUNK_RETRIES = 3; // Maximum retries for chunk processing
 
   const chunks = splitQueriesIntoChunks(messages);
@@ -1605,6 +1614,7 @@ Please output the complete JSON structure.
             retries: number;
             inputTokens: number;
             outputTokens: number;
+            hasProviderUsage: boolean;
           }
         | undefined = undefined;
       let chunkAttempts = 0;
@@ -1661,6 +1671,7 @@ Please output the complete JSON structure.
       totalRetries += chunkResult.retries; // Accumulate retry count from multiRoundCompletion internal retries
       totalInputTokens += chunkResult.inputTokens;
       totalOutputTokens += chunkResult.outputTokens;
+      hasProviderUsage ||= chunkResult.hasProviderUsage;
 
       // Record chunk token statistics
       chunkTokenStats.push({
@@ -1739,6 +1750,18 @@ Please output the complete JSON structure.
     console.log(
       `[Insights] Merge complete - Original chunks: ${batches.length}, Merged insight count: ${mergedInsights.length}`,
     );
+
+    if (hasProviderUsage) {
+      const provider = getActiveLlmProviderConfig();
+      await recordUsage({
+        userId,
+        providerType: provider?.providerId ?? "unknown",
+        model: provider?.model ?? null,
+        endpoint: "insights-generation",
+        inputTokens: totalInputTokens,
+        outputTokens: totalOutputTokens,
+      });
+    }
 
     return {
       insights: { insights: mergedInsights },

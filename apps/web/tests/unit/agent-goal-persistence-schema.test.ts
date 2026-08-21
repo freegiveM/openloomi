@@ -269,7 +269,9 @@ describe("Agent Goal persistence schema", () => {
     const entries = readJournal(
       "lib/db/migrations-sqlite/meta/_journal.json",
     ).entries;
-    expect(entries.at(-1)).toMatchObject({
+    expect(
+      entries.find(({ tag }) => tag === OPTIONAL_GOAL_LIMITS_MIGRATION_TAG),
+    ).toMatchObject({
       idx: 40,
       version: "7",
       tag: OPTIONAL_GOAL_LIMITS_MIGRATION_TAG,
@@ -394,7 +396,14 @@ describe("Agent Goal persistence schema", () => {
           last_instruction_sequence, created_at, updated_at
         ) VALUES (?, ?, 'claude', ?, '{}', ?, ?, ?, 'running', 4, 9, 10, 20)`,
       )
-      .run("legacy-session", "owner-1", "shared-provider-id", "host-1", "token-1", 30);
+      .run(
+        "legacy-session",
+        "owner-1",
+        "shared-provider-id",
+        "host-1",
+        "token-1",
+        30,
+      );
     database
       .prepare(
         `INSERT INTO agent_runtime_provider_events (

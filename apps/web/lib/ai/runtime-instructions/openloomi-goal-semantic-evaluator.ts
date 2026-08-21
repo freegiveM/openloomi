@@ -17,7 +17,11 @@ const MAX_CONTEXT_SUMMARY_CHARACTERS = 2_000;
 
 async function resolveOwnerProvider(ownerId: string) {
   const { resolveLlmProvider } = await import("@/lib/ai/provider-resolver");
-  return resolveLlmProvider({ userId: ownerId, prefer: "anthropic_messages" });
+  return resolveLlmProvider({
+    userId: ownerId,
+    prefer: "anthropic_messages",
+    endpoint: "goal-semantic-evaluator",
+  });
 }
 
 export interface OpenLoomiGoalSemanticEvaluatorOptions {

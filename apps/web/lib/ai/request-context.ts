@@ -10,7 +10,8 @@
 import type { UserType } from "@melandlabs/contracts/user-type";
 import { NextRequest } from "next/server";
 import { setAIUserContext } from "@melandlabs/ai";
-import { getUserLlmProviderConfig } from "@/lib/ai/user-llm-api-settings";
+import { setActiveLlmProviderConfig } from "@/lib/ai/provider-model";
+import { getActiveUserLlmProviderConfig } from "@/lib/ai/user-llm-api-settings";
 
 export {
   setAIUserContext,
@@ -68,17 +69,32 @@ export async function setAIUserContextFromRequest({
 }): Promise<void> {
   const token = extractCloudAuthToken(request, body);
 
-  // Load both provider configs to support anthropic or openai-compatible providers
-  const [openaiCompatible, anthropicCompatible] = await Promise.all([
-    getUserLlmProviderConfig({
-      userId,
-      providerType: "openai_compatible",
-    }),
-    getUserLlmProviderConfig({
-      userId,
-      providerType: "anthropic_compatible",
-    }),
-  ]);
+  const activeProvider = await getActiveUserLlmProviderConfig(userId);
+  setActiveLlmProviderConfig(activeProvider ?? null);
+
+  // Keep the published package context populated for legacy consumers. The
+  // app-local model factory above is authoritative for provider identities
+  // added after the currently published @melandlabs/ai version.
+  const openaiCompatible =
+    activeProvider?.providerType === "openai_compatible" &&
+    activeProvider.apiKey &&
+    activeProvider.baseUrl
+      ? {
+          apiKey: activeProvider.apiKey,
+          baseUrl: activeProvider.baseUrl,
+          model: activeProvider.model,
+        }
+      : undefined;
+  const anthropicCompatible =
+    activeProvider?.providerType === "anthropic_compatible" &&
+    activeProvider.apiKey &&
+    activeProvider.baseUrl
+      ? {
+          apiKey: activeProvider.apiKey,
+          baseUrl: activeProvider.baseUrl,
+          model: activeProvider.model,
+        }
+      : undefined;
 
   setAIUserContext({
     id: userId,

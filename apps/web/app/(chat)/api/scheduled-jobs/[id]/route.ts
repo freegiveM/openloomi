@@ -179,7 +179,7 @@ export async function POST(
         try {
           const anthropicSetting = await getUserLlmApiSettingWithApiKey({
             userId: session.user.id,
-            providerType: "anthropic_compatible",
+            providerId: "anthropic_compatible",
           });
           if (anthropicSetting?.enabled && anthropicSetting?.apiKey) {
             executionModelConfig = {

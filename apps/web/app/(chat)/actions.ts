@@ -60,6 +60,7 @@ const generateTitleCached = cache(
     const provider = await resolveLlmProvider({
       userId,
       prefer: "anthropic_messages",
+      endpoint: "chat-title",
     });
 
     if (!provider) {

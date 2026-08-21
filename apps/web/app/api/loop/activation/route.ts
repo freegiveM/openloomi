@@ -78,12 +78,10 @@ async function resolveCoreReady(): Promise<boolean> {
   try {
     const settings = await getUserLlmApiSettings(session.user.id);
     const hasConfiguredKey = settings.some((s) => {
-      if (!s.enabled) return false;
-      if (s.providerType !== "anthropic_compatible") return false;
-      // The safe variant never exposes the key — but `enabled:true`
-      // alone implies a key was previously saved. If the caller
-      // needs to test the key itself they go through /api/preferences/ai.
-      return Boolean(s.baseUrl) || Boolean(s.model);
+      if (!s.enabled || !s.model) return false;
+      if (s.providerType === "bedrock") return Boolean(s.region);
+      if (!s.baseUrl) return false;
+      return s.providerId === "ollama" || s.hasApiKey;
     });
     return hasConfiguredKey;
   } catch {

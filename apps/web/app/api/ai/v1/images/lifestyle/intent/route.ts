@@ -67,6 +67,7 @@ export async function POST(request: Request) {
   const provider = await resolveLlmProvider({
     userId: session?.user?.id,
     prefer: "chat_completions",
+    endpoint: "lifestyle-intent",
   });
 
   if (!provider) {
@@ -119,7 +120,11 @@ function normalizeMessage(value: unknown): string {
 
 function resolveModelOverride(
   model: unknown,
-  providerFlavor: "anthropic_http" | "openai_http" | "agent_runtime",
+  providerFlavor:
+    | "anthropic_http"
+    | "openai_http"
+    | "bedrock"
+    | "agent_runtime",
 ): string | undefined {
   if (providerFlavor === "agent_runtime") return undefined;
   return typeof model === "string" && model.trim() ? model.trim() : undefined;

@@ -5929,6 +5929,7 @@ export async function updateUserInsightSettings(
   }
 }
 
+export type LlmApiProviderId = UserLlmApiSettings["providerId"];
 export type LlmApiProviderType = UserLlmApiSettings["providerType"];
 
 // Safe settings are returned to UI callers: they reveal whether a key exists
@@ -5946,10 +5947,12 @@ export type UserLlmApiSettingWithApiKey = UserLlmApiSettingSafe & {
 
 export type UpsertUserLlmApiSettingInput = {
   userId: string;
+  providerId: LlmApiProviderId;
   providerType: LlmApiProviderType;
   apiKey?: string | null;
   baseUrl?: string | null;
   model?: string | null;
+  region?: string | null;
   enabled?: boolean;
 };
 
@@ -6051,7 +6054,7 @@ export async function getUserLlmApiSettings(
       .select()
       .from(userLlmApiSettings)
       .where(eq(userLlmApiSettings.userId, userId))
-      .orderBy(asc(userLlmApiSettings.providerType));
+      .orderBy(asc(userLlmApiSettings.providerId));
 
     return rows.map((row: UserLlmApiSettings) => toSafeLlmApiSetting(row));
   } catch (error) {
@@ -6065,10 +6068,10 @@ export async function getUserLlmApiSettings(
 
 export async function getUserLlmApiSettingWithApiKey({
   userId,
-  providerType,
+  providerId,
 }: {
   userId: string;
-  providerType: LlmApiProviderType;
+  providerId: LlmApiProviderId;
 }): Promise<UserLlmApiSettingWithApiKey | null> {
   try {
     // This path is intentionally separate from the UI listing helper because it
@@ -6079,7 +6082,7 @@ export async function getUserLlmApiSettingWithApiKey({
       .where(
         and(
           eq(userLlmApiSettings.userId, userId),
-          eq(userLlmApiSettings.providerType, providerType),
+          eq(userLlmApiSettings.providerId, providerId),
         ),
       )
       .limit(1);
@@ -6099,6 +6102,36 @@ export async function getUserLlmApiSettingWithApiKey({
   }
 }
 
+export async function getEnabledUserLlmApiSettingWithApiKey(
+  userId: string,
+): Promise<UserLlmApiSettingWithApiKey | null> {
+  try {
+    const [row] = await db
+      .select()
+      .from(userLlmApiSettings)
+      .where(
+        and(
+          eq(userLlmApiSettings.userId, userId),
+          eq(userLlmApiSettings.enabled, true),
+        ),
+      )
+      .orderBy(desc(userLlmApiSettings.updatedAt))
+      .limit(1);
+
+    if (!row) return null;
+    return {
+      ...toSafeLlmApiSetting(row),
+      apiKey: decryptLlmApiKey(row),
+    };
+  } catch (error) {
+    console.error("Failed to get enabled user LLM API setting:", error);
+    throw new AppError(
+      "bad_request:database",
+      `Failed to retrieve enabled LLM API setting. ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
+
 export async function upsertUserLlmApiSetting(
   input: UpsertUserLlmApiSettingInput,
 ): Promise<UserLlmApiSettingSafe> {
@@ -6107,6 +6140,7 @@ export async function upsertUserLlmApiSetting(
     const apiKey = normalizeNullableString(input.apiKey);
     const baseUrl = normalizeNullableString(input.baseUrl);
     const model = normalizeNullableString(input.model);
+    const region = normalizeNullableString(input.region);
     const apiKeyEncrypted =
       apiKey === undefined
         ? undefined
@@ -6114,61 +6148,81 @@ export async function upsertUserLlmApiSetting(
           ? encryptPayload({ apiKey })
           : null;
 
-    // There is one setting row per user and provider type. Existing rows are
-    // patched field-by-field so callers can update model/base URL without
-    // accidentally clearing a previously saved API key.
-    const [existing] = await db
-      .select()
-      .from(userLlmApiSettings)
-      .where(
-        and(
-          eq(userLlmApiSettings.userId, input.userId),
-          eq(userLlmApiSettings.providerType, input.providerType),
-        ),
-      )
-      .limit(1);
-
-    if (existing) {
-      const updatePayload: Record<string, unknown> = { updatedAt: now };
-
-      if (apiKeyEncrypted !== undefined) {
-        updatePayload.apiKeyEncrypted = apiKeyEncrypted;
-      }
-      if (baseUrl !== undefined) {
-        updatePayload.baseUrl = baseUrl;
-      }
-      if (model !== undefined) {
-        updatePayload.model = model;
-      }
-      if (typeof input.enabled === "boolean") {
-        updatePayload.enabled = input.enabled;
+    return await executeTransaction(async (tx) => {
+      if (input.enabled) {
+        await tx
+          .update(userLlmApiSettings)
+          .set({ enabled: false, updatedAt: now })
+          .where(
+            and(
+              eq(userLlmApiSettings.userId, input.userId),
+              ne(userLlmApiSettings.providerId, input.providerId),
+            ),
+          );
       }
 
-      const [updated] = await db
-        .update(userLlmApiSettings)
-        .set(updatePayload)
-        .where(eq(userLlmApiSettings.id, existing.id))
+      // There is one setting row per user and provider identity. Existing rows
+      // are patched field-by-field so callers can update model/base URL without
+      // accidentally clearing a previously saved API key.
+      const [existing] = await tx
+        .select()
+        .from(userLlmApiSettings)
+        .where(
+          and(
+            eq(userLlmApiSettings.userId, input.userId),
+            eq(userLlmApiSettings.providerId, input.providerId),
+          ),
+        )
+        .limit(1);
+
+      if (existing) {
+        const updatePayload: Record<string, unknown> = { updatedAt: now };
+
+        if (apiKeyEncrypted !== undefined) {
+          updatePayload.apiKeyEncrypted = apiKeyEncrypted;
+        }
+        if (baseUrl !== undefined) {
+          updatePayload.baseUrl = baseUrl;
+        }
+        if (model !== undefined) {
+          updatePayload.model = model;
+        }
+        if (region !== undefined) {
+          updatePayload.region = region;
+        }
+        updatePayload.providerType = input.providerType;
+        if (typeof input.enabled === "boolean") {
+          updatePayload.enabled = input.enabled;
+        }
+
+        const [updated] = await tx
+          .update(userLlmApiSettings)
+          .set(updatePayload)
+          .where(eq(userLlmApiSettings.id, existing.id))
+          .returning();
+
+        return toSafeLlmApiSetting(updated ?? existing);
+      }
+
+      const [created] = await tx
+        .insert(userLlmApiSettings)
+        .values({
+          id: generateUUID(),
+          userId: input.userId,
+          providerId: input.providerId,
+          providerType: input.providerType,
+          apiKeyEncrypted: apiKeyEncrypted ?? null,
+          baseUrl: baseUrl ?? null,
+          model: model ?? null,
+          region: region ?? null,
+          enabled: input.enabled ?? false,
+          createdAt: now,
+          updatedAt: now,
+        })
         .returning();
 
-      return toSafeLlmApiSetting(updated ?? existing);
-    }
-
-    const [created] = await db
-      .insert(userLlmApiSettings)
-      .values({
-        id: generateUUID(),
-        userId: input.userId,
-        providerType: input.providerType,
-        apiKeyEncrypted: apiKeyEncrypted ?? null,
-        baseUrl: baseUrl ?? null,
-        model: model ?? null,
-        enabled: input.enabled ?? false,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .returning();
-
-    return toSafeLlmApiSetting(created);
+      return toSafeLlmApiSetting(created);
+    });
   } catch (error) {
     console.error("Failed to upsert user LLM API setting:", error);
     throw new AppError(
@@ -6180,10 +6234,10 @@ export async function upsertUserLlmApiSetting(
 
 export async function deleteUserLlmApiSetting({
   userId,
-  providerType,
+  providerId,
 }: {
   userId: string;
-  providerType: LlmApiProviderType;
+  providerId: LlmApiProviderId;
 }): Promise<void> {
   try {
     await db
@@ -6191,7 +6245,7 @@ export async function deleteUserLlmApiSetting({
       .where(
         and(
           eq(userLlmApiSettings.userId, userId),
-          eq(userLlmApiSettings.providerType, providerType),
+          eq(userLlmApiSettings.providerId, providerId),
         ),
       );
   } catch (error) {
@@ -6231,7 +6285,7 @@ export async function getUserLlmProviderEarliestEnabledSince(
   try {
     const rows = await db
       .select({
-        providerType: userLlmApiSettings.providerType,
+        providerType: userLlmApiSettings.providerId,
         model: userLlmApiSettings.model,
         createdAt: userLlmApiSettings.createdAt,
         updatedAt: userLlmApiSettings.updatedAt,
