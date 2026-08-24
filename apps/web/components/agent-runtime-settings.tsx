@@ -14,10 +14,7 @@ import {
   canSaveAgentRuntime,
   isSelectableAgentRuntime,
 } from "@/lib/ai/native-agent/runtime-contract";
-import {
-  CODEX_LOGIN_COMMAND,
-  getCodexInstallCommand,
-} from "@/lib/ai/native-agent/runtime-installation";
+import { getCodexInstallCommand } from "@/lib/ai/native-agent/runtime-installation";
 import { notifyAiSettingsChanged } from "@/lib/ai/notify-ai-settings-changed";
 import { isTauri, openUrl } from "@/lib/tauri";
 import { cn, fetchWithAuth } from "@/lib/utils";
@@ -48,7 +45,6 @@ const runtimeOptions: Array<{
     descriptionKey: "settings.agentRuntimeCodexDescription",
     descriptionFallback: "Use your local Codex CLI installation and account.",
     docsUrl: "https://learn.chatgpt.com/docs/codex/cli",
-    loginCommand: CODEX_LOGIN_COMMAND,
   },
   {
     provider: "opencode",
@@ -82,6 +78,13 @@ const runtimeOptions: Array<{
   },
 ];
 
+class ExpectedAgentRuntimeApiError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ExpectedAgentRuntimeApiError";
+  }
+}
+
 export function AgentRuntimeSettings() {
   const { t } = useTranslation();
   const [desktop, setDesktop] = useState<boolean | null>(null);
@@ -90,6 +93,9 @@ export function AgentRuntimeSettings() {
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [codexSetupStage, setCodexSetupStage] = useState<
+    "installing" | "logging_in" | null
+  >(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const loadRequestId = useRef(0);
   const loadAbortController = useRef<AbortController | null>(null);
@@ -180,27 +186,68 @@ export function AgentRuntimeSettings() {
     [],
   );
 
-  const saveSelection = async () => {
+  const selectRuntime = async (
+    provider: SelectableAgentRuntime,
+    withCodexSetup = false,
+  ) => {
+    const codexStatus = state?.runtimes?.codex.status;
+    const canSetupCodex =
+      provider === "codex" &&
+      (codexStatus === "login_required" ||
+        (codexStatus === "not_installed" && state?.platform === "windows"));
     if (
       savingRef.current ||
       !state ||
-      !draft ||
-      !canSaveAgentRuntime(state, draft)
+      (!withCodexSetup && !canSaveAgentRuntime(state, provider)) ||
+      (withCodexSetup && !canSetupCodex)
     ) {
       return;
     }
+    const codexNeedsInstall = codexStatus === "not_installed";
+    let codexSetupPhase: "install" | "login" = codexNeedsInstall
+      ? "install"
+      : "login";
     ++loadRequestId.current;
     loadAbortController.current?.abort();
     loadAbortController.current = null;
     setLoading(false);
     setRefreshing(false);
     savingRef.current = true;
-    setSaving(true);
+    if (withCodexSetup) {
+      setCodexSetupStage(codexNeedsInstall ? "installing" : "logging_in");
+    } else setSaving(true);
     try {
-      const response = await fetchWithAuth("/api/preferences/agent-runtime", {
-        method: "PUT",
-        body: JSON.stringify({ provider: draft }),
-      });
+      let response: Response;
+      if (withCodexSetup) {
+        if (codexNeedsInstall) {
+          const installResponse = await fetchWithAuth(
+            "/api/preferences/agent-runtime/codex/install",
+            {
+              method: "POST",
+              headers: { "X-Requested-With": "OpenLoomiDesktop" },
+            },
+          );
+          if (!installResponse.ok) {
+            throw new ExpectedAgentRuntimeApiError(
+              `Codex install HTTP ${installResponse.status}`,
+            );
+          }
+          codexSetupPhase = "login";
+          setCodexSetupStage("logging_in");
+        }
+        response = await fetchWithAuth(
+          "/api/preferences/agent-runtime/codex/login",
+          {
+            method: "POST",
+            headers: { "X-Requested-With": "OpenLoomiDesktop" },
+          },
+        );
+      } else {
+        response = await fetchWithAuth("/api/preferences/agent-runtime", {
+          method: "PUT",
+          body: JSON.stringify({ provider }),
+        });
+      }
       const payload = (await response.json().catch(() => null)) as
         | AgentRuntimeSettingsResponse
         | { error?: string; settings?: AgentRuntimeSettingsResponse }
@@ -215,41 +262,76 @@ export function AgentRuntimeSettings() {
           setState(payload.settings);
           toast({
             type: "error",
-            description: t(
-              "settings.agentRuntimeNotReadyError",
-              "The selected runtime is no longer ready. Complete setup and check again.",
-            ),
+            description: withCodexSetup
+              ? t(
+                  "settings.agentRuntimeCodexLoginError",
+                  "Could not sign in or enable Codex. Try again.",
+                )
+              : t(
+                  "settings.agentRuntimeNotReadyError",
+                  "The selected runtime is no longer ready. Complete setup and check again.",
+                ),
           });
           return;
         }
-        throw new Error(`HTTP ${response.status}`);
+        throw new ExpectedAgentRuntimeApiError(`HTTP ${response.status}`);
       }
       if (!payload || !("editable" in payload)) {
         throw new Error("Invalid runtime settings response");
       }
       const nextState = payload;
       setState(nextState);
-      setDraft(draft);
+      setDraft(provider);
       notifyAiSettingsChanged();
       toast({
         type: "success",
-        description: t(
-          "settings.agentRuntimeSaved",
-          "Agent runtime updated for new tasks.",
-        ),
+        description: withCodexSetup
+          ? codexNeedsInstall
+            ? t(
+                "settings.agentRuntimeCodexInstallSuccess",
+                "Codex CLI is installed, signed in, and selected.",
+              )
+            : t(
+                "settings.agentRuntimeCodexLoginSuccess",
+                "Codex CLI is signed in and selected.",
+              )
+          : t(
+              "settings.agentRuntimeSaved",
+              "Agent runtime updated for new tasks.",
+            ),
       });
     } catch (error) {
-      console.error("[Agent Runtime Settings] Failed to save state", error);
+      const logMessage = withCodexSetup
+        ? codexSetupPhase === "install"
+          ? "[Agent Runtime Settings] Codex installation did not complete"
+          : "[Agent Runtime Settings] Codex sign-in did not complete"
+        : "[Agent Runtime Settings] Failed to save state";
+      if (error instanceof ExpectedAgentRuntimeApiError) {
+        console.warn(`${logMessage}: ${error.message}`);
+      } else {
+        console.error(logMessage, error);
+      }
       toast({
         type: "error",
-        description: t(
-          "settings.agentRuntimeSaveError",
-          "Failed to update the agent runtime.",
-        ),
+        description: withCodexSetup
+          ? codexSetupPhase === "install"
+            ? t(
+                "settings.agentRuntimeCodexInstallError",
+                "Could not install Codex CLI automatically. Use the manual instructions below, then try again.",
+              )
+            : t(
+                "settings.agentRuntimeCodexLoginError",
+                "Could not sign in or enable Codex. Try again.",
+              )
+          : t(
+              "settings.agentRuntimeSaveError",
+              "Failed to update the agent runtime.",
+            ),
       });
     } finally {
       savingRef.current = false;
       setSaving(false);
+      setCodexSetupStage(null);
       if (pendingReloadRef.current) {
         pendingReloadRef.current = false;
         void loadState();
@@ -308,9 +390,16 @@ export function AgentRuntimeSettings() {
     }
   };
 
+  const setupAndUseCodex = () => void selectRuntime("codex", true);
+
+  const saveSelection = () => {
+    if (draft) void selectRuntime(draft);
+  };
+
   const selectedOption = draft
     ? runtimeOptions.find((option) => option.provider === draft)
     : undefined;
+  const busy = saving || codexSetupStage !== null || loading || refreshing;
 
   if (desktop !== true) return null;
 
@@ -379,7 +468,7 @@ export function AgentRuntimeSettings() {
                   type="button"
                   variant="outline"
                   size="sm"
-                  disabled={saving || loading || refreshing}
+                  disabled={busy}
                   onClick={clearSelection}
                   className="shrink-0"
                 >
@@ -408,8 +497,7 @@ export function AgentRuntimeSettings() {
                       selected
                         ? "border-primary/50 bg-primary/5 ring-1 ring-primary/15"
                         : "border-border bg-background hover:border-foreground/20 hover:bg-muted/30",
-                      (saving || loading || refreshing) &&
-                        "pointer-events-none opacity-60",
+                      busy && "pointer-events-none opacity-60",
                     )}
                   >
                     <input
@@ -417,7 +505,7 @@ export function AgentRuntimeSettings() {
                       name="agent-runtime"
                       value={option.provider}
                       checked={selected}
-                      disabled={saving || loading || refreshing}
+                      disabled={busy}
                       onChange={() => setDraft(option.provider)}
                       className="sr-only"
                     />
@@ -468,11 +556,13 @@ export function AgentRuntimeSettings() {
                 probe={state.runtimes[draft]}
                 platform={state.platform}
                 active={state.effective.provider === draft}
-                busy={saving || loading || refreshing}
+                busy={busy}
                 refreshing={refreshing}
+                codexSetupStage={codexSetupStage}
                 canSave={canSaveAgentRuntime(state, draft)}
                 onRefresh={() => loadState(true)}
                 onSave={saveSelection}
+                onCodexSetup={setupAndUseCodex}
               />
             )}
           </>
@@ -535,9 +625,11 @@ function RuntimeSetupPanel({
   active,
   busy,
   refreshing,
+  codexSetupStage,
   canSave,
   onRefresh,
   onSave,
+  onCodexSetup,
 }: {
   option: (typeof runtimeOptions)[number];
   probe: AgentRuntimePublicProbe;
@@ -545,13 +637,22 @@ function RuntimeSetupPanel({
   active: boolean;
   busy: boolean;
   refreshing: boolean;
+  codexSetupStage: "installing" | "logging_in" | null;
   canSave: boolean;
   onRefresh: () => void;
   onSave: () => void;
+  onCodexSetup: () => void;
 }) {
   const { t } = useTranslation();
   const showGuide =
     probe.status === "not_installed" || probe.status === "unverified";
+  const codexNeedsInstall =
+    option.provider === "codex" &&
+    probe.status === "not_installed" &&
+    platform === "windows";
+  const showCodexSetup =
+    option.provider === "codex" &&
+    (probe.status === "login_required" || codexNeedsInstall);
   return (
     <div
       className="rounded-lg border border-border bg-background p-4 sm:p-5"
@@ -601,18 +702,54 @@ function RuntimeSetupPanel({
             />
             {t("settings.agentRuntimeCheckAgain", "Re-detect")}
           </Button>
-          <Button
-            type="button"
-            size="sm"
-            disabled={!canSave || busy}
-            onClick={onSave}
-          >
-            {active
-              ? t("settings.agentRuntimeInUse", "In use")
-              : t("settings.agentRuntimeUse", "Use {{runtime}}", {
-                  runtime: option.name,
-                })}
-          </Button>
+          {showCodexSetup ? (
+            <Button
+              type="button"
+              size="sm"
+              disabled={busy}
+              onClick={onCodexSetup}
+            >
+              {codexSetupStage && (
+                <RemixIcon
+                  name="loader_2"
+                  size="size-4"
+                  className="animate-spin"
+                />
+              )}
+              {codexSetupStage === "installing"
+                ? t(
+                    "settings.agentRuntimeCodexInstallWaiting",
+                    "Installing Codex CLI; browser sign-in will open next…",
+                  )
+                : codexSetupStage === "logging_in"
+                  ? t(
+                      "settings.agentRuntimeCodexLoginWaiting",
+                      "Finish signing in in your browser…",
+                    )
+                  : codexNeedsInstall
+                    ? t(
+                        "settings.agentRuntimeCodexInstallAndLogin",
+                        "Install and sign in to Codex",
+                      )
+                    : t(
+                        "settings.agentRuntimeCodexLogin",
+                        "Sign in and use Codex",
+                      )}
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              size="sm"
+              disabled={!canSave || busy}
+              onClick={onSave}
+            >
+              {active
+                ? t("settings.agentRuntimeInUse", "In use")
+                : t("settings.agentRuntimeUse", "Use {{runtime}}", {
+                    runtime: option.name,
+                  })}
+            </Button>
+          )}
         </div>
       </div>
     </div>
@@ -666,6 +803,17 @@ function RuntimeSetupSummary({
           {t(
             "settings.agentRuntimeClaudeAuthenticationDescription",
             "Save an Anthropic-compatible API configuration below. If this OS account already has Claude authentication, check again to reuse it.",
+          )}
+        </p>
+      );
+    }
+
+    if (option.provider === "codex") {
+      return (
+        <p className="text-sm text-muted-foreground">
+          {t(
+            "settings.agentRuntimeCodexLoginDescription",
+            "OpenLoomi will run Codex CLI's browser sign-in. After you finish signing in with ChatGPT, Codex will be checked and selected automatically.",
           )}
         </p>
       );
@@ -741,18 +889,28 @@ function CodexInstallSteps({
       ? "PowerShell"
       : t("settings.agentRuntimeTerminal", "Terminal");
   const checkAgain = t("settings.agentRuntimeCheckAgain", "Re-detect");
-  const useCodex = t("settings.agentRuntimeUse", "Use {{runtime}}", {
-    runtime: "Codex CLI",
-  });
-  const inUse = t("settings.agentRuntimeInUse", "In use");
+  const loginCodex = t(
+    "settings.agentRuntimeCodexLogin",
+    "Sign in and use Codex",
+  );
 
   return (
     <div className="space-y-3">
+      {platform === "windows" && (
+        <p className="text-sm text-muted-foreground">
+          {t(
+            "settings.agentRuntimeCodexAutoInstallDescription",
+            "Selecting “Install and sign in to Codex” downloads and runs OpenAI's official installer for this Windows account, updates the user PATH, and then opens Codex's browser sign-in.",
+          )}
+        </p>
+      )}
       <p className="text-sm font-medium text-foreground">
-        {t(
-          "settings.agentRuntimeCodexInstallTitle",
-          "Install and sign in to Codex CLI",
-        )}
+        {platform === "windows"
+          ? t(
+              "settings.agentRuntimeCodexManualInstallTitle",
+              "Manual installation (fallback)",
+            )
+          : t("settings.agentRuntimeCodexInstallTitle", "Install Codex CLI")}
       </p>
       <ol className="list-decimal space-y-3 pl-5 text-sm text-muted-foreground">
         <li>
@@ -783,21 +941,11 @@ function CodexInstallSteps({
             )}
           </p>
         </li>
-        <li className="space-y-2 pl-1">
-          <p>
-            {t(
-              "settings.agentRuntimeCodexInstallSignIn",
-              "After the installer returns to {{terminal}}, close that window and open a new one. Run this command and finish signing in in your browser. When sign-in succeeds, you can close the browser page and {{terminal}}.",
-              { terminal },
-            )}
-          </p>
-          <CopyCommand command={CODEX_LOGIN_COMMAND} />
-        </li>
         <li>
           {t(
             "settings.agentRuntimeCodexInstallReturn",
-            "Return here and select {{checkAction}}. Once Codex CLI is ready, select {{useAction}} if it does not already show {{inUse}}. You do not need to restart OpenLoomi.",
-            { checkAction: checkAgain, useAction: useCodex, inUse },
+            "After installation, return here and select {{checkAction}}. When Codex CLI is found, select {{loginAction}} to finish in your browser and enable it automatically.",
+            { checkAction: checkAgain, loginAction: loginCodex },
           )}
         </li>
       </ol>

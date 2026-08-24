@@ -2,9 +2,11 @@ import type { AgentRuntimeSettingsResponse } from "./runtime-contract";
 
 type AgentRuntimePlatform = AgentRuntimeSettingsResponse["platform"];
 
+export const CODEX_WINDOWS_INSTALLER_URL =
+  "https://chatgpt.com/codex/install.ps1";
+
 const CODEX_INSTALL_COMMANDS: Record<AgentRuntimePlatform, string> = {
-  windows:
-    'powershell -ExecutionPolicy ByPass -c "irm https://chatgpt.com/codex/install.ps1 | iex"',
+  windows: `powershell -ExecutionPolicy ByPass -c "irm ${CODEX_WINDOWS_INSTALLER_URL} | iex"`,
   macos: "curl -fsSL https://chatgpt.com/codex/install.sh | sh",
   linux: "curl -fsSL https://chatgpt.com/codex/install.sh | sh",
 };

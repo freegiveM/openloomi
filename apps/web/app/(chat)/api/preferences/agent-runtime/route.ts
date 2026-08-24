@@ -7,8 +7,11 @@ import {
   readAgentRuntimePreference,
   writeAgentRuntimePreference,
 } from "@/lib/ai/native-agent/runtime-preference";
+import {
+  getRuntimeApiConfiguration,
+  selectReadyAgentRuntime,
+} from "@/lib/ai/native-agent/runtime-selection";
 import { getAgentRuntimeSettings } from "@/lib/ai/native-agent/runtime-settings";
-import { getUserLlmProviderConfig } from "@/lib/ai/user-llm-api-settings";
 import { getAuthUser } from "@/lib/auth/dual-auth";
 import { isTauriMode } from "@/lib/env/constants";
 
@@ -19,19 +22,6 @@ const runtimePreferenceSchema = z
   .strict();
 
 const noStoreHeaders = { "Cache-Control": "no-store" };
-
-async function getRuntimeApiConfiguration(userId: string) {
-  const anthropicApiConfigured = Boolean(
-    await getUserLlmProviderConfig({
-      userId,
-      providerType: "anthropic_compatible",
-    }),
-  );
-  return {
-    claudeApiConfigured: anthropicApiConfigured,
-    hermesApiConfigured: anthropicApiConfigured,
-  };
-}
 
 export async function GET(request: Request) {
   const user = await getAuthUser(request).catch(() => null);
@@ -79,43 +69,14 @@ export async function PUT(request: Request) {
   }
 
   try {
-    let apiConfiguration = await getRuntimeApiConfiguration(user.id);
-    let readiness = await getAgentRuntimeSettings({
-      forceRefresh: true,
-      ...apiConfiguration,
-    });
-
-    // The runtime probe can take several seconds. If the user saves or removes
-    // the shared API configuration while it is running, remap readiness against
-    // the latest setting before persisting the choice.
-    if (parsed.data.provider === "claude" || parsed.data.provider === "hermes") {
-      const latestApiConfiguration = await getRuntimeApiConfiguration(user.id);
-      if (
-        latestApiConfiguration.claudeApiConfigured !==
-        apiConfiguration.claudeApiConfigured
-      ) {
-        apiConfiguration = latestApiConfiguration;
-        readiness = await getAgentRuntimeSettings(apiConfiguration);
-      }
-    }
-
-    if (!readiness.runtimes?.[parsed.data.provider].ready) {
+    const result = await selectReadyAgentRuntime(user.id, parsed.data.provider);
+    if (!result.selected) {
       return NextResponse.json(
-        { error: "runtime_not_ready", settings: readiness },
+        { error: "runtime_not_ready", settings: result.settings },
         { status: 409, headers: noStoreHeaders },
       );
     }
-
-    writeAgentRuntimePreference(parsed.data.provider);
-    const settings = {
-      ...readiness,
-      preference: parsed.data.provider,
-      effective: {
-        provider: parsed.data.provider,
-        source: "preference" as const,
-      },
-    };
-    return NextResponse.json(settings, { headers: noStoreHeaders });
+    return NextResponse.json(result.settings, { headers: noStoreHeaders });
   } catch (error) {
     console.error("[Agent Runtime Preferences] Failed to save state", error);
     return NextResponse.json(

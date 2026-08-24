@@ -395,17 +395,30 @@ const zh = {
       "请在终端运行以下命令并完成登录，然后重新检查。",
     agentRuntimeSetupDescription:
       "请在终端运行以下命令并完成配置，然后重新检查。",
-    agentRuntimeCodexInstallTitle: "安装并登录 Codex CLI",
+    agentRuntimeCodexLoginDescription:
+      "OpenLoomi 将启动 Codex CLI 的浏览器登录流程；完成 ChatGPT 登录后，会自动检测并启用 Codex。",
+    agentRuntimeCodexLogin: "登录并使用 Codex",
+    agentRuntimeCodexLoginWaiting: "请在浏览器中完成登录…",
+    agentRuntimeCodexLoginSuccess: "Codex CLI 已登录并设为当前运行时。",
+    agentRuntimeCodexLoginError: "无法登录或启用 Codex，请重试。",
+    agentRuntimeCodexInstallAndLogin: "一键安装并登录 Codex",
+    agentRuntimeCodexInstallWaiting:
+      "正在安装 Codex CLI，随后会打开浏览器登录…",
+    agentRuntimeCodexInstallSuccess: "Codex CLI 已安装、登录并设为当前运行时。",
+    agentRuntimeCodexInstallError:
+      "无法自动安装 Codex CLI。请按下方手动说明安装后重试。",
+    agentRuntimeCodexAutoInstallDescription:
+      "点击“一键安装并登录 Codex”会为当前 Windows 账号下载并运行 OpenAI 官方安装器、更新用户 PATH，然后打开 Codex 浏览器登录。",
+    agentRuntimeCodexManualInstallTitle: "手动安装（备用）",
+    agentRuntimeCodexInstallTitle: "安装 Codex CLI",
     agentRuntimeCodexInstallOpenTerminal: "打开 {{terminal}}。",
     agentRuntimeCodexInstallRunInstaller: "复制并运行以下官方安装命令。",
     agentRuntimeCodexInstallSkipLaunch:
       "安装结束时如果出现“Start Codex now? [y/N]”，直接按 Enter，保持默认选项 N；此时不要启动 Codex。",
     agentRuntimeCodexInstallExitAccidentalLaunch:
       "如果已经误选 y，并看到“Hooks need review”，请选择“3. Continue without trusting”。进入 Codex 后输入 /exit（或按 Ctrl+C）将其关闭。",
-    agentRuntimeCodexInstallSignIn:
-      "安装程序返回 {{terminal}} 后，关闭这个窗口，再打开一个新的 {{terminal}}。运行以下命令并在浏览器中完成登录；提示登录成功后，可以关闭浏览器页面和 {{terminal}}。",
     agentRuntimeCodexInstallReturn:
-      "回到这里点击“{{checkAction}}”。确认 Codex CLI 已就绪后，如果尚未显示“{{inUse}}”，再点击“{{useAction}}”。无需重启 OpenLoomi。",
+      "安装完成后回到这里点击“{{checkAction}}”。检测到 Codex CLI 后，点击“{{loginAction}}”，在浏览器完成登录即可自动启用。",
     agentRuntimeTerminal: "终端",
     agentRuntimeClaudeUnavailableDescription:
       "OpenLoomi 无法加载内置 Claude 运行组件。请更新或修复桌面应用，然后重新检查。",
