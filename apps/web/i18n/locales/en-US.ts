@@ -414,7 +414,24 @@ const en = {
       "Run this command in a terminal, finish signing in, then check again.",
     agentRuntimeSetupDescription:
       "Run this command in a terminal, complete setup, then check again.",
-    agentRuntimeCodexInstallTitle: "Install and sign in to Codex CLI",
+    agentRuntimeCodexLoginDescription:
+      "OpenLoomi will run Codex CLI's browser sign-in. After you finish signing in with ChatGPT, Codex will be checked and selected automatically.",
+    agentRuntimeCodexLogin: "Sign in and use Codex",
+    agentRuntimeCodexLoginWaiting: "Finish signing in in your browser…",
+    agentRuntimeCodexLoginSuccess: "Codex CLI is signed in and selected.",
+    agentRuntimeCodexLoginError:
+      "Could not sign in or enable Codex. Try again.",
+    agentRuntimeCodexInstallAndLogin: "Install and sign in to Codex",
+    agentRuntimeCodexInstallWaiting:
+      "Installing Codex CLI; browser sign-in will open next…",
+    agentRuntimeCodexInstallSuccess:
+      "Codex CLI is installed, signed in, and selected.",
+    agentRuntimeCodexInstallError:
+      "Could not install Codex CLI automatically. Use the manual instructions below, then try again.",
+    agentRuntimeCodexAutoInstallDescription:
+      "Selecting “Install and sign in to Codex” downloads and runs OpenAI's official installer for this Windows account, updates the user PATH, and then opens Codex's browser sign-in.",
+    agentRuntimeCodexManualInstallTitle: "Manual installation (fallback)",
+    agentRuntimeCodexInstallTitle: "Install Codex CLI",
     agentRuntimeCodexInstallOpenTerminal: "Open {{terminal}}.",
     agentRuntimeCodexInstallRunInstaller:
       "Copy and run the official install command.",
@@ -422,10 +439,8 @@ const en = {
       'When "Start Codex now? [y/N]" appears at the end, press Enter to keep the default N. Do not start Codex yet.',
     agentRuntimeCodexInstallExitAccidentalLaunch:
       'If you already selected y and see "Hooks need review", select "3. Continue without trusting". After Codex opens, enter /exit or press Ctrl+C to close it.',
-    agentRuntimeCodexInstallSignIn:
-      "After the installer returns to {{terminal}}, close that window and open a new one. Run this command and finish signing in in your browser. When sign-in succeeds, you can close the browser page and {{terminal}}.",
     agentRuntimeCodexInstallReturn:
-      "Return here and select {{checkAction}}. Once Codex CLI is ready, select {{useAction}} if it does not already show {{inUse}}. You do not need to restart OpenLoomi.",
+      "After installation, return here and select {{checkAction}}. When Codex CLI is found, select {{loginAction}} to finish in your browser and enable it automatically.",
     agentRuntimeTerminal: "Terminal",
     agentRuntimeClaudeUnavailableDescription:
       "OpenLoomi could not load its built-in Claude runtime. Update or repair the desktop app, then check again.",
