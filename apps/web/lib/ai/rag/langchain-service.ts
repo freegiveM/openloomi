@@ -297,7 +297,16 @@ export async function processDocument(
       },
     }));
 
-    await vectorStore.addChunks(vectorChunks);
+    try {
+      await vectorStore.addChunks(vectorChunks);
+    } catch (error) {
+      // These rows are already committed; roll them back or the document
+      // becomes an orphan that is visible in getUserDocuments() but
+      // unreachable via searchSimilarChunks() forever.
+      await db.delete(ragChunks).where(eq(ragChunks.documentId, document.id));
+      await db.delete(ragDocuments).where(eq(ragDocuments.id, document.id));
+      throw error;
+    }
     console.log("[RAG] Added chunks to vector store", {
       documentId: document.id,
       chunks: vectorChunks.length,
